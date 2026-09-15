@@ -1,0 +1,22 @@
+{
+  "name": "affiliateos",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AffiliateOS SaaS foundation",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build:shared && concurrently --names api,web --prefix-colors blue,green \"npm run dev --workspace @affiliateos/api\" \"npm run dev --workspace @affiliateos/web\"",
+    "build:shared": "npm run build --workspace @affiliateos/shared",
+    "build": "npm run build:shared && npm run build --workspace @affiliateos/api && npm run build --workspace @affiliateos/web",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "start": "npm run start --workspace @affiliateos/api",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,8 @@
+import { z } from "zod";
+
+const environmentSchema = z.object({
+  API_HOST: z.string().default("127.0.0.1"),
+  API_PORT: z.coerce.number().int().positive().default(3001)
+});
+
+export const environment = environmentSchema.parse(process.env);
