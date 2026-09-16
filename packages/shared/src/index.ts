@@ -3,7 +3,7 @@ export type MoneyCents = number;
 export type IsoTimestamp = string;
 
 export type AffiliateStatus = "active" | "paused" | "pending";
-export type OfferStatus = "draft" | "active" | "archived";
+export type OfferStatus = "draft" | "active" | "inactive" | "archived";
 export type ConversionStatus = "pending" | "approved" | "rejected";
 export type CommissionStatus = "pending" | "approved" | "paid";
 
@@ -48,6 +48,7 @@ export interface CreateAffiliateRequest {
 
 export interface CreateOfferRequest {
   name: string;
+  status: "active" | "inactive";
   commissionRateBps: number;
 }
 
@@ -64,6 +65,7 @@ export interface ListResponse<T> {
 
 export interface ErrorResponse {
   error: string;
+  status: "active" | "inactive";
   message: string;
 }
 

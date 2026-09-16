@@ -43,7 +43,7 @@ export class OfferService {
     const offer: Offer = {
       id: randomUUID(),
       name: input.name,
-      status: "active",
+      status: input.status,
       commissionRateBps: input.commissionRateBps,
       createdAt: now()
     };

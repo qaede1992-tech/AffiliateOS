@@ -11,6 +11,7 @@ export const createAffiliateSchema = z.object({
 
 export const createOfferSchema = z.object({
   name: nonEmptyText.max(200),
+  status: z.enum(["active", "inactive"]),
   commissionRateBps: z.number().int().min(0).max(10000)
 });
 
