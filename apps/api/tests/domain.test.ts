@@ -5,7 +5,7 @@ import { DomainError } from "../src/domain/errors.js";
 import { InMemoryRepository } from "../src/domain/repository.js";
 import { ConversionService } from "../src/domain/services.js";
 
-test("creating a conversion creates a pending commission using offer basis points", () => {
+test("creating a conversion creates a pending commission using offer basis points", async () => {
   const affiliates = new InMemoryRepository<Affiliate>();
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryRepository<Conversion>();
@@ -27,7 +27,7 @@ test("creating a conversion creates a pending commission using offer basis point
   affiliates.save(affiliate);
   offers.save(offer);
 
-  const service = new ConversionService(conversions, commissions, affiliates, offers);
+  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
   const conversion = await service.create({
     affiliateId: affiliate.id,
     offerId: offer.id,
@@ -36,7 +36,7 @@ test("creating a conversion creates a pending commission using offer basis point
   });
 
   assert.equal(conversion.status, "pending");
-  assert.deepEqual(commissions.list().map(({ amountCents, conversionId, status }) => ({ amountCents, conversionId, status })), [
+  assert.deepEqual(await commissions.list().then(items => items.map(({ amountCents, conversionId, status }) => ({ amountCents, conversionId, status }))), [
     { amountCents: 1250, conversionId: conversion.id, status: "pending" }
   ]);
 });
@@ -50,7 +50,7 @@ test("creating a conversion rejects an inactive offer", async () => {
   const offerId = "00000000-0000-4000-8000-000000000004";
   affiliates.save({ id: affiliateId, name: "Partner", email: "partner@example.com", status: "active", createdAt: new Date().toISOString() });
   offers.save({ id: offerId, name: "Paused", status: "archived", commissionRateBps: 1000, createdAt: new Date().toISOString() });
-  const service = new ConversionService(conversions, commissions, affiliates, offers);
+  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
 
   assert.rejects(
     () => service.create({ affiliateId, offerId, amountCents: 1000 }),
