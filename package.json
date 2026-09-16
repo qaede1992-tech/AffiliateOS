@@ -12,6 +12,9 @@
     "build:shared": "npm run build --workspace @affiliateos/shared",
     "build": "npm run build:shared && npm run build --workspace @affiliateos/api && npm run build --workspace @affiliateos/web",
     "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:shared && npm run test --workspace @affiliateos/api",
+    "db:generate": "npm run db:generate --workspace @affiliateos/api",
+    "db:migrate": "npm run db:migrate --workspace @affiliateos/api",
     "start": "npm run start --workspace @affiliateos/api",
     "clean": "npm run clean --workspaces --if-present"
   },

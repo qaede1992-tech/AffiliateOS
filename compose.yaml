@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: affiliateos
+      POSTGRES_USER: affiliateos
+      POSTGRES_PASSWORD: affiliateos
+    ports:
+      - "5432:5432"
+    volumes:
+      - affiliateos-postgres:/var/lib/postgresql/data
+
+volumes:
+  affiliateos-postgres:
