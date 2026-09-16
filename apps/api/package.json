@@ -10,7 +10,7 @@
     "test": "tsx --test tests/**/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "start": "node dist/server.js",
+    "start": "node --env-file=../../.env dist/server.js",
     "clean": "rm -rf dist"
   },
   "dependencies": {
