@@ -10,7 +10,7 @@ The repository uses an npm workspace layout:
 - `apps/api`: Fastify API with environment validation and centralized error handling.
 - `packages/shared`: shared TypeScript domain contracts for affiliates, offers, conversions, commissions, and API health responses.
 
-The current slice uses process-local in-memory repositories. It intentionally contains no authentication, payment processing, integrations, or mock business data.
+The current slice uses PostgreSQL persistence through Drizzle ORM. It intentionally contains no authentication, payment processing, integrations, or mock business data.
 
 ## Requirements
 
