@@ -25,7 +25,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     tracking: new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers),
     content: new ContentService(repositories.contents, repositories.campaigns, repositories.products), socialAccounts: new SocialAccountService(repositories.socialAccounts),
     socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository),
-    analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader),
+    analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository),
     attribution: new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository)
   };
 }
