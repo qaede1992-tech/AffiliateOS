@@ -1,7 +1,9 @@
-import type { Campaign, Content, Click, TrackingLink } from "@affiliateos/shared";
+import type { Campaign, Commission, Content, Conversion, Click, TrackingLink } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { AnalyticsReader } from "./analytics-db.js";
+import type { ConversionAttribution } from "@affiliateos/shared";
 import type { Repository, TrackingLinkRepository } from "./repository.js";
+import type { ConversionAttributionRepository } from "./attribution.js";
 
 export interface CampaignAnalytics {
   campaignId: string;
@@ -10,6 +12,10 @@ export interface CampaignAnalytics {
   contentCount: number;
   publishedContentCount: number;
   scheduledContentCount: number;
+  attributedConversionCount: number;
+  attributedRevenueCents: number;
+  attributedCommissionCents: number;
+  conversionRate: number;
 }
 
 export interface AnalyticsOverview {
@@ -19,6 +25,10 @@ export interface AnalyticsOverview {
   contentCount: number;
   publishedContentCount: number;
   scheduledContentCount: number;
+  attributedConversionCount: number;
+  attributedRevenueCents: number;
+  attributedCommissionCents: number;
+  conversionRate: number;
   campaigns: CampaignAnalytics[];
 }
 
@@ -28,35 +38,44 @@ export class AnalyticsService {
     private readonly trackingLinks: TrackingLinkRepository,
     private readonly clicks: Repository<Click>,
     private readonly contents: Repository<Content>,
-    private readonly reader?: AnalyticsReader
+    private readonly reader?: AnalyticsReader,
+    private readonly conversions?: Repository<Conversion>,
+    private readonly commissions?: Repository<Commission>,
+    private readonly attributions?: ConversionAttributionRepository
   ) {}
 
   async overview(): Promise<AnalyticsOverview> {
     if (this.reader) return this.reader.overview();
-    const [campaigns, trackingLinks, clicks, contents] = await Promise.all([
-      this.campaigns.list(), this.trackingLinks.list(), this.clicks.list(), this.contents.list()
+    const [campaigns, trackingLinks, clicks, contents, conversions, commissions, attributions] = await Promise.all([
+      this.campaigns.list(), this.trackingLinks.list(), this.clicks.list(), this.contents.list(),
+      this.conversions?.list() ?? Promise.resolve([]), this.commissions?.list() ?? Promise.resolve([]), this.attributions?.list() ?? Promise.resolve([])
     ]);
-    return this.buildOverview(campaigns, trackingLinks, clicks, contents);
+    return this.buildOverview(campaigns, trackingLinks, clicks, contents, conversions, commissions, attributions);
   }
 
   async campaign(campaignId: string): Promise<CampaignAnalytics> {
     if (this.reader) return this.reader.campaign(campaignId);
-    const [campaigns, trackingLinks, clicks, contents] = await Promise.all([
-      this.campaigns.list(), this.trackingLinks.listByCampaign(campaignId), this.clicks.list(), this.contents.list()
+    const [campaigns, trackingLinks, clicks, contents, conversions, commissions, attributions] = await Promise.all([
+      this.campaigns.list(), this.trackingLinks.listByCampaign(campaignId), this.clicks.list(), this.contents.list(),
+      this.conversions?.list() ?? Promise.resolve([]), this.commissions?.list() ?? Promise.resolve([]), this.attributions?.list() ?? Promise.resolve([])
     ]);
     if (!campaigns.some((item) => item.id === campaignId)) {
       throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
     }
-    return this.buildCampaign(campaignId, trackingLinks, clicks, contents.filter((item) => item.campaignId === campaignId));
+    return this.buildCampaign(campaignId, trackingLinks, clicks, contents.filter((item) => item.campaignId === campaignId), conversions, commissions, attributions);
   }
 
-  private buildOverview(campaigns: Campaign[], trackingLinks: TrackingLink[], clicks: Click[], contents: Content[]): AnalyticsOverview {
+  private buildOverview(campaigns: Campaign[], trackingLinks: TrackingLink[], clicks: Click[], contents: Content[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]): AnalyticsOverview {
     const campaignStats = campaigns.map((campaign) => this.buildCampaign(
       campaign.id,
       trackingLinks.filter((link) => link.campaignId === campaign.id),
       clicks,
-      contents.filter((item) => item.campaignId === campaign.id)
+      contents.filter((item) => item.campaignId === campaign.id),
+      conversions,
+      commissions,
+      attributions
     ));
+    const attributed = this.attribute(clicks, trackingLinks, conversions, commissions, attributions);
     return {
       clickCount: clicks.length,
       trackingLinkCount: trackingLinks.length,
@@ -64,19 +83,42 @@ export class AnalyticsService {
       contentCount: contents.length,
       publishedContentCount: contents.filter((item) => item.status === "published").length,
       scheduledContentCount: contents.filter((item) => item.status === "scheduled").length,
+      attributedConversionCount: attributed.count,
+      attributedRevenueCents: attributed.revenueCents,
+      attributedCommissionCents: attributed.commissionCents,
+      conversionRate: rate(attributed.count, clicks.length),
       campaigns: campaignStats
     };
   }
 
-  private buildCampaign(campaignId: string, trackingLinks: TrackingLink[], allClicks: Click[], contents: Content[]): CampaignAnalytics {
-    const linkIds = new Set(trackingLinks.map((link) => link.id));
+  private buildCampaign(campaignId: string, trackingLinks: TrackingLink[], allClicks: Click[], contents: Content[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]): CampaignAnalytics {
+    const attributed = this.attribute(allClicks, trackingLinks, conversions, commissions, attributions);
     return {
       campaignId,
-      clickCount: allClicks.filter((click) => linkIds.has(click.trackingLinkId)).length,
+      clickCount: allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length,
       trackingLinkCount: trackingLinks.length,
       contentCount: contents.length,
       publishedContentCount: contents.filter((item) => item.status === "published").length,
-      scheduledContentCount: contents.filter((item) => item.status === "scheduled").length
+      scheduledContentCount: contents.filter((item) => item.status === "scheduled").length,
+      attributedConversionCount: attributed.count,
+      attributedRevenueCents: attributed.revenueCents,
+      attributedCommissionCents: attributed.commissionCents,
+      conversionRate: rate(attributed.count, allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length)
     };
   }
+
+  private attribute(allClicks: Click[], links: TrackingLink[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]) {
+    const linkIds = new Set(links.map((link) => link.id));
+    const conversionIds = new Set(attributions.filter((item) => linkIds.has(item.trackingLinkId)).map((item) => item.conversionId));
+    const validConversions = conversions.filter((item) => conversionIds.has(item.id) && item.status !== "rejected");
+    return {
+      count: validConversions.length,
+      revenueCents: validConversions.reduce((sum, item) => sum + item.amountCents, 0),
+      commissionCents: commissions.filter((item) => conversionIds.has(item.conversionId)).reduce((sum, item) => sum + item.amountCents, 0)
+    };
+  }
+}
+
+function rate(numerator: number, denominator: number): number {
+  return denominator === 0 ? 0 : numerator / denominator;
 }
