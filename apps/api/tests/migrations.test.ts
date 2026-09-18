@@ -17,7 +17,8 @@ test("tracked Drizzle migrations form a complete, ordered history", async () => 
     "0001_affiliateos_foundation",
     "0002_tracking_links_campaign_index",
     "0003_marketplace_engine",
-    "0004_marketplace_integration_readiness"
+    "0004_marketplace_integration_readiness",
+    "0005_click_idempotency"
   ]);
   for (const entry of journal.entries) {
     assert.ok(files.delete(`${entry.tag}.sql`), `missing ${entry.tag}.sql`);
@@ -37,6 +38,13 @@ test("marketplace engine migration stores provider references and affiliate-link
   assert.match(sql, /credential_reference/);
   assert.match(sql, /affiliate_link_status/);
   assert.doesNotMatch(sql, /api_secret|access_token|client_secret/i);
+});
+
+test("click idempotency migration adds a per-link uniqueness boundary without storing secrets", async () => {
+  const sql = await readFile(resolve(migrationsDirectory, "0005_click_idempotency.sql"), "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "idempotency_key" varchar\(200\)/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS "clicks_link_idempotency_unique" ON "clicks" \("tracking_link_id", "idempotency_key"\)/);
+  assert.doesNotMatch(sql, /api_key|access_token|client_secret|password/i);
 });
 
 test("foundation schema and its omitted tracking-links index are both tracked", async () => {
