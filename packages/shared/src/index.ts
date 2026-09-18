@@ -63,3 +63,6 @@ export interface SocialOAuthStartResponse { authorizationUrl: string; state: str
 
 export interface ConversionAttribution { conversionId: EntityId; trackingLinkId: EntityId; attributedAt: IsoTimestamp; }
 export interface CreateConversionAttributionRequest { trackingLinkId: EntityId; }
+
+export interface CampaignAnalytics { campaignId: EntityId; clickCount: number; trackingLinkCount: number; contentCount: number; publishedContentCount: number; scheduledContentCount: number; attributedConversionCount: number; attributedRevenueCents: MoneyCents; attributedCommissionCents: MoneyCents; conversionRate: number; }
+export interface AnalyticsOverview extends Omit<CampaignAnalytics, "campaignId"> { campaignCount: number; campaigns: CampaignAnalytics[]; }
