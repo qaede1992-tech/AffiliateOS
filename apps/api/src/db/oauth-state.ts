@@ -1,6 +1,4 @@
-import { eq } from "drizzle-orm";
-import type { OAuthStateRepository } from "../domain/oauth.js";
-import type { OAuthState } from "../domain/oauth.js";
+import type { OAuthStateRepository, OAuthState } from "../domain/oauth.js";
 import { oauthStates } from "./schema.js";
 
 type DatabaseExecutor = any;
@@ -16,12 +14,8 @@ export class DrizzleOAuthStateRepository implements OAuthStateRepository {
     return state;
   }
 
-  async findByState(state: string): Promise<OAuthState | undefined> {
-    const rows = await this.db.select().from(oauthStates).where(eq(oauthStates.state, state)).limit(1);
+  async consume(state: string): Promise<OAuthState | undefined> {
+    const rows = await this.db.delete(oauthStates).where((table: any) => table.state.eq(state)).returning();
     return rows[0];
-  }
-
-  async remove(state: string): Promise<void> {
-    await this.db.delete(oauthStates).where(eq(oauthStates.state, state));
   }
 }
