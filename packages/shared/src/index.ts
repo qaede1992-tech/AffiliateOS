@@ -74,6 +74,7 @@ export interface HealthResponse {
   service: "affiliateos-api";
   timestamp: IsoTimestamp;
 }
+
 export type MarketplaceStatus = "active" | "inactive" | "pending";
 export interface Product {
   id: EntityId; marketplaceId: EntityId; externalProductId: string; name: string;
@@ -121,3 +122,76 @@ export interface AffiliateOffer {
 export type AudienceSegment = "beauty" | "skincare" | "baby" | "parenting" | "fashion" | "home" | "kitchen" | "electronics" | "lifestyle" | "deal-hunters";
 export type CampaignStatus = "draft" | "scheduled" | "active" | "paused" | "completed" | "archived";
 export interface GeneratedContent { platform: "tiktok" | "instagram" | "facebook" | "youtube-shorts" | "x" | "threads"; title: string; caption: string; script?: string; cta: string; }
+
+export interface Campaign {
+  id: EntityId;
+  name: string;
+  objective: string;
+  status: CampaignStatus;
+  startAt?: IsoTimestamp;
+  endAt?: IsoTimestamp;
+  audience: Record<string, unknown>;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+}
+
+export interface CampaignOffer {
+  campaignId: EntityId;
+  affiliateOfferId: EntityId;
+  createdAt: IsoTimestamp;
+}
+
+export interface TrackingLink {
+  id: EntityId;
+  affiliateOfferId: EntityId;
+  campaignId?: EntityId;
+  code: string;
+  destinationUrl: string;
+  status: "active" | "inactive" | "expired";
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+}
+
+export interface Click {
+  id: EntityId;
+  trackingLinkId: EntityId;
+  idempotencyKey?: string;
+  occurredAt: IsoTimestamp;
+  metadata: Record<string, unknown>;
+}
+
+export interface TrackingLinkStats {
+  linkId: EntityId;
+  clickCount: number;
+}
+
+export interface CreateCampaignRequest {
+  name: string;
+  objective: string;
+  status?: CampaignStatus;
+  startAt?: IsoTimestamp;
+  endAt?: IsoTimestamp;
+  audience?: Record<string, unknown>;
+}
+
+export interface UpdateCampaignRequest {
+  name?: string;
+  objective?: string;
+  status?: CampaignStatus;
+  startAt?: IsoTimestamp;
+  endAt?: IsoTimestamp;
+  audience?: Record<string, unknown>;
+}
+
+export interface CreateTrackingLinkRequest {
+  affiliateOfferId: EntityId;
+  campaignId?: EntityId;
+  code?: string;
+  destinationUrl: string;
+}
+
+export interface RecordClickRequest {
+  occurredAt?: IsoTimestamp;
+  idempotencyKey?: string;
+  metadata?: Record<string, unknown>;
+}

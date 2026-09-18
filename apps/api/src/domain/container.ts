@@ -1,8 +1,20 @@
-import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
-import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository, type RepositorySet, type TransactionManager } from "./repository.js";
+import type { Affiliate, Campaign, Commission, Conversion, Offer } from "@affiliateos/shared";
+import {
+  InMemoryAffiliateAccountRepository,
+  InMemoryAffiliateOfferRepository,
+  InMemoryCampaignOfferRepository,
+  InMemoryClickRepository,
+  InMemoryMarketplaceConnectionRepository,
+  InMemoryProductCatalogRepository,
+  InMemoryRepository,
+  InMemoryTrackingLinkRepository,
+  type RepositorySet,
+  type TransactionManager
+} from "./repository.js";
 import { AffiliateService, CommissionService, ConversionService, OfferService } from "./services.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
 import { MarketplaceService } from "./marketplace.js";
+import { CampaignService, TrackingService } from "./campaigns.js";
 
 export interface Services {
   affiliates: AffiliateService;
@@ -10,6 +22,8 @@ export interface Services {
   conversions: ConversionService;
   commissions: CommissionService;
   marketplace: MarketplaceService;
+  campaigns: CampaignService;
+  tracking: TrackingService;
 }
 
 export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry()): Services {
@@ -24,7 +38,9 @@ export function createServices(repositories: RepositorySet, transactionManager: 
       transactionManager
     ),
     commissions: new CommissionService(repositories.commissions),
-    marketplace: new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers)
+    marketplace: new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers),
+    campaigns: new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers),
+    tracking: new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers)
   };
 }
 
@@ -37,7 +53,11 @@ export function createInMemoryServices(): Services {
     marketplaceConnections: new InMemoryMarketplaceConnectionRepository(),
     affiliateAccounts: new InMemoryAffiliateAccountRepository(),
     products: new InMemoryProductCatalogRepository(),
-    affiliateOffers: new InMemoryAffiliateOfferRepository()
+    affiliateOffers: new InMemoryAffiliateOfferRepository(),
+    campaigns: new InMemoryRepository<Campaign>(),
+    campaignOffers: new InMemoryCampaignOfferRepository(),
+    trackingLinks: new InMemoryTrackingLinkRepository(),
+    clicks: new InMemoryClickRepository()
   };
   const transactionManager: TransactionManager = {
     run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions })

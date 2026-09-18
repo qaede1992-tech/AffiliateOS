@@ -17,7 +17,21 @@ import {
   createConversionSchema,
   createOfferSchema,
   scoreProductSchema,
-  marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema
+  marketplaceLinkSchema,
+  marketplaceProductParamsSchema,
+  marketplaceSearchSchema,
+  marketplaceSlugSchema,
+  createMarketplaceConnectionSchema,
+  marketplaceEnableSchema,
+  updateMarketplaceConnectionSchema,
+  createCampaignSchema,
+  updateCampaignSchema,
+  campaignIdSchema,
+  campaignOfferParamsSchema,
+  trackingLinkQuerySchema,
+  createTrackingLinkSchema,
+  trackingLinkIdSchema,
+  recordClickSchema
 } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 
@@ -94,4 +108,28 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
     const input = marketplaceLinkSchema.parse(request.params);
     return services.marketplace.generateAffiliateLink(input.connectionSlug, input.externalProductId, input.externalOfferId);
   });
+
+  app.get("/api/v1/campaigns", async () => list(await services.campaigns.list()));
+  app.post("/api/v1/campaigns", async (request, reply) => reply.status(201).send(await services.campaigns.create(createCampaignSchema.parse(request.body))));
+  app.get("/api/v1/campaigns/:campaignId", async (request) => services.campaigns.get(campaignIdSchema.parse(request.params).campaignId));
+  app.patch("/api/v1/campaigns/:campaignId", async (request) => services.campaigns.update(campaignIdSchema.parse(request.params).campaignId, updateCampaignSchema.parse(request.body)));
+  app.get("/api/v1/campaigns/:campaignId/offers", async (request) => list(await services.campaigns.listOffers(campaignIdSchema.parse(request.params).campaignId)));
+  app.post("/api/v1/campaigns/:campaignId/offers/:affiliateOfferId", async (request) => {
+    const params = campaignOfferParamsSchema.parse(request.params);
+    return services.campaigns.attachOffer(params.campaignId, params.affiliateOfferId);
+  });
+  app.delete("/api/v1/campaigns/:campaignId/offers/:affiliateOfferId", async (request) => {
+    const params = campaignOfferParamsSchema.parse(request.params);
+    await services.campaigns.removeOffer(params.campaignId, params.affiliateOfferId);
+    return { status: "removed" };
+  });
+
+  app.get("/api/v1/tracking-links", async (request) => {
+    const { campaignId } = trackingLinkQuerySchema.parse(request.query);
+    return list(await services.tracking.list(campaignId));
+  });
+  app.post("/api/v1/tracking-links", async (request, reply) => reply.status(201).send(await services.tracking.create(createTrackingLinkSchema.parse(request.body))));
+  app.get("/api/v1/tracking-links/:trackingLinkId", async (request) => services.tracking.get(trackingLinkIdSchema.parse(request.params).trackingLinkId));
+  app.post("/api/v1/tracking-links/:trackingLinkId/clicks", async (request) => services.tracking.recordClick(trackingLinkIdSchema.parse(request.params).trackingLinkId, recordClickSchema.parse(request.body)));
+  app.get("/api/v1/tracking-links/:trackingLinkId/stats", async (request) => services.tracking.stats(trackingLinkIdSchema.parse(request.params).trackingLinkId));
 }

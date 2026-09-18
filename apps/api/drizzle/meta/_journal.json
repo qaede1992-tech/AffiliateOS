@@ -36,6 +36,13 @@
       "when": 1789809600000,
       "tag": "0004_marketplace_integration_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789896000000,
+      "tag": "0005_click_idempotency",
+      "breakpoints": true
     }
   ]
 }
