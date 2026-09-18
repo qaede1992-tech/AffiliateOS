@@ -13,7 +13,7 @@ export interface SocialOAuthProvider {
 }
 export interface SocialOAuthProviderRegistry { get(platform: string): SocialOAuthProvider | undefined; }
 export interface OAuthState { state: string; platform: string; redirectUri: string; expiresAt: string; }
-export interface OAuthStateRepository { save(state: OAuthState): Promise<OAuthState>; findByState(state: string): Promise<OAuthState | undefined>; remove(state: string): Promise<void>; }
+export interface OAuthStateRepository { save(state: OAuthState): Promise<OAuthState>; consume(state: string): Promise<OAuthState | undefined>; }
 
 export class InMemorySocialOAuthProviderRegistry implements SocialOAuthProviderRegistry {
   private readonly providers = new Map<string, SocialOAuthProvider>();
@@ -23,21 +23,14 @@ export class InMemorySocialOAuthProviderRegistry implements SocialOAuthProviderR
   }
   get(platform: string) { return this.providers.get(platform); }
 }
-
 export class InMemoryOAuthStateRepository implements OAuthStateRepository {
   private readonly states = new Map<string, OAuthState>();
   async save(state: OAuthState): Promise<OAuthState> { this.states.set(state.state, state); return state; }
-  async findByState(state: string): Promise<OAuthState | undefined> { return this.states.get(state); }
-  async remove(state: string): Promise<void> { this.states.delete(state); }
+  async consume(state: string): Promise<OAuthState | undefined> { const value = this.states.get(state); if (value) this.states.delete(state); return value; }
 }
 
 export class SocialOAuthService {
-  constructor(
-    private readonly providers: SocialOAuthProviderRegistry,
-    private readonly accounts: SocialAccountRepository,
-    private readonly states: OAuthStateRepository = new InMemoryOAuthStateRepository(),
-    private readonly stateTtlMs = DEFAULT_STATE_TTL_MS
-  ) {}
+  constructor(private readonly providers: SocialOAuthProviderRegistry, private readonly accounts: SocialAccountRepository, private readonly states: OAuthStateRepository = new InMemoryOAuthStateRepository(), private readonly stateTtlMs = DEFAULT_STATE_TTL_MS) {}
 
   async start(platform: string, redirectUri: string): Promise<{ authorizationUrl: string; state: string; expiresAt: string }> {
     const provider = this.providers.get(platform);
@@ -49,19 +42,14 @@ export class SocialOAuthService {
   }
 
   async callback(platform: string, code: string, state: string): Promise<SocialAccountView> {
-    const pending = await this.states.findByState(state);
+    const pending = await this.states.consume(state);
     if (!pending || pending.platform !== platform) throw new DomainError("INVALID_SOCIAL_OAUTH_STATE", "The OAuth state is invalid.", 400);
-    await this.states.remove(state);
     if (Date.parse(pending.expiresAt) <= Date.now()) throw new DomainError("EXPIRED_SOCIAL_OAUTH_STATE", "The OAuth state has expired.", 400);
-
     const provider = this.providers.get(platform);
     if (!provider) throw new DomainError("SOCIAL_OAUTH_UNSUPPORTED", "OAuth is not configured for this platform.", 404);
     if (!code.trim()) throw new DomainError("INVALID_SOCIAL_OAUTH_CODE", "The OAuth callback code is required.", 400);
-
     const exchanged = await provider.exchangeCode({ code, redirectUri: pending.redirectUri });
-    if (!exchanged.accountReference?.trim() || !exchanged.credentialReference?.trim()) {
-      throw new DomainError("INVALID_SOCIAL_OAUTH_RESULT", "The OAuth provider returned an invalid account result.", 502);
-    }
+    if (!exchanged.accountReference?.trim() || !exchanged.credentialReference?.trim()) throw new DomainError("INVALID_SOCIAL_OAUTH_RESULT", "The OAuth provider returned an invalid account result.", 502);
     const existing = await this.accounts.findByPlatformAccount(platform, exchanged.accountReference);
     const updatedAt = new Date().toISOString();
     const account: SocialAccount = existing
