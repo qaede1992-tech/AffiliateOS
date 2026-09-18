@@ -3,55 +3,12 @@ import test from "node:test";
 import { InMemorySocialAccountRepository } from "../src/domain/repository.js";
 import { InMemoryOAuthStateRepository, InMemorySocialOAuthProviderRegistry, SocialOAuthService, type OAuthStateRepository, type SocialOAuthProvider } from "../src/domain/oauth.js";
 
-const provider: SocialOAuthProvider = {
-  platform: "instagram",
-  authorizationEndpoint: "https://provider.invalid/oauth/authorize",
-  createAuthorizationUrl: ({ state, redirectUri }) => `https://provider.invalid/oauth/authorize?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`,
-  exchangeCode: async ({ code, redirectUri }) => ({ accountReference: `acct-${code}`, credentialReference: "vault://affiliateos/social/instagram/acct", connection: { redirectUri } })
-};
+const provider: SocialOAuthProvider = { platform: "instagram", authorizationEndpoint: "https://provider.invalid/oauth/authorize", createAuthorizationUrl: ({ state, redirectUri }) => `https://provider.invalid/oauth/authorize?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`, exchangeCode: async ({ code, redirectUri }) => ({ accountReference: `acct-${code}`, credentialReference: "vault://affiliateos/social/instagram/acct", connection: { redirectUri } }) };
+function createService(ttl = 600_000, states: OAuthStateRepository = new InMemoryOAuthStateRepository()) { const registry = new InMemorySocialOAuthProviderRegistry(); registry.register(provider); return new SocialOAuthService(registry, new InMemorySocialAccountRepository(), states, ttl); }
 
-function createService(ttl = 600_000, states: OAuthStateRepository = new InMemoryOAuthStateRepository()) {
-  const registry = new InMemorySocialOAuthProviderRegistry();
-  registry.register(provider);
-  return new SocialOAuthService(registry, new InMemorySocialAccountRepository(), states, ttl);
-}
-
-test("OAuth start creates a state-bound authorization URL", async () => {
-  const oauthService = createService();
-  const result = await oauthService.start("instagram", "https://app.example.com/oauth/callback");
-  assert.match(result.authorizationUrl, /state=/);
-  assert.match(result.authorizationUrl, /redirect_uri=/);
-  assert.equal(result.state.length > 0, true);
-});
-
-test("OAuth callback consumes state once and redacts credentials", async () => {
-  const oauthService = createService();
-  const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback");
-  const account = await oauthService.callback("instagram", "user-42", started.state);
-  assert.equal(account.accountReference, "acct-user-42");
-  assert.equal(account.hasCredentialReference, true);
-  assert.equal("credentialReference" in account, false);
-  await assert.rejects(() => oauthService.callback("instagram", "user-42", started.state), /state is invalid/i);
-});
-
-test("OAuth state survives service reconstruction when backed by a shared store", async () => {
-  const states = new InMemoryOAuthStateRepository();
-  const first = createService(600_000, states);
-  const started = await first.start("instagram", "https://app.example.com/oauth/callback");
-  const second = createService(600_000, states);
-  const account = await second.callback("instagram", "user-99", started.state);
-  assert.equal(account.accountReference, "acct-user-99");
-});
-
-test("OAuth callback rejects mismatched platform and expired state", async () => {
-  const oauthService = createService(1);
-  const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback");
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  await assert.rejects(() => oauthService.callback("facebook", "user-42", started.state), /state is invalid/i);
-  await assert.rejects(() => oauthService.callback("instagram", "user-42", started.state), /state has expired/i);
-});
-
-test("OAuth start rejects platforms without a configured provider", () => {
-  const oauthService = createService();
-  assert.throws(() => oauthService.start("tiktok", "https://app.example.com/oauth/callback"), /OAuth is not configured/i);
-});
+test("OAuth start creates a state-bound authorization URL", async () => { const oauthService = createService(); const result = await oauthService.start("instagram", "https://app.example.com/oauth/callback"); assert.match(result.authorizationUrl, /state=/); assert.match(result.authorizationUrl, /redirect_uri=/); assert.equal(result.state.length > 0, true); });
+test("OAuth callback consumes state once and redacts credentials", async () => { const oauthService = createService(); const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback"); const account = await oauthService.callback("instagram", "user-42", started.state); assert.equal(account.accountReference, "acct-user-42"); assert.equal(account.hasCredentialReference, true); assert.equal("credentialReference" in account, false); await assert.rejects(() => oauthService.callback("instagram", "user-42", started.state), /state is invalid/i); });
+test("OAuth state survives service reconstruction when backed by a shared store", async () => { const states = new InMemoryOAuthStateRepository(); const first = createService(600_000, states); const started = await first.start("instagram", "https://app.example.com/oauth/callback"); const second = createService(600_000, states); const account = await second.callback("instagram", "user-99", started.state); assert.equal(account.accountReference, "acct-user-99"); });
+test("OAuth callback preserves state on a mismatched platform and consumes it only on a valid callback", async () => { const oauthService = createService(); const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback"); await assert.rejects(() => oauthService.callback("facebook", "user-42", started.state), /state is invalid/i); const account = await oauthService.callback("instagram", "user-42", started.state); assert.equal(account.accountReference, "acct-user-42"); });
+test("OAuth callback rejects expired state", async () => { const oauthService = createService(1); const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback"); await new Promise((resolve) => setTimeout(resolve, 5)); await assert.rejects(() => oauthService.callback("instagram", "user-42", started.state), /state has expired/i); });
+test("OAuth start rejects platforms without a configured provider", async () => { const oauthService = createService(); await assert.rejects(() => oauthService.start("tiktok", "https://app.example.com/oauth/callback"), /OAuth is not configured/i); });
