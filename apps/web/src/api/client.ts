@@ -1,5 +1,5 @@
 import type {
-  Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, RecordClickRequest, SocialAccountView, SocialOAuthStartRequest, SocialOAuthStartResponse, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest
+  Affiliate, AnalyticsOverview, Campaign, CampaignAnalytics, CampaignOffer, Click, Commission, Content, Conversion, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, RecordClickRequest, SocialAccountView, SocialOAuthStartRequest, SocialOAuthStartResponse, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest
 } from "@affiliateos/shared";
 
 async function get<T>(path: string): Promise<T> { const response = await fetch(path); if (!response.ok) throw new Error(`Request failed: ${response.status}`); return response.json() as Promise<T>; }
@@ -27,6 +27,8 @@ export const api = {
   createTrackingLink: (input: CreateTrackingLinkRequest) => post<TrackingLink>("/api/v1/tracking-links", input),
   recordClick: (trackingLinkId: string, input: RecordClickRequest = {}) => post<Click>(`/api/v1/tracking-links/${trackingLinkId}/clicks`, input),
   trackingLinkStats: (trackingLinkId: string) => get<TrackingLinkStats>(`/api/v1/tracking-links/${trackingLinkId}/stats`),
+  analyticsOverview: () => get<AnalyticsOverview>("/api/v1/analytics/overview"),
+  campaignAnalytics: (campaignId: string) => get<CampaignAnalytics>(`/api/v1/analytics/campaigns/${campaignId}`),
   content: (campaignId?: string) => get<ListResponse<Content>>(campaignId ? `/api/v1/content?campaignId=${encodeURIComponent(campaignId)}` : "/api/v1/content"),
   createContent: (input: CreateContentRequest) => post<Content>("/api/v1/content", input),
   getContent: (contentId: string) => get<Content>(`/api/v1/content/${contentId}`),
