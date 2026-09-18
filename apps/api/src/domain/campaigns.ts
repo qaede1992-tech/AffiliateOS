@@ -6,12 +6,26 @@ import type { AffiliateOfferRepository, CampaignOfferRepository, ClickRepository
 const now = () => new Date().toISOString();
 const code = () => randomUUID().replaceAll("-", "").slice(0, 12);
 
+function validateCampaignDates(startAt: string | undefined, endAt: string | undefined) {
+  if (startAt && endAt && startAt > endAt) {
+    throw new DomainError("INVALID_CAMPAIGN_DATES", "startAt must be before endAt.");
+  }
+}
+
 export class CampaignService {
   constructor(private readonly campaigns: Repository<Campaign>, private readonly campaignOffers: CampaignOfferRepository, private readonly affiliateOffers: AffiliateOfferRepository) {}
   list() { return this.campaigns.list(); }
   async get(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
-  async create(input: CreateCampaignRequest) { const createdAt = now(); return this.campaigns.save({ id: randomUUID(), name: input.name, objective: input.objective, status: input.status ?? "draft", startAt: input.startAt, endAt: input.endAt, audience: input.audience ?? {}, createdAt, updatedAt: createdAt }); }
-  async update(id: string, input: UpdateCampaignRequest) { const current = await this.get(id); return this.campaigns.save({ ...current, ...input, updatedAt: now() }); }
+  async create(input: CreateCampaignRequest) {
+    validateCampaignDates(input.startAt, input.endAt);
+    const createdAt = now();
+    return this.campaigns.save({ id: randomUUID(), name: input.name, objective: input.objective, status: input.status ?? "draft", startAt: input.startAt, endAt: input.endAt, audience: input.audience ?? {}, createdAt, updatedAt: createdAt });
+  }
+  async update(id: string, input: UpdateCampaignRequest) {
+    const current = await this.get(id);
+    validateCampaignDates(input.startAt ?? current.startAt, input.endAt ?? current.endAt);
+    return this.campaigns.save({ ...current, ...input, updatedAt: now() });
+  }
   async attachOffer(campaignId: string, affiliateOfferId: string) { await this.get(campaignId); if (!(await this.affiliateOffers.findById(affiliateOfferId))) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404); return (await this.campaignOffers.find(campaignId, affiliateOfferId)) ?? this.campaignOffers.save({ campaignId, affiliateOfferId, createdAt: now() }); }
   listOffers(campaignId: string) { return this.campaignOffers.listByCampaign(campaignId); }
   async removeOffer(campaignId: string, affiliateOfferId: string) { await this.get(campaignId); await this.campaignOffers.remove(campaignId, affiliateOfferId); }
