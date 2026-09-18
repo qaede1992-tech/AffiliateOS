@@ -1,55 +1,11 @@
 import type {
-  Affiliate,
-  Campaign,
-  CampaignOffer,
-  Click,
-  Commission,
-  Conversion,
-  CreateAffiliateRequest,
-  CreateCampaignRequest,
-  CreateOfferRequest,
-  CreateTrackingLinkRequest,
-  ListResponse,
-  MarketplaceConnectionView,
-  MarketplaceProviderInfo,
-  Offer,
-  RecordClickRequest,
-  TrackingLink,
-  TrackingLinkStats,
-  UpdateCampaignRequest
+  Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, RecordClickRequest, SocialAccountView, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest
 } from "@affiliateos/shared";
 
-async function get<T>(path: string): Promise<T> {
-  const response = await fetch(path);
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-  return response.json() as Promise<T>;
-}
-
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(error?.message ?? `Request failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
-}
-
-async function patch<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(error?.message ?? `Request failed: ${response.status}`);
-  }
-  return response.json() as Promise<T>;
-}
-
-async function remove(path: string): Promise<void> {
-  const response = await fetch(path, { method: "DELETE" });
-  if (!response.ok) {
-    const error = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(error?.message ?? `Request failed: ${response.status}`);
-  }
-}
+async function get<T>(path: string): Promise<T> { const response = await fetch(path); if (!response.ok) throw new Error(`Request failed: ${response.status}`); return response.json() as Promise<T>; }
+async function post<T>(path: string, body: unknown): Promise<T> { const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
+async function patch<T>(path: string, body: unknown): Promise<T> { const response = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
+async function remove(path: string): Promise<void> { const response = await fetch(path, { method: "DELETE" }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } }
 
 export const api = {
   affiliates: () => get<ListResponse<Affiliate>>("/api/v1/affiliates"),
@@ -70,5 +26,13 @@ export const api = {
   trackingLinks: (campaignId?: string) => get<ListResponse<TrackingLink>>(campaignId ? `/api/v1/tracking-links?campaignId=${encodeURIComponent(campaignId)}` : "/api/v1/tracking-links"),
   createTrackingLink: (input: CreateTrackingLinkRequest) => post<TrackingLink>("/api/v1/tracking-links", input),
   recordClick: (trackingLinkId: string, input: RecordClickRequest = {}) => post<Click>(`/api/v1/tracking-links/${trackingLinkId}/clicks`, input),
-  trackingLinkStats: (trackingLinkId: string) => get<TrackingLinkStats>(`/api/v1/tracking-links/${trackingLinkId}/stats`)
+  trackingLinkStats: (trackingLinkId: string) => get<TrackingLinkStats>(`/api/v1/tracking-links/${trackingLinkId}/stats`),
+  content: (campaignId?: string) => get<ListResponse<Content>>(campaignId ? `/api/v1/content?campaignId=${encodeURIComponent(campaignId)}` : "/api/v1/content"),
+  createContent: (input: CreateContentRequest) => post<Content>("/api/v1/content", input),
+  getContent: (contentId: string) => get<Content>(`/api/v1/content/${contentId}`),
+  updateContent: (contentId: string, input: UpdateContentRequest) => patch<Content>(`/api/v1/content/${contentId}`, input),
+  socialAccounts: () => get<ListResponse<SocialAccountView>>("/api/v1/social-accounts"),
+  socialAccount: (socialAccountId: string) => get<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`),
+  createSocialAccount: (input: CreateSocialAccountRequest) => post<SocialAccountView>("/api/v1/social-accounts", input),
+  updateSocialAccount: (socialAccountId: string, input: UpdateSocialAccountRequest) => patch<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`, input)
 };

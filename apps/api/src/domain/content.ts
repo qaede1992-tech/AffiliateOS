@@ -1,0 +1,132 @@
+import { randomUUID } from "node:crypto";
+import type { Campaign, Content, CreateContentRequest, CreateSocialAccountRequest, Product, SocialAccount, SocialAccountView, UpdateContentRequest, UpdateSocialAccountRequest } from "@affiliateos/shared";
+import { DomainError } from "./errors.js";
+import type { Repository, SocialAccountRepository } from "./repository.js";
+
+const now = () => new Date().toISOString();
+
+const contentTransitions: Record<Content["status"], Content["status"][]> = {
+  draft: ["draft", "scheduled", "archived"],
+  scheduled: ["scheduled", "published", "failed", "archived"],
+  published: ["published", "archived"],
+  failed: ["failed", "draft", "archived"],
+  archived: ["archived"]
+};
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505");
+}
+
+function validateContentTiming(status: Content["status"], scheduledAt: string | undefined, publishedAt: string | undefined) {
+  if (status === "scheduled" && !scheduledAt) throw new DomainError("CONTENT_SCHEDULE_REQUIRED", "Scheduled content requires scheduledAt.");
+  if (status === "published" && !publishedAt) throw new DomainError("CONTENT_PUBLISHED_AT_REQUIRED", "Published content requires publishedAt.");
+  if (scheduledAt && publishedAt && Date.parse(scheduledAt) > Date.parse(publishedAt)) {
+    throw new DomainError("INVALID_CONTENT_DATES", "scheduledAt must be before publishedAt.");
+  }
+}
+
+function validateContentTransition(current: Content["status"], next: Content["status"] | undefined) {
+  if (next && !contentTransitions[current].includes(next)) {
+    throw new DomainError("INVALID_CONTENT_TRANSITION", `Content cannot transition from ${current} to ${next}.`);
+  }
+}
+
+export class ContentService {
+  constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>) {}
+
+  async list(campaignId?: string) {
+    const items = await this.contents.list();
+    if (campaignId) {
+      await this.getCampaign(campaignId);
+      return items.filter((item) => item.campaignId === campaignId);
+    }
+    return items;
+  }
+
+  async get(id: string) {
+    const content = await this.contents.findById(id);
+    if (!content) throw new DomainError("CONTENT_NOT_FOUND", "The content does not exist.", 404);
+    return content;
+  }
+
+  async create(input: CreateContentRequest) {
+    await this.validateReferences(input.campaignId, input.productId);
+    validateContentTiming(input.status ?? "draft", input.scheduledAt, input.publishedAt);
+    const createdAt = now();
+    return this.contents.save({
+      id: randomUUID(), productId: input.productId, campaignId: input.campaignId, platform: input.platform,
+      contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta,
+      status: input.status ?? "draft", scheduledAt: input.scheduledAt, publishedAt: input.publishedAt, createdAt, updatedAt: createdAt
+    });
+  }
+
+  async update(id: string, input: UpdateContentRequest) {
+    const current = await this.get(id);
+    await this.validateReferences(input.campaignId ?? current.campaignId, input.productId ?? current.productId);
+    const nextStatus = input.status ?? current.status;
+    validateContentTransition(current.status, input.status);
+    validateContentTiming(nextStatus, input.scheduledAt ?? current.scheduledAt, input.publishedAt ?? current.publishedAt);
+    return this.contents.save({ ...current, ...input, updatedAt: now() });
+  }
+
+  private async getCampaign(id: string) {
+    const campaign = await this.campaigns.findById(id);
+    if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
+    return campaign;
+  }
+
+  private async validateReferences(campaignId?: string, productId?: string) {
+    if (campaignId) await this.getCampaign(campaignId);
+    if (productId && !(await this.products.findById(productId))) throw new DomainError("PRODUCT_NOT_FOUND", "The product does not exist.", 404);
+  }
+}
+
+export class SocialAccountService {
+  constructor(private readonly accounts: SocialAccountRepository) {}
+
+  private view(account: SocialAccount): SocialAccountView {
+    const { credentialReference: _credentialReference, ...safe } = account;
+    return { ...safe, hasCredentialReference: Boolean(account.credentialReference) };
+  }
+
+  async list() { return (await this.accounts.list()).map((account) => this.view(account)); }
+
+  async get(id: string) {
+    const account = await this.accounts.findById(id);
+    if (!account) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404);
+    return this.view(account);
+  }
+
+  async create(input: CreateSocialAccountRequest) {
+    if (await this.accounts.findByPlatformAccount(input.platform, input.accountReference)) {
+      throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
+    }
+    const createdAt = now();
+    const account: SocialAccount = {
+      id: randomUUID(), platform: input.platform, accountReference: input.accountReference, status: input.status ?? "pending",
+      connection: input.connection ?? {}, credentialReference: input.credentialReference, createdAt, updatedAt: createdAt
+    };
+    try {
+      return this.view(await this.accounts.save(account));
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
+      throw error;
+    }
+  }
+
+  async update(id: string, input: UpdateSocialAccountRequest) {
+    const current = await this.accounts.findById(id);
+    if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404);
+    const platform = input.platform ?? current.platform;
+    const accountReference = input.accountReference ?? current.accountReference;
+    const duplicate = await this.accounts.findByPlatformAccount(platform, accountReference);
+    if (duplicate && duplicate.id !== id) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
+    const updated: SocialAccount = { ...current, ...input, platform, accountReference, updatedAt: now() };
+    try {
+      return this.view(await this.accounts.save(updated));
+    } catch (error) {
+      if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
+      throw error;
+    }
+  }
+}
