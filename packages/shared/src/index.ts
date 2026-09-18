@@ -83,6 +83,32 @@ export interface Product {
   createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
 }
 export interface ProductOpportunity { product: Product; score: number; reasons: string[]; disclaimer: string; }
+export type MarketplaceConnectionStatus = "active" | "inactive" | "pending" | "error";
+export type ProductAvailability = "in_stock" | "out_of_stock" | "limited" | "unknown";
+export type AffiliateLinkStatus = "not_generated" | "active" | "expired" | "unavailable";
+export interface MarketplaceConnection {
+  id: EntityId; name: string; slug: string; providerSlug: string; status: MarketplaceConnectionStatus;
+  /** An opaque secret-manager key only. Credentials never travel through this API. */
+  credentialReference?: string; configuration: Record<string, unknown>; createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
+}
+export interface MarketplaceProviderInfo { slug: string; displayName: string; connectionMode: "mock" | "official_api"; configured: boolean; }
+export interface AffiliateAccount { id: EntityId; marketplaceId: EntityId; name: string; externalReference?: string; status: "active" | "inactive"; credentialReference?: string; configuration: Record<string, unknown>; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
+/** Provider data normalized before it is persisted in AffiliateOS's catalog. */
+export interface MarketplaceProductInput {
+  externalProductId: string; name: string; description?: string; category?: string; priceCents: number;
+  originalPriceCents?: number; currency: string; ratingMilli?: number; reviewCount?: number; soldCount?: number;
+  imageUrl?: string; productUrl: string; availability: ProductAvailability; metadata?: Record<string, unknown>;
+}
+export interface MarketplaceOfferInput {
+  externalOfferId: string; priceCents?: number; currency?: string; commissionRateBps?: number;
+  commissionAmountCents?: number; availability: ProductAvailability; metadata?: Record<string, unknown>;
+}
+export interface AffiliateOffer {
+  id: EntityId; productId: EntityId; affiliateAccountId: EntityId; externalOfferId?: string;
+  priceCents?: number; currency?: string; commissionRateBps?: number; commissionAmountCents?: number;
+  availability: ProductAvailability; availabilityMetadata: Record<string, unknown>; affiliateUrl?: string;
+  affiliateLinkStatus: AffiliateLinkStatus; status: "active" | "inactive" | "archived"; createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
+}
 export type AudienceSegment = "beauty" | "skincare" | "baby" | "parenting" | "fashion" | "home" | "kitchen" | "electronics" | "lifestyle" | "deal-hunters";
 export type CampaignStatus = "draft" | "scheduled" | "active" | "paused" | "completed" | "archived";
 export interface GeneratedContent { platform: "tiktok" | "instagram" | "facebook" | "youtube-shorts" | "x" | "threads"; title: string; caption: string; script?: string; cta: string; }

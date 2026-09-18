@@ -28,3 +28,7 @@ export const scoreProductSchema = z.object({
   }),
   commissionRateBps: z.number().int().min(0).max(10000).default(0), audienceRelevance: z.number().min(0).max(1).default(0)
 });
+export const marketplaceSlugSchema = z.object({ connectionSlug: z.string().trim().min(1).max(100) });
+export const marketplaceProductParamsSchema = marketplaceSlugSchema.extend({ externalProductId: nonEmptyText.max(255) });
+export const marketplaceSearchSchema = marketplaceSlugSchema.extend({ query: nonEmptyText.max(200) });
+export const marketplaceLinkSchema = marketplaceProductParamsSchema.extend({ externalOfferId: nonEmptyText.max(255) });

@@ -15,12 +15,21 @@ test("tracked Drizzle migrations form a complete, ordered history", async () => 
   assert.deepEqual(journal.entries.map((entry) => entry.tag), [
     "0000_initial",
     "0001_affiliateos_foundation",
-    "0002_tracking_links_campaign_index"
+    "0002_tracking_links_campaign_index",
+    "0003_marketplace_engine"
   ]);
   for (const entry of journal.entries) {
     assert.ok(files.delete(`${entry.tag}.sql`), `missing ${entry.tag}.sql`);
   }
   assert.equal(files.size, 0, "every migration SQL file must be listed in the Drizzle journal");
+});
+
+test("marketplace engine migration stores provider references and affiliate-link state without credentials", async () => {
+  const sql = await readFile(resolve(migrationsDirectory, "0003_marketplace_engine.sql"), "utf8");
+  assert.match(sql, /provider_slug/);
+  assert.match(sql, /credential_reference/);
+  assert.match(sql, /affiliate_link_status/);
+  assert.doesNotMatch(sql, /api_secret|access_token|client_secret/i);
 });
 
 test("foundation schema and its omitted tracking-links index are both tracked", async () => {

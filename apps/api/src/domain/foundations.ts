@@ -1,13 +1,15 @@
-import type { AudienceSegment, GeneratedContent, Product, ProductOpportunity } from "@affiliateos/shared";
+import type { AudienceSegment, GeneratedContent, MarketplaceOfferInput, MarketplaceProductInput, Product, ProductOpportunity } from "@affiliateos/shared";
 
 export interface MarketplaceProvider {
   readonly slug: string;
-  discoverProducts(): Promise<Product[]>;
-  getProduct(externalProductId: string): Promise<Product | undefined>;
-  searchProducts(query: string): Promise<Product[]>;
-  getOffers(externalProductId: string): Promise<ReadonlyArray<{ externalOfferId: string; commissionRateBps?: number; commissionAmountCents?: number }>>;
-  generateAffiliateLink(externalOfferId: string): Promise<string>;
-  syncConversions(since: string): Promise<void>;
+  readonly displayName: string;
+  readonly connectionMode: "mock" | "official_api";
+  discoverProducts(): Promise<MarketplaceProductInput[]>;
+  getProduct(externalProductId: string): Promise<MarketplaceProductInput | undefined>;
+  searchProducts(query: string): Promise<MarketplaceProductInput[]>;
+  getOffers(externalProductId: string): Promise<MarketplaceOfferInput[]>;
+  generateAffiliateLink(externalOfferId: string): Promise<{ url: string; expiresAt?: string }>;
+  syncConversions(since: string): Promise<{ synced: number }>;
 }
 export class MarketplaceProviderRegistry {
   private readonly providers = new Map<string, MarketplaceProvider>();
@@ -15,15 +17,18 @@ export class MarketplaceProviderRegistry {
   get(slug: string): MarketplaceProvider { const provider = this.providers.get(slug); if (!provider) throw new Error(`Marketplace provider is not configured: ${slug}`); return provider; }
   list(): MarketplaceProvider[] { return [...this.providers.values()]; }
 }
+/** Deterministic test adapter. It is deliberately labelled mock and cannot represent a live marketplace connection. */
 export class MockMarketplaceProvider implements MarketplaceProvider {
   readonly slug = "mock";
-  constructor(private readonly products: Product[] = []) {}
-  discoverProducts(): Promise<Product[]> { return Promise.resolve(this.products); }
-  getProduct(id: string): Promise<Product | undefined> { return Promise.resolve(this.products.find((product) => product.externalProductId === id)); }
-  searchProducts(query: string): Promise<Product[]> { const term = query.toLowerCase(); return Promise.resolve(this.products.filter((product) => `${product.name} ${product.category ?? ""}`.toLowerCase().includes(term))); }
-  getOffers(): Promise<ReadonlyArray<{ externalOfferId: string; commissionRateBps?: number }>> { return Promise.resolve([]); }
-  generateAffiliateLink(externalOfferId: string): Promise<string> { return Promise.resolve(`https://example.invalid/affiliate/${encodeURIComponent(externalOfferId)}`); }
-  syncConversions(): Promise<void> { return Promise.resolve(); }
+  readonly displayName = "Mock marketplace (tests only)";
+  readonly connectionMode = "mock" as const;
+  constructor(private readonly products: MarketplaceProductInput[] = [], private readonly offers: Record<string, MarketplaceOfferInput[]> = {}) {}
+  discoverProducts(): Promise<MarketplaceProductInput[]> { return Promise.resolve(this.products.map((product) => ({ ...product }))); }
+  getProduct(id: string): Promise<MarketplaceProductInput | undefined> { return Promise.resolve(this.products.find((product) => product.externalProductId === id)); }
+  searchProducts(query: string): Promise<MarketplaceProductInput[]> { const term = query.trim().toLowerCase(); return Promise.resolve(this.products.filter((product) => `${product.name} ${product.category ?? ""} ${product.description ?? ""}`.toLowerCase().includes(term))); }
+  getOffers(id: string): Promise<MarketplaceOfferInput[]> { return Promise.resolve((this.offers[id] ?? []).map((offer) => ({ ...offer }))); }
+  generateAffiliateLink(externalOfferId: string): Promise<{ url: string }> { return Promise.resolve({ url: `https://mock-marketplace.invalid/affiliate/${encodeURIComponent(externalOfferId)}` }); }
+  syncConversions(): Promise<{ synced: number }> { return Promise.resolve({ synced: 0 }); }
 }
 
 export class ProductOpportunityService {

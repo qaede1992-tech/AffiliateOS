@@ -1,15 +1,18 @@
 import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
-import { InMemoryRepository, type RepositorySet, type TransactionManager } from "./repository.js";
+import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository, type RepositorySet, type TransactionManager } from "./repository.js";
 import { AffiliateService, CommissionService, ConversionService, OfferService } from "./services.js";
+import { MarketplaceProviderRegistry } from "./foundations.js";
+import { MarketplaceService } from "./marketplace.js";
 
 export interface Services {
   affiliates: AffiliateService;
   offers: OfferService;
   conversions: ConversionService;
   commissions: CommissionService;
+  marketplace: MarketplaceService;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry()): Services {
   return {
     affiliates: new AffiliateService(repositories.affiliates),
     offers: new OfferService(repositories.offers),
@@ -20,7 +23,8 @@ export function createServices(repositories: RepositorySet, transactionManager: 
       repositories.offers,
       transactionManager
     ),
-    commissions: new CommissionService(repositories.commissions)
+    commissions: new CommissionService(repositories.commissions),
+    marketplace: new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers)
   };
 }
 
@@ -29,7 +33,11 @@ export function createInMemoryServices(): Services {
     affiliates: new InMemoryRepository<Affiliate>(),
     offers: new InMemoryRepository<Offer>(),
     conversions: new InMemoryRepository<Conversion>(),
-    commissions: new InMemoryRepository<Commission>()
+    commissions: new InMemoryRepository<Commission>(),
+    marketplaceConnections: new InMemoryMarketplaceConnectionRepository(),
+    affiliateAccounts: new InMemoryAffiliateAccountRepository(),
+    products: new InMemoryProductCatalogRepository(),
+    affiliateOffers: new InMemoryAffiliateOfferRepository()
   };
   const transactionManager: TransactionManager = {
     run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions })

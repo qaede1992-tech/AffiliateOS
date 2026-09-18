@@ -5,6 +5,7 @@ import type {
   CreateAffiliateRequest,
   CreateOfferRequest,
   ListResponse,
+  MarketplaceProviderInfo,
   Offer
 } from "@affiliateos/shared";
 
@@ -46,5 +47,6 @@ export const api = {
   createOffer: (input: CreateOfferRequest) =>
     post<Offer>("/api/v1/offers", input),
   conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"),
-  commissions: () => get<ListResponse<Commission>>("/api/v1/commissions")
+  commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),
+  marketplaceProviders: () => get<ListResponse<MarketplaceProviderInfo>>("/api/v1/marketplaces/providers")
 };
