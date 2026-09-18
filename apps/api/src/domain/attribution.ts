@@ -1,19 +1,20 @@
-import { randomUUID } from "node:crypto";
 import type { Conversion, ConversionAttribution, CreateConversionAttributionRequest, TrackingLink } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { Repository } from "./repository.js";
 
 const now = () => new Date().toISOString();
 
-export interface ConversionAttributionRepository extends Repository<ConversionAttribution> {
+export interface ConversionAttributionRepository {
+  list(): Promise<ConversionAttribution[]>;
   findByConversion(conversionId: string): Promise<ConversionAttribution | undefined>;
+  save(entity: ConversionAttribution): Promise<ConversionAttribution>;
 }
 
-export class InMemoryConversionAttributionRepository extends Map<string, ConversionAttribution> implements ConversionAttributionRepository {
-  async list(): Promise<ConversionAttribution[]> { return [...this.values()]; }
-  async findById(id: string): Promise<ConversionAttribution | undefined> { return this.get(id); }
-  async findByConversion(conversionId: string): Promise<ConversionAttribution | undefined> { return [...this.values()].find((item) => item.conversionId === conversionId); }
-  async save(entity: ConversionAttribution): Promise<ConversionAttribution> { this.set(entity.conversionId, entity); return entity; }
+export class InMemoryConversionAttributionRepository implements ConversionAttributionRepository {
+  private readonly values = new Map<string, ConversionAttribution>();
+  async list(): Promise<ConversionAttribution[]> { return [...this.values.values()]; }
+  async findByConversion(conversionId: string): Promise<ConversionAttribution | undefined> { return this.values.get(conversionId); }
+  async save(entity: ConversionAttribution): Promise<ConversionAttribution> { this.values.set(entity.conversionId, entity); return entity; }
 }
 
 export class ConversionAttributionService {
