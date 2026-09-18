@@ -2,10 +2,18 @@ import { createApp } from "./app.js";
 import { environment } from "./config.js";
 import { createServices } from "./domain/container.js";
 import { createDatabasePersistence } from "./db/client.js";
+import { DrizzleAnalyticsReader } from "./db/analytics.js";
 import { DrizzleOAuthStateRepository } from "./db/oauth-state.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
-const services = createServices(persistence.repositories, persistence.transactionManager, undefined, undefined, new DrizzleOAuthStateRepository(persistence.db));
+const services = createServices(
+  persistence.repositories,
+  persistence.transactionManager,
+  undefined,
+  undefined,
+  new DrizzleOAuthStateRepository(persistence.db),
+  new DrizzleAnalyticsReader(persistence.db)
+);
 const app = createApp(services);
 
 try {
