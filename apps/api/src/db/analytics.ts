@@ -8,7 +8,7 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
   constructor(private readonly db: any) {}
 
   async overview(): Promise<AnalyticsOverview> {
-    const [totals, campaigns] = await Promise.all([
+    const [totalResult, campaignResult] = await Promise.all([
       this.db.execute(sql`
         SELECT
           (SELECT COUNT(*) FROM clicks) AS click_count,
@@ -35,7 +35,7 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
       `)
     ]);
 
-    const total = totals[0] as Record<string, unknown> | undefined;
+    const total = rowsOf(totalResult)[0];
     return {
       clickCount: numberValue(total?.click_count),
       trackingLinkCount: numberValue(total?.tracking_link_count),
@@ -43,12 +43,12 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
       contentCount: numberValue(total?.content_count),
       publishedContentCount: numberValue(total?.published_content_count),
       scheduledContentCount: numberValue(total?.scheduled_content_count),
-      campaigns: campaigns.map(toCampaignAnalytics)
+      campaigns: rowsOf(campaignResult).map(toCampaignAnalytics)
     };
   }
 
   async campaign(campaignId: EntityId): Promise<CampaignAnalytics> {
-    const rows = await this.db.execute(sql`
+    const result = await this.db.execute(sql`
       SELECT
         c.id AS campaign_id,
         COUNT(DISTINCT tl.id) AS tracking_link_count,
@@ -63,9 +63,16 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
       WHERE c.id = ${campaignId}
       GROUP BY c.id
     `);
-    if (!rows[0]) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
-    return toCampaignAnalytics(rows[0] as Record<string, unknown>);
+    const row = rowsOf(result)[0];
+    if (!row) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
+    return toCampaignAnalytics(row);
   }
+}
+
+function rowsOf(result: unknown): Record<string, unknown>[] {
+  if (Array.isArray(result)) return result as Record<string, unknown>[];
+  const rows = (result as { rows?: unknown[] } | undefined)?.rows;
+  return Array.isArray(rows) ? rows as Record<string, unknown>[] : [];
 }
 
 function numberValue(value: unknown): number {
