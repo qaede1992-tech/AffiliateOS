@@ -155,6 +155,7 @@ export interface TrackingLink {
 export interface Click {
   id: EntityId;
   trackingLinkId: EntityId;
+  idempotencyKey?: string;
   occurredAt: IsoTimestamp;
   metadata: Record<string, unknown>;
 }
