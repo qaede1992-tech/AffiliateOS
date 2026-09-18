@@ -191,5 +191,6 @@ export interface CreateTrackingLinkRequest {
 
 export interface RecordClickRequest {
   occurredAt?: IsoTimestamp;
+  idempotencyKey?: string;
   metadata?: Record<string, unknown>;
 }
