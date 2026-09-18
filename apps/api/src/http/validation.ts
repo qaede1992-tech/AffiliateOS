@@ -65,13 +65,13 @@ export const createCampaignSchema = z.object({
 }).refine((value) => !value.startAt || !value.endAt || value.startAt <= value.endAt, "startAt must be before endAt");
 
 export const updateCampaignSchema = z.object({
-  name: nonEmptyText.max(200).optional(),
-  objective: nonEmptyText.max(100).optional(),
+  name: nonEmptyText.max(200),
+  objective: nonEmptyText.max(100),
   status: z.enum(["draft", "scheduled", "active", "paused", "completed", "archived"]).optional(),
   startAt: isoTimestamp.optional(),
   endAt: isoTimestamp.optional(),
   audience: z.record(z.string(), z.unknown()).optional()
-}).refine((value) => Object.keys(value).length > 0, "At least one campaign field is required.");
+}).partial().refine((value) => Object.keys(value).length > 0, "At least one campaign field is required.");
 
 export const campaignIdSchema = z.object({ campaignId: entityId });
 export const campaignOfferParamsSchema = z.object({ campaignId: entityId, affiliateOfferId: entityId });
@@ -83,4 +83,8 @@ export const createTrackingLinkSchema = z.object({
   destinationUrl: z.string().url().max(2048)
 });
 export const trackingLinkIdSchema = z.object({ trackingLinkId: entityId });
-export const recordClickSchema = z.object({ occurredAt: isoTimestamp.optional(), metadata: z.record(z.string(), z.unknown()).default({}) });
+export const recordClickSchema = z.object({
+  occurredAt: isoTimestamp.optional(),
+  idempotencyKey: z.string().trim().min(8).max(200).optional(),
+  metadata: z.record(z.string(), z.unknown()).default({})
+});
