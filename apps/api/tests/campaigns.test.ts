@@ -26,6 +26,17 @@ test("campaign updates preserve the start/end date invariant", async () => {
   assert.equal((await services.campaigns.get(campaign.id)).endAt, "2026-10-31T00:00:00.000Z");
 });
 
+test("campaign date validation compares timestamps across offsets", async () => {
+  const services = createInMemoryServices();
+  const campaign = await services.campaigns.create({
+    name: "Offset launch",
+    objective: "sales",
+    startAt: "2026-10-01T00:00:00.000+07:00",
+    endAt: "2026-09-30T20:00:00.000Z"
+  });
+  assert.equal(campaign.startAt, "2026-10-01T00:00:00.000+07:00");
+});
+
 test("campaign lifecycle rejects invalid transitions", async () => {
   const services = createInMemoryServices();
   const campaign = await services.campaigns.create({ name: "Launch", objective: "sales", status: "draft" });
@@ -77,8 +88,9 @@ test("click recording is idempotent for the same tracking link and key", async (
   const first = await tracking.recordClick(link.id, { idempotencyKey: "click-key-1234", metadata: { source: "test" } });
   const second = await tracking.recordClick(link.id, { idempotencyKey: "click-key-1234", metadata: { source: "retry" } });
   assert.equal(second.id, first.id);
+  assert.equal(second.idempotencyKey, "click-key-1234");
   assert.equal((await clicks.listByTrackingLink(link.id)).length, 1);
-  assert.deepEqual(first.metadata, { source: "test", idempotencyKey: "click-key-1234" });
+  assert.deepEqual(first.metadata, { source: "test" });
 });
 
 test("tracking link stats use the repository count", async () => {
@@ -93,10 +105,10 @@ test("tracking link stats use the repository count", async () => {
     id: offerId,
     productId: "00000000-0000-0000-0000-000000000021",
     affiliateAccountId: "00000000-0000-0000-0000-000000000022",
-    availability: "in_stock",
+    availability: "in_stock" as const,
     availabilityMetadata: {},
-    affiliateLinkStatus: "active",
-    status: "active",
+    affiliateLinkStatus: "active" as const,
+    status: "active" as const,
     createdAt: "2026-09-18T00:00:00.000Z",
     updatedAt: "2026-09-18T00:00:00.000Z"
   });
