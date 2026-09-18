@@ -289,6 +289,23 @@ function App() {
                 {isCreatingAffiliate ? "Adding..." : "Add Affiliate"}
               </button>
             </form>
+
+            <div className="affiliate-list">
+              {data.affiliates.map((affiliate) => (
+                <div className="affiliate-row" key={affiliate.id}>
+                  <div>
+                    <strong>{affiliate.name}</strong>
+                    <small>{affiliate.email}</small>
+                  </div>
+                  <div className="affiliate-meta">
+                    <span className={`badge ${affiliate.status}`}>
+                      {affiliate.status}
+                    </span>
+                    <small>{affiliate.id.slice(0, 8)}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
           </article>
 
           <article id="offers">
