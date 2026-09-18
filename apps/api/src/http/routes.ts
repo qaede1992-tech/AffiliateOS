@@ -51,6 +51,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.post("/api/v1/tracking-links/:trackingLinkId/clicks", async (request) => services.tracking.recordClick(trackingLinkIdSchema.parse(request.params).trackingLinkId, recordClickSchema.parse(request.body)));
   app.get("/api/v1/tracking-links/:trackingLinkId/stats", async (request) => services.tracking.stats(trackingLinkIdSchema.parse(request.params).trackingLinkId));
 
+  app.get("/api/v1/analytics/overview", async () => services.analytics.overview());
+  app.get("/api/v1/analytics/campaigns/:campaignId", async (request) => services.analytics.campaign(campaignIdSchema.parse(request.params).campaignId));
+
   app.get("/api/v1/content", async (request) => { const { campaignId } = contentQuerySchema.parse(request.query); return list(await services.content.list(campaignId)); });
   app.post("/api/v1/content", async (request, reply) => reply.status(201).send(await services.content.create(createContentSchema.parse(request.body))));
   app.get("/api/v1/content/:contentId", async (request) => services.content.get(contentIdSchema.parse(request.params).contentId));
