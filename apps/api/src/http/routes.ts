@@ -17,7 +17,7 @@ import {
   createConversionSchema,
   createOfferSchema,
   scoreProductSchema,
-  marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema
+  marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema
 } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 
@@ -49,6 +49,31 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
 
   app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders()));
   app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections()));
+  app.post("/api/v1/marketplaces", async (request, reply) => {
+    const connection = await services.marketplace.createConnection(createMarketplaceConnectionSchema.parse(request.body));
+    request.log.info({ event: "marketplace_connection_created", connectionSlug: connection.slug, providerSlug: connection.providerSlug });
+    return reply.status(201).send(connection);
+  });
+  app.get("/api/v1/marketplaces/:connectionSlug", async (request) => services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug));
+  app.patch("/api/v1/marketplaces/:connectionSlug", async (request) => {
+    const connection = await services.marketplace.updateConnection(marketplaceSlugSchema.parse(request.params).connectionSlug, updateMarketplaceConnectionSchema.parse(request.body));
+    request.log.info({ event: "marketplace_connection_updated", connectionSlug: connection.slug, providerSlug: connection.providerSlug });
+    return connection;
+  });
+  app.put("/api/v1/marketplaces/:connectionSlug/enabled", async (request) => {
+    const connection = await services.marketplace.setEnabled(marketplaceSlugSchema.parse(request.params).connectionSlug, marketplaceEnableSchema.parse(request.body).enabled);
+    request.log.info({ event: "marketplace_connection_enabled_changed", connectionSlug: connection.slug, enabled: connection.enabled });
+    return connection;
+  });
+  app.post("/api/v1/marketplaces/:connectionSlug/test", async (request) => {
+    const connection = await services.marketplace.testConnection(marketplaceSlugSchema.parse(request.params).connectionSlug);
+    request.log.info({ event: "marketplace_connection_tested", connectionSlug: connection.slug, healthStatus: connection.healthStatus });
+    return connection;
+  });
+  app.get("/api/v1/marketplaces/:connectionSlug/health", async (request) => {
+    const connection = await services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug);
+    return { status: connection.healthStatus, error: connection.healthError, metadata: connection.healthMetadata, lastCheckedAt: connection.lastCheckedAt, lastSuccessfulCheckAt: connection.lastSuccessfulCheckAt, lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt };
+  });
   app.post("/api/v1/marketplaces/:connectionSlug/products/discover", async (request) => {
     const { connectionSlug } = marketplaceSlugSchema.parse(request.params);
     return list(await services.marketplace.discoverProducts(connectionSlug));

@@ -1,15 +1,18 @@
-import type { AudienceSegment, GeneratedContent, MarketplaceOfferInput, MarketplaceProductInput, Product, ProductOpportunity } from "@affiliateos/shared";
+import type { AudienceSegment, GeneratedContent, MarketplaceCapability, MarketplaceOfferInput, MarketplaceProductInput, Product, ProductOpportunity } from "@affiliateos/shared";
 
 export interface MarketplaceProvider {
   readonly slug: string;
   readonly displayName: string;
   readonly connectionMode: "mock" | "official_api";
-  discoverProducts(): Promise<MarketplaceProductInput[]>;
-  getProduct(externalProductId: string): Promise<MarketplaceProductInput | undefined>;
-  searchProducts(query: string): Promise<MarketplaceProductInput[]>;
-  getOffers(externalProductId: string): Promise<MarketplaceOfferInput[]>;
-  generateAffiliateLink(externalOfferId: string): Promise<{ url: string; expiresAt?: string }>;
-  syncConversions(since: string): Promise<{ synced: number }>;
+  readonly capabilities: readonly MarketplaceCapability[];
+  validateConfiguration(configuration: Record<string, unknown>): void;
+  testConnection?(input: { credentialReference?: string; configuration: Record<string, unknown> }): Promise<{ metadata?: Record<string, unknown> }>;
+  discoverProducts?(): Promise<MarketplaceProductInput[]>;
+  getProduct?(externalProductId: string): Promise<MarketplaceProductInput | undefined>;
+  searchProducts?(query: string): Promise<MarketplaceProductInput[]>;
+  getOffers?(externalProductId: string): Promise<MarketplaceOfferInput[]>;
+  generateAffiliateLink?(externalOfferId: string): Promise<{ url: string; expiresAt?: string }>;
+  syncConversions?(since: string): Promise<{ synced: number }>;
 }
 export class MarketplaceProviderRegistry {
   private readonly providers = new Map<string, MarketplaceProvider>();
@@ -22,7 +25,10 @@ export class MockMarketplaceProvider implements MarketplaceProvider {
   readonly slug = "mock";
   readonly displayName = "Mock marketplace (tests only)";
   readonly connectionMode = "mock" as const;
+  readonly capabilities: readonly MarketplaceCapability[] = ["discoverProducts", "searchProducts", "getProduct", "getOffers", "generateAffiliateLink", "syncConversions"];
   constructor(private readonly products: MarketplaceProductInput[] = [], private readonly offers: Record<string, MarketplaceOfferInput[]> = {}) {}
+  validateConfiguration(): void {}
+  testConnection(): Promise<{ metadata: Record<string, unknown> }> { return Promise.resolve({ metadata: { adapter: "mock", note: "Deterministic test adapter; not a live marketplace connection." } }); }
   discoverProducts(): Promise<MarketplaceProductInput[]> { return Promise.resolve(this.products.map((product) => ({ ...product }))); }
   getProduct(id: string): Promise<MarketplaceProductInput | undefined> { return Promise.resolve(this.products.find((product) => product.externalProductId === id)); }
   searchProducts(query: string): Promise<MarketplaceProductInput[]> { const term = query.trim().toLowerCase(); return Promise.resolve(this.products.filter((product) => `${product.name} ${product.category ?? ""} ${product.description ?? ""}`.toLowerCase().includes(term))); }
