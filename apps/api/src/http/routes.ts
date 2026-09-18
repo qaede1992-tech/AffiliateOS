@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
 import {
-  createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema,
+  createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema,
   marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema,
   createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema,
   createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema,
@@ -22,6 +22,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.post<{ Body: CreateOfferRequest; Reply: Offer }>("/api/v1/offers", async (request, reply) => reply.status(201).send(await services.offers.create(createOfferSchema.parse(request.body))));
   app.get<{ Reply: ListResponse<Conversion> }>("/api/v1/conversions", async () => list(await services.conversions.list()));
   app.post<{ Body: CreateConversionRequest; Reply: Conversion }>("/api/v1/conversions", async (request, reply) => reply.status(201).send(await services.conversions.create(createConversionSchema.parse(request.body))));
+  app.post("/api/v1/conversions/:conversionId/attribution", async (request, reply) => { const params = conversionIdSchema.parse(request.params); const attribution = await services.attribution.create(params.conversionId, createConversionAttributionSchema.parse(request.body)); return reply.status(201).send(attribution); });
+  app.get("/api/v1/conversions/:conversionId/attribution", async (request) => { const { conversionId } = conversionIdSchema.parse(request.params); const attribution = await services.attribution.get(conversionId); return attribution ?? { conversionId, attributed: false }; });
   app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list()));
   app.post<{ Body: { product: Product; commissionRateBps?: number; audienceRelevance?: number }; Reply: ProductOpportunity }>("/api/v1/product-opportunities/score", async (request) => { const input = scoreProductSchema.parse(request.body); return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance); });
 

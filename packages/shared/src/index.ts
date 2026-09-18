@@ -60,3 +60,6 @@ export interface CreateSocialAccountRequest { platform: string; accountReference
 export interface UpdateSocialAccountRequest { platform?: string; accountReference?: string; status?: SocialAccountStatus; connection?: Record<string, unknown>; credentialReference?: string; }
 export interface SocialOAuthStartRequest { platform: string; redirectUri: string; }
 export interface SocialOAuthStartResponse { authorizationUrl: string; state: string; expiresAt: IsoTimestamp; }
+
+export interface ConversionAttribution { conversionId: EntityId; trackingLinkId: EntityId; attributedAt: IsoTimestamp; }
+export interface CreateConversionAttributionRequest { trackingLinkId: EntityId; }
