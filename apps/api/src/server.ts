@@ -3,6 +3,7 @@ import { environment } from "./config.js";
 import { createServices } from "./domain/container.js";
 import { createDatabasePersistence } from "./db/client.js";
 import { DrizzleAnalyticsReader } from "./db/analytics.js";
+import { DrizzleConversionAttributionRepository } from "./db/attribution.js";
 import { DrizzleOAuthStateRepository } from "./db/oauth-state.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
@@ -12,7 +13,8 @@ const services = createServices(
   undefined,
   undefined,
   new DrizzleOAuthStateRepository(persistence.db),
-  new DrizzleAnalyticsReader(persistence.db)
+  new DrizzleAnalyticsReader(persistence.db),
+  new DrizzleConversionAttributionRepository(persistence.db)
 );
 const app = createApp(services);
 
