@@ -456,3 +456,40 @@ nav {
     grid-template-columns: 1fr;
   }
 }
+.affiliate-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.affiliate-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+}
+
+.affiliate-form input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.affiliate-form button {
+  justify-self: start;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #111827;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.affiliate-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

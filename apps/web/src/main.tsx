@@ -18,6 +18,34 @@ type DashboardData = {
 function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [affiliateName, setAffiliateName] = useState("");
+  const [affiliateEmail, setAffiliateEmail] = useState("");
+  const [isCreatingAffiliate, setIsCreatingAffiliate] = useState(false);
+
+  const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsCreatingAffiliate(true);
+    setError(null);
+
+    try {
+      await api.createAffiliate({
+        name: affiliateName.trim(),
+        email: affiliateEmail.trim()
+      });
+      const affiliates = await api.affiliates();
+      setData((current) => current ? { ...current, affiliates: affiliates.data } : current);
+      setAffiliateName("");
+      setAffiliateEmail("");
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to create affiliate."
+      );
+    } finally {
+      setIsCreatingAffiliate(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -241,6 +269,26 @@ function App() {
             <span className="eyebrow">Partners</span>
             <h3>Affiliates</h3>
             <p>{data.affiliates.length} affiliate records in the system.</p>
+
+            <form className="affiliate-form" onSubmit={handleCreateAffiliate}>
+              <input
+                type="text"
+                placeholder="Affiliate name"
+                value={affiliateName}
+                onChange={(event) => setAffiliateName(event.target.value)}
+                required
+              />
+              <input
+                type="email"
+                placeholder="Affiliate email"
+                value={affiliateEmail}
+                onChange={(event) => setAffiliateEmail(event.target.value)}
+                required
+              />
+              <button type="submit" disabled={isCreatingAffiliate}>
+                {isCreatingAffiliate ? "Adding..." : "Add Affiliate"}
+              </button>
+            </form>
           </article>
 
           <article id="offers">
