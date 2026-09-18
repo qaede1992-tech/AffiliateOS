@@ -10,13 +10,10 @@ export class DrizzleConversionAttributionRepository implements ConversionAttribu
     return rowsOf(result).map(toDomain);
   }
 
-  async findById(id: string): Promise<ConversionAttribution | undefined> {
-    const result = await this.db.execute(sql`SELECT conversion_id, tracking_link_id, attributed_at FROM conversion_attributions WHERE conversion_id = ${id} LIMIT 1`);
-    return rowsOf(result)[0] ? toDomain(rowsOf(result)[0]) : undefined;
-  }
-
   async findByConversion(conversionId: string): Promise<ConversionAttribution | undefined> {
-    return this.findById(conversionId);
+    const result = await this.db.execute(sql`SELECT conversion_id, tracking_link_id, attributed_at FROM conversion_attributions WHERE conversion_id = ${conversionId} LIMIT 1`);
+    const row = rowsOf(result)[0];
+    return row ? toDomain(row) : undefined;
   }
 
   async save(entity: ConversionAttribution): Promise<ConversionAttribution> {
