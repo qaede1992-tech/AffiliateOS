@@ -1,6 +1,6 @@
 import type { Campaign, Content, Click, TrackingLink } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
-import type { Repository } from "./repository.js";
+import type { Repository, TrackingLinkRepository } from "./repository.js";
 
 export interface CampaignAnalytics {
   campaignId: string;
@@ -24,7 +24,7 @@ export interface AnalyticsOverview {
 export class AnalyticsService {
   constructor(
     private readonly campaigns: Repository<Campaign>,
-    private readonly trackingLinks: Repository<TrackingLink>,
+    private readonly trackingLinks: TrackingLinkRepository,
     private readonly clicks: Repository<Click>,
     private readonly contents: Repository<Content>
   ) {}
@@ -38,17 +38,12 @@ export class AnalyticsService {
 
   async campaign(campaignId: string): Promise<CampaignAnalytics> {
     const [campaigns, trackingLinks, clicks, contents] = await Promise.all([
-      this.campaigns.list(), this.trackingLinks.list(), this.clicks.list(), this.contents.list()
+      this.campaigns.list(), this.trackingLinks.listByCampaign(campaignId), this.clicks.list(), this.contents.list()
     ]);
     if (!campaigns.some((item) => item.id === campaignId)) {
       throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
     }
-    return this.buildCampaign(
-      campaignId,
-      trackingLinks.filter((link) => link.campaignId === campaignId),
-      clicks,
-      contents.filter((item) => item.campaignId === campaignId)
-    );
+    return this.buildCampaign(campaignId, trackingLinks, clicks, contents.filter((item) => item.campaignId === campaignId));
   }
 
   private buildOverview(campaigns: Campaign[], trackingLinks: TrackingLink[], clicks: Click[], contents: Content[]): AnalyticsOverview {
