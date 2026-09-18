@@ -1,66 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../../src/app.js";
-import { createInMemoryServices } from "../../src/domain/container.js";
 
-const offerId = "00000000-0000-0000-0000-000000000101";
-
-function seedOffer(services: ReturnType<typeof createInMemoryServices>) {
-  return services.marketplace;
-}
-
-test("campaign and tracking HTTP flow supports attachment, click idempotency, and stats", async () => {
-  const services = createInMemoryServices();
-  await services.tracking;
-  await services.campaigns;
-  const app = createApp(services);
-
-  await (services as any).tracking;
-  const repositories = (services as any);
-  void repositories;
-
-  const campaignResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/campaigns",
-    payload: {
-      name: "Launch campaign",
-      objective: "sales",
-      startAt: "2026-10-01T00:00:00.000Z",
-      endAt: "2026-10-31T23:59:59.000Z"
-    }
-  });
-  assert.equal(campaignResponse.statusCode, 201);
-  const campaign = campaignResponse.json();
-
-  const affiliateOffer = {
-    id: offerId,
-    productId: "00000000-0000-0000-0000-000000000102",
-    affiliateAccountId: "00000000-0000-0000-0000-000000000103",
-    availability: "in_stock" as const,
-    availabilityMetadata: {},
-    affiliateLinkStatus: "active" as const,
-    status: "active" as const,
-    createdAt: "2026-09-18T00:00:00.000Z",
-    updatedAt: "2026-09-18T00:00:00.000Z"
-  };
-  const offerRepository = (services as any).tracking;
-  void offerRepository;
-
-  // The public HTTP surface currently has no affiliate-offer creation endpoint,
-  // so seed the in-memory domain repository through the service container's
-  // private repository graph used by createInMemoryServices.
-  const campaignOfferServices = services;
-  void campaignOfferServices;
-
-  // Recreate the flow with the repository instances exposed through a small
-  // test-only service container is intentionally avoided; this test verifies
-  // the campaign HTTP contract independently below.
-  await app.close();
-  assert.ok(affiliateOffer.id);
-  assert.ok(seedOffer(services));
-});
-
-test("campaign HTTP endpoints enforce lifecycle transitions and date validation", async () => {
+test("campaign HTTP endpoints support create, get, list, update, and lifecycle validation", async () => {
   const app = createApp();
 
   const createResponse = await app.inject({
@@ -71,19 +13,34 @@ test("campaign HTTP endpoints enforce lifecycle transitions and date validation"
       objective: "sales",
       status: "draft",
       startAt: "2026-10-01T00:00:00.000Z",
-      endAt: "2026-10-31T00:00:00.000Z"
+      endAt: "2026-10-31T00:00:00.000Z",
+      audience: { segment: "deal-hunters" }
     }
   });
   assert.equal(createResponse.statusCode, 201);
   const campaign = createResponse.json();
+  assert.equal(campaign.name, "Lifecycle campaign");
+  assert.equal(campaign.status, "draft");
+
+  const getResponse = await app.inject({
+    method: "GET",
+    url: `/api/v1/campaigns/${campaign.id}`
+  });
+  assert.equal(getResponse.statusCode, 200);
+  assert.equal(getResponse.json().id, campaign.id);
+
+  const listResponse = await app.inject({ method: "GET", url: "/api/v1/campaigns" });
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(listResponse.json().data.length, 1);
 
   const updateResponse = await app.inject({
     method: "PATCH",
     url: `/api/v1/campaigns/${campaign.id}`,
-    payload: { status: "active" }
+    payload: { status: "active", objective: "conversion" }
   });
   assert.equal(updateResponse.statusCode, 200);
   assert.equal(updateResponse.json().status, "active");
+  assert.equal(updateResponse.json().objective, "conversion");
 
   const invalidTransition = await app.inject({
     method: "PATCH",
@@ -104,6 +61,39 @@ test("campaign HTTP endpoints enforce lifecycle transitions and date validation"
     }
   });
   assert.equal(invalidDates.statusCode, 400);
+  assert.equal(invalidDates.json().error, "VALIDATION_ERROR");
+
+  await app.close();
+});
+
+test("campaign HTTP offer and tracking routes validate missing resources", async () => {
+  const app = createApp();
+  const missingId = "00000000-0000-4000-8000-000000000999";
+
+  const offersResponse = await app.inject({
+    method: "GET",
+    url: `/api/v1/campaigns/${missingId}/offers`
+  });
+  assert.equal(offersResponse.statusCode, 404);
+  assert.equal(offersResponse.json().error, "CAMPAIGN_NOT_FOUND");
+
+  const trackingResponse = await app.inject({
+    method: "GET",
+    url: `/api/v1/tracking-links?campaignId=${missingId}`
+  });
+  assert.equal(trackingResponse.statusCode, 404);
+  assert.equal(trackingResponse.json().error, "CAMPAIGN_NOT_FOUND");
+
+  const linkResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/tracking-links",
+    payload: {
+      affiliateOfferId: missingId,
+      destinationUrl: "https://example.com/landing"
+    }
+  });
+  assert.equal(linkResponse.statusCode, 404);
+  assert.equal(linkResponse.json().error, "AFFILIATE_OFFER_NOT_FOUND");
 
   await app.close();
 });
