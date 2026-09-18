@@ -17,6 +17,7 @@ import { MarketplaceProviderRegistry } from "./foundations.js";
 import { MarketplaceService } from "./marketplace.js";
 import { CampaignService, TrackingService } from "./campaigns.js";
 import { ContentService, SocialAccountService } from "./content.js";
+import { AnalyticsService } from "./analytics.js";
 
 export interface Services {
   affiliates: AffiliateService;
@@ -28,6 +29,7 @@ export interface Services {
   tracking: TrackingService;
   content: ContentService;
   socialAccounts: SocialAccountService;
+  analytics: AnalyticsService;
 }
 
 export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry()): Services {
@@ -40,7 +42,8 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     campaigns: new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers),
     tracking: new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers),
     content: new ContentService(repositories.contents, repositories.campaigns, repositories.products),
-    socialAccounts: new SocialAccountService(repositories.socialAccounts)
+    socialAccounts: new SocialAccountService(repositories.socialAccounts),
+    analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents)
   };
 }
 
