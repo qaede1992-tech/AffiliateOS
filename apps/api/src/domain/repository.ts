@@ -21,6 +21,7 @@ export class InMemoryCampaignOfferRepository implements CampaignOfferRepository 
 }
 export class InMemoryClickRepository extends InMemoryRepository<Click> implements ClickRepository {
   async listByTrackingLink(trackingLinkId: EntityId) { return (await this.list()).filter((click) => click.trackingLinkId === trackingLinkId); }
+  async findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string) { return (await this.listByTrackingLink(trackingLinkId)).find((click) => click.idempotencyKey === idempotencyKey); }
   async countByTrackingLink(trackingLinkId: EntityId) { return (await this.listByTrackingLink(trackingLinkId)).length; }
 }
 export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> implements TrackingLinkRepository { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
@@ -35,5 +36,5 @@ export interface AffiliateAccountRepository extends Repository<import("@affiliat
 export interface AffiliateOfferRepository extends Repository<import("@affiliateos/shared").AffiliateOffer> { findByAccountOffer(affiliateAccountId: EntityId, externalOfferId: string): Promise<import("@affiliateos/shared").AffiliateOffer | undefined>; }
 export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId): Promise<CampaignOffer[]>; find(campaignId: EntityId, affiliateOfferId: EntityId): Promise<CampaignOffer | undefined>; save(entity: CampaignOffer): Promise<CampaignOffer>; remove(campaignId: EntityId, affiliateOfferId: EntityId): Promise<void>; }
 export interface TrackingLinkRepository extends Repository<TrackingLink> { findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
-export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
+export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
 export interface TransactionManager { run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T>; }
