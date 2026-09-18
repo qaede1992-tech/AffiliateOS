@@ -8,6 +8,23 @@ test("campaign creation persists in the service repository", async () => {
   assert.equal((await services.campaigns.get(campaign.id)).name, "Launch");
 });
 
+test("campaign updates preserve the start/end date invariant", async () => {
+  const services = createInMemoryServices();
+  const campaign = await services.campaigns.create({
+    name: "Launch",
+    objective: "sales",
+    startAt: "2026-10-01T00:00:00.000Z",
+    endAt: "2026-10-31T00:00:00.000Z"
+  });
+
+  await assert.rejects(
+    () => services.campaigns.update(campaign.id, { endAt: "2026-09-30T00:00:00.000Z" }),
+    /startAt must be before endAt/i
+  );
+
+  assert.equal((await services.campaigns.get(campaign.id)).endAt, "2026-10-31T00:00:00.000Z");
+});
+
 test("tracking links reject unknown affiliate offers", async () => {
   const services = createInMemoryServices();
   const campaign = await services.campaigns.create({ name: "Launch", objective: "sales" });
