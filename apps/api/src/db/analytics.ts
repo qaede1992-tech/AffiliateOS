@@ -2,6 +2,7 @@ import type { EntityId } from "@affiliateos/shared";
 import { sql } from "drizzle-orm";
 import type { AnalyticsReader } from "../domain/analytics-db.js";
 import type { CampaignAnalytics, AnalyticsOverview } from "../domain/analytics.js";
+import { DomainError } from "../domain/errors.js";
 
 export class DrizzleAnalyticsReader implements AnalyticsReader {
   constructor(private readonly db: any) {}
@@ -62,7 +63,7 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
       WHERE c.id = ${campaignId}
       GROUP BY c.id
     `);
-    if (!rows[0]) throw new Error("CAMPAIGN_NOT_FOUND");
+    if (!rows[0]) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
     return toCampaignAnalytics(rows[0] as Record<string, unknown>);
   }
 }
