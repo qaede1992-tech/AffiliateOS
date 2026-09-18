@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, Click, Commission, Conversion, MarketplaceConnection, Offer, Product, TrackingLink } from "@affiliateos/shared";
 import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, conversions, marketplaces, offers, products, trackingLinks } from "./schema.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, MarketplaceConnectionRepository, ProductCatalogRepository, Repository, RepositorySet, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
@@ -93,6 +93,11 @@ class DrizzleAffiliateOfferRepository extends DrizzleRepository<AffiliateOffer, 
   override async save(entity: AffiliateOffer) { if (await this.findById(entity.id)) await this.db.update(affiliateOffers).set(this.toRow(entity)).where(eq(affiliateOffers.id, entity.id)); else await super.save(entity); return entity; }
 }
 
+class DrizzleCampaignRepository extends DrizzleRepository<Campaign, typeof campaigns.$inferSelect> implements Repository<Campaign> {
+  constructor(db: DatabaseExecutor) { super(db, campaigns, toCampaign, (entity) => ({ ...entity, startAt: entity.startAt ?? null, endAt: entity.endAt ?? null } as any)); }
+  override async save(entity: Campaign) { if (await this.findById(entity.id)) await this.db.update(campaigns).set(this.toRow(entity)).where(eq(campaigns.id, entity.id)); else await super.save(entity); return entity; }
+}
+
 class DrizzleCampaignOfferRepository implements CampaignOfferRepository {
   constructor(private readonly db: DatabaseExecutor) {}
 
@@ -125,6 +130,7 @@ class DrizzleTrackingLinkRepository extends DrizzleRepository<TrackingLink, type
 class DrizzleClickRepository extends DrizzleRepository<Click, typeof clicks.$inferSelect> implements ClickRepository {
   constructor(db: DatabaseExecutor) { super(db, clicks, toClick, (entity) => entity as any); }
   async listByTrackingLink(trackingLinkId: string) { const rows = await this.db.select().from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId)); return rows.map(toClick); }
+  async countByTrackingLink(trackingLinkId: string) { const rows = await this.db.select({ count: count() }).from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId)); return Number(rows[0]?.count ?? 0); }
 }
 
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
@@ -162,17 +168,7 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
   affiliateAccounts: new DrizzleAffiliateAccountRepository(db),
   products: new DrizzleProductCatalogRepository(db),
   affiliateOffers: new DrizzleAffiliateOfferRepository(db),
-  campaigns: new DrizzleRepository(db, campaigns, toCampaign, (entity: Campaign) => ({
-    id: entity.id,
-    name: entity.name,
-    objective: entity.objective,
-    status: entity.status,
-    startAt: entity.startAt ?? null,
-    endAt: entity.endAt ?? null,
-    audience: entity.audience,
-    createdAt: entity.createdAt,
-    updatedAt: entity.updatedAt
-  })),
+  campaigns: new DrizzleCampaignRepository(db),
   campaignOffers: new DrizzleCampaignOfferRepository(db),
   trackingLinks: new DrizzleTrackingLinkRepository(db),
   clicks: new DrizzleClickRepository(db)
