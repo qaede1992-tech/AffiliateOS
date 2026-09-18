@@ -28,6 +28,7 @@ import {
   updateCampaignSchema,
   campaignIdSchema,
   campaignOfferParamsSchema,
+  trackingLinkQuerySchema,
   createTrackingLinkSchema,
   trackingLinkIdSchema,
   recordClickSchema
@@ -124,8 +125,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   });
 
   app.get("/api/v1/tracking-links", async (request) => {
-    const query = request.query as { campaignId?: string };
-    return list(await services.tracking.list(query.campaignId));
+    const { campaignId } = trackingLinkQuerySchema.parse(request.query);
+    return list(await services.tracking.list(campaignId));
   });
   app.post("/api/v1/tracking-links", async (request, reply) => reply.status(201).send(await services.tracking.create(createTrackingLinkSchema.parse(request.body))));
   app.get("/api/v1/tracking-links/:trackingLinkId", async (request) => services.tracking.get(trackingLinkIdSchema.parse(request.params).trackingLinkId));
