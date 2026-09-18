@@ -31,26 +31,19 @@ export class AnalyticsService {
 
   async overview(): Promise<AnalyticsOverview> {
     const [campaigns, trackingLinks, clicks, contents] = await Promise.all([
-      this.campaigns.list(),
-      this.trackingLinks.list(),
-      this.clicks.list(),
-      this.contents.list()
+      this.campaigns.list(), this.trackingLinks.list(), this.clicks.list(), this.contents.list()
     ]);
-
     return this.buildOverview(campaigns, trackingLinks, clicks, contents);
   }
 
   async campaign(campaignId: string): Promise<CampaignAnalytics> {
     const [campaigns, trackingLinks, clicks, contents] = await Promise.all([
-      this.campaigns.list(),
-      this.trackingLinks.listByCampaign(campaignId),
-      this.clicks.list(),
-      this.contents.list(campaignId)
+      this.campaigns.list(), this.trackingLinks.listByCampaign(campaignId), this.clicks.list(), this.contents.list()
     ]);
     if (!campaigns.some((item) => item.id === campaignId)) {
       throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
     }
-    return this.buildCampaign(campaignId, trackingLinks, clicks, contents);
+    return this.buildCampaign(campaignId, trackingLinks, clicks, contents.filter((item) => item.campaignId === campaignId));
   }
 
   private buildOverview(campaigns: Campaign[], trackingLinks: TrackingLink[], clicks: Click[], contents: Content[]): AnalyticsOverview {
