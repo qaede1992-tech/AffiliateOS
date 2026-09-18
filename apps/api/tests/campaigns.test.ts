@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CampaignOffer, TrackingLink } from "@affiliateos/shared";
-import { createInMemoryServices } from "../src/domain/container.js";
 import { CampaignService, TrackingService } from "../src/domain/campaigns.js";
 import { InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryRepository, InMemoryTrackingLinkRepository } from "../src/domain/repository.js";
+import { createInMemoryServices } from "../src/domain/container.js";
 
 test("campaign creation persists in the service repository", async () => {
   const services = createInMemoryServices();
@@ -81,23 +81,17 @@ test("click recording is idempotent for the same tracking link and key", async (
 });
 
 test("clicks reject inactive tracking links", async () => {
-  const services = createInMemoryServices();
-  const offerId = "00000000-0000-0000-0000-000000000030";
-  await (services as any).tracking;
-  const tracking = services.tracking;
-  const offerRepository = new InMemoryAffiliateOfferRepository();
-  void offerRepository;
   const links = new InMemoryTrackingLinkRepository();
   const clicks = new InMemoryClickRepository();
   const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
   const affiliateOffers = new InMemoryAffiliateOfferRepository();
   const campaignOffers = new InMemoryCampaignOfferRepository();
-  const isolated = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  const offerId = "00000000-0000-0000-0000-000000000030";
   await affiliateOffers.save(activeOffer(offerId));
-  const link = await isolated.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
   await links.save({ ...link, status: "inactive" });
-  await assert.rejects(() => isolated.recordClick(link.id, {}), /active tracking link/i);
-  void tracking;
+  await assert.rejects(() => tracking.recordClick(link.id, {}), /active tracking link/i);
 });
 
 test("tracking link stats use the repository count", async () => {
