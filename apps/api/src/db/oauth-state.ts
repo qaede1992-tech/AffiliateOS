@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type { OAuthStateRepository, OAuthState } from "../domain/oauth.js";
 import { oauthStates } from "./schema.js";
 
@@ -7,15 +8,12 @@ export class DrizzleOAuthStateRepository implements OAuthStateRepository {
   constructor(private readonly db: DatabaseExecutor) {}
 
   async save(state: OAuthState): Promise<OAuthState> {
-    await this.db.insert(oauthStates).values(state).onConflictDoUpdate({
-      target: oauthStates.state,
-      set: { platform: state.platform, redirectUri: state.redirectUri, expiresAt: state.expiresAt }
-    });
+    await this.db.insert(oauthStates).values(state).onConflictDoUpdate({ target: oauthStates.state, set: { platform: state.platform, redirectUri: state.redirectUri, expiresAt: state.expiresAt } });
     return state;
   }
 
   async consume(state: string): Promise<OAuthState | undefined> {
-    const rows = await this.db.delete(oauthStates).where((table: any) => table.state.eq(state)).returning();
+    const rows = await this.db.delete(oauthStates).where(eq(oauthStates.state, state)).returning();
     return rows[0];
   }
 }
