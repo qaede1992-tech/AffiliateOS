@@ -3,6 +3,7 @@ import type {
   Commission,
   Conversion,
   CreateAffiliateRequest,
+  CreateOfferRequest,
   ListResponse,
   Offer
 } from "@affiliateos/shared";
@@ -42,6 +43,8 @@ export const api = {
   createAffiliate: (input: CreateAffiliateRequest) =>
     post<Affiliate>("/api/v1/affiliates", input),
   offers: () => get<ListResponse<Offer>>("/api/v1/offers"),
+  createOffer: (input: CreateOfferRequest) =>
+    post<Offer>("/api/v1/offers", input),
   conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"),
   commissions: () => get<ListResponse<Commission>>("/api/v1/commissions")
 };

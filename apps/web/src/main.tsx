@@ -21,6 +21,9 @@ function App() {
   const [affiliateName, setAffiliateName] = useState("");
   const [affiliateEmail, setAffiliateEmail] = useState("");
   const [isCreatingAffiliate, setIsCreatingAffiliate] = useState(false);
+  const [offerName, setOfferName] = useState("");
+  const [offerRate, setOfferRate] = useState("");
+  const [isCreatingOffer, setIsCreatingOffer] = useState(false);
 
   const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -44,6 +47,33 @@ function App() {
       );
     } finally {
       setIsCreatingAffiliate(false);
+    }
+  };
+
+
+  const handleCreateOffer = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsCreatingOffer(true);
+    setError(null);
+
+    try {
+      await api.createOffer({
+        name: offerName.trim(),
+        status: "active",
+        commissionRateBps: Math.round(Number(offerRate) * 100)
+      });
+      const offers = await api.offers();
+      setData((current) => current ? { ...current, offers: offers.data } : current);
+      setOfferName("");
+      setOfferRate("");
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to create offer."
+      );
+    } finally {
+      setIsCreatingOffer(false);
     }
   };
 
@@ -312,6 +342,45 @@ function App() {
             <span className="eyebrow">Commercial</span>
             <h3>Offers</h3>
             <p>{data.offers.length} offers currently available in the system.</p>
+
+            <form className="affiliate-form" onSubmit={handleCreateOffer}>
+              <input
+                type="text"
+                placeholder="Offer name"
+                value={offerName}
+                onChange={(event) => setOfferName(event.target.value)}
+                required
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Commission rate (%)"
+                value={offerRate}
+                onChange={(event) => setOfferRate(event.target.value)}
+                required
+              />
+              <button type="submit" disabled={isCreatingOffer}>
+                {isCreatingOffer ? "Adding..." : "Add Offer"}
+              </button>
+            </form>
+
+            <div className="affiliate-list">
+              {data.offers.map((offer) => (
+                <div className="affiliate-row" key={offer.id}>
+                  <div>
+                    <strong>{offer.name}</strong>
+                    <small>{offer.commissionRateBps / 100}% commission</small>
+                  </div>
+                  <div className="affiliate-meta">
+                    <span className={`badge ${offer.status}`}>
+                      {offer.status}
+                    </span>
+                    <small>{offer.id.slice(0, 8)}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
           </article>
         </section>
       </main>
