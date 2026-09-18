@@ -7,7 +7,7 @@ import { DomainError } from "./domain/errors.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 export function createApp(services: Services = createInMemoryServices()) {
-  const app = Fastify({ logger: true });
+  const app = Fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*"] } });
 
   app.register(cors, { origin: true });
 

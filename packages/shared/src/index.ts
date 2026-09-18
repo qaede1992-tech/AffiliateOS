@@ -84,14 +84,23 @@ export interface Product {
 }
 export interface ProductOpportunity { product: Product; score: number; reasons: string[]; disclaimer: string; }
 export type MarketplaceConnectionStatus = "active" | "inactive" | "pending" | "error";
+export type MarketplaceConnectionHealth = "unverified" | "healthy" | "unhealthy" | "unsupported";
+export type MarketplaceCapability = "discoverProducts" | "searchProducts" | "getProduct" | "getOffers" | "generateAffiliateLink" | "syncConversions";
 export type ProductAvailability = "in_stock" | "out_of_stock" | "limited" | "unknown";
 export type AffiliateLinkStatus = "not_generated" | "active" | "expired" | "unavailable";
 export interface MarketplaceConnection {
   id: EntityId; name: string; slug: string; providerSlug: string; status: MarketplaceConnectionStatus;
-  /** An opaque secret-manager key only. Credentials never travel through this API. */
-  credentialReference?: string; configuration: Record<string, unknown>; createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
+  connectionMode: "mock" | "official_api"; enabled: boolean;
+  /** Internal opaque secret-manager key only. It is deliberately removed from API responses. */
+  credentialReference?: string; configuration: Record<string, unknown>;
+  healthStatus: MarketplaceConnectionHealth; healthError?: string; healthMetadata: Record<string, unknown>;
+  lastCheckedAt?: IsoTimestamp; lastSuccessfulCheckAt?: IsoTimestamp; lastSuccessfulSyncAt?: IsoTimestamp;
+  createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
 }
-export interface MarketplaceProviderInfo { slug: string; displayName: string; connectionMode: "mock" | "official_api"; configured: boolean; }
+export interface MarketplaceConnectionView extends Omit<MarketplaceConnection, "credentialReference"> { hasCredentialReference: boolean; }
+export interface MarketplaceProviderInfo { slug: string; displayName: string; connectionMode: "mock" | "official_api"; configured: boolean; capabilities: MarketplaceCapability[]; supportsConnectionTest: boolean; }
+export interface CreateMarketplaceConnectionRequest { name: string; slug: string; providerSlug: string; credentialReference?: string; configuration?: Record<string, unknown>; enabled?: boolean; }
+export interface UpdateMarketplaceConnectionRequest { name?: string; credentialReference?: string; configuration?: Record<string, unknown>; }
 export interface AffiliateAccount { id: EntityId; marketplaceId: EntityId; name: string; externalReference?: string; status: "active" | "inactive"; credentialReference?: string; configuration: Record<string, unknown>; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
 /** Provider data normalized before it is persisted in AffiliateOS's catalog. */
 export interface MarketplaceProductInput {

@@ -32,3 +32,7 @@ export const marketplaceSlugSchema = z.object({ connectionSlug: z.string().trim(
 export const marketplaceProductParamsSchema = marketplaceSlugSchema.extend({ externalProductId: nonEmptyText.max(255) });
 export const marketplaceSearchSchema = marketplaceSlugSchema.extend({ query: nonEmptyText.max(200) });
 export const marketplaceLinkSchema = marketplaceProductParamsSchema.extend({ externalOfferId: nonEmptyText.max(255) });
+const safeConfiguration = z.record(z.string(), z.unknown()).default({});
+export const createMarketplaceConnectionSchema = z.object({ name: nonEmptyText.max(100), slug: z.string().trim().regex(/^[a-z0-9][a-z0-9-]{0,99}$/), providerSlug: z.string().trim().regex(/^[a-z0-9][a-z0-9-]{0,99}$/), credentialReference: z.string().trim().min(3).max(255).optional(), configuration: safeConfiguration, enabled: z.boolean().default(false) });
+export const updateMarketplaceConnectionSchema = z.object({ name: nonEmptyText.max(100).optional(), credentialReference: z.string().trim().min(3).max(255).optional(), configuration: safeConfiguration.optional() }).refine((value) => Object.keys(value).length > 0, "At least one connection field is required.");
+export const marketplaceEnableSchema = z.object({ enabled: z.boolean() });

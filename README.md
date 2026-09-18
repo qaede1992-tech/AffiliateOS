@@ -53,6 +53,25 @@ It accepts a product plus optional `commissionRateBps` and `audienceRelevance` (
 
 ## Configuration and credentials
 
+## Marketplace integration readiness
+
+Marketplace Connections are configuration records, not a claim that an external marketplace is connected. `POST /api/v1/marketplaces` creates a disabled or unverified record; `POST /api/v1/marketplaces/:connectionSlug/test` is the only operation that can mark a test-capable provider healthy. The API returns `hasCredentialReference`, never the reference itself, and the dashboard never renders it. Mock providers are labelled **tests only** and cannot represent a live connection.
+
+```text
+GET    /api/v1/marketplaces/providers
+GET    /api/v1/marketplaces
+POST   /api/v1/marketplaces
+GET    /api/v1/marketplaces/:connectionSlug
+PATCH  /api/v1/marketplaces/:connectionSlug
+PUT    /api/v1/marketplaces/:connectionSlug/enabled
+POST   /api/v1/marketplaces/:connectionSlug/test
+GET    /api/v1/marketplaces/:connectionSlug/health
+```
+
+To add a future **official** adapter, implement `MarketplaceProvider` in `apps/api/src/domain/`, set `connectionMode: "official_api"`, declare only the capabilities actually supported, validate only non-secret configuration, and implement `testConnection` only when the official API has a safe verification operation. Register the adapter during production service composition in `apps/api/src/server.ts` (or a dedicated provider bootstrap). Supply an opaque secret-manager locator such as `vault://affiliateos/marketplace/acme` in `credentialReference`; have the adapter resolve it at runtime through deployment infrastructure, never from PostgreSQL metadata or the dashboard. Do not register a provider for a marketplace until its official API agreement, scopes, and credential flow have been approved.
+
+Connection `configuration` rejects secret-like fields (`token`, `secret`, `password`, `apiKey`, and similar). Keep region, account identifiers, API version, and other non-sensitive adapter settings there. Failed health checks persist a redacted diagnostic only; API/request logging redacts credential and configuration fields.
+
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string (required by API runtime). |

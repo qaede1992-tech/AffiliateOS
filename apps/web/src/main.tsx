@@ -3,6 +3,7 @@ import type {
   Affiliate,
   Commission,
   Conversion,
+  MarketplaceConnectionView,
   MarketplaceProviderInfo,
   Offer
 } from "@affiliateos/shared";
@@ -15,6 +16,7 @@ type DashboardData = {
   conversions: Conversion[];
   commissions: Commission[];
   marketplaceProviders: MarketplaceProviderInfo[];
+  marketplaceConnections: MarketplaceConnectionView[];
 };
 
 function App() {
@@ -85,15 +87,17 @@ function App() {
       api.offers(),
       api.conversions(),
       api.commissions(),
-      api.marketplaceProviders()
+      api.marketplaceProviders(),
+      api.marketplaceConnections()
     ])
-      .then(([affiliates, offers, conversions, commissions, marketplaceProviders]) => {
+      .then(([affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections]) => {
         setData({
           affiliates: affiliates.data,
           offers: offers.data,
           conversions: conversions.data,
           commissions: commissions.data,
-          marketplaceProviders: marketplaceProviders.data
+          marketplaceProviders: marketplaceProviders.data,
+          marketplaceConnections: marketplaceConnections.data
         });
       })
       .catch((requestError: unknown) => {
@@ -184,7 +188,7 @@ function App() {
               Offers
             </a>
             <a className="nav-item" href="#marketplaces">
-              Marketplaces
+              Marketplace Connections
             </a>
             <a className="nav-item" href="#conversions">
               Conversions
@@ -303,14 +307,22 @@ function App() {
 
         <section className="summary-grid">
           <article id="marketplaces">
-            <span className="eyebrow">Catalog</span>
-            <h3>Marketplace providers</h3>
-            <p>Only configured official integrations can access live catalog data.</p>
+            <span className="eyebrow">Integrations</span>
+            <h3>Marketplace Connections</h3>
+            <p>Credential references are never displayed. A connection is only healthy after a supported verification succeeds.</p>
             <div className="affiliate-list">
               {data.marketplaceProviders.length === 0 ? <p className="empty">No marketplace providers are registered.</p> : data.marketplaceProviders.map((provider) => (
                 <div className="affiliate-row" key={provider.slug}>
-                  <div><strong>{provider.displayName}</strong><small>{provider.connectionMode === "mock" ? "Tests only — not a marketplace connection" : "Official API adapter"}</small></div>
-                  <span className={`badge ${provider.configured ? "active" : "inactive"}`}>{provider.configured ? "configured" : "not configured"}</span>
+                  <div><strong>{provider.displayName}</strong><small>{provider.connectionMode === "mock" ? "Tests only — not a live marketplace connection" : "Official API adapter"}</small><small>Capabilities: {provider.capabilities.join(", ") || "none"}</small></div>
+                  <span className={`badge ${provider.configured ? "active" : "inactive"}`}>{provider.configured ? "configured" : "unconfigured"}</span>
+                </div>
+              ))}
+            </div>
+            <div className="affiliate-list connection-list">
+              {data.marketplaceConnections.length === 0 ? <p className="empty">No connections configured.</p> : data.marketplaceConnections.map((connection) => (
+                <div className="affiliate-row" key={connection.id}>
+                  <div><strong>{connection.name}</strong><small>{connection.providerSlug} · {connection.connectionMode === "mock" ? "test adapter" : "official API"}</small><small>Last check: {connection.lastSuccessfulCheckAt ? new Date(connection.lastSuccessfulCheckAt).toLocaleString() : "not verified"}</small></div>
+                  <div className="affiliate-meta"><span className={`badge ${connection.enabled ? "active" : "inactive"}`}>{connection.enabled ? "enabled" : "disabled"}</span><small>{connection.healthStatus}</small></div>
                 </div>
               ))}
             </div>

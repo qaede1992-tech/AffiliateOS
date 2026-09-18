@@ -4,8 +4,8 @@ import { createApp } from "../src/app.js";
 import { MarketplaceProviderRegistry, MockMarketplaceProvider } from "../src/domain/foundations.js";
 
 const connection = {
-  id: "00000000-0000-4000-8000-000000000011", name: "Test catalog", slug: "test-catalog", providerSlug: "mock", status: "active" as const,
-  configuration: {}, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z"
+  id: "00000000-0000-4000-8000-000000000011", name: "Test catalog", slug: "test-catalog", providerSlug: "mock", connectionMode: "mock" as const, status: "active" as const, enabled: true,
+  configuration: {}, healthStatus: "healthy" as const, healthMetadata: {}, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z"
 };
 test("marketplace endpoints normalize products, persist offers, and generate mock-only links", async () => {
   // Build services explicitly to make this test's mock registration unambiguous.

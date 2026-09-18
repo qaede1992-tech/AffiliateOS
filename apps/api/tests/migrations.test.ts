@@ -16,12 +16,19 @@ test("tracked Drizzle migrations form a complete, ordered history", async () => 
     "0000_initial",
     "0001_affiliateos_foundation",
     "0002_tracking_links_campaign_index",
-    "0003_marketplace_engine"
+    "0003_marketplace_engine",
+    "0004_marketplace_integration_readiness"
   ]);
   for (const entry of journal.entries) {
     assert.ok(files.delete(`${entry.tag}.sql`), `missing ${entry.tag}.sql`);
   }
   assert.equal(files.size, 0, "every migration SQL file must be listed in the Drizzle journal");
+});
+
+test("integration readiness migration stores state and health metadata without secret columns", async () => {
+  const sql = await readFile(resolve(migrationsDirectory, "0004_marketplace_integration_readiness.sql"), "utf8");
+  for (const column of ["connection_mode", "enabled", "health_status", "health_metadata", "last_successful_check_at"]) assert.match(sql, new RegExp(column));
+  assert.doesNotMatch(sql, /api_key|access_token|client_secret|password/i);
 });
 
 test("marketplace engine migration stores provider references and affiliate-link state without credentials", async () => {
