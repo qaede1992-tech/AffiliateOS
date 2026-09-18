@@ -52,13 +52,14 @@ export class CampaignService {
   async attachOffer(campaignId: string, affiliateOfferId: string) {
     await this.get(campaignId);
     if (!(await this.affiliateOffers.findById(affiliateOfferId))) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
-    if (await this.campaignOffers.find(campaignId, affiliateOfferId)) return this.campaignOffers.find(campaignId, affiliateOfferId);
+    const existing = await this.campaignOffers.find(campaignId, affiliateOfferId);
+    if (existing) return existing;
     try {
       return await this.campaignOffers.save({ campaignId, affiliateOfferId, createdAt: now() });
     } catch (error) {
       if (isUniqueViolation(error)) {
-        const existing = await this.campaignOffers.find(campaignId, affiliateOfferId);
-        if (existing) return existing;
+        const raced = await this.campaignOffers.find(campaignId, affiliateOfferId);
+        if (raced) return raced;
       }
       throw error;
     }
@@ -97,9 +98,20 @@ export class TrackingService {
     const link = await this.get(id);
     if (link.status !== "active") throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Clicks require an active tracking link.");
     const idempotencyKey = input.idempotencyKey?.trim();
-    const existing = idempotencyKey ? (await this.clicks.listByTrackingLink(id)).find((click) => click.metadata.idempotencyKey === idempotencyKey) : undefined;
-    if (existing) return existing;
-    return this.clicks.save({ id: randomUUID(), trackingLinkId: link.id, occurredAt: input.occurredAt ?? now(), metadata: { ...(input.metadata ?? {}), ...(idempotencyKey ? { idempotencyKey } : {}) } });
+    if (idempotencyKey) {
+      const existing = await this.clicks.findByIdempotencyKey(id, idempotencyKey);
+      if (existing) return existing;
+    }
+    const click = { id: randomUUID(), trackingLinkId: link.id, idempotencyKey, occurredAt: input.occurredAt ?? now(), metadata: input.metadata ?? {} };
+    try {
+      return await this.clicks.save(click);
+    } catch (error) {
+      if (idempotencyKey && isUniqueViolation(error)) {
+        const raced = await this.clicks.findByIdempotencyKey(id, idempotencyKey);
+        if (raced) return raced;
+      }
+      throw error;
+    }
   }
   async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
 }
