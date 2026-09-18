@@ -85,6 +85,18 @@ test("click recording is idempotent for the same tracking link and key", async (
   assert.equal((await links.findByCode(link.code))?.id, link.id);
 });
 
+test("the same idempotency key can be reused on different tracking links", async () => {
+  const { clicks, affiliateOffers, tracking } = trackingFixture();
+  const offerId = "00000000-0000-0000-0000-000000000015";
+  await affiliateOffers.save(activeOffer(offerId));
+  const firstLink = await tracking.create({ affiliateOfferId: offerId, code: "link-one", destinationUrl: "https://example.com/one" });
+  const secondLink = await tracking.create({ affiliateOfferId: offerId, code: "link-two", destinationUrl: "https://example.com/two" });
+  await tracking.recordClick(firstLink.id, { idempotencyKey: "shared-key" });
+  await tracking.recordClick(secondLink.id, { idempotencyKey: "shared-key" });
+  assert.equal((await clicks.listByTrackingLink(firstLink.id)).length, 1);
+  assert.equal((await clicks.listByTrackingLink(secondLink.id)).length, 1);
+});
+
 test("clicks reject inactive tracking links", async () => {
   const { links, affiliateOffers, tracking } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000030";
