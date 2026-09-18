@@ -2,7 +2,7 @@ import type { EntityId } from "@affiliateos/shared";
 import type { Campaign, CampaignOffer, Click, Content, TrackingLink, SocialAccount } from "@affiliateos/shared";
 
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
-export class InMemoryRepository<T extends { id: EntityId }> {
+export class InMemoryRepository<T extends { id: EntityId }> implements Repository<T> {
   private readonly entities = new Map<EntityId, T>();
   async list(): Promise<T[]> { return [...this.entities.values()]; }
   async findById(id: EntityId): Promise<T | undefined> { return this.entities.get(id); }
