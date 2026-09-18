@@ -24,6 +24,10 @@ function App() {
   const [offerName, setOfferName] = useState("");
   const [offerRate, setOfferRate] = useState("");
   const [isCreatingOffer, setIsCreatingOffer] = useState(false);
+  const [conversionAffiliateId, setConversionAffiliateId] = useState("");
+  const [conversionOfferId, setConversionOfferId] = useState("");
+  const [conversionAmount, setConversionAmount] = useState("");
+  const [isCreatingConversion, setIsCreatingConversion] = useState(false);
 
   const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -76,6 +80,47 @@ function App() {
       setIsCreatingOffer(false);
     }
   };
+  const handleCreateConversion = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsCreatingConversion(true);
+    setError(null);
+
+    try {
+      await api.createConversion({
+        affiliateId: conversionAffiliateId,
+        offerId: conversionOfferId,
+        amountCents: Math.round(Number(conversionAmount) * 100)
+      });
+
+      const [conversions, commissions] = await Promise.all([
+        api.conversions(),
+        api.commissions()
+      ]);
+
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              conversions: conversions.data,
+              commissions: commissions.data
+            }
+          : current
+      );
+
+      setConversionAffiliateId("");
+      setConversionOfferId("");
+      setConversionAmount("");
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to create conversion."
+      );
+    } finally {
+      setIsCreatingConversion(false);
+    }
+  };
+
 
   useEffect(() => {
     Promise.all([
@@ -235,6 +280,57 @@ function App() {
               </div>
               <span>{data.conversions.length} total</span>
             </div>
+
+            <form className="conversion-form" onSubmit={handleCreateConversion}>
+              <select
+                value={conversionAffiliateId}
+                onChange={(event) => setConversionAffiliateId(event.target.value)}
+                required
+              >
+                <option value="">Select affiliate</option>
+                {data.affiliates.map((affiliate) => (
+                  <option key={affiliate.id} value={affiliate.id}>
+                    {affiliate.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={conversionOfferId}
+                onChange={(event) => setConversionOfferId(event.target.value)}
+                required
+              >
+                <option value="">Select active offer</option>
+                {data.offers
+                  .filter((offer) => offer.status === "active")
+                  .map((offer) => (
+                    <option key={offer.id} value={offer.id}>
+                      {offer.name} — {offer.commissionRateBps / 100}%
+                    </option>
+                  ))}
+              </select>
+
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="Amount (USD)"
+                value={conversionAmount}
+                onChange={(event) => setConversionAmount(event.target.value)}
+                required
+              />
+
+              <button
+                type="submit"
+                disabled={
+                  isCreatingConversion ||
+                  data.affiliates.length === 0 ||
+                  data.offers.filter((offer) => offer.status === "active").length === 0
+                }
+              >
+                {isCreatingConversion ? "Creating..." : "Create Conversion"}
+              </button>
+            </form>
 
             {data.conversions.length === 0 ? (
               <p className="empty">No conversions recorded yet.</p>

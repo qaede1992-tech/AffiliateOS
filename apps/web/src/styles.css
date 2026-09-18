@@ -462,6 +462,50 @@ nav {
   margin-top: 18px;
 }
 
+.conversion-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.conversion-form select,
+.conversion-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+}
+
+.conversion-form select option {
+  background: #111827;
+  color: #ffffff;
+}
+
+.conversion-form input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.conversion-form button {
+  justify-self: start;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #111827;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.conversion-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .affiliate-form input {
   width: 100%;
   box-sizing: border-box;
