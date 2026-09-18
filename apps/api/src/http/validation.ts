@@ -50,3 +50,6 @@ const accountReference = z.string().trim().min(1).max(255);
 export const socialAccountIdSchema = z.object({ socialAccountId: entityId });
 export const createSocialAccountSchema = z.object({ platform, accountReference, status: socialStatus.optional(), connection: safeConfiguration, credentialReference: z.string().trim().min(3).max(255).optional() });
 export const updateSocialAccountSchema = z.object({ platform: platform.optional(), accountReference: accountReference.optional(), status: socialStatus.optional(), connection: safeConfiguration.optional(), credentialReference: z.string().trim().min(3).max(255).optional() }).refine((value) => Object.keys(value).length > 0, "At least one social account field is required.");
+
+export const socialOAuthStartSchema = z.object({ platform, redirectUri: z.string().url().max(2048) });
+export const socialOAuthCallbackSchema = z.object({ platform, code: nonEmptyText.max(4096), state: z.string().uuid() });

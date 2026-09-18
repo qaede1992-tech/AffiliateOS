@@ -1,5 +1,5 @@
 import type {
-  Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, RecordClickRequest, SocialAccountView, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest
+  Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, RecordClickRequest, SocialAccountView, SocialOAuthStartRequest, SocialOAuthStartResponse, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest
 } from "@affiliateos/shared";
 
 async function get<T>(path: string): Promise<T> { const response = await fetch(path); if (!response.ok) throw new Error(`Request failed: ${response.status}`); return response.json() as Promise<T>; }
@@ -34,5 +34,6 @@ export const api = {
   socialAccounts: () => get<ListResponse<SocialAccountView>>("/api/v1/social-accounts"),
   socialAccount: (socialAccountId: string) => get<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`),
   createSocialAccount: (input: CreateSocialAccountRequest) => post<SocialAccountView>("/api/v1/social-accounts", input),
-  updateSocialAccount: (socialAccountId: string, input: UpdateSocialAccountRequest) => patch<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`, input)
+  updateSocialAccount: (socialAccountId: string, input: UpdateSocialAccountRequest) => patch<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`, input),
+  startSocialOAuth: (input: SocialOAuthStartRequest) => post<SocialOAuthStartResponse>("/api/v1/social-accounts/oauth/start", input)
 };

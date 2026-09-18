@@ -8,7 +8,8 @@ import {
   createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema,
   trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema,
   contentQuerySchema, contentIdSchema, createContentSchema, updateContentSchema,
-  socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema
+  socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema,
+  socialOAuthStartSchema, socialOAuthCallbackSchema
 } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 
@@ -63,4 +64,6 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.post("/api/v1/social-accounts", async (request, reply) => reply.status(201).send(await services.socialAccounts.create(createSocialAccountSchema.parse(request.body))));
   app.get("/api/v1/social-accounts/:socialAccountId", async (request) => services.socialAccounts.get(socialAccountIdSchema.parse(request.params).socialAccountId));
   app.patch("/api/v1/social-accounts/:socialAccountId", async (request) => services.socialAccounts.update(socialAccountIdSchema.parse(request.params).socialAccountId, updateSocialAccountSchema.parse(request.body)));
+  app.post("/api/v1/social-accounts/oauth/start", async (request) => services.socialOAuth.start(socialOAuthStartSchema.parse(request.body).platform, socialOAuthStartSchema.parse(request.body).redirectUri));
+  app.get("/api/v1/social-accounts/oauth/callback", async (request) => { const input = socialOAuthCallbackSchema.parse(request.query); return services.socialOAuth.callback(input.platform, input.code, input.state); });
 }

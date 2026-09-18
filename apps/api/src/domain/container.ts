@@ -18,6 +18,7 @@ import { MarketplaceService } from "./marketplace.js";
 import { CampaignService, TrackingService } from "./campaigns.js";
 import { ContentService, SocialAccountService } from "./content.js";
 import { AnalyticsService } from "./analytics.js";
+import { InMemorySocialOAuthProviderRegistry, SocialOAuthService } from "./oauth.js";
 
 export interface Services {
   affiliates: AffiliateService;
@@ -29,10 +30,11 @@ export interface Services {
   tracking: TrackingService;
   content: ContentService;
   socialAccounts: SocialAccountService;
+  socialOAuth: SocialOAuthService;
   analytics: AnalyticsService;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry()): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry()): Services {
   return {
     affiliates: new AffiliateService(repositories.affiliates),
     offers: new OfferService(repositories.offers),
@@ -43,6 +45,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     tracking: new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers),
     content: new ContentService(repositories.contents, repositories.campaigns, repositories.products),
     socialAccounts: new SocialAccountService(repositories.socialAccounts),
+    socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts),
     analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents)
   };
 }
