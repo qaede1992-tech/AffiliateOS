@@ -7,14 +7,18 @@ import type {
   CreateConversionRequest,
   CreateOfferRequest,
   ListResponse,
-  Offer
+  Offer,
+  Product,
+  ProductOpportunity
 } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
 import {
   createAffiliateSchema,
   createConversionSchema,
-  createOfferSchema
+  createOfferSchema,
+  scoreProductSchema
 } from "./validation.js";
+import { ProductOpportunityService } from "../domain/foundations.js";
 
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 
@@ -35,4 +39,10 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   });
 
   app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list()));
+
+  // Scores caller-supplied, real product signals only; it never fabricates marketplace data.
+  app.post<{ Body: { product: Product; commissionRateBps?: number; audienceRelevance?: number }; Reply: ProductOpportunity }>("/api/v1/product-opportunities/score", async (request) => {
+    const input = scoreProductSchema.parse(request.body);
+    return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance);
+  });
 }

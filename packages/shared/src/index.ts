@@ -74,3 +74,15 @@ export interface HealthResponse {
   service: "affiliateos-api";
   timestamp: IsoTimestamp;
 }
+export type MarketplaceStatus = "active" | "inactive" | "pending";
+export interface Product {
+  id: EntityId; marketplaceId: EntityId; externalProductId: string; name: string;
+  description?: string; category?: string; priceCents: number; originalPriceCents?: number;
+  currency: string; ratingMilli?: number; reviewCount: number; soldCount: number;
+  imageUrl?: string; productUrl: string; status: "active" | "inactive" | "archived";
+  createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
+}
+export interface ProductOpportunity { product: Product; score: number; reasons: string[]; disclaimer: string; }
+export type AudienceSegment = "beauty" | "skincare" | "baby" | "parenting" | "fashion" | "home" | "kitchen" | "electronics" | "lifestyle" | "deal-hunters";
+export type CampaignStatus = "draft" | "scheduled" | "active" | "paused" | "completed" | "archived";
+export interface GeneratedContent { platform: "tiktok" | "instagram" | "facebook" | "youtube-shorts" | "x" | "threads"; title: string; caption: string; script?: string; cta: string; }
