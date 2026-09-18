@@ -1,5 +1,6 @@
 import type { Campaign, Content, Click, TrackingLink } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
+import type { AnalyticsReader } from "./analytics-db.js";
 import type { Repository, TrackingLinkRepository } from "./repository.js";
 
 export interface CampaignAnalytics {
@@ -26,10 +27,12 @@ export class AnalyticsService {
     private readonly campaigns: Repository<Campaign>,
     private readonly trackingLinks: TrackingLinkRepository,
     private readonly clicks: Repository<Click>,
-    private readonly contents: Repository<Content>
+    private readonly contents: Repository<Content>,
+    private readonly reader?: AnalyticsReader
   ) {}
 
   async overview(): Promise<AnalyticsOverview> {
+    if (this.reader) return this.reader.overview();
     const [campaigns, trackingLinks, clicks, contents] = await Promise.all([
       this.campaigns.list(), this.trackingLinks.list(), this.clicks.list(), this.contents.list()
     ]);
@@ -37,6 +40,7 @@ export class AnalyticsService {
   }
 
   async campaign(campaignId: string): Promise<CampaignAnalytics> {
+    if (this.reader) return this.reader.campaign(campaignId);
     const [campaigns, trackingLinks, clicks, contents] = await Promise.all([
       this.campaigns.list(), this.trackingLinks.listByCampaign(campaignId), this.clicks.list(), this.contents.list()
     ]);
