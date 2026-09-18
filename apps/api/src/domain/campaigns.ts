@@ -16,7 +16,10 @@ const allowedTransitions: Record<Campaign["status"], Campaign["status"][]> = {
 };
 
 function validateCampaignDates(startAt: string | undefined, endAt: string | undefined) {
-  if (startAt && endAt && startAt > endAt) {
+  if (!startAt || !endAt) return;
+  const start = Date.parse(startAt);
+  const end = Date.parse(endAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
     throw new DomainError("INVALID_CAMPAIGN_DATES", "startAt must be before endAt.");
   }
 }
@@ -46,7 +49,20 @@ export class CampaignService {
     validateCampaignStatus(current.status, input.status);
     return this.campaigns.save({ ...current, ...input, updatedAt: now() });
   }
-  async attachOffer(campaignId: string, affiliateOfferId: string) { await this.get(campaignId); if (!(await this.affiliateOffers.findById(affiliateOfferId))) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404); return (await this.campaignOffers.find(campaignId, affiliateOfferId)) ?? this.campaignOffers.save({ campaignId, affiliateOfferId, createdAt: now() }); }
+  async attachOffer(campaignId: string, affiliateOfferId: string) {
+    await this.get(campaignId);
+    if (!(await this.affiliateOffers.findById(affiliateOfferId))) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
+    if (await this.campaignOffers.find(campaignId, affiliateOfferId)) return this.campaignOffers.find(campaignId, affiliateOfferId);
+    try {
+      return await this.campaignOffers.save({ campaignId, affiliateOfferId, createdAt: now() });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const existing = await this.campaignOffers.find(campaignId, affiliateOfferId);
+        if (existing) return existing;
+      }
+      throw error;
+    }
+  }
   async listOffers(campaignId: string) { await this.get(campaignId); return this.campaignOffers.listByCampaign(campaignId); }
   async removeOffer(campaignId: string, affiliateOfferId: string) { await this.get(campaignId); await this.campaignOffers.remove(campaignId, affiliateOfferId); }
 }
@@ -85,5 +101,5 @@ export class TrackingService {
     if (existing) return existing;
     return this.clicks.save({ id: randomUUID(), trackingLinkId: link.id, occurredAt: input.occurredAt ?? now(), metadata: { ...(input.metadata ?? {}), ...(idempotencyKey ? { idempotencyKey } : {}) } });
   }
-  async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: (await this.clicks.listByTrackingLink(id)).length }; }
+  async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
 }
