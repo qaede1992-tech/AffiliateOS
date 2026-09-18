@@ -17,24 +17,29 @@ Requirements: Node.js 24+, npm 11+, and PostgreSQL 16+ (or Docker Compose).
 
 ```bash
 cp .env.example .env
-docker compose up -d postgres
 npm install
-npm run db:migrate
+docker compose up -d postgres
+docker compose ps                 # wait until postgres is healthy
+npm run db:verify                 # check assets, migrate, then inspect PostgreSQL
 npm run dev
 ```
 
-The web app uses Vite's default port; the API listens on `http://localhost:3001`. The production API uses PostgreSQL. Tests inject in-memory repositories, so they do not require a database.
+The web app uses Vite's default port; the API listens on `http://localhost:3001`. The production API uses PostgreSQL. Tests inject in-memory repositories, so the ordinary unit-test suite does not require a database.
 
 ## Database and migrations
 
-Drizzle schema lives at `apps/api/src/db/schema.ts`; SQL history is `apps/api/drizzle/`.
+Drizzle schema lives at `apps/api/src/db/schema.ts`; immutable SQL history and its journal live in `apps/api/drizzle/`. `DATABASE_URL` must be a `postgres://` or `postgresql://` URL; the local default in `.env.example` matches the Compose service.
 
 ```bash
-npm run db:generate  # generate a candidate migration after schema changes
-npm run db:migrate   # apply tracked migrations
+npm run db:check     # validates SQL files, journal ordering, and foundation coverage; no database needed
+npm run db:migrate   # applies tracked migrations to DATABASE_URL
+npm run db:verify    # runs db:check, migrates, and verifies tables/indexes/the Drizzle ledger
+npm run db:generate  # generates a candidate migration after a deliberate schema change
 ```
 
-`0000_initial` owns the original `affiliates`, `offers`, `conversions`, and `commissions` tables. `0001_affiliateos_foundation` is additive and uses `IF NOT EXISTS` for new tables/indexes, so it does not duplicate the initial table creation or drop existing data. It adds marketplaces, affiliate accounts, products, affiliate offers, campaigns, tracking links/clicks, social accounts, and content. Amounts are integer minor units (`*_cents`); commission rates use basis points. Credentials are represented only as `credential_reference` fields—never secret values.
+`db:verify` is the recommended local smoke test against a running, disposable PostgreSQL database. It is safe to re-run: Drizzle records applied migrations in `__drizzle_migrations`, and the migrations are additive. Do **not** edit a migration that may already have been applied; add a new, sequential migration and journal entry instead.
+
+`0000_initial` owns the original `affiliates`, `offers`, `conversions`, and `commissions` tables. `0001_affiliateos_foundation` adds the domain-foundation tables: marketplaces, affiliate accounts, products, affiliate offers, campaigns, campaign offers, tracking links/clicks, social accounts, and content. `0002_tracking_links_campaign_index` supplies the `tracking_links_campaign_idx` index declared by the Drizzle schema but absent from `0001`. Amounts are integer minor units (`*_cents`); commission rates use basis points. Credentials are represented only as `credential_reference` fields—never secret values.
 
 ## API
 
