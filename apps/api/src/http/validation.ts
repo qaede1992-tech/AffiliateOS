@@ -3,6 +3,7 @@ import { z } from "zod";
 const nonEmptyText = z.string().trim().min(1);
 const entityId = z.string().uuid();
 const isoTimestamp = z.string().datetime({ offset: true });
+const validDateRange = (value: { startAt?: string; endAt?: string }) => !value.startAt || !value.endAt || Date.parse(value.startAt) <= Date.parse(value.endAt);
 
 export const createAffiliateSchema = z.object({
   name: nonEmptyText.max(200),
@@ -62,7 +63,7 @@ export const createCampaignSchema = z.object({
   startAt: isoTimestamp.optional(),
   endAt: isoTimestamp.optional(),
   audience: z.record(z.string(), z.unknown()).default({})
-}).refine((value) => !value.startAt || !value.endAt || value.startAt <= value.endAt, "startAt must be before endAt");
+}).refine(validDateRange, "startAt must be before endAt");
 
 export const updateCampaignSchema = z.object({
   name: nonEmptyText.max(200),
