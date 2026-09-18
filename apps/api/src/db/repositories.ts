@@ -15,9 +15,9 @@ const toProduct = (row: typeof products.$inferSelect): Product => ({ id: row.id,
 const toAffiliateOffer = (row: typeof affiliateOffers.$inferSelect): AffiliateOffer => ({ id: row.id, productId: row.productId, affiliateAccountId: row.affiliateAccountId, externalOfferId: row.externalOfferId ?? undefined, priceCents: row.priceCents ?? undefined, currency: row.currency ?? undefined, commissionRateBps: row.commissionRateBps ?? undefined, commissionAmountCents: row.commissionAmountCents ?? undefined, availability: row.availability as AffiliateOffer["availability"], availabilityMetadata: row.availabilityMetadata, affiliateUrl: row.affiliateUrl ?? undefined, affiliateLinkStatus: row.affiliateLinkStatus as AffiliateOffer["affiliateLinkStatus"], status: row.status as AffiliateOffer["status"], createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toCampaign = (row: typeof campaigns.$inferSelect): Campaign => ({ id: row.id, name: row.name, objective: row.objective, status: row.status as Campaign["status"], startAt: row.startAt ?? undefined, endAt: row.endAt ?? undefined, audience: row.audience, createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toTrackingLink = (row: typeof trackingLinks.$inferSelect): TrackingLink => ({ id: row.id, affiliateOfferId: row.affiliateOfferId, campaignId: row.campaignId ?? undefined, code: row.code, destinationUrl: row.destinationUrl, status: row.status as TrackingLink["status"], createdAt: row.createdAt, updatedAt: row.updatedAt });
-const toClick = (row: typeof clicks.$inferSelect): Click => ({ id: row.id, trackingLinkId: row.trackingLinkId, occurredAt: row.occurredAt, metadata: row.metadata });
+const toClick = (row: typeof clicks.$inferSelect): Click => ({ id: row.id, trackingLinkId: row.trackingLinkId, idempotencyKey: row.idempotencyKey ?? undefined, occurredAt: row.occurredAt, metadata: row.metadata });
 
-class DrizzleRepository<T extends { id: string }, Row extends { id: string }> implements Repository<T> {
+class DrizzleRepository<T extends { id: string }, Row extends { id: string }> {
   constructor(protected readonly db: DatabaseExecutor, protected readonly table: any, private readonly toDomain: (row: Row) => T, protected readonly toRow: (entity: T) => Row) {}
   async list(): Promise<T[]> { const rows = await this.db.select().from(this.table); return rows.map(this.toDomain); }
   async findById(id: string): Promise<T | undefined> { const rows = await this.db.select().from(this.table).where(eq(this.table.id, id)).limit(1); const row = rows[0] as Row | undefined; return row ? this.toDomain(row) : undefined; }
@@ -61,8 +61,9 @@ class DrizzleTrackingLinkRepository extends DrizzleRepository<TrackingLink, type
   override async save(entity: TrackingLink) { if (await this.findById(entity.id)) await this.db.update(trackingLinks).set(this.toRow(entity)).where(eq(trackingLinks.id, entity.id)); else await super.save(entity); return entity; }
 }
 class DrizzleClickRepository extends DrizzleRepository<Click, typeof clicks.$inferSelect> implements ClickRepository {
-  constructor(db: DatabaseExecutor) { super(db, clicks, toClick, (entity) => entity as any); }
+  constructor(db: DatabaseExecutor) { super(db, clicks, toClick, (entity) => ({ ...entity, idempotencyKey: entity.idempotencyKey ?? null } as any)); }
   async listByTrackingLink(trackingLinkId: string) { const rows = await this.db.select().from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId)); return rows.map(toClick); }
+  async findByIdempotencyKey(trackingLinkId: string, idempotencyKey: string) { const rows = await this.db.select().from(clicks).where(and(eq(clicks.trackingLinkId, trackingLinkId), eq(clicks.idempotencyKey, idempotencyKey))).limit(1); return rows[0] ? toClick(rows[0]) : undefined; }
   async countByTrackingLink(trackingLinkId: string) { const rows = await this.db.select({ count: count() }).from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId)); return Number(rows[0]?.count ?? 0); }
 }
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
