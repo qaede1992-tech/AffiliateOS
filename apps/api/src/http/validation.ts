@@ -75,6 +75,7 @@ export const updateCampaignSchema = z.object({
 
 export const campaignIdSchema = z.object({ campaignId: entityId });
 export const campaignOfferParamsSchema = z.object({ campaignId: entityId, affiliateOfferId: entityId });
+export const trackingLinkQuerySchema = z.object({ campaignId: entityId.optional() });
 export const createTrackingLinkSchema = z.object({
   affiliateOfferId: entityId,
   campaignId: entityId.optional(),
