@@ -11,7 +11,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file=../../.env ../../node_modules/drizzle-kit/bin.cjs migrate",
     "start": "node --env-file=../../.env dist/server.js",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "db:check": "node scripts/check-migrations.mjs",
+    "db:verify": "npm run db:check && npm run db:migrate && node --env-file=../../.env scripts/verify-migrations.mjs"
   },
   "dependencies": {
     "@affiliateos/shared": "0.1.0",

@@ -16,7 +16,9 @@
     "db:generate": "npm run db:generate --workspace @affiliateos/api",
     "db:migrate": "npm run db:migrate --workspace @affiliateos/api",
     "start": "npm run start --workspace @affiliateos/api",
-    "clean": "npm run clean --workspaces --if-present"
+    "clean": "npm run clean --workspaces --if-present",
+    "db:check": "npm run db:check --workspace @affiliateos/api",
+    "db:verify": "npm run db:verify --workspace @affiliateos/api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

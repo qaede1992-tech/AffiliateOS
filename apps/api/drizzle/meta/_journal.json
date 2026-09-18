@@ -15,6 +15,13 @@
       "when": 1789550400000,
       "tag": "0001_affiliateos_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789636800000,
+      "tag": "0002_tracking_links_campaign_index",
+      "breakpoints": true
     }
   ]
 }
