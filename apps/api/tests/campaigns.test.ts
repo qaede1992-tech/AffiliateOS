@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CampaignOffer, TrackingLink } from "@affiliateos/shared";
+import type { CampaignOffer, Click, TrackingLink } from "@affiliateos/shared";
 import { CampaignService, TrackingService } from "../src/domain/campaigns.js";
 import { InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryRepository, InMemoryTrackingLinkRepository } from "../src/domain/repository.js";
 import { createInMemoryServices } from "../src/domain/container.js";
@@ -62,13 +62,17 @@ function activeOffer(id: string) {
   };
 }
 
-test("click recording is idempotent for the same tracking link and key", async () => {
+function trackingFixture() {
   const links = new InMemoryTrackingLinkRepository();
   const clicks = new InMemoryClickRepository();
   const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
   const affiliateOffers = new InMemoryAffiliateOfferRepository();
   const campaignOffers = new InMemoryCampaignOfferRepository();
-  const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  return { links, clicks, campaigns, affiliateOffers, campaignOffers, tracking: new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers) };
+}
+
+test("click recording is idempotent for the same tracking link and key", async () => {
+  const { links, clicks, affiliateOffers, tracking } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000010";
   await affiliateOffers.save(activeOffer(offerId));
   const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
@@ -78,15 +82,11 @@ test("click recording is idempotent for the same tracking link and key", async (
   assert.equal(second.idempotencyKey, "click-key-1234");
   assert.equal((await clicks.listByTrackingLink(link.id)).length, 1);
   assert.deepEqual(first.metadata, { source: "test" });
+  assert.equal((await links.findByCode(link.code))?.id, link.id);
 });
 
 test("clicks reject inactive tracking links", async () => {
-  const links = new InMemoryTrackingLinkRepository();
-  const clicks = new InMemoryClickRepository();
-  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
-  const affiliateOffers = new InMemoryAffiliateOfferRepository();
-  const campaignOffers = new InMemoryCampaignOfferRepository();
-  const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  const { links, affiliateOffers, tracking } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000030";
   await affiliateOffers.save(activeOffer(offerId));
   const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
@@ -95,12 +95,7 @@ test("clicks reject inactive tracking links", async () => {
 });
 
 test("tracking link stats use the repository count", async () => {
-  const links = new InMemoryTrackingLinkRepository();
-  const clicks = new InMemoryClickRepository();
-  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
-  const affiliateOffers = new InMemoryAffiliateOfferRepository();
-  const campaignOffers = new InMemoryCampaignOfferRepository();
-  const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  const { tracking, affiliateOffers } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000020";
   await affiliateOffers.save(activeOffer(offerId));
   const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
@@ -138,7 +133,7 @@ class RaceTrackingLinkRepository extends InMemoryTrackingLinkRepository {
   override async save(entity: TrackingLink) {
     if (this.firstSave) {
       this.firstSave = false;
-      await super.save(entity);
+      await super.save({ ...entity, id: "00000000-0000-0000-0000-000000000051" });
       throw Object.assign(new Error("duplicate"), { code: "23505" });
     }
     return super.save(entity);
@@ -155,4 +150,31 @@ test("tracking link creation converts a unique-constraint race into a conflict",
   const offerId = "00000000-0000-0000-0000-000000000050";
   await affiliateOffers.save(activeOffer(offerId));
   await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, code: "race-code", destinationUrl: "https://example.com" }), /already in use/i);
+});
+
+class RaceClickRepository extends InMemoryClickRepository {
+  private firstSave = true;
+  override async save(entity: Click) {
+    if (this.firstSave) {
+      this.firstSave = false;
+      await super.save(entity);
+      throw Object.assign(new Error("duplicate"), { code: "23505" });
+    }
+    return super.save(entity);
+  }
+}
+
+test("click idempotency converts a unique-constraint race into the original click", async () => {
+  const links = new InMemoryTrackingLinkRepository();
+  const clicks = new RaceClickRepository();
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const campaignOffers = new InMemoryCampaignOfferRepository();
+  const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  const offerId = "00000000-0000-0000-0000-000000000060";
+  await affiliateOffers.save(activeOffer(offerId));
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  const click = await tracking.recordClick(link.id, { idempotencyKey: "race-click-key" });
+  assert.equal(click.idempotencyKey, "race-click-key");
+  assert.equal((await clicks.listByTrackingLink(link.id)).length, 1);
 });
