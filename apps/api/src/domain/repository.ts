@@ -1,18 +1,17 @@
 import type { EntityId } from "@affiliateos/shared";
-import type { Campaign, CampaignOffer, Click, Content, SocialAccount, TrackingLink } from "@affiliateos/shared";
+import type { Campaign, CampaignOffer, Click, Content, TrackingLink, SocialAccount } from "@affiliateos/shared";
 
-export interface OAuthState { state: string; platform: string; redirectUri: string; expiresAt: string; }
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
-export class InMemoryRepository<T extends { id: EntityId }> implements Repository<T> {
+export class InMemoryRepository<T extends { id: EntityId }> {
   private readonly entities = new Map<EntityId, T>();
   async list(): Promise<T[]> { return [...this.entities.values()]; }
   async findById(id: EntityId): Promise<T | undefined> { return this.entities.get(id); }
   async save(entity: T): Promise<T> { this.entities.set(entity.id, entity); return entity; }
 }
-export class InMemoryMarketplaceConnectionRepository extends InMemoryRepository<import("@affiliateos/shared").MarketplaceConnection> { async findBySlug(slug: string) { return (await this.list()).find((connection) => connection.slug === slug); } }
-export class InMemoryProductCatalogRepository extends InMemoryRepository<import("@affiliateos/shared").Product> { async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { return (await this.list()).find((product) => product.marketplaceId === marketplaceId && product.externalProductId === externalProductId); } }
-export class InMemoryAffiliateOfferRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateOffer> { async findByAccountOffer(affiliateAccountId: string, externalOfferId: string) { return (await this.list()).find((offer) => offer.affiliateAccountId === affiliateAccountId && offer.externalOfferId === externalOfferId); } }
-export class InMemoryAffiliateAccountRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateAccount> { async findByMarketplace(marketplaceId: string) { return (await this.list()).find((account) => account.marketplaceId === marketplaceId); } }
+export class InMemoryMarketplaceConnectionRepository extends InMemoryRepository<import("@affiliateos/shared").MarketplaceConnection> implements MarketplaceConnectionRepository { async findBySlug(slug: string) { return (await this.list()).find((connection) => connection.slug === slug); } }
+export class InMemoryProductCatalogRepository extends InMemoryRepository<import("@affiliateos/shared").Product> implements ProductCatalogRepository { async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { return (await this.list()).find((product) => product.marketplaceId === marketplaceId && product.externalProductId === externalProductId); } }
+export class InMemoryAffiliateOfferRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateOffer> implements AffiliateOfferRepository { async findByAccountOffer(affiliateAccountId: string, externalOfferId: string) { return (await this.list()).find((offer) => offer.affiliateAccountId === affiliateAccountId && offer.externalOfferId === externalOfferId); } }
+export class InMemoryAffiliateAccountRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateAccount> implements AffiliateAccountRepository { async findByMarketplace(marketplaceId: string) { return (await this.list()).find((account) => account.marketplaceId === marketplaceId); } }
 export class InMemoryCampaignOfferRepository implements CampaignOfferRepository {
   private readonly entities = new Map<string, CampaignOffer>();
   async listByCampaign(campaignId: EntityId) { return [...this.entities.values()].filter((item) => item.campaignId === campaignId); }
@@ -20,24 +19,18 @@ export class InMemoryCampaignOfferRepository implements CampaignOfferRepository 
   async save(entity: CampaignOffer) { this.entities.set(`${entity.campaignId}:${entity.affiliateOfferId}`, entity); return entity; }
   async remove(campaignId: EntityId, affiliateOfferId: EntityId) { this.entities.delete(`${campaignId}:${affiliateOfferId}`); }
 }
-export class InMemoryClickRepository extends InMemoryRepository<Click> {
+export class InMemoryClickRepository extends InMemoryRepository<Click> implements ClickRepository {
   async listByTrackingLink(trackingLinkId: EntityId) { return (await this.list()).filter((click) => click.trackingLinkId === trackingLinkId); }
   async findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string) { return (await this.listByTrackingLink(trackingLinkId)).find((click) => click.idempotencyKey === idempotencyKey); }
   async countByTrackingLink(trackingLinkId: EntityId) { return (await this.listByTrackingLink(trackingLinkId)).length; }
 }
-export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
-export class InMemorySocialAccountRepository extends InMemoryRepository<SocialAccount> { async findByPlatformAccount(platform: string, accountReference: string) { return (await this.list()).find((account) => account.platform === platform && account.accountReference === accountReference); } }
-export class InMemoryOAuthStateRepository {
-  private readonly states = new Map<string, OAuthState>();
-  async save(state: OAuthState): Promise<OAuthState> { this.states.set(state.state, state); return state; }
-  async findByState(state: string): Promise<OAuthState | undefined> { return this.states.get(state); }
-  async remove(state: string): Promise<void> { this.states.delete(state); }
-}
+export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> implements TrackingLinkRepository { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
+export class InMemorySocialAccountRepository extends InMemoryRepository<SocialAccount> implements SocialAccountRepository { async findByPlatformAccount(platform: string, accountReference: string) { return (await this.list()).find((account) => account.platform === platform && account.accountReference === accountReference); } }
 export interface RepositorySet {
   affiliates: Repository<import("@affiliateos/shared").Affiliate>; offers: Repository<import("@affiliateos/shared").Offer>; conversions: Repository<import("@affiliateos/shared").Conversion>; commissions: Repository<import("@affiliateos/shared").Commission>;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: SocialAccountRepository; oauthStates: OAuthStateRepository;
+  contents: Repository<Content>; socialAccounts: SocialAccountRepository;
 }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
 export interface ProductCatalogRepository extends Repository<import("@affiliateos/shared").Product> { findByMarketplaceProduct(marketplaceId: EntityId, externalProductId: string): Promise<import("@affiliateos/shared").Product | undefined>; }
@@ -47,5 +40,4 @@ export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId):
 export interface TrackingLinkRepository extends Repository<TrackingLink> { findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
 export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
 export interface SocialAccountRepository extends Repository<SocialAccount> { findByPlatformAccount(platform: string, accountReference: string): Promise<SocialAccount | undefined>; }
-export interface OAuthStateRepository { save(state: OAuthState): Promise<OAuthState>; findByState(state: string): Promise<OAuthState | undefined>; remove(state: string): Promise<void>; }
 export interface TransactionManager { run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T>; }
