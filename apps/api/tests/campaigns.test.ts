@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createInMemoryServices } from "../src/domain/container.js";
+import { InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryRepository, InMemoryTrackingLinkRepository } from "../src/domain/repository.js";
+import { TrackingService } from "../src/domain/campaigns.js";
 
 test("campaign creation persists in the service repository", async () => {
   const services = createInMemoryServices();
@@ -49,4 +51,57 @@ test("tracking links reject unknown affiliate offers", async () => {
     () => services.tracking.create({ affiliateOfferId: "00000000-0000-0000-0000-000000000001", campaignId: campaign.id, destinationUrl: "https://example.com" }),
     /affiliate offer does not exist/i
   );
+});
+
+test("click recording is idempotent for the same tracking link and key", async () => {
+  const links = new InMemoryTrackingLinkRepository();
+  const clicks = new InMemoryClickRepository();
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const campaignOffers = new InMemoryCampaignOfferRepository();
+  const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  const offerId = "00000000-0000-0000-0000-000000000010";
+  const offer = {
+    id: offerId,
+    productId: "00000000-0000-0000-0000-000000000011",
+    affiliateAccountId: "00000000-0000-0000-0000-000000000012",
+    availability: "in_stock" as const,
+    availabilityMetadata: {},
+    affiliateLinkStatus: "active" as const,
+    status: "active" as const,
+    createdAt: "2026-09-18T00:00:00.000Z",
+    updatedAt: "2026-09-18T00:00:00.000Z"
+  };
+  await affiliateOffers.save(offer);
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  const first = await tracking.recordClick(link.id, { idempotencyKey: "click-key-1234", metadata: { source: "test" } });
+  const second = await tracking.recordClick(link.id, { idempotencyKey: "click-key-1234", metadata: { source: "retry" } });
+  assert.equal(second.id, first.id);
+  assert.equal((await clicks.listByTrackingLink(link.id)).length, 1);
+  assert.deepEqual(first.metadata, { source: "test", idempotencyKey: "click-key-1234" });
+});
+
+test("tracking link stats use the repository count", async () => {
+  const links = new InMemoryTrackingLinkRepository();
+  const clicks = new InMemoryClickRepository();
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const campaignOffers = new InMemoryCampaignOfferRepository();
+  const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
+  const offerId = "00000000-0000-0000-0000-000000000020";
+  await affiliateOffers.save({
+    id: offerId,
+    productId: "00000000-0000-0000-0000-000000000021",
+    affiliateAccountId: "00000000-0000-0000-0000-000000000022",
+    availability: "in_stock",
+    availabilityMetadata: {},
+    affiliateLinkStatus: "active",
+    status: "active",
+    createdAt: "2026-09-18T00:00:00.000Z",
+    updatedAt: "2026-09-18T00:00:00.000Z"
+  });
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  await tracking.recordClick(link.id, {});
+  await tracking.recordClick(link.id, {});
+  assert.deepEqual(await tracking.stats(link.id), { linkId: link.id, clickCount: 2 });
 });
