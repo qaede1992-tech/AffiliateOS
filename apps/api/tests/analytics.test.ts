@@ -30,6 +30,16 @@ test("analytics aggregates campaign clicks, links, and content", async () => {
   assert.equal(overview.campaigns[0]?.clickCount, 2);
 });
 
+test("analytics delegates to the database reader when configured", async () => {
+  const reader = {
+    async overview() { return { clickCount: 7, trackingLinkCount: 3, campaignCount: 2, contentCount: 4, publishedContentCount: 2, scheduledContentCount: 1, campaigns: [] }; },
+    async campaign(campaignId: string) { return { campaignId, clickCount: 7, trackingLinkCount: 3, contentCount: 4, publishedContentCount: 2, scheduledContentCount: 1 }; }
+  };
+  const analytics = new AnalyticsService(new InMemoryRepository(), new InMemoryTrackingLinkRepository(), new InMemoryClickRepository(), new InMemoryRepository(), reader);
+  assert.equal((await analytics.overview()).clickCount, 7);
+  assert.equal((await analytics.campaign("00000000-0000-0000-0000-000000000101")).clickCount, 7);
+});
+
 test("analytics rejects an unknown campaign", async () => {
   const services = new AnalyticsService(new InMemoryRepository(), new InMemoryTrackingLinkRepository(), new InMemoryClickRepository(), new InMemoryRepository());
   await assert.rejects(() => services.campaign("00000000-0000-0000-0000-000000000999"), /campaign does not exist/i);
