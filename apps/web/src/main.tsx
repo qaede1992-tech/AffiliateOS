@@ -3,6 +3,7 @@ import type {
   Affiliate,
   Commission,
   Conversion,
+  MarketplaceProviderInfo,
   Offer
 } from "@affiliateos/shared";
 import { api } from "./api/client";
@@ -13,6 +14,7 @@ type DashboardData = {
   offers: Offer[];
   conversions: Conversion[];
   commissions: Commission[];
+  marketplaceProviders: MarketplaceProviderInfo[];
 };
 
 function App() {
@@ -82,14 +84,16 @@ function App() {
       api.affiliates(),
       api.offers(),
       api.conversions(),
-      api.commissions()
+      api.commissions(),
+      api.marketplaceProviders()
     ])
-      .then(([affiliates, offers, conversions, commissions]) => {
+      .then(([affiliates, offers, conversions, commissions, marketplaceProviders]) => {
         setData({
           affiliates: affiliates.data,
           offers: offers.data,
           conversions: conversions.data,
-          commissions: commissions.data
+          commissions: commissions.data,
+          marketplaceProviders: marketplaceProviders.data
         });
       })
       .catch((requestError: unknown) => {
@@ -178,6 +182,9 @@ function App() {
             </a>
             <a className="nav-item" href="#offers">
               Offers
+            </a>
+            <a className="nav-item" href="#marketplaces">
+              Marketplaces
             </a>
             <a className="nav-item" href="#conversions">
               Conversions
@@ -295,6 +302,19 @@ function App() {
         </section>
 
         <section className="summary-grid">
+          <article id="marketplaces">
+            <span className="eyebrow">Catalog</span>
+            <h3>Marketplace providers</h3>
+            <p>Only configured official integrations can access live catalog data.</p>
+            <div className="affiliate-list">
+              {data.marketplaceProviders.length === 0 ? <p className="empty">No marketplace providers are registered.</p> : data.marketplaceProviders.map((provider) => (
+                <div className="affiliate-row" key={provider.slug}>
+                  <div><strong>{provider.displayName}</strong><small>{provider.connectionMode === "mock" ? "Tests only — not a marketplace connection" : "Official API adapter"}</small></div>
+                  <span className={`badge ${provider.configured ? "active" : "inactive"}`}>{provider.configured ? "configured" : "not configured"}</span>
+                </div>
+              ))}
+            </div>
+          </article>
           <article id="affiliates">
             <span className="eyebrow">Partners</span>
             <h3>Affiliates</h3>

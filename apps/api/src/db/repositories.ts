@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
-import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
-import { affiliates, commissions, conversions, offers } from "./schema.js";
-import type { Repository, RepositorySet, TransactionManager } from "../domain/repository.js";
+import { and, eq } from "drizzle-orm";
+import type { Affiliate, AffiliateAccount, AffiliateOffer, Commission, Conversion, MarketplaceConnection, Offer, Product } from "@affiliateos/shared";
+import { affiliateAccounts, affiliateOffers, affiliates, commissions, conversions, marketplaces, offers, products } from "./schema.js";
+import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository, Repository, RepositorySet, TransactionManager } from "../domain/repository.js";
 
 type DatabaseExecutor = any;
 
@@ -38,13 +38,17 @@ const toCommission = (row: typeof commissions.$inferSelect): Commission => ({
   status: row.status as Commission["status"],
   createdAt: row.createdAt
 });
+const toConnection = (row: typeof marketplaces.$inferSelect): MarketplaceConnection => ({ id: row.id, name: row.name, slug: row.slug, providerSlug: row.providerSlug, status: row.status as MarketplaceConnection["status"], credentialReference: row.credentialReference ?? undefined, configuration: row.configuration, createdAt: row.createdAt, updatedAt: row.updatedAt });
+const toAccount = (row: typeof affiliateAccounts.$inferSelect): AffiliateAccount => ({ id: row.id, marketplaceId: row.marketplaceId, name: row.name, externalReference: row.externalReference ?? undefined, status: row.status as AffiliateAccount["status"], credentialReference: row.credentialReference ?? undefined, configuration: row.configuration, createdAt: row.createdAt, updatedAt: row.updatedAt });
+const toProduct = (row: typeof products.$inferSelect): Product => ({ id: row.id, marketplaceId: row.marketplaceId, externalProductId: row.externalProductId, name: row.name, description: row.description ?? undefined, category: row.category ?? undefined, priceCents: row.priceCents, originalPriceCents: row.originalPriceCents ?? undefined, currency: row.currency, ratingMilli: row.ratingMilli ?? undefined, reviewCount: row.reviewCount, soldCount: row.soldCount, imageUrl: row.imageUrl ?? undefined, productUrl: row.productUrl, status: row.status as Product["status"], createdAt: row.createdAt, updatedAt: row.updatedAt });
+const toAffiliateOffer = (row: typeof affiliateOffers.$inferSelect): AffiliateOffer => ({ id: row.id, productId: row.productId, affiliateAccountId: row.affiliateAccountId, externalOfferId: row.externalOfferId ?? undefined, priceCents: row.priceCents ?? undefined, currency: row.currency ?? undefined, commissionRateBps: row.commissionRateBps ?? undefined, commissionAmountCents: row.commissionAmountCents ?? undefined, availability: row.availability as AffiliateOffer["availability"], availabilityMetadata: row.availabilityMetadata, affiliateUrl: row.affiliateUrl ?? undefined, affiliateLinkStatus: row.affiliateLinkStatus as AffiliateOffer["affiliateLinkStatus"], status: row.status as AffiliateOffer["status"], createdAt: row.createdAt, updatedAt: row.updatedAt });
 
 class DrizzleRepository<T extends { id: string }, Row extends { id: string }> implements Repository<T> {
   constructor(
-    private readonly db: DatabaseExecutor,
-    private readonly table: any,
+    protected readonly db: DatabaseExecutor,
+    protected readonly table: any,
     private readonly toDomain: (row: Row) => T,
-    private readonly toRow: (entity: T) => Row
+    protected readonly toRow: (entity: T) => Row
   ) {}
 
   async list(): Promise<T[]> {
@@ -62,6 +66,27 @@ class DrizzleRepository<T extends { id: string }, Row extends { id: string }> im
     await this.db.insert(this.table).values(this.toRow(entity));
     return entity;
   }
+}
+
+class DrizzleMarketplaceConnectionRepository extends DrizzleRepository<MarketplaceConnection, typeof marketplaces.$inferSelect> implements MarketplaceConnectionRepository {
+  constructor(db: DatabaseExecutor) { super(db, marketplaces, toConnection, (entity) => ({ ...entity, credentialReference: entity.credentialReference ?? null } as any)); }
+  async findBySlug(slug: string) { const rows = await this.db.select().from(marketplaces).where(eq(marketplaces.slug, slug)).limit(1); return rows[0] ? toConnection(rows[0]) : undefined; }
+  override async save(entity: MarketplaceConnection) { if (await this.findById(entity.id)) await this.db.update(marketplaces).set(this.toRow(entity)).where(eq(marketplaces.id, entity.id)); else await super.save(entity); return entity; }
+}
+class DrizzleProductCatalogRepository extends DrizzleRepository<Product, typeof products.$inferSelect> implements ProductCatalogRepository {
+  constructor(db: DatabaseExecutor) { super(db, products, toProduct, (entity) => ({ ...entity, ratingMilli: entity.ratingMilli ?? null } as any)); }
+  async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { const rows = await this.db.select().from(products).where(and(eq(products.marketplaceId, marketplaceId), eq(products.externalProductId, externalProductId))).limit(1); return rows[0] ? toProduct(rows[0]) : undefined; }
+  override async save(entity: Product) { if (await this.findById(entity.id)) await this.db.update(products).set(this.toRow(entity)).where(eq(products.id, entity.id)); else await super.save(entity); return entity; }
+}
+class DrizzleAffiliateAccountRepository extends DrizzleRepository<AffiliateAccount, typeof affiliateAccounts.$inferSelect> implements AffiliateAccountRepository {
+  constructor(db: DatabaseExecutor) { super(db, affiliateAccounts, toAccount, (entity) => ({ ...entity, externalReference: entity.externalReference ?? null, credentialReference: entity.credentialReference ?? null } as any)); }
+  async findByMarketplace(marketplaceId: string) { const rows = await this.db.select().from(affiliateAccounts).where(eq(affiliateAccounts.marketplaceId, marketplaceId)).limit(1); return rows[0] ? toAccount(rows[0]) : undefined; }
+  override async save(entity: AffiliateAccount) { if (await this.findById(entity.id)) await this.db.update(affiliateAccounts).set(this.toRow(entity)).where(eq(affiliateAccounts.id, entity.id)); else await super.save(entity); return entity; }
+}
+class DrizzleAffiliateOfferRepository extends DrizzleRepository<AffiliateOffer, typeof affiliateOffers.$inferSelect> implements AffiliateOfferRepository {
+  constructor(db: DatabaseExecutor) { super(db, affiliateOffers, toAffiliateOffer, (entity) => ({ ...entity, externalOfferId: entity.externalOfferId ?? null, priceCents: entity.priceCents ?? null, currency: entity.currency ?? null, commissionRateBps: entity.commissionRateBps ?? null, commissionAmountCents: entity.commissionAmountCents ?? null, affiliateUrl: entity.affiliateUrl ?? null } as any)); }
+  async findByAccountOffer(affiliateAccountId: string, externalOfferId: string) { const rows = await this.db.select().from(affiliateOffers).where(and(eq(affiliateOffers.affiliateAccountId, affiliateAccountId), eq(affiliateOffers.externalOfferId, externalOfferId))).limit(1); return rows[0] ? toAffiliateOffer(rows[0]) : undefined; }
+  override async save(entity: AffiliateOffer) { if (await this.findById(entity.id)) await this.db.update(affiliateOffers).set(this.toRow(entity)).where(eq(affiliateOffers.id, entity.id)); else await super.save(entity); return entity; }
 }
 
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
@@ -94,7 +119,11 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
     amountCents: entity.amountCents,
     status: entity.status,
     createdAt: entity.createdAt
-  }))
+  })),
+  marketplaceConnections: new DrizzleMarketplaceConnectionRepository(db),
+  affiliateAccounts: new DrizzleAffiliateAccountRepository(db),
+  products: new DrizzleProductCatalogRepository(db),
+  affiliateOffers: new DrizzleAffiliateOfferRepository(db)
 });
 
 export class DrizzleTransactionManager implements TransactionManager {
