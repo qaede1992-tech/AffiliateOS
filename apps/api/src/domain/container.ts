@@ -7,14 +7,15 @@ import { CampaignService, TrackingService } from "./campaigns.js";
 import { ContentService, SocialAccountService } from "./content.js";
 import { AnalyticsService } from "./analytics.js";
 import type { AnalyticsReader } from "./analytics-db.js";
+import { ConversionAttributionService, InMemoryConversionAttributionRepository, type ConversionAttributionRepository } from "./attribution.js";
 import { InMemoryOAuthStateRepository, InMemorySocialOAuthProviderRegistry, SocialOAuthService, type OAuthStateRepository } from "./oauth.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
-  campaigns: CampaignService; tracking: TrackingService; content: ContentService; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService;
+  campaigns: CampaignService; tracking: TrackingService; content: ContentService; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository()): Services {
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers),
     conversions: new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager),
@@ -24,7 +25,8 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     tracking: new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers),
     content: new ContentService(repositories.contents, repositories.campaigns, repositories.products), socialAccounts: new SocialAccountService(repositories.socialAccounts),
     socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository),
-    analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader)
+    analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader),
+    attribution: new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository)
   };
 }
 
