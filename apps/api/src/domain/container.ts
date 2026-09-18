@@ -1,4 +1,4 @@
-import type { Affiliate, Campaign, Commission, Content, Offer, SocialAccount } from "@affiliateos/shared";
+import type { Affiliate, Campaign, Commission, Content, Conversion, Offer, SocialAccount } from "@affiliateos/shared";
 import {
   InMemoryAffiliateAccountRepository,
   InMemoryAffiliateOfferRepository,
