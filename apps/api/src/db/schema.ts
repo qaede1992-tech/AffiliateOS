@@ -1,39 +1,24 @@
-import { integer, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { bigint, index, integer, jsonb, pgTable, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 
 const timestamps = {
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull()
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull()
 };
+const metadata = jsonb("metadata").$type<Record<string, unknown>>().notNull().default({});
 
-export const affiliates = pgTable("affiliates", {
-  id: uuid("id").primaryKey(),
-  name: varchar("name", { length: 200 }).notNull(),
-  email: varchar("email", { length: 320 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull(),
-  ...timestamps
-});
+// Existing operational tables remain intentionally compatible with 0000_initial.
+export const affiliates = pgTable("affiliates", { id: uuid("id").primaryKey(), name: varchar("name", { length: 200 }).notNull(), email: varchar("email", { length: 320 }).notNull(), status: varchar("status", { length: 20 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() });
+export const offers = pgTable("offers", { id: uuid("id").primaryKey(), name: varchar("name", { length: 200 }).notNull(), status: varchar("status", { length: 20 }).notNull(), commissionRateBps: integer("commission_rate_bps").notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() });
+export const conversions = pgTable("conversions", { id: uuid("id").primaryKey(), affiliateId: uuid("affiliate_id").notNull().references(() => affiliates.id), offerId: uuid("offer_id").notNull().references(() => offers.id), amountCents: integer("amount_cents").notNull(), status: varchar("status", { length: 20 }).notNull(), occurredAt: timestamp("occurred_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [index("conversions_affiliate_occurred_idx").on(table.affiliateId, table.occurredAt), index("conversions_offer_occurred_idx").on(table.offerId, table.occurredAt)]);
+export const commissions = pgTable("commissions", { id: uuid("id").primaryKey(), conversionId: uuid("conversion_id").notNull().references(() => conversions.id), affiliateId: uuid("affiliate_id").notNull().references(() => affiliates.id), amountCents: integer("amount_cents").notNull(), status: varchar("status", { length: 20 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("commissions_conversion_unique").on(table.conversionId), index("commissions_affiliate_status_idx").on(table.affiliateId, table.status)]);
 
-export const offers = pgTable("offers", {
-  id: uuid("id").primaryKey(),
-  name: varchar("name", { length: 200 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull(),
-  commissionRateBps: integer("commission_rate_bps").notNull(),
-  ...timestamps
-});
-
-export const conversions = pgTable("conversions", {
-  id: uuid("id").primaryKey(),
-  affiliateId: uuid("affiliate_id").notNull().references(() => affiliates.id),
-  offerId: uuid("offer_id").notNull().references(() => offers.id),
-  amountCents: integer("amount_cents").notNull(),
-  status: varchar("status", { length: 20 }).notNull(),
-  occurredAt: timestamp("occurred_at", { withTimezone: true, mode: "string" }).notNull()
-});
-
-export const commissions = pgTable("commissions", {
-  id: uuid("id").primaryKey(),
-  conversionId: uuid("conversion_id").notNull().references(() => conversions.id),
-  affiliateId: uuid("affiliate_id").notNull().references(() => affiliates.id),
-  amountCents: integer("amount_cents").notNull(),
-  status: varchar("status", { length: 20 }).notNull(),
-  ...timestamps
-});
+export const marketplaces = pgTable("marketplaces", { id: uuid("id").primaryKey(), name: varchar("name", { length: 100 }).notNull(), slug: varchar("slug", { length: 100 }).notNull(), status: varchar("status", { length: 20 }).notNull(), configuration: metadata, ...timestamps }, (table) => [uniqueIndex("marketplaces_slug_unique").on(table.slug)]);
+export const affiliateAccounts = pgTable("affiliate_accounts", { id: uuid("id").primaryKey(), marketplaceId: uuid("marketplace_id").notNull().references(() => marketplaces.id), name: varchar("name", { length: 200 }).notNull(), externalReference: varchar("external_reference", { length: 255 }), status: varchar("status", { length: 20 }).notNull(), credentialReference: varchar("credential_reference", { length: 255 }), configuration: metadata, ...timestamps }, (table) => [uniqueIndex("affiliate_accounts_marketplace_reference_unique").on(table.marketplaceId, table.externalReference)]);
+export const products = pgTable("products", { id: uuid("id").primaryKey(), marketplaceId: uuid("marketplace_id").notNull().references(() => marketplaces.id), externalProductId: varchar("external_product_id", { length: 255 }).notNull(), name: varchar("name", { length: 500 }).notNull(), description: varchar("description", { length: 10000 }), category: varchar("category", { length: 255 }), priceCents: bigint("price_cents", { mode: "number" }).notNull(), originalPriceCents: bigint("original_price_cents", { mode: "number" }), currency: varchar("currency", { length: 3 }).notNull(), rating: integer("rating_milli"), reviewCount: integer("review_count").notNull().default(0), soldCount: integer("sold_count").notNull().default(0), imageUrl: varchar("image_url", { length: 2048 }), productUrl: varchar("product_url", { length: 2048 }).notNull(), status: varchar("status", { length: 20 }).notNull(), ...timestamps }, (table) => [uniqueIndex("products_marketplace_external_unique").on(table.marketplaceId, table.externalProductId), index("products_marketplace_status_idx").on(table.marketplaceId, table.status), index("products_category_idx").on(table.category)]);
+export const affiliateOffers = pgTable("affiliate_offers", { id: uuid("id").primaryKey(), productId: uuid("product_id").notNull().references(() => products.id), affiliateAccountId: uuid("affiliate_account_id").notNull().references(() => affiliateAccounts.id), externalOfferId: varchar("external_offer_id", { length: 255 }), commissionRateBps: integer("commission_rate_bps"), commissionAmountCents: bigint("commission_amount_cents", { mode: "number" }), affiliateUrl: varchar("affiliate_url", { length: 2048 }).notNull(), status: varchar("status", { length: 20 }).notNull(), ...timestamps }, (table) => [uniqueIndex("affiliate_offers_account_external_unique").on(table.affiliateAccountId, table.externalOfferId), index("affiliate_offers_product_status_idx").on(table.productId, table.status)]);
+export const campaigns = pgTable("campaigns", { id: uuid("id").primaryKey(), name: varchar("name", { length: 200 }).notNull(), objective: varchar("objective", { length: 100 }).notNull(), status: varchar("status", { length: 20 }).notNull(), startAt: timestamp("start_at", { withTimezone: true, mode: "string" }), endAt: timestamp("end_at", { withTimezone: true, mode: "string" }), audience: metadata, ...timestamps }, (table) => [index("campaigns_status_dates_idx").on(table.status, table.startAt)]);
+export const campaignOffers = pgTable("campaign_offers", { campaignId: uuid("campaign_id").notNull().references(() => campaigns.id), affiliateOfferId: uuid("affiliate_offer_id").notNull().references(() => affiliateOffers.id), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("campaign_offers_unique").on(table.campaignId, table.affiliateOfferId)]);
+export const trackingLinks = pgTable("tracking_links", { id: uuid("id").primaryKey(), affiliateOfferId: uuid("affiliate_offer_id").notNull().references(() => affiliateOffers.id), campaignId: uuid("campaign_id").references(() => campaigns.id), code: varchar("code", { length: 100 }).notNull(), destinationUrl: varchar("destination_url", { length: 2048 }).notNull(), status: varchar("status", { length: 20 }).notNull(), ...timestamps }, (table) => [uniqueIndex("tracking_links_code_unique").on(table.code), index("tracking_links_campaign_idx").on(table.campaignId)]);
+export const clicks = pgTable("clicks", { id: uuid("id").primaryKey(), trackingLinkId: uuid("tracking_link_id").notNull().references(() => trackingLinks.id), occurredAt: timestamp("occurred_at", { withTimezone: true, mode: "string" }).notNull(), metadata }, (table) => [index("clicks_link_occurred_idx").on(table.trackingLinkId, table.occurredAt)]);
+export const socialAccounts = pgTable("social_accounts", { id: uuid("id").primaryKey(), platform: varchar("platform", { length: 50 }).notNull(), accountReference: varchar("account_reference", { length: 255 }).notNull(), status: varchar("status", { length: 20 }).notNull(), connection: metadata, credentialReference: varchar("credential_reference", { length: 255 }), ...timestamps }, (table) => [uniqueIndex("social_accounts_platform_reference_unique").on(table.platform, table.accountReference)]);
+export const content = pgTable("content", { id: uuid("id").primaryKey(), productId: uuid("product_id").references(() => products.id), campaignId: uuid("campaign_id").references(() => campaigns.id), platform: varchar("platform", { length: 50 }).notNull(), contentType: varchar("content_type", { length: 50 }).notNull(), title: varchar("title", { length: 500 }), caption: varchar("caption", { length: 5000 }), script: varchar("script", { length: 10000 }), cta: varchar("cta", { length: 500 }), status: varchar("status", { length: 20 }).notNull(), scheduledAt: timestamp("scheduled_at", { withTimezone: true, mode: "string" }), publishedAt: timestamp("published_at", { withTimezone: true, mode: "string" }), ...timestamps }, (table) => [index("content_campaign_status_idx").on(table.campaignId, table.status), index("content_scheduled_idx").on(table.scheduledAt)]);
