@@ -9,9 +9,9 @@ import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
 import { auditSecurityEvent } from "./http/app-audit.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
-export const configuredCorsOrigin = () => {
+export const configuredCorsOrigin = (production = process.env.NODE_ENV === "production") => {
   const origin = process.env.API_CORS_ORIGIN?.trim();
-  if (process.env.NODE_ENV === "production" && !origin) {
+  if (production && !origin) {
     throw new Error("API_CORS_ORIGIN must be configured in production.");
   }
   return origin || "http://localhost:5173";
