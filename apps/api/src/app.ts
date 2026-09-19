@@ -10,6 +10,7 @@ import { auditSecurityEvent } from "./http/app-audit.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http://localhost:5173";
+const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
 
 const configuredAuth = (): AuthConfig => {
   const token = process.env.API_AUTH_TOKEN?.trim();
@@ -87,6 +88,8 @@ export function createApp(services: Services = createInMemoryServices(), options
         });
       }
     }
+
+    if (isPublicCallback(request.url)) return;
 
     const context = authenticateRequest(request, auth);
     if (!context) {
