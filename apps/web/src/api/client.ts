@@ -1,10 +1,49 @@
 import type { Affiliate, AffiliateOffer, AnalyticsOverview, Campaign, CampaignAnalytics, CampaignOffer, Click, Commission, Content, Conversion, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, Product, RecordClickRequest, SocialAccountView, SocialOAuthStartRequest, SocialOAuthStartResponse, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest } from "@affiliateos/shared";
-async function get<T>(path: string): Promise<T> { const response = await fetch(path); if (!response.ok) throw new Error(`Request failed: ${response.status}`); return response.json() as Promise<T>; }
-async function post<T>(path: string, body: unknown): Promise<T> { const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
-async function patch<T>(path: string, body: unknown): Promise<T> { const response = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
-async function put<T>(path: string, body: unknown): Promise<T> { const response = await fetch(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
-async function remove(path: string): Promise<void> { const response = await fetch(path, { method: "DELETE" }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } }
+
+const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
+const url = (path: string) => `${apiOrigin}${path}`;
+let loginPromise: Promise<void> | null = null;
+
+async function loginWithPrompt(): Promise<void> {
+  if (loginPromise) return loginPromise;
+  loginPromise = (async () => {
+    const token = window.prompt("AffiliateOS authentication token:");
+    if (!token) throw new Error("Authentication is required.");
+    await request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token })
+    }, true);
+  })().finally(() => { loginPromise = null; });
+  return loginPromise;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, skipAuthRetry = false): Promise<T> {
+  const response = await fetch(url(path), { ...init, credentials: "include" });
+  if (!response.ok) {
+    if (response.status === 401 && !skipAuthRetry && path !== "/api/v1/auth/login") {
+      await loginWithPrompt();
+      return request<T>(path, init, true);
+    }
+    const error = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+    const requestError = new Error(error?.message ?? `Request failed: ${response.status}`);
+    (requestError as Error & { status?: number; code?: string }).status = response.status;
+    (requestError as Error & { status?: number; code?: string }).code = error?.error;
+    throw requestError;
+  }
+  return response.status === 204 ? (undefined as T) : response.json() as Promise<T>;
+}
+
+const get = <T>(path: string) => request<T>(path);
+const post = <T>(path: string, body: unknown) => request<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const patch = <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const put = <T>(path: string, body: unknown) => request<T>(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const remove = (path: string) => request<void>(path, { method: "DELETE" });
+
 export const api = {
+  login: (token: string) => request<{ authenticated: true; operatorId: string; role: string }>("/api/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }, true),
+  logout: () => post<{ authenticated: false }>("/api/v1/auth/logout", {}),
+  me: () => get<{ authenticated: true; operatorId: string; role: string }>("/api/v1/auth/me"),
   affiliates: () => get<ListResponse<Affiliate>>("/api/v1/affiliates"), createAffiliate: (input: CreateAffiliateRequest) => post<Affiliate>("/api/v1/affiliates", input),
   offers: () => get<ListResponse<Offer>>("/api/v1/offers"), createOffer: (input: CreateOfferRequest) => post<Offer>("/api/v1/offers", input),
   conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"), commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),

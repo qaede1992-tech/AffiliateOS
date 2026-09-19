@@ -4,9 +4,10 @@ import { z } from "zod";
 import type { HealthResponse } from "@affiliateos/shared";
 import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
-import { authenticateRequest, type AuthConfig, type OperatorRole } from "./http/auth.js";
+import { authenticateRequest, authenticateToken, type AuthConfig, type OperatorRole } from "./http/auth.js";
 import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
 import { auditSecurityEvent } from "./http/app-audit.js";
+import { clearSessionCookie, createSessionCookieValue, readSessionCookie, setSessionCookie } from "./http/session.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 export const configuredCorsOrigin = (production = process.env.NODE_ENV === "production") => {
@@ -18,6 +19,8 @@ export const configuredCorsOrigin = (production = process.env.NODE_ENV === "prod
 };
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
 const isHealthEndpoint = (url: string) => url === "/api/v1/health" || url === "/api/v1/ready";
+const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
+const isStateChangingMethod = (method: string) => ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 
 const configuredAuth = (): AuthConfig => {
   const token = process.env.API_AUTH_TOKEN?.trim();
@@ -51,12 +54,16 @@ export function createApp(services: Services = createInMemoryServices(), options
   const rateLimiter = rateLimitConfig.enabled
     ? new InMemoryRateLimiter(rateLimitConfig.limit, rateLimitConfig.windowMs)
     : null;
+  const sessionSecret = auth.token;
+  const production = process.env.NODE_ENV === "production";
+  const corsOrigin = configuredCorsOrigin();
 
   const app = Fastify({
     logger: {
       redact: [
         "req.headers.authorization",
         "req.headers.cookie",
+        "req.body.token",
         "req.body.credentialReference",
         "req.body.configuration.*",
         "req.query.code",
@@ -67,19 +74,15 @@ export function createApp(services: Services = createInMemoryServices(), options
   });
 
   app.decorateRequest("auth", null);
-  app.register(cors, { origin: configuredCorsOrigin() });
+  app.register(cors, { origin: corsOrigin, credentials: true });
 
   app.addHook("onSend", async (request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "DENY");
     reply.header("Referrer-Policy", "no-referrer");
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    if (!isHealthEndpoint(request.url)) {
-      reply.header("Cache-Control", "no-store");
-    }
-    if (process.env.NODE_ENV === "production") {
-      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-    }
+    if (!isHealthEndpoint(request.url)) reply.header("Cache-Control", "no-store");
+    if (process.env.NODE_ENV === "production") reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   });
 
   app.addHook("onRequest", async (request, reply) => {
@@ -92,34 +95,33 @@ export function createApp(services: Services = createInMemoryServices(), options
       reply.header("X-RateLimit-Remaining", result.remaining);
       if (!result.allowed) {
         reply.header("Retry-After", result.retryAfterSeconds);
-        return reply.status(429).send({
-          error: "RATE_LIMITED",
-          message: "Too many requests. Please retry later."
-        });
+        return reply.status(429).send({ error: "RATE_LIMITED", message: "Too many requests. Please retry later." });
       }
     }
 
-    if (isPublicCallback(request.url)) return;
+    if (isPublicCallback(request.url) || isPublicAuthEndpoint(request.url)) return;
 
-    const context = authenticateRequest(request, auth);
+    const bearerContext = authenticateRequest(request, auth);
+    const sessionContext = sessionSecret ? readSessionCookie(request, sessionSecret) : null;
+    const context = bearerContext ?? sessionContext;
     if (!context) {
-      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_bearer_token" });
+      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_authentication" });
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." });
+    }
+    if (sessionContext && !bearerContext && isStateChangingMethod(request.method)) {
+      const origin = request.headers.origin;
+      if (!origin || origin !== corsOrigin) {
+        auditSecurityEvent(request.log, request, "authorization_denied", { reason: "invalid_session_request_origin" });
+        return reply.status(403).send({ error: "CSRF_ORIGIN_REJECTED", message: "The request origin is not allowed." });
+      }
     }
     request.auth = context;
   });
 
-  app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({
-    status: "ok",
-    service: "affiliateos-api",
-    timestamp: new Date().toISOString()
-  }));
+  app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({ status: "ok", service: "affiliateos-api", timestamp: new Date().toISOString() }));
 
   app.get("/api/v1/ready", async (_request, reply) => {
-    if (!options.readinessCheck) {
-      return reply.send({ status: "ready", service: "affiliateos-api" });
-    }
-
+    if (!options.readinessCheck) return reply.send({ status: "ready", service: "affiliateos-api" });
     try {
       await options.readinessCheck();
       return reply.send({ status: "ready", service: "affiliateos-api" });
@@ -129,29 +131,33 @@ export function createApp(services: Services = createInMemoryServices(), options
     }
   });
 
+  app.post("/api/v1/auth/login", async (request, reply) => {
+    const input = z.object({ token: z.string().trim().min(1).max(4096) }).parse(request.body);
+    const context = authenticateToken(input.token, auth);
+    if (!context || !sessionSecret) {
+      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_login_credential" });
+      return reply.status(401).send({ error: "UNAUTHORIZED", message: "Invalid authentication credential." });
+    }
+    setSessionCookie(reply, createSessionCookieValue(context, sessionSecret), production);
+    return reply.send({ authenticated: true, operatorId: context.operatorId, role: context.role });
+  });
+
+  app.post("/api/v1/auth/logout", async (_request, reply) => {
+    clearSessionCookie(reply, production);
+    return reply.send({ authenticated: false });
+  });
+
   app.get("/api/v1/auth/me", async (request) => ({ authenticated: true, operatorId: request.auth!.operatorId, role: request.auth!.role }));
 
   registerResourceRoutes(app, services);
 
   app.setErrorHandler((error, request, reply) => {
     request.log.error(error);
-    if (error instanceof DomainError) {
-      return reply.status(error.statusCode).send({ error: error.code, message: error.message });
-    }
-    if (error instanceof z.ZodError) {
-      return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." });
-    }
-
-    const statusCode =
-      error !== null && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number"
-        ? error.statusCode
-        : 500;
+    if (error instanceof DomainError) return reply.status(error.statusCode).send({ error: error.code, message: error.message });
+    if (error instanceof z.ZodError) return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." });
+    const statusCode = error !== null && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
     const safeStatusCode = statusCode >= 400 && statusCode < 500 ? statusCode : 500;
-
-    return reply.status(safeStatusCode).send({
-      error: "INTERNAL_SERVER_ERROR",
-      message: safeStatusCode === 500 ? "An unexpected error occurred." : "The request could not be processed."
-    });
+    return reply.status(safeStatusCode).send({ error: "INTERNAL_SERVER_ERROR", message: safeStatusCode === 500 ? "An unexpected error occurred." : "The request could not be processed." });
   });
 
   return app;
