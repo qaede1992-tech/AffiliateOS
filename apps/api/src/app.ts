@@ -12,8 +12,8 @@ const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http:
 const configuredAuth = (): AuthConfig => {
   const token = process.env.API_AUTH_TOKEN?.trim();
   const production = process.env.NODE_ENV === "production";
-  if (production && !token) {
-    throw new Error("API_AUTH_TOKEN is required when NODE_ENV=production.");
+  if (production && (!token || token.length < 32)) {
+    throw new Error("API_AUTH_TOKEN must be at least 32 characters in production.");
   }
 
   const role = (process.env.API_AUTH_OPERATOR_ROLE?.trim() || "admin") as OperatorRole;
