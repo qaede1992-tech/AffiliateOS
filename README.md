@@ -25,7 +25,7 @@ npm run dev
 
 ## HTTP runtime hardening
 
-The API accepts an explicit comma-separated `API_CORS_ORIGINS` allowlist. Keep it restricted to the deployed dashboard origins; the default is `http://localhost:5173` for local development. API request bodies are limited to 1 MiB and requests time out after 30 seconds. Responses include baseline browser hardening headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`).
+The API accepts an explicit `API_CORS_ORIGIN` allowlist entry. Keep it restricted to the deployed dashboard origin; the default is `http://localhost:5173` for local development. API request bodies are limited to 1 MiB and requests time out after 30 seconds. Responses include baseline browser hardening headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`).
 
 ## Operational workflow
 
