@@ -31,6 +31,17 @@ function validateContentTransition(current: Content["status"], next: Content["st
   }
 }
 
+const sensitiveConnectionKey = /(?:password|passcode|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|private[_-]?key|signing[_-]?key)/i;
+
+function redactSensitiveConnectionValues(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveConnectionValues(item));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
+    key,
+    sensitiveConnectionKey.test(key) ? "[REDACTED]" : redactSensitiveConnectionValues(nested)
+  ]));
+}
+
 export class ContentService {
   constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>) {}
 
@@ -86,7 +97,11 @@ export class SocialAccountService {
 
   private view(account: SocialAccount): SocialAccountView {
     const { credentialReference: _credentialReference, ...safe } = account;
-    return { ...safe, hasCredentialReference: Boolean(account.credentialReference) };
+    return {
+      ...safe,
+      connection: redactSensitiveConnectionValues(account.connection) as SocialAccount["connection"],
+      hasCredentialReference: Boolean(account.credentialReference)
+    };
   }
 
   async list() { return (await this.accounts.list()).map((account) => this.view(account)); }
