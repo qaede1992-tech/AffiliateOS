@@ -8,7 +8,7 @@ import { requireOperator } from "./auth.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services): void {
-  app.get<{ Reply: ListResponse<Affiliate> }>("/api/v1/affiliates", async () => list(await services.affiliates.list()));
+  app.get<{ Reply: ListResponse<Affiliate }>("/api/v1/affiliates", async () => list(await services.affiliates.list()));
   app.post<{ Body: CreateAffiliateRequest; Reply: Affiliate }>("/api/v1/affiliates", writeGuard, async (request, reply) => reply.status(201).send(await services.affiliates.create(createAffiliateSchema.parse(request.body))));
   app.get<{ Reply: ListResponse<Offer> }>("/api/v1/offers", async () => list(await services.offers.list()));
   app.post<{ Body: CreateOfferRequest; Reply: Offer }>("/api/v1/offers", writeGuard, async (request, reply) => reply.status(201).send(await services.offers.create(createOfferSchema.parse(request.body))));
@@ -56,5 +56,5 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.get("/api/v1/social-accounts/:socialAccountId", async (request) => services.socialAccounts.get(socialAccountIdSchema.parse(request.params).socialAccountId));
   app.patch("/api/v1/social-accounts/:socialAccountId", writeGuard, async (request) => services.socialAccounts.update(socialAccountIdSchema.parse(request.params).socialAccountId, updateSocialAccountSchema.parse(request.body)));
   app.post("/api/v1/social-accounts/oauth/start", writeGuard, async (request) => { const input = socialOAuthStartSchema.parse(request.body); return services.socialOAuth.start(input.platform, input.redirectUri); });
-  app.get("/api/v1/social-accounts/oauth/callback", writeGuard, async (request) => { const input = socialOAuthCallbackSchema.parse(request.query); return services.socialOAuth.callback(input.platform, input.code, input.state); });
+  app.get("/api/v1/social-accounts/oauth/callback", async (request) => { const input = socialOAuthCallbackSchema.parse(request.query); return services.socialOAuth.callback(input.platform, input.code, input.state); });
 }
