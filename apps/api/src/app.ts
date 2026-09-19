@@ -20,6 +20,7 @@ export const configuredCorsOrigin = (production = process.env.NODE_ENV === "prod
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
 const isHealthEndpoint = (url: string) => url === "/api/v1/health" || url === "/api/v1/ready";
 const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
+const isStateChangingMethod = (method: string) => ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 
 const configuredAuth = (): AuthConfig => {
   const token = process.env.API_AUTH_TOKEN?.trim();
@@ -55,6 +56,7 @@ export function createApp(services: Services = createInMemoryServices(), options
     : null;
   const sessionSecret = auth.token;
   const production = process.env.NODE_ENV === "production";
+  const corsOrigin = configuredCorsOrigin();
 
   const app = Fastify({
     logger: {
@@ -72,7 +74,7 @@ export function createApp(services: Services = createInMemoryServices(), options
   });
 
   app.decorateRequest("auth", null);
-  app.register(cors, { origin: configuredCorsOrigin(), credentials: true });
+  app.register(cors, { origin: corsOrigin, credentials: true });
 
   app.addHook("onSend", async (request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
@@ -105,6 +107,13 @@ export function createApp(services: Services = createInMemoryServices(), options
     if (!context) {
       auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_authentication" });
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." });
+    }
+    if (sessionContext && !bearerContext && isStateChangingMethod(request.method)) {
+      const origin = request.headers.origin;
+      if (!origin || origin !== corsOrigin) {
+        auditSecurityEvent(request.log, request, "authorization_denied", { reason: "invalid_session_request_origin" });
+        return reply.status(403).send({ error: "CSRF_ORIGIN_REJECTED", message: "The request origin is not allowed." });
+      }
     }
     request.auth = context;
   });
