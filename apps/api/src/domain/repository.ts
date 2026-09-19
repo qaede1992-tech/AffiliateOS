@@ -1,8 +1,8 @@
 import type { EntityId } from "@affiliateos/shared";
-import type { Affiliate, Campaign, Click, Commission, Content, Conversion, Offer, TrackingLink, SocialAccount } from "@affiliateos/shared";
+import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, Offer, TrackingLink, SocialAccount } from "@affiliateos/shared";
 
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
-export class InMemoryRepository<T extends { id: EntityId }> implements Repository<T> {
+export class InMemoryRepository<T extends { id: EntityId }> {
   private readonly entities = new Map<EntityId, T>();
   async list(): Promise<T[]> { return [...this.entities.values()]; }
   async findById(id: EntityId): Promise<T | undefined> { return this.entities.get(id); }
@@ -33,7 +33,7 @@ export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: Repository<Commission>;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: Repository<SocialAccount>;
+  contents: Repository<Content>; socialAccounts: SocialAccountRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
