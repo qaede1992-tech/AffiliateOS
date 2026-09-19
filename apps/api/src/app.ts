@@ -14,7 +14,16 @@ type AppOptions = {
 
 export function createApp(services: Services = createInMemoryServices(), options: AppOptions = {}) {
   const app = Fastify({
-    logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*"] },
+    logger: {
+      redact: [
+        "req.headers.authorization",
+        "req.headers.cookie",
+        "req.body.credentialReference",
+        "req.body.configuration.*",
+        "req.query.code",
+        "req.query.state"
+      ]
+    },
     bodyLimit: 1_048_576
   });
 
