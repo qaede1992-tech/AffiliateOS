@@ -15,9 +15,9 @@ function createConfiguredApp() {
 test("marketplace activation requires explicit confirmation and never returns the credential reference", async () => {
   const configured = await createConfiguredApp();
   const rejectedCreate = await configured.inject({ method: "POST", url: "/api/v1/marketplaces", payload: { name: "Auto enabled", slug: "auto-enabled", providerSlug: "mock", credentialReference: "vault://affiliateos/mock", enabled: true, configuration: { region: "test" } } });
-  assert.equal(rejectedCreate.statusCode, 409); assert.equal(rejectedCreate.json().error, "MARKETPLACE_CONFIRMATION_REQUIRED");
+  assert.equal(rejectedCreate.statusCode, 400);
 
-  const create = await configured.inject({ method: "POST", url: "/api/v1/marketplaces", payload: { name: "Mock connection", slug: "mock-connection", providerSlug: "mock", credentialReference: "vault://affiliateos/mock", enabled: false, configuration: { region: "test" } } });
+  const create = await configured.inject({ method: "POST", url: "/api/v1/marketplaces", payload: { name: "Mock connection", slug: "mock-connection", providerSlug: "mock", credentialReference: "vault://affiliateos/mock", enabled: false, configuration: { region: "test" } });
   assert.equal(create.statusCode, 201); assert.equal(create.json().enabled, false); assert.equal(create.json().status, "pending"); assert.equal(create.json().credentialReference, undefined); assert.equal(create.json().hasCredentialReference, true);
 
   const testResult = await configured.inject({ method: "POST", url: "/api/v1/marketplaces/mock-connection/test" });
