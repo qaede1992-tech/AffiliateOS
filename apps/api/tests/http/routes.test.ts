@@ -2,6 +2,54 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../../src/app.js";
 
+test("GET /api/v1/health returns health status and configured CORS origin", async () => {
+  const app = createApp();
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/v1/health",
+    headers: { origin: "http://localhost:5173" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["access-control-allow-origin"], "http://localhost:5173");
+  assert.equal(response.json().status, "ok");
+
+  await app.close();
+});
+
+test("GET /api/v1/health rejects an unconfigured CORS origin", async () => {
+  const app = createApp();
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/v1/health",
+    headers: { origin: "https://untrusted.example" },
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.headers["access-control-allow-origin"], undefined);
+
+  await app.close();
+});
+
+test("HTTP runtime rejects request bodies above the configured limit", async () => {
+  const app = createApp();
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: {
+      name: "x".repeat(1_050_000),
+      email: "partner@example.com",
+    },
+  });
+
+  assert.equal(response.statusCode, 413);
+
+  await app.close();
+});
+
 test("POST /api/v1/affiliates creates an affiliate", async () => {
   const app = createApp();
 
