@@ -6,6 +6,7 @@ import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
 import { authenticateRequest, type AuthConfig, type OperatorRole } from "./http/auth.js";
 import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
+import { auditSecurityEvent } from "./http/app-audit.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http://localhost:5173";
@@ -79,6 +80,7 @@ export function createApp(services: Services = createInMemoryServices(), options
 
     const context = authenticateRequest(request, auth);
     if (!context) {
+      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_bearer_token" });
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." });
     }
     request.auth = context;
