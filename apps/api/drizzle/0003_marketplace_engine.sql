@@ -1,7 +1,7 @@
 -- Marketplace Engine is additive: no credentials are stored here, only opaque secret-manager references.
 ALTER TABLE "marketplaces" ADD COLUMN IF NOT EXISTS "provider_slug" varchar(100);
 ALTER TABLE "marketplaces" ADD COLUMN IF NOT EXISTS "credential_reference" varchar(255);
-UPDATE "marketplaces" SET "provider_slug" = "unconfigured" WHERE "provider_slug" IS NULL;
+UPDATE "marketplaces" SET "provider_slug" = 'unconfigured' WHERE "provider_slug" IS NULL;
 ALTER TABLE "marketplaces" ALTER COLUMN "provider_slug" SET NOT NULL;
 
 ALTER TABLE "affiliate_offers" ALTER COLUMN "affiliate_url" DROP NOT NULL;
