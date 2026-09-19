@@ -48,14 +48,12 @@ jobs:
         run: npm run build
       - name: Check migrations
         run: npm run db:check
+      - name: Configure CI database environment
+        run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
       - name: Apply migrations
         run: npm run db:migrate
-        env:
-          DATABASE_URL: postgresql://affiliateos:affiliateos@localhost:5432/affiliateos
       - name: Verify migrated database
         run: npm run db:verify
-        env:
-          DATABASE_URL: postgresql://affiliateos:affiliateos@localhost:5432/affiliateos
 
   containers:
     runs-on: ubuntu-latest
