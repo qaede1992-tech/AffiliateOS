@@ -6,8 +6,11 @@ import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
-const configuredCorsOrigins = () => process.env.API_CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? ["http://localhost:5173"];
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const configuredCorsOrigins = (): string[] => {
+  const value = process.env.API_CORS_ORIGINS;
+  if (!value) return ["http://localhost:5173"];
+  return value.split(",").map((origin) => origin.trim()).filter((origin) => origin.length > 0);
+};
 
 export function createApp(services: Services = createInMemoryServices()) {
   const app = Fastify({
@@ -18,8 +21,7 @@ export function createApp(services: Services = createInMemoryServices()) {
 
   const corsOrigins = configuredCorsOrigins();
   if (corsOrigins.length === 0) throw new Error("API_CORS_ORIGINS must contain at least one origin.");
-  const corsOriginPattern = new RegExp(`^(?:${corsOrigins.map(escapeRegExp).join("|")})$`);
-  app.register(cors, { origin: corsOriginPattern });
+  app.register(cors, { origin: corsOrigins });
 
   app.addHook("onSend", async (_request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
