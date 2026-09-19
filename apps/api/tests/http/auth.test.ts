@@ -44,8 +44,7 @@ test("valid bearer authentication exposes the authenticated operator context", a
 
 test("viewer authentication cannot activate a marketplace connection", async () => {
   const app = createApp(undefined, {
-    ...auth,
-    role: "viewer"
+    auth: { ...auth, role: "viewer" }
   });
 
   const response = await app.inject({
