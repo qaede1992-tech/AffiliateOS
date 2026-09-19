@@ -44,6 +44,29 @@ test("valid bearer authentication exposes the authenticated operator context", a
   await app.close();
 });
 
+test("viewer authentication cannot mutate protected resources", async () => {
+  const app = createApp(undefined, {
+    auth: { ...auth, role: "viewer" }
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/campaigns",
+    headers: { authorization: "Bearer test-api-token" },
+    payload: {
+      name: "Viewer should not create campaigns"
+    }
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(response.json(), {
+    error: "FORBIDDEN",
+    message: "An authorized operator is required."
+  });
+
+  await app.close();
+});
+
 test("viewer authentication cannot activate a marketplace connection", async () => {
   const app = createApp(undefined, {
     auth: { ...auth, role: "viewer" }
