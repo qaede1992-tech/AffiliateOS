@@ -85,7 +85,7 @@ Do not put API keys, OAuth tokens, or marketplace credentials in `.env.example`,
 
 ## HTTP runtime hardening
 
-The API accepts an explicit `API_CORS_ORIGIN` setting restricted to the deployed dashboard origin; the local default is `http://localhost:5173`. Request bodies are limited to 1 MiB. Responses include baseline browser hardening headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and `Permissions-Policy`). Sensitive credential/configuration request fields are redacted from API logs.
+The API accepts an explicit `API_CORS_ORIGIN` setting restricted to the deployed dashboard origin; the local default is `http://localhost:5173`. Request bodies are limited to 1 MiB. Sensitive credential/configuration request fields are redacted from API logs.
 
 ## Verification
 
