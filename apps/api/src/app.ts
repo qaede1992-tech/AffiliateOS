@@ -61,6 +61,16 @@ export function createApp(services: Services = createInMemoryServices(), options
   app.decorateRequest("auth", null);
   app.register(cors, { origin: configuredCorsOrigin() });
 
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    if (process.env.NODE_ENV === "production") {
+      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+  });
+
   app.addHook("onRequest", async (request, reply) => {
     reply.header("X-Request-Id", request.id);
     if (request.url === "/api/v1/health" || request.url === "/api/v1/ready") return;
