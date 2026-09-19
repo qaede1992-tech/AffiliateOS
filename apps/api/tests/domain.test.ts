@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
 import { DomainError } from "../src/domain/errors.js";
-import { InMemoryRepository } from "../src/domain/repository.js";
+import { InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
 import { ConversionService } from "../src/domain/services.js";
 
 test("creating a conversion creates a pending commission using offer basis points", async () => {
   const affiliates = new InMemoryRepository<Affiliate>();
   const offers = new InMemoryRepository<Offer>();
-  const conversions = new InMemoryRepository<Conversion>();
+  const conversions = new InMemoryConversionRepository();
   const commissions = new InMemoryRepository<Commission>();
   const affiliate: Affiliate = {
     id: "00000000-0000-4000-8000-000000000001",
@@ -41,10 +41,48 @@ test("creating a conversion creates a pending commission using offer basis point
   ]);
 });
 
+test("creating a conversion with the same idempotency key returns the original conversion", async () => {
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryRepository<Commission>();
+  const affiliate: Affiliate = { id: "00000000-0000-4000-8000-000000000005", name: "Partner", email: "partner@example.com", status: "active", createdAt: new Date().toISOString() };
+  const offer: Offer = { id: "00000000-0000-4000-8000-000000000006", name: "Standard", status: "active", commissionRateBps: 1000, createdAt: new Date().toISOString() };
+  await affiliates.save(affiliate);
+  await offers.save(offer);
+  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
+  const input = { affiliateId: affiliate.id, offerId: offer.id, amountCents: 5000, idempotencyKey: "conversion-event-001" };
+
+  const first = await service.create(input);
+  const second = await service.create(input);
+
+  assert.equal(second.id, first.id);
+  assert.equal((await conversions.list()).length, 1);
+  assert.equal((await commissions.list()).length, 1);
+});
+
+test("reusing a conversion idempotency key for different data is rejected", async () => {
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryRepository<Commission>();
+  const affiliateId = "00000000-0000-4000-8000-000000000007";
+  const offerId = "00000000-0000-4000-8000-000000000008";
+  await affiliates.save({ id: affiliateId, name: "Partner", email: "partner@example.com", status: "active", createdAt: new Date().toISOString() });
+  await offers.save({ id: offerId, name: "Standard", status: "active", commissionRateBps: 1000, createdAt: new Date().toISOString() });
+  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
+  await service.create({ affiliateId, offerId, amountCents: 1000, idempotencyKey: "conversion-event-002" });
+
+  await assert.rejects(
+    () => service.create({ affiliateId, offerId, amountCents: 2000, idempotencyKey: "conversion-event-002" }),
+    (error: unknown) => error instanceof DomainError && error.code === "IDEMPOTENCY_KEY_CONFLICT" && error.statusCode === 409
+  );
+});
+
 test("creating a conversion rejects an inactive offer", async () => {
   const affiliates = new InMemoryRepository<Affiliate>();
   const offers = new InMemoryRepository<Offer>();
-  const conversions = new InMemoryRepository<Conversion>();
+  const conversions = new InMemoryConversionRepository();
   const commissions = new InMemoryRepository<Commission>();
   const affiliateId = "00000000-0000-4000-8000-000000000003";
   const offerId = "00000000-0000-4000-8000-000000000004";
