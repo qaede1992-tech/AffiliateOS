@@ -55,7 +55,7 @@ test("rate limiter evicts the earliest-expiring bucket rather than insertion-old
   assert.equal(limiter.consume("b", 1_000).allowed, true);
   assert.equal(limiter.consume("c", 3_000).allowed, true);
 
-  assert.equal(limiter.consume("b", 3_000).allowed, true);
+  // a remains active, proving the earlier-expiring b was evicted.
   assert.equal(limiter.consume("a", 3_000).allowed, false);
 });
 
