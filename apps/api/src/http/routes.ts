@@ -1,20 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
-import {
-  createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema,
-  marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema,
-  createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema,
-  createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema,
-  trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema,
-  contentQuerySchema, contentIdSchema, createContentSchema, updateContentSchema,
-  socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema,
-  socialOAuthStartSchema, socialOAuthCallbackSchema
-} from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, createContentSchema, updateContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialOAuthStartSchema, socialOAuthCallbackSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
-
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
-
 export function registerResourceRoutes(app: FastifyInstance, services: Services): void {
   app.get<{ Reply: ListResponse<Affiliate> }>("/api/v1/affiliates", async () => list(await services.affiliates.list()));
   app.post<{ Body: CreateAffiliateRequest; Reply: Affiliate }>("/api/v1/affiliates", async (request, reply) => reply.status(201).send(await services.affiliates.create(createAffiliateSchema.parse(request.body))));
@@ -26,9 +15,10 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.get("/api/v1/conversions/:conversionId/attribution", async (request) => { const { conversionId } = conversionIdSchema.parse(request.params); const attribution = await services.attribution.get(conversionId); return attribution ?? { conversionId, attributed: false }; });
   app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list()));
   app.post<{ Body: { product: Product; commissionRateBps?: number; audienceRelevance?: number }; Reply: ProductOpportunity }>("/api/v1/product-opportunities/score", async (request) => { const input = scoreProductSchema.parse(request.body); return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance); });
-
   app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders()));
   app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections()));
+  app.get("/api/v1/products", async () => list(await services.marketplace.listProducts()));
+  app.get("/api/v1/affiliate-offers", async () => list(await services.marketplace.listAffiliateOffers()));
   app.post("/api/v1/marketplaces", async (request, reply) => { const connection = await services.marketplace.createConnection(createMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_created", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return reply.status(201).send(connection); });
   app.get("/api/v1/marketplaces/:connectionSlug", async (request) => services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug));
   app.patch("/api/v1/marketplaces/:connectionSlug", async (request) => { const connection = await services.marketplace.updateConnection(marketplaceSlugSchema.parse(request.params).connectionSlug, updateMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_updated", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return connection; });
@@ -40,7 +30,6 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return services.marketplace.getProduct(connectionSlug, externalProductId); });
   app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return list(await services.marketplace.getOffers(connectionSlug, externalProductId)); });
   app.post("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers/:externalOfferId/affiliate-link", async (request) => { const input = marketplaceLinkSchema.parse(request.params); return services.marketplace.generateAffiliateLink(input.connectionSlug, input.externalProductId, input.externalOfferId); });
-
   app.get("/api/v1/campaigns", async () => list(await services.campaigns.list()));
   app.post("/api/v1/campaigns", async (request, reply) => reply.status(201).send(await services.campaigns.create(createCampaignSchema.parse(request.body))));
   app.get("/api/v1/campaigns/:campaignId", async (request) => services.campaigns.get(campaignIdSchema.parse(request.params).campaignId));
@@ -53,15 +42,12 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.get("/api/v1/tracking-links/:trackingLinkId", async (request) => services.tracking.get(trackingLinkIdSchema.parse(request.params).trackingLinkId));
   app.post("/api/v1/tracking-links/:trackingLinkId/clicks", async (request) => services.tracking.recordClick(trackingLinkIdSchema.parse(request.params).trackingLinkId, recordClickSchema.parse(request.body)));
   app.get("/api/v1/tracking-links/:trackingLinkId/stats", async (request) => services.tracking.stats(trackingLinkIdSchema.parse(request.params).trackingLinkId));
-
   app.get("/api/v1/analytics/overview", async () => services.analytics.overview());
   app.get("/api/v1/analytics/campaigns/:campaignId", async (request) => services.analytics.campaign(campaignIdSchema.parse(request.params).campaignId));
-
   app.get("/api/v1/content", async (request) => { const { campaignId } = contentQuerySchema.parse(request.query); return list(await services.content.list(campaignId)); });
   app.post("/api/v1/content", async (request, reply) => reply.status(201).send(await services.content.create(createContentSchema.parse(request.body))));
   app.get("/api/v1/content/:contentId", async (request) => services.content.get(contentIdSchema.parse(request.params).contentId));
   app.patch("/api/v1/content/:contentId", async (request) => services.content.update(contentIdSchema.parse(request.params).contentId, updateContentSchema.parse(request.body)));
-
   app.get("/api/v1/social-accounts", async () => list(await services.socialAccounts.list()));
   app.post("/api/v1/social-accounts", async (request, reply) => reply.status(201).send(await services.socialAccounts.create(createSocialAccountSchema.parse(request.body))));
   app.get("/api/v1/social-accounts/:socialAccountId", async (request) => services.socialAccounts.get(socialAccountIdSchema.parse(request.params).socialAccountId));
