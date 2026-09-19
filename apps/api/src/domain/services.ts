@@ -9,9 +9,13 @@ import type {
   Offer
 } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
-import type { Repository, TransactionManager } from "./repository.js";
+import type { ConversionRepository, Repository, TransactionManager } from "./repository.js";
 
 const now = () => new Date().toISOString();
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505");
+}
 
 export class AffiliateService {
   constructor(private readonly affiliates: Repository<Affiliate>) {}
@@ -53,7 +57,7 @@ export class OfferService {
 
 export class ConversionService {
   constructor(
-    private readonly conversions: Repository<Conversion>,
+    private readonly conversions: ConversionRepository,
     private readonly commissions: Repository<Commission>,
     private readonly affiliates: Repository<Affiliate>,
     private readonly offers: Repository<Offer>,
@@ -65,6 +69,17 @@ export class ConversionService {
   }
 
   async create(input: CreateConversionRequest): Promise<Conversion> {
+    const idempotencyKey = input.idempotencyKey?.trim();
+    if (idempotencyKey) {
+      const existing = await this.conversions.findByIdempotencyKey(idempotencyKey);
+      if (existing) {
+        if (existing.affiliateId !== input.affiliateId || existing.offerId !== input.offerId || existing.amountCents !== input.amountCents) {
+          throw new DomainError("IDEMPOTENCY_KEY_CONFLICT", "The idempotency key was already used for a different conversion.", 409);
+        }
+        return existing;
+      }
+    }
+
     const affiliate = await this.affiliates.findById(input.affiliateId);
     if (!affiliate) {
       throw new DomainError("AFFILIATE_NOT_FOUND", "The affiliate does not exist.", 404);
@@ -84,20 +99,34 @@ export class ConversionService {
       offerId: input.offerId,
       amountCents: input.amountCents,
       status: "pending",
-      occurredAt: input.occurredAt ?? now()
+      occurredAt: input.occurredAt ?? now(),
+      idempotencyKey
     };
-    return this.transactionManager.run(async ({ conversions, commissions }) => {
-      await conversions.save(conversion);
-      await commissions.save({
-        id: randomUUID(),
-        conversionId: conversion.id,
-        affiliateId: affiliate.id,
-        amountCents: Math.round((conversion.amountCents * offer.commissionRateBps) / 10_000),
-        status: "pending",
-        createdAt: now()
+    try {
+      return await this.transactionManager.run(async ({ conversions, commissions }) => {
+        await conversions.save(conversion);
+        await commissions.save({
+          id: randomUUID(),
+          conversionId: conversion.id,
+          affiliateId: affiliate.id,
+          amountCents: Math.round((conversion.amountCents * offer.commissionRateBps) / 10_000),
+          status: "pending",
+          createdAt: now()
+        });
+        return conversion;
       });
-      return conversion;
-    });
+    } catch (error) {
+      if (idempotencyKey && isUniqueViolation(error)) {
+        const raced = await this.conversions.findByIdempotencyKey(idempotencyKey);
+        if (raced) {
+          if (raced.affiliateId !== input.affiliateId || raced.offerId !== input.offerId || raced.amountCents !== input.amountCents) {
+            throw new DomainError("IDEMPOTENCY_KEY_CONFLICT", "The idempotency key was already used for a different conversion.", 409);
+          }
+          return raced;
+        }
+      }
+      throw error;
+    }
   }
 }
 
