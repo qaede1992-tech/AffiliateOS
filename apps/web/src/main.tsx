@@ -9,6 +9,7 @@ import type {
   Offer
 } from "@affiliateos/shared";
 import { api } from "./api/client";
+import { WorkflowPanel } from "./components/WorkflowPanel";
 import "./styles.css";
 
 type DashboardData = {
@@ -128,6 +129,7 @@ function App() {
           <nav>
             <a className="nav-item active" href="#overview">Overview</a>
             <a className="nav-item" href="#analytics">Analytics</a>
+            <a className="nav-item" href="#workflows">Workflows</a>
             <a className="nav-item" href="#affiliates">Affiliates</a>
             <a className="nav-item" href="#offers">Offers</a>
             <a className="nav-item" href="#marketplaces">Marketplace Connections</a>
@@ -176,6 +178,8 @@ function App() {
           )}
           <p className="analytics-note">Revenue and conversion metrics use only explicit conversion-to-tracking-link attribution; legacy conversions are not implicitly assigned to campaigns.</p>
         </section>
+
+        <WorkflowPanel />
 
         <section className="workspace-grid">
           <article className="panel" id="conversions">
