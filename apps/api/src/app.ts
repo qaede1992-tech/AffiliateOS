@@ -10,12 +10,18 @@ const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http:
 
 export function createApp(services: Services = createInMemoryServices()) {
   const app = Fastify({
-    logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*", "req.body.connection.*"] },
-    bodyLimit: 1_048_576,
-    requestTimeout: 30_000
+    logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*"] },
+    bodyLimit: 1_048_576
   });
 
   app.register(cors, { origin: configuredCorsOrigin() });
+
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
 
   app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({
     status: "ok",
