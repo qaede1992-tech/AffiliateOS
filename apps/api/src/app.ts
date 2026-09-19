@@ -5,6 +5,7 @@ import type { HealthResponse } from "@affiliateos/shared";
 import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
 import { authenticateRequest, type AuthConfig, type OperatorRole } from "./http/auth.js";
+import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http://localhost:5173";
@@ -32,10 +33,16 @@ const configuredAuth = (): AuthConfig => {
 type AppOptions = {
   readinessCheck?: () => Promise<void>;
   auth?: AuthConfig;
+  rateLimit?: { enabled: boolean; limit: number; windowMs: number };
 };
 
 export function createApp(services: Services = createInMemoryServices(), options: AppOptions = {}) {
   const auth = options.auth ?? configuredAuth();
+  const rateLimitConfig = options.rateLimit ?? configuredRateLimit();
+  const rateLimiter = rateLimitConfig.enabled
+    ? new InMemoryRateLimiter(rateLimitConfig.limit, rateLimitConfig.windowMs)
+    : null;
+
   const app = Fastify({
     logger: {
       redact: [
@@ -55,6 +62,20 @@ export function createApp(services: Services = createInMemoryServices(), options
 
   app.addHook("onRequest", async (request, reply) => {
     if (request.url === "/api/v1/health" || request.url === "/api/v1/ready") return;
+
+    if (rateLimiter) {
+      const result = rateLimiter.consume(request.ip);
+      reply.header("X-RateLimit-Limit", result.limit);
+      reply.header("X-RateLimit-Remaining", result.remaining);
+      if (!result.allowed) {
+        reply.header("Retry-After", result.retryAfterSeconds);
+        return reply.status(429).send({
+          error: "RATE_LIMITED",
+          message: "Too many requests. Please retry later."
+        });
+      }
+    }
+
     const context = authenticateRequest(request, auth);
     if (!context) {
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." });
