@@ -7,6 +7,7 @@ import { DomainError } from "./domain/errors.js";
 import { authenticateRequest, type AuthConfig, type OperatorRole } from "./http/auth.js";
 import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
 import { auditSecurityEvent } from "./http/app-audit.js";
+import { clearSessionCookie, createSessionCookieValue, readSessionCookie, setSessionCookie } from "./http/session.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 export const configuredCorsOrigin = (production = process.env.NODE_ENV === "production") => {
@@ -18,6 +19,7 @@ export const configuredCorsOrigin = (production = process.env.NODE_ENV === "prod
 };
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
 const isHealthEndpoint = (url: string) => url === "/api/v1/health" || url === "/api/v1/ready";
+const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
 
 const configuredAuth = (): AuthConfig => {
   const token = process.env.API_AUTH_TOKEN?.trim();
@@ -51,12 +53,15 @@ export function createApp(services: Services = createInMemoryServices(), options
   const rateLimiter = rateLimitConfig.enabled
     ? new InMemoryRateLimiter(rateLimitConfig.limit, rateLimitConfig.windowMs)
     : null;
+  const sessionSecret = auth.token;
+  const production = process.env.NODE_ENV === "production";
 
   const app = Fastify({
     logger: {
       redact: [
         "req.headers.authorization",
         "req.headers.cookie",
+        "req.body.token",
         "req.body.credentialReference",
         "req.body.configuration.*",
         "req.query.code",
@@ -67,7 +72,7 @@ export function createApp(services: Services = createInMemoryServices(), options
   });
 
   app.decorateRequest("auth", null);
-  app.register(cors, { origin: configuredCorsOrigin() });
+  app.register(cors, { origin: configuredCorsOrigin(), credentials: true });
 
   app.addHook("onSend", async (request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
@@ -99,11 +104,13 @@ export function createApp(services: Services = createInMemoryServices(), options
       }
     }
 
-    if (isPublicCallback(request.url)) return;
+    if (isPublicCallback(request.url) || isPublicAuthEndpoint(request.url)) return;
 
-    const context = authenticateRequest(request, auth);
+    const bearerContext = authenticateRequest(request, auth);
+    const sessionContext = sessionSecret ? readSessionCookie(request, sessionSecret) : null;
+    const context = bearerContext ?? sessionContext;
     if (!context) {
-      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_bearer_token" });
+      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_authentication" });
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." });
     }
     request.auth = context;
@@ -127,6 +134,22 @@ export function createApp(services: Services = createInMemoryServices(), options
       app.log.warn({ err: error }, "database readiness check failed");
       return reply.status(503).send({ status: "not_ready", service: "affiliateos-api" });
     }
+  });
+
+  app.post("/api/v1/auth/login", async (request, reply) => {
+    const input = z.object({ token: z.string().trim().min(1).max(4096) }).parse(request.body);
+    const context = authenticateRequest({ headers: { authorization: `Bearer ${input.token}` } } as never, auth);
+    if (!context || !sessionSecret) {
+      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_login_credential" });
+      return reply.status(401).send({ error: "UNAUTHORIZED", message: "Invalid authentication credential." });
+    }
+    setSessionCookie(reply, createSessionCookieValue(context, sessionSecret), production);
+    return reply.send({ authenticated: true, operatorId: context.operatorId, role: context.role });
+  });
+
+  app.post("/api/v1/auth/logout", async (_request, reply) => {
+    clearSessionCookie(reply, production);
+    return reply.send({ authenticated: false });
   });
 
   app.get("/api/v1/auth/me", async (request) => ({ authenticated: true, operatorId: request.auth!.operatorId, role: request.auth!.role }));
