@@ -37,8 +37,17 @@ try {
     throw new Error(`Missing expected indexes: ${missingIndexes.join(", ")}.`);
   }
 
-  const { rows: migrationRows } = await client.query('SELECT COUNT(*)::int AS count FROM "__drizzle_migrations"');
-  if (migrationRows[0].count < 3) {
+  const { rows: migrationTableRows } = await client.query(
+    "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
+  );
+  if (migrationTableRows.length === 0) {
+    throw new Error("Drizzle migration ledger table does not exist.");
+  }
+  const migrationSchema = migrationTableRows[0].table_schema;
+  const { rows: migrationRows } = await client.query(
+    `SELECT COUNT(*)::int AS count FROM "${migrationSchema.replaceAll('"', '""')}"."__drizzle_migrations"`
+  );
+  if (migrationRows[0].count < 8) {
     throw new Error("Drizzle migration ledger does not contain every tracked migration.");
   }
 
