@@ -18,7 +18,7 @@ test("GET /api/v1/health returns health status and configured CORS origin", asyn
   await app.close();
 });
 
-test("GET /api/v1/health rejects an unconfigured CORS origin", async () => {
+test("GET /api/v1/health omits CORS access for an unconfigured origin", async () => {
   const app = createApp();
 
   const response = await app.inject({
@@ -27,8 +27,9 @@ test("GET /api/v1/health rejects an unconfigured CORS origin", async () => {
     headers: { origin: "https://untrusted.example" },
   });
 
-  assert.equal(response.statusCode, 500);
+  assert.equal(response.statusCode, 200);
   assert.equal(response.headers["access-control-allow-origin"], undefined);
+  assert.equal(response.json().status, "ok");
 
   await app.close();
 });
