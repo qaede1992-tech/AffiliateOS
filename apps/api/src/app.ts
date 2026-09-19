@@ -17,7 +17,9 @@ export function createApp(services: Services = createInMemoryServices()) {
 
   const corsOrigins = configuredCorsOrigins();
   if (corsOrigins.length === 0) throw new Error("API_CORS_ORIGINS must contain at least one origin.");
-  app.register(cors, { origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins });
+  app.register(cors, {
+    origin: (origin, callback) => callback(null, !origin || corsOrigins.includes(origin))
+  });
 
   app.addHook("onSend", async (_request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
