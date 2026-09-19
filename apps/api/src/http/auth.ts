@@ -22,19 +22,22 @@ declare module "fastify" {
   }
 }
 
-export function authenticateRequest(request: FastifyRequest, config: AuthConfig): AuthContext | null {
+export function authenticateToken(suppliedToken: string, config: AuthConfig): AuthContext | null {
   if (!config.enabled) return { operatorId: config.operatorId, role: config.role };
   if (!config.token) return null;
 
-  const header = request.headers.authorization;
-  const prefix = "Bearer ";
-  if (!header || !header.startsWith(prefix)) return null;
-
-  const supplied = Buffer.from(header.slice(prefix.length));
+  const supplied = Buffer.from(suppliedToken);
   const expected = Buffer.from(config.token);
   if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return null;
 
   return { operatorId: config.operatorId, role: config.role };
+}
+
+export function authenticateRequest(request: FastifyRequest, config: AuthConfig): AuthContext | null {
+  const header = request.headers.authorization;
+  const prefix = "Bearer ";
+  if (!header || !header.startsWith(prefix)) return null;
+  return authenticateToken(header.slice(prefix.length), config);
 }
 
 export async function requireOperator(request: FastifyRequest, reply: FastifyReply): Promise<true | FastifyReply> {
