@@ -3,28 +3,42 @@ import test from "node:test";
 import { createApp } from "../src/app.js";
 import { MarketplaceProviderRegistry, MockMarketplaceProvider } from "../src/domain/foundations.js";
 
-test("connection lifecycle is unverified until a supported test succeeds and never returns the credential reference", async () => {
-  const app = createApp();
-  // Default service has no providers, so register a provider through a purpose-built app below.
-  await app.close();
+function createConfiguredApp() {
   const registry = new MarketplaceProviderRegistry(); registry.register(new MockMarketplaceProvider());
-  const { createServices } = await import("../src/domain/container.js"); const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
-  const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
-  const configured = createApp(createServices(repos, { run: (work) => work({ conversions: repos.conversions, commissions: repos.commissions }) }, registry));
-  const create = await configured.inject({ method: "POST", url: "/api/v1/marketplaces", payload: { name: "Mock connection", slug: "mock-connection", providerSlug: "mock", credentialReference: "vault://affiliateos/mock", enabled: true, configuration: { region: "test" } } });
-  assert.equal(create.statusCode, 201); assert.equal(create.json().healthStatus, "unverified"); assert.equal(create.json().credentialReference, undefined); assert.equal(create.json().hasCredentialReference, true);
+  return import("../src/domain/container.js").then(async ({ createServices }) => {
+    const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+    const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
+    return createApp(createServices(repos, { run: (work) => work({ conversions: repos.conversions, commissions: repos.commissions }) }, registry));
+  });
+}
+
+test("marketplace activation requires explicit confirmation and never returns the credential reference", async () => {
+  const configured = await createConfiguredApp();
+  const rejectedCreate = await configured.inject({ method: "POST", url: "/api/v1/marketplaces", payload: { name: "Auto enabled", slug: "auto-enabled", providerSlug: "mock", credentialReference: "vault://affiliateos/mock", enabled: true, configuration: { region: "test" } } });
+  assert.equal(rejectedCreate.statusCode, 409); assert.equal(rejectedCreate.json().error, "MARKETPLACE_CONFIRMATION_REQUIRED");
+
+  const create = await configured.inject({ method: "POST", url: "/api/v1/marketplaces", payload: { name: "Mock connection", slug: "mock-connection", providerSlug: "mock", credentialReference: "vault://affiliateos/mock", enabled: false, configuration: { region: "test" } } });
+  assert.equal(create.statusCode, 201); assert.equal(create.json().enabled, false); assert.equal(create.json().status, "pending"); assert.equal(create.json().credentialReference, undefined); assert.equal(create.json().hasCredentialReference, true);
+
   const testResult = await configured.inject({ method: "POST", url: "/api/v1/marketplaces/mock-connection/test" });
-  assert.equal(testResult.statusCode, 200); assert.equal(testResult.json().healthStatus, "healthy"); assert.equal(testResult.json().status, "active");
+  assert.equal(testResult.statusCode, 200); assert.equal(testResult.json().healthStatus, "healthy"); assert.equal(testResult.json().status, "inactive"); assert.equal(testResult.json().enabled, false);
+
+  const withoutConfirmation = await configured.inject({ method: "PUT", url: "/api/v1/marketplaces/mock-connection/enabled", payload: { enabled: true } });
+  assert.equal(withoutConfirmation.statusCode, 400);
+
+  const confirmed = await configured.inject({ method: "PUT", url: "/api/v1/marketplaces/mock-connection/enabled", payload: { enabled: true, confirmation: "CONFIRM_MARKETPLACE_CONNECTION" } });
+  assert.equal(confirmed.statusCode, 200); assert.equal(confirmed.json().enabled, true); assert.equal(confirmed.json().status, "active"); assert.equal(confirmed.json().credentialReference, undefined);
+
+  const disabled = await configured.inject({ method: "PUT", url: "/api/v1/marketplaces/mock-connection/enabled", payload: { enabled: false } });
+  assert.equal(disabled.statusCode, 200); assert.equal(disabled.json().enabled, false); assert.equal(disabled.json().status, "inactive");
+
   const health = await configured.inject({ method: "GET", url: "/api/v1/marketplaces/mock-connection/health" });
   assert.equal(health.json().status, "healthy"); assert.ok(health.json().lastSuccessfulCheckAt);
   await configured.close();
 });
 
 test("connection validation rejects secret-bearing configuration and exposes provider capabilities", async () => {
-  const registry = new MarketplaceProviderRegistry(); registry.register(new MockMarketplaceProvider());
-  const { createServices } = await import("../src/domain/container.js"); const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
-  const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
-  const app = createApp(createServices(repos, { run: (work) => work({ conversions: repos.conversions, commissions: repos.commissions }) }, registry));
+  const app = await createConfiguredApp();
   const providers = await app.inject({ method: "GET", url: "/api/v1/marketplaces/providers" });
   assert.deepEqual(providers.json().data[0].capabilities, ["discoverProducts", "searchProducts", "getProduct", "getOffers", "generateAffiliateLink", "syncConversions"]);
   assert.equal(providers.json().data[0].connectionMode, "mock");
