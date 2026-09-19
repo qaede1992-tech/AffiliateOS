@@ -22,7 +22,17 @@ test("API responses include baseline browser security headers", async () => {
   assert.equal(response.headers["x-frame-options"], "DENY");
   assert.equal(response.headers["referrer-policy"], "no-referrer");
   assert.equal(response.headers["permissions-policy"], "camera=(), microphone=(), geolocation=()");
+  assert.equal(response.headers["cache-control"], undefined);
   assert.equal(response.headers["strict-transport-security"], undefined);
+
+  const authResponse = await app.inject({
+    method: "GET",
+    url: "/api/v1/auth/me",
+    headers: { authorization: "Bearer test-api-token" }
+  });
+
+  assert.equal(authResponse.statusCode, 200);
+  assert.equal(authResponse.headers["cache-control"], "no-store");
 
   await app.close();
 });

@@ -17,6 +17,7 @@ export const configuredCorsOrigin = (production = process.env.NODE_ENV === "prod
   return origin || "http://localhost:5173";
 };
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
+const isHealthEndpoint = (url: string) => url === "/api/v1/health" || url === "/api/v1/ready";
 
 const configuredAuth = (): AuthConfig => {
   const token = process.env.API_AUTH_TOKEN?.trim();
@@ -68,11 +69,14 @@ export function createApp(services: Services = createInMemoryServices(), options
   app.decorateRequest("auth", null);
   app.register(cors, { origin: configuredCorsOrigin() });
 
-  app.addHook("onSend", async (_request, reply) => {
+  app.addHook("onSend", async (request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "DENY");
     reply.header("Referrer-Policy", "no-referrer");
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    if (!isHealthEndpoint(request.url)) {
+      reply.header("Cache-Control", "no-store");
+    }
     if (process.env.NODE_ENV === "production") {
       reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     }
@@ -80,7 +84,7 @@ export function createApp(services: Services = createInMemoryServices(), options
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("X-Request-Id", request.id);
-    if (request.url === "/api/v1/health" || request.url === "/api/v1/ready") return;
+    if (isHealthEndpoint(request.url)) return;
 
     if (rateLimiter) {
       const result = rateLimiter.consume(request.ip);
