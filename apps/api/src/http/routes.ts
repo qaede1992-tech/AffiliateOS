@@ -8,7 +8,7 @@ import { requireOperator } from "./auth.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services): void {
-  app.get<{ Reply: ListResponse<Affiliate }>("/api/v1/affiliates", async () => list(await services.affiliates.list()));
+  app.get<{ Reply: ListResponse<Affiliate> }>("/api/v1/affiliates", async () => list(await services.affiliates.list()));
   app.post<{ Body: CreateAffiliateRequest; Reply: Affiliate }>("/api/v1/affiliates", writeGuard, async (request, reply) => reply.status(201).send(await services.affiliates.create(createAffiliateSchema.parse(request.body))));
   app.get<{ Reply: ListResponse<Offer> }>("/api/v1/offers", async () => list(await services.offers.list()));
   app.post<{ Body: CreateOfferRequest; Reply: Offer }>("/api/v1/offers", writeGuard, async (request, reply) => reply.status(201).send(await services.offers.create(createOfferSchema.parse(request.body))));
