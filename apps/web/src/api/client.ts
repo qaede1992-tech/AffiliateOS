@@ -1,41 +1,17 @@
-import type {
-  Affiliate, AnalyticsOverview, Campaign, CampaignAnalytics, CampaignOffer, Click, Commission, Content, Conversion, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, RecordClickRequest, SocialAccountView, SocialOAuthStartRequest, SocialOAuthStartResponse, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest
-} from "@affiliateos/shared";
-
+import type { Affiliate, AffiliateOffer, AnalyticsOverview, Campaign, CampaignAnalytics, CampaignOffer, Click, Commission, Content, CreateAffiliateRequest, CreateCampaignRequest, CreateContentRequest, CreateOfferRequest, CreateSocialAccountRequest, CreateTrackingLinkRequest, ListResponse, MarketplaceConnectionView, MarketplaceProviderInfo, Offer, Product, RecordClickRequest, SocialAccountView, SocialOAuthStartRequest, SocialOAuthStartResponse, TrackingLink, TrackingLinkStats, UpdateCampaignRequest, UpdateContentRequest, UpdateSocialAccountRequest } from "@affiliateos/shared";
 async function get<T>(path: string): Promise<T> { const response = await fetch(path); if (!response.ok) throw new Error(`Request failed: ${response.status}`); return response.json() as Promise<T>; }
 async function post<T>(path: string, body: unknown): Promise<T> { const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
 async function patch<T>(path: string, body: unknown): Promise<T> { const response = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
 async function remove(path: string): Promise<void> { const response = await fetch(path, { method: "DELETE" }); if (!response.ok) { const error = (await response.json().catch(() => null)) as { message?: string } | null; throw new Error(error?.message ?? `Request failed: ${response.status}`); } }
-
 export const api = {
-  affiliates: () => get<ListResponse<Affiliate>>("/api/v1/affiliates"),
-  createAffiliate: (input: CreateAffiliateRequest) => post<Affiliate>("/api/v1/affiliates", input),
-  offers: () => get<ListResponse<Offer>>("/api/v1/offers"),
-  createOffer: (input: CreateOfferRequest) => post<Offer>("/api/v1/offers", input),
-  conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"),
-  commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),
-  marketplaceProviders: () => get<ListResponse<MarketplaceProviderInfo>>("/api/v1/marketplaces/providers"),
-  marketplaceConnections: () => get<ListResponse<MarketplaceConnectionView>>("/api/v1/marketplaces"),
-  campaigns: () => get<ListResponse<Campaign>>("/api/v1/campaigns"),
-  campaign: (campaignId: string) => get<Campaign>(`/api/v1/campaigns/${campaignId}`),
-  createCampaign: (input: CreateCampaignRequest) => post<Campaign>("/api/v1/campaigns", input),
-  updateCampaign: (campaignId: string, input: UpdateCampaignRequest) => patch<Campaign>(`/api/v1/campaigns/${campaignId}`, input),
-  campaignOffers: (campaignId: string) => get<ListResponse<CampaignOffer>>(`/api/v1/campaigns/${campaignId}/offers`),
-  attachCampaignOffer: (campaignId: string, affiliateOfferId: string) => post<CampaignOffer>(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`, {}),
-  detachCampaignOffer: (campaignId: string, affiliateOfferId: string) => remove(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`),
-  trackingLinks: (campaignId?: string) => get<ListResponse<TrackingLink>>(campaignId ? `/api/v1/tracking-links?campaignId=${encodeURIComponent(campaignId)}` : "/api/v1/tracking-links"),
-  createTrackingLink: (input: CreateTrackingLinkRequest) => post<TrackingLink>("/api/v1/tracking-links", input),
-  recordClick: (trackingLinkId: string, input: RecordClickRequest = {}) => post<Click>(`/api/v1/tracking-links/${trackingLinkId}/clicks`, input),
-  trackingLinkStats: (trackingLinkId: string) => get<TrackingLinkStats>(`/api/v1/tracking-links/${trackingLinkId}/stats`),
-  analyticsOverview: () => get<AnalyticsOverview>("/api/v1/analytics/overview"),
-  campaignAnalytics: (campaignId: string) => get<CampaignAnalytics>(`/api/v1/analytics/campaigns/${campaignId}`),
-  content: (campaignId?: string) => get<ListResponse<Content>>(campaignId ? `/api/v1/content?campaignId=${encodeURIComponent(campaignId)}` : "/api/v1/content"),
-  createContent: (input: CreateContentRequest) => post<Content>("/api/v1/content", input),
-  getContent: (contentId: string) => get<Content>(`/api/v1/content/${contentId}`),
-  updateContent: (contentId: string, input: UpdateContentRequest) => patch<Content>(`/api/v1/content/${contentId}`, input),
-  socialAccounts: () => get<ListResponse<SocialAccountView>>("/api/v1/social-accounts"),
-  socialAccount: (socialAccountId: string) => get<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`),
-  createSocialAccount: (input: CreateSocialAccountRequest) => post<SocialAccountView>("/api/v1/social-accounts", input),
-  updateSocialAccount: (socialAccountId: string, input: UpdateSocialAccountRequest) => patch<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`, input),
-  startSocialOAuth: (input: SocialOAuthStartRequest) => post<SocialOAuthStartResponse>("/api/v1/social-accounts/oauth/start", input)
+  affiliates: () => get<ListResponse<Affiliate>>("/api/v1/affiliates"), createAffiliate: (input: CreateAffiliateRequest) => post<Affiliate>("/api/v1/affiliates", input),
+  offers: () => get<ListResponse<Offer>>("/api/v1/offers"), createOffer: (input: CreateOfferRequest) => post<Offer>("/api/v1/offers", input),
+  conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"), commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),
+  marketplaceProviders: () => get<ListResponse<MarketplaceProviderInfo>>("/api/v1/marketplaces/providers"), marketplaceConnections: () => get<ListResponse<MarketplaceConnectionView>>("/api/v1/marketplaces"), products: () => get<ListResponse<Product>>("/api/v1/products"), affiliateOffers: () => get<ListResponse<AffiliateOffer>>("/api/v1/affiliate-offers"),
+  campaigns: () => get<ListResponse<Campaign>>("/api/v1/campaigns"), campaign: (campaignId: string) => get<Campaign>(`/api/v1/campaigns/${campaignId}`), createCampaign: (input: CreateCampaignRequest) => post<Campaign>("/api/v1/campaigns", input), updateCampaign: (campaignId: string, input: UpdateCampaignRequest) => patch<Campaign>(`/api/v1/campaigns/${campaignId}`, input),
+  campaignOffers: (campaignId: string) => get<ListResponse<CampaignOffer>>(`/api/v1/campaigns/${campaignId}/offers`), attachCampaignOffer: (campaignId: string, affiliateOfferId: string) => post<CampaignOffer>(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`, {}), detachCampaignOffer: (campaignId: string, affiliateOfferId: string) => remove(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`),
+  trackingLinks: (campaignId?: string) => get<ListResponse<TrackingLink>>(campaignId ? `/api/v1/tracking-links?campaignId=${encodeURIComponent(campaignId)}` : "/api/v1/tracking-links"), createTrackingLink: (input: CreateTrackingLinkRequest) => post<TrackingLink>("/api/v1/tracking-links", input), recordClick: (trackingLinkId: string, input: RecordClickRequest = {}) => post<Click>(`/api/v1/tracking-links/${trackingLinkId}/clicks`, input), trackingLinkStats: (trackingLinkId: string) => get<TrackingLinkStats>(`/api/v1/tracking-links/${trackingLinkId}/stats`),
+  analyticsOverview: () => get<AnalyticsOverview>("/api/v1/analytics/overview"), campaignAnalytics: (campaignId: string) => get<CampaignAnalytics>(`/api/v1/analytics/campaigns/${campaignId}`),
+  content: (campaignId?: string) => get<ListResponse<Content>>(campaignId ? `/api/v1/content?campaignId=${encodeURIComponent(campaignId)}` : "/api/v1/content"), createContent: (input: CreateContentRequest) => post<Content>("/api/v1/content", input), getContent: (contentId: string) => get<Content>(`/api/v1/content/${contentId}`), updateContent: (contentId: string, input: UpdateContentRequest) => patch<Content>(`/api/v1/content/${contentId}`, input),
+  socialAccounts: () => get<ListResponse<SocialAccountView>>("/api/v1/social-accounts"), socialAccount: (socialAccountId: string) => get<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`), createSocialAccount: (input: CreateSocialAccountRequest) => post<SocialAccountView>("/api/v1/social-accounts", input), updateSocialAccount: (socialAccountId: string, input: UpdateSocialAccountRequest) => patch<SocialAccountView>(`/api/v1/social-accounts/${socialAccountId}`, input), startSocialOAuth: (input: SocialOAuthStartRequest) => post<SocialOAuthStartResponse>("/api/v1/social-accounts/oauth/start", input)
 };
