@@ -9,7 +9,13 @@ import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
 import { auditSecurityEvent } from "./http/app-audit.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
-const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http://localhost:5173";
+export const configuredCorsOrigin = () => {
+  const origin = process.env.API_CORS_ORIGIN?.trim();
+  if (process.env.NODE_ENV === "production" && !origin) {
+    throw new Error("API_CORS_ORIGIN must be configured in production.");
+  }
+  return origin || "http://localhost:5173";
+};
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
 
 const configuredAuth = (): AuthConfig => {
