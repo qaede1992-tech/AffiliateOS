@@ -29,7 +29,9 @@ test("API responses include baseline browser security headers", async () => {
 
 test("production API responses enable HSTS", async () => {
   const previousNodeEnv = process.env.NODE_ENV;
+  const previousCorsOrigin = process.env.API_CORS_ORIGIN;
   process.env.NODE_ENV = "production";
+  process.env.API_CORS_ORIGIN = "https://app.example.com";
 
   try {
     const app = createApp(undefined, { auth });
@@ -48,5 +50,7 @@ test("production API responses enable HSTS", async () => {
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;
+    if (previousCorsOrigin === undefined) delete process.env.API_CORS_ORIGIN;
+    else process.env.API_CORS_ORIGIN = previousCorsOrigin;
   }
 });
