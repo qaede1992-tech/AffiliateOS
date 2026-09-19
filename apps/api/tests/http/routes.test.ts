@@ -1,6 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createApp } from "../../src/app.js";
+import { createApp, configuredCorsOrigin } from "../../src/app.js";
+
+test("configured CORS origin rejects an unset production origin", () => {
+  const previous = process.env.API_CORS_ORIGIN;
+  delete process.env.API_CORS_ORIGIN;
+
+  try {
+    assert.throws(() => configuredCorsOrigin(true), /API_CORS_ORIGIN must be configured in production/);
+  } finally {
+    if (previous === undefined) delete process.env.API_CORS_ORIGIN;
+    else process.env.API_CORS_ORIGIN = previous;
+  }
+});
+
+test("configured CORS origin keeps the development fallback outside production", () => {
+  const previous = process.env.API_CORS_ORIGIN;
+  delete process.env.API_CORS_ORIGIN;
+
+  try {
+    assert.equal(configuredCorsOrigin(false), "http://localhost:5173");
+  } finally {
+    if (previous === undefined) delete process.env.API_CORS_ORIGIN;
+    else process.env.API_CORS_ORIGIN = previous;
+  }
+});
+
+test("configured CORS origin accepts an explicit production origin", () => {
+  const previous = process.env.API_CORS_ORIGIN;
+  process.env.API_CORS_ORIGIN = "https://app.example.com";
+
+  try {
+    assert.equal(configuredCorsOrigin(true), "https://app.example.com");
+  } finally {
+    if (previous === undefined) delete process.env.API_CORS_ORIGIN;
+    else process.env.API_CORS_ORIGIN = previous;
+  }
+});
 
 test("GET /api/v1/health returns health status and configured CORS origin", async () => {
   const app = createApp();
