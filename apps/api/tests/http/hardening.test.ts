@@ -4,7 +4,11 @@ import { createApp } from "../../src/app.js";
 
 test("health responses include baseline security headers", async () => {
   const app = createApp();
-  const response = await app.inject({ method: "GET", url: "/api/v1/health" });
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/v1/health",
+    headers: { origin: "http://localhost:5173" }
+  });
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers["x-content-type-options"], "nosniff");
