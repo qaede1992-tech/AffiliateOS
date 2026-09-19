@@ -1,15 +1,27 @@
 # AffiliateOS
 
-AffiliateOS is a TypeScript monorepo foundation for operating compliant affiliate programs across marketplaces. It keeps the current affiliate, offer, conversion, and commission workflows while adding a provider-based foundation for products, campaigns, content, social distribution, and analytics.
+AffiliateOS is a TypeScript monorepo foundation for operating compliant affiliate programs across marketplaces. It keeps the current affiliate, offer, conversion, and commission workflows while adding provider-based product, campaign, content, social distribution, attribution, and analytics workflows.
 
 ## Architecture
 
-- **`apps/web`** — React/Vite operations dashboard. It reads the existing API resources and displays database-backed operational records.
+- **`apps/web`** — React/Vite operations dashboard for the persisted API workflows.
 - **`apps/api`** — Fastify API, domain services, validation, and Drizzle/PostgreSQL persistence.
 - **`packages/shared`** — API/domain contracts shared by the dashboard and API.
 - **Marketplace integrations** implement `MarketplaceProvider` (`discoverProducts`, `getProduct`, `searchProducts`, `getOffers`, `generateAffiliateLink`, and `syncConversions`) and are registered explicitly. The included `MockMarketplaceProvider` is test-only; no unofficial marketplace API is assumed.
 - **Social integrations** implement `SocialMediaProvider` (`connect`, `publish`, `schedule`, `getPostStatus`, and `getMetrics`). The included mock never posts externally.
 - **Content generation** is behind `ContentGenerator`. The safe template implementation uses supplied product fields only and deliberately avoids unsupported product claims. A production AI adapter should be configured separately.
+
+## Current operational flow
+
+The implemented application path is:
+
+**Marketplace connection → Product → Affiliate Offer → Campaign → Tracking Link → Click → Conversion Attribution → Revenue/Commission Analytics**
+
+Content and social workflow is available alongside the campaign flow:
+
+**Campaign → Content → Social Account → OAuth state/callback foundation**
+
+Attribution is explicit: AffiliateOS does not infer a conversion's tracking link from unrelated fields. Rejected conversions are excluded from attributed conversion, revenue, and commission analytics.
 
 ## Local development
 
@@ -39,34 +51,28 @@ npm run db:generate  # generates a candidate migration after a deliberate schema
 
 `db:verify` is the recommended local smoke test against a running, disposable PostgreSQL database. It is safe to re-run: Drizzle records applied migrations in `__drizzle_migrations`, and the migrations are additive. Do **not** edit a migration that may already have been applied; add a new, sequential migration and journal entry instead.
 
-`0000_initial` owns the original `affiliates`, `offers`, `conversions`, and `commissions` tables. `0001_affiliateos_foundation` adds the domain-foundation tables: marketplaces, affiliate accounts, products, affiliate offers, campaigns, campaign offers, tracking links/clicks, social accounts, and content. `0002_tracking_links_campaign_index` supplies the `tracking_links_campaign_idx` index declared by the Drizzle schema but absent from `0001`. Amounts are integer minor units (`*_cents`); commission rates use basis points. Credentials are represented only as `credential_reference` fields—never secret values.
+`0000_initial` owns the original `affiliates`, `offers`, `conversions`, and `commissions` tables. `0001_affiliateos_foundation` adds marketplaces, affiliate accounts, products, affiliate offers, campaigns, campaign offers, tracking links/clicks, social accounts, and content. `0002_tracking_links_campaign_index` supplies the `tracking_links_campaign_idx` index declared by the Drizzle schema but absent from `0001`. Later migrations add durable OAuth state and explicit conversion attribution. Amounts are integer minor units (`*_cents`); commission rates use basis points. Credentials are represented only as `credential_reference` fields—never secret values.
 
 ## API
 
-Existing endpoints remain under `/api/v1`: affiliates, offers, conversions, commissions, and health. A product-opportunity score is available at:
+All application endpoints are under `/api/v1`. The API includes:
 
-```text
-POST /api/v1/product-opportunities/score
-```
+- affiliate, offer, conversion, and commission resources
+- marketplace provider discovery, connection lifecycle, health checks, product discovery/search, offers, and affiliate-link generation
+- product opportunity scoring
+- campaign and campaign-offer lifecycle
+- tracking-link creation/listing, click recording, and link statistics
+- explicit conversion attribution
+- database-backed analytics overview and campaign analytics
+- content creation/listing/update
+- social-account registration/update and OAuth start/callback state handling
+- health check at `GET /api/v1/health`
 
-It accepts a product plus optional `commissionRateBps` and `audienceRelevance` (0–1), and returns transparent score reasons. The score is a prioritisation signal, **not a sales forecast or guarantee**. Marketplace data must be acquired through approved provider integrations and persisted before it can be shown as product opportunities.
+The product-opportunity score accepts optional `commissionRateBps` and `audienceRelevance` (0–1), and returns transparent score reasons. The score is a prioritisation signal, **not a sales forecast or guarantee**.
 
 ## Configuration and credentials
 
-## Marketplace integration readiness
-
-Marketplace Connections are configuration records, not a claim that an external marketplace is connected. `POST /api/v1/marketplaces` creates a disabled or unverified record; `POST /api/v1/marketplaces/:connectionSlug/test` is the only operation that can mark a test-capable provider healthy. The API returns `hasCredentialReference`, never the reference itself, and the dashboard never renders it. Mock providers are labelled **tests only** and cannot represent a live connection.
-
-```text
-GET    /api/v1/marketplaces/providers
-GET    /api/v1/marketplaces
-POST   /api/v1/marketplaces
-GET    /api/v1/marketplaces/:connectionSlug
-PATCH  /api/v1/marketplaces/:connectionSlug
-PUT    /api/v1/marketplaces/:connectionSlug/enabled
-POST   /api/v1/marketplaces/:connectionSlug/test
-GET    /api/v1/marketplaces/:connectionSlug/health
-```
+Marketplace Connections are configuration records, not a claim that an external marketplace is connected. `POST /api/v1/marketplaces` creates a disabled or unverified record; `POST /api/v1/marketplaces/:connectionSlug/test` is the operation that can mark a test-capable provider healthy. The API returns `hasCredentialReference`, never the reference itself, and the dashboard never renders credential references. Mock providers are labelled **tests only** and cannot represent a live connection.
 
 To add a future **official** adapter, implement `MarketplaceProvider` in `apps/api/src/domain/`, set `connectionMode: "official_api"`, declare only the capabilities actually supported, validate only non-secret configuration, and implement `testConnection` only when the official API has a safe verification operation. Register the adapter during production service composition in `apps/api/src/server.ts` (or a dedicated provider bootstrap). Supply an opaque secret-manager locator such as `vault://affiliateos/marketplace/acme` in `credentialReference`; have the adapter resolve it at runtime through deployment infrastructure, never from PostgreSQL metadata or the dashboard. Do not register a provider for a marketplace until its official API agreement, scopes, and credential flow have been approved.
 
@@ -76,16 +82,17 @@ Connection `configuration` rejects secret-like fields (`token`, `secret`, `passw
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string (required by API runtime). |
 | `API_HOST`, `API_PORT` | API listener settings. |
+| `API_CORS_ORIGIN` | Explicit deployed dashboard origin; local default is `http://localhost:5173`. |
 | `VITE_API_URL` | Dashboard API base URL for development/proxy configuration. |
 | `AFFILIATEOS_MARKETPLACE_*_CREDENTIAL_REF` | Optional deployment-level reference to a secret-manager entry; adapters resolve it at runtime. |
 | `AFFILIATEOS_SOCIAL_*_CREDENTIAL_REF` | Optional OAuth/API credential reference for an approved social adapter. |
 | `AFFILIATEOS_AI_*_CREDENTIAL_REF` | Optional credential reference for a production content-generator adapter. |
 
-Do not put API keys, OAuth tokens, or marketplace credentials in `.env.example`, source code, migrations, or the database metadata JSON. Production adapters must use the official OAuth/API scopes and consent flows of their platforms; AffiliateOS intentionally does not scrape marketplaces, create accounts, or post automatically without authorization.
+Do not put API keys, OAuth tokens, or marketplace credentials in `.env.example`, source code, migrations, or database metadata JSON. Production adapters must use the official OAuth/API scopes and consent flows of their platforms; AffiliateOS intentionally does not scrape marketplaces, create accounts, or post automatically without authorization.
 
 ## HTTP runtime hardening
 
-The API accepts an explicit `API_CORS_ORIGIN` setting restricted to the deployed dashboard origin; the local default is `http://localhost:5173`. Request bodies are limited to 1 MiB. Sensitive credential/configuration request fields are redacted from API logs.
+The API supports an explicit CORS origin, limits request bodies to 1 MiB, redacts sensitive credential/configuration request fields from logs, and preserves appropriate client-error status codes such as `413` for oversized request bodies.
 
 ## Verification
 
@@ -96,11 +103,27 @@ npm run build
 npm run db:check
 ```
 
-Tests cover existing affiliate/conversion/commission behavior plus provider registration, product scoring, audience matching, and claim-safe content generation.
+CI validates tests, typechecking, production builds, and migration checks. HTTP regression coverage includes configured CORS behavior and the 1 MiB request-body limit.
+
+## Production completion checklist
+
+The codebase is intentionally provider-neutral where external authorization is required. Before a live deployment, complete the environment-specific operational controls below:
+
+1. Configure an authenticated application/session layer appropriate for the deployment and protect administrative API operations.
+2. Register only approved marketplace/social providers with their official credentials, scopes, terms, and secret-manager integration.
+3. Configure the deployed dashboard origin through `API_CORS_ORIGIN` and use TLS at the edge.
+4. Use a managed PostgreSQL deployment with backups, retention, monitoring, and migration promotion controls.
+5. Add deployment-specific rate limiting, request tracing/metrics, alerting, and log retention at the edge/platform layer.
+6. Run `npm run db:verify` against the release database before enabling traffic and retain migration/audit records.
+
+These items depend on the target deployment environment and external provider approvals; the repository does not fabricate credentials or pretend that an external integration is live.
 
 ## Roadmap
 
-1. Implement approved marketplace adapters once their official credentials and API terms are available.
-2. Persist product, campaign, tracking, content, and social-account workflows through the API/dashboard.
-3. Add OAuth callback handling and secret-manager integration for approved social adapters.
-4. Build database-backed analytics for clicks, conversions, orders, commissions, revenue, CTR, conversion rate, and campaign/product/marketplace/social breakdowns.
+The application/domain foundation and database-backed operational workflow are implemented. Remaining work is deployment-specific rather than a new core domain rewrite:
+
+- approved official marketplace adapters when credentials/API agreements are available
+- approved social publishing adapters and production OAuth credential exchange
+- secret-manager integration supplied by deployment infrastructure
+- production authentication/session/authorization policy and infrastructure-level rate limiting/observability
+- deployment manifests, managed database operations, backups, and release automation for the target hosting environment
