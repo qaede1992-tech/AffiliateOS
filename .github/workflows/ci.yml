@@ -64,7 +64,7 @@ jobs:
       - name: Build API image
         run: docker build --file apps/api/Dockerfile --tag affiliateos-api:ci .
       - name: Build web image
-        run: docker build --file apps/web/Dockerfile --tag affiliateos-web:ci .
+        run: docker build --file apps/web/Dockerfile --build-arg VITE_API_URL=http://localhost:3001 --tag affiliateos-web:ci .
       - name: Smoke test API container
         run: |
           set -euo pipefail
