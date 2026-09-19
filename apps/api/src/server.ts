@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { createApp } from "./app.js";
 import { environment } from "./config.js";
 import { createServices } from "./domain/container.js";
@@ -16,7 +17,11 @@ const services = createServices(
   new DrizzleAnalyticsReader(persistence.db),
   new DrizzleConversionAttributionRepository(persistence.db)
 );
-const app = createApp(services);
+const app = createApp(services, {
+  readinessCheck: async () => {
+    await persistence.db.execute(sql`SELECT 1`);
+  }
+});
 
 try {
   await app.listen({ host: environment.API_HOST, port: environment.API_PORT });
