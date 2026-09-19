@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --entrypoint /bin/sh affiliateos-web:ci -c \
-            "grep -R -a --fixed-strings --quiet 'http://localhost:3001' /usr/share/nginx/html"
+            "grep -R -a -F -q 'http://localhost:3001' /usr/share/nginx/html"
       - name: Smoke test API container
         run: |
           set -euo pipefail
