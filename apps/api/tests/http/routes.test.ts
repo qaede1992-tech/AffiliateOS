@@ -303,6 +303,53 @@ test("POST /api/v1/conversions rejects an inactive offer", async () => {
   await app.close();
 });
 
+test("POST /api/v1/conversions rejects an amount beyond the database integer range", async () => {
+  const app = createApp();
+
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: {
+      name: "Bounded Amount Affiliate",
+      email: "bounded-amount@example.com",
+    },
+  });
+
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+
+  const offerResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/offers",
+    payload: {
+      name: "Bounded Amount Offer",
+      status: "active",
+      commissionRateBps: 1250,
+    },
+  });
+
+  assert.equal(offerResponse.statusCode, 201);
+  const offer = offerResponse.json();
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/conversions",
+    payload: {
+      affiliateId: affiliate.id,
+      offerId: offer.id,
+      amountCents: 2147483648,
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.json(), {
+    error: "VALIDATION_ERROR",
+    message: "The request body is invalid.",
+  });
+
+  await app.close();
+});
+
 test("POST /api/v1/affiliates rejects an invalid payload", async () => {
   const app = createApp();
 
