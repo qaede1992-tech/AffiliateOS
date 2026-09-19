@@ -32,9 +32,13 @@ export function createApp(services: Services = createInMemoryServices()) {
     if (error instanceof z.ZodError) {
       return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." });
     }
-    return reply.status(500).send({
+
+    const statusCode = "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
+    const safeStatusCode = statusCode >= 400 && statusCode < 500 ? statusCode : 500;
+
+    return reply.status(safeStatusCode).send({
       error: "INTERNAL_SERVER_ERROR",
-      message: "An unexpected error occurred."
+      message: safeStatusCode === 500 ? "An unexpected error occurred." : "The request could not be processed."
     });
   });
 
