@@ -1,5 +1,5 @@
 import type { Affiliate, Campaign, Commission, Content, Conversion, Offer, SocialAccount } from "@affiliateos/shared";
-import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository, InMemoryTrackingLinkRepository, type RepositorySet, type TransactionManager } from "./repository.js";
+import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryConversionRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository, InMemoryTrackingLinkRepository, type RepositorySet, type TransactionManager } from "./repository.js";
 import { AffiliateService, CommissionService, ConversionService, OfferService } from "./services.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
 import { MarketplaceService } from "./marketplace.js";
@@ -32,7 +32,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
 
 export function createInMemoryServices(): Services {
   const repositories: RepositorySet = {
-    affiliates: new InMemoryRepository<Affiliate>(), offers: new InMemoryRepository<Offer>(), conversions: new InMemoryRepository<Conversion>(), commissions: new InMemoryRepository<Commission>(),
+    affiliates: new InMemoryRepository<Affiliate>(), offers: new InMemoryRepository<Offer>(), conversions: new InMemoryConversionRepository(), commissions: new InMemoryRepository<Commission>(),
     marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository(),
     campaigns: new InMemoryRepository<Campaign>(), campaignOffers: new InMemoryCampaignOfferRepository(), trackingLinks: new InMemoryTrackingLinkRepository(), clicks: new InMemoryClickRepository(), contents: new InMemoryRepository<Content>(), socialAccounts: new InMemorySocialAccountRepository()
   };
