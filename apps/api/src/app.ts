@@ -2,10 +2,11 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { z } from "zod";
 import type { HealthResponse } from "@affiliateos/shared";
-import { corsOrigins } from "./config.js";
 import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
 import { registerResourceRoutes } from "./http/routes.js";
+
+const configuredCorsOrigins = () => process.env.API_CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? ["http://localhost:5173"];
 
 export function createApp(services: Services = createInMemoryServices()) {
   const app = Fastify({
@@ -14,6 +15,8 @@ export function createApp(services: Services = createInMemoryServices()) {
     requestTimeout: 30_000
   });
 
+  const corsOrigins = configuredCorsOrigins();
+  if (corsOrigins.length === 0) throw new Error("API_CORS_ORIGINS must contain at least one origin.");
   app.register(cors, { origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins });
 
   app.addHook("onSend", async (_request, reply) => {
