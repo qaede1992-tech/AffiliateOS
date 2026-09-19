@@ -7,7 +7,7 @@ const validDateRange = (value: { startAt?: string; endAt?: string }) => !value.s
 
 export const createAffiliateSchema = z.object({ name: nonEmptyText.max(200), email: z.string().email().max(320) });
 export const createOfferSchema = z.object({ name: nonEmptyText.max(200), status: z.enum(["active", "inactive"]), commissionRateBps: z.number().int().min(0).max(10000) });
-export const createConversionSchema = z.object({ affiliateId: entityId, offerId: entityId, amountCents: z.number().int().positive(), occurredAt: isoTimestamp.optional() });
+export const createConversionSchema = z.object({ affiliateId: entityId, offerId: entityId, amountCents: z.number().int().positive(), occurredAt: isoTimestamp.optional(), idempotencyKey: z.string().trim().min(8).max(200).optional() });
 export const conversionIdSchema = z.object({ conversionId: entityId });
 export const createConversionAttributionSchema = z.object({ trackingLinkId: entityId });
 export const scoreProductSchema = z.object({
