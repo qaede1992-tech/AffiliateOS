@@ -1,5 +1,8 @@
 FROM node:24-alpine AS build
 WORKDIR /app
+ARG VITE_API_URL
+RUN test -n "$VITE_API_URL"
+ENV VITE_API_URL=$VITE_API_URL
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
