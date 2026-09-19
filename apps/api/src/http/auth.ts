@@ -37,7 +37,8 @@ export function authenticateRequest(request: FastifyRequest, config: AuthConfig)
 }
 
 export function requireOperator(request: FastifyRequest, reply: FastifyReply): boolean {
-  if (!request.auth || !["admin", "operator"].includes(request.auth.role)) {
+  const role = request.auth?.role;
+  if (role !== "admin" && role !== "operator") {
     void reply.status(403).send({ error: "FORBIDDEN", message: "An authorized operator is required." });
     return false;
   }
