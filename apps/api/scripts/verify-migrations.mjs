@@ -1,8 +1,15 @@
+import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error("DATABASE_URL is required. Copy .env.example to .env and start PostgreSQL first.");
+}
+
+const journal = JSON.parse(await readFile(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
+const trackedMigrations = journal.entries;
+if (!Array.isArray(trackedMigrations) || trackedMigrations.length === 0) {
+  throw new Error("Drizzle migration journal has no tracked migrations.");
 }
 
 const client = new Client({ connectionString });
@@ -47,11 +54,12 @@ try {
   const { rows: migrationRows } = await client.query(
     `SELECT COUNT(*)::int AS count FROM "${migrationSchema.replaceAll('"', '""')}"."__drizzle_migrations"`
   );
-  if (migrationRows[0].count < 8) {
-    throw new Error("Drizzle migration ledger does not contain every tracked migration.");
+  const appliedMigrationCount = Number(migrationRows[0]?.count ?? 0);
+  if (appliedMigrationCount !== trackedMigrations.length) {
+    throw new Error(`Drizzle migration ledger contains ${appliedMigrationCount} migrations, but ${trackedMigrations.length} are tracked.`);
   }
 
-  console.log("PostgreSQL schema and Drizzle migration ledger verified.");
+  console.log(`PostgreSQL schema and Drizzle migration ledger verified (${appliedMigrationCount} migrations).`);
 } finally {
   await client.end();
 }
