@@ -34,6 +34,7 @@ export function authenticateToken(suppliedToken: string, config: AuthConfig): Au
 }
 
 export function authenticateRequest(request: FastifyRequest, config: AuthConfig): AuthContext | null {
+  if (!config.enabled) return { operatorId: config.operatorId, role: config.role };
   const header = request.headers.authorization;
   const prefix = "Bearer ";
   if (!header || !header.startsWith(prefix)) return null;
