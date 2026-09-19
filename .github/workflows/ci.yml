@@ -65,6 +65,13 @@ jobs:
         run: docker build --file apps/api/Dockerfile --tag affiliateos-api:ci .
       - name: Build web image
         run: docker build --file apps/web/Dockerfile --build-arg VITE_API_URL=http://localhost:3001 --tag affiliateos-web:ci .
+      - name: Verify web API origin
+        run: |
+          set -euo pipefail
+          container_id=$(docker create affiliateos-web:ci)
+          trap 'docker rm "$container_id" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container_id:/usr/share/nginx/html" ./web-dist
+          grep -R --fixed-strings --quiet 'http://localhost:3001' ./web-dist
       - name: Smoke test API container
         run: |
           set -euo pipefail
