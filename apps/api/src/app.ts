@@ -2,14 +2,26 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { z } from "zod";
 import type { HealthResponse } from "@affiliateos/shared";
+import { corsOrigins } from "./config.js";
 import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 export function createApp(services: Services = createInMemoryServices()) {
-  const app = Fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*"] } });
+  const app = Fastify({
+    logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*", "req.body.connection.*"] },
+    bodyLimit: 1_048_576,
+    requestTimeout: 30_000
+  });
 
-  app.register(cors, { origin: true });
+  app.register(cors, { origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins });
+
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
 
   app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({
     status: "ok",
