@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { auditSecurityEvent } from "./app-audit.js";
 
 export type OperatorRole = "admin" | "operator" | "viewer";
 
@@ -39,6 +40,7 @@ export function authenticateRequest(request: FastifyRequest, config: AuthConfig)
 export async function requireOperator(request: FastifyRequest, reply: FastifyReply): Promise<true | FastifyReply> {
   const role = request.auth?.role;
   if (role !== "admin" && role !== "operator") {
+    auditSecurityEvent(request.log, request, "authorization_denied", { requiredRole: "operator" });
     return reply.status(403).send({ error: "FORBIDDEN", message: "An authorized operator is required." });
   }
   return true;
