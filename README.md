@@ -79,6 +79,8 @@ Connection `configuration` rejects secret-like fields. Failed health checks pers
 | `API_AUTH_TOKEN` | Production bearer credential; store only in a secret manager. |
 | `API_AUTH_OPERATOR_ID` | Server-side operator identity attached to the authenticated credential. |
 | `API_AUTH_OPERATOR_ROLE` | Server-side role: `admin`, `operator`, or `viewer`. |
+| `API_RATE_LIMIT_MAX` | Maximum application requests per client IP in one rate-limit window. |
+| `API_RATE_LIMIT_WINDOW_MS` | Rate-limit window length in milliseconds. |
 | `AFFILIATEOS_MARKETPLACE_*_CREDENTIAL_REF` | Deployment-level reference to a secret-manager entry. |
 | `AFFILIATEOS_SOCIAL_*_CREDENTIAL_REF` | Optional OAuth/API credential reference for an approved social adapter. |
 | `AFFILIATEOS_AI_*_CREDENTIAL_REF` | Optional credential reference for a production content-generator adapter. |
@@ -87,7 +89,9 @@ Do not put API keys, OAuth tokens, marketplace credentials, or bearer credential
 
 ## HTTP runtime hardening
 
-The API supports explicit CORS, a 1 MiB request-body limit, sensitive request-log redaction, authenticated application endpoints in production, and a database dependency readiness check returning `503` when PostgreSQL is unavailable.
+The API supports explicit CORS, a 1 MiB request-body limit, sensitive request-log redaction, authenticated application endpoints in production, a configurable in-memory application rate limiter, and a database dependency readiness check returning `503` when PostgreSQL is unavailable. Rate limiting is disabled by default in development unless configured, and defaults to 120 application requests per client IP per 60 seconds in production. Health and readiness endpoints are excluded so infrastructure probes remain available.
+
+The built-in limiter is process-local. Deployments with multiple API instances should use an external/shared rate-limit store or an edge/API-gateway limiter for global enforcement.
 
 ## Verification
 
@@ -98,7 +102,7 @@ npm run build
 npm run db:check
 ```
 
-CI validates tests, typechecking, production builds, and migration checks. HTTP regression coverage includes CORS behavior, the request-body limit, readiness handling, authentication, and operator authorization.
+CI validates tests, typechecking, production builds, and migration checks. HTTP regression coverage includes CORS behavior, the request-body limit, readiness handling, authentication, operator authorization, and rate limiting.
 
 ## Production completion checklist
 
@@ -106,7 +110,7 @@ CI validates tests, typechecking, production builds, and migration checks. HTTP 
 2. Register only approved marketplace/social providers with official credentials, scopes, terms, and secret-manager integration.
 3. Configure the deployed dashboard origin through `API_CORS_ORIGIN` and use TLS at the edge.
 4. Use managed PostgreSQL with backups, retention, monitoring, and migration promotion controls.
-5. Add deployment-specific rate limiting, tracing/metrics, alerting, and log retention.
+5. Use a shared/edge rate limiter for multi-instance deployments and add deployment-specific tracing/metrics, alerting, and log retention.
 6. Run `npm run db:verify` against the release database before enabling traffic and retain migration/audit records.
 
 The repository does not fabricate credentials or pretend that an external integration is live.
