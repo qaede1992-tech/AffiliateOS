@@ -2,10 +2,29 @@ import type { Affiliate, AffiliateOffer, AnalyticsOverview, Campaign, CampaignAn
 
 const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
 const url = (path: string) => `${apiOrigin}${path}`;
+let loginPromise: Promise<void> | null = null;
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function loginWithPrompt(): Promise<void> {
+  if (loginPromise) return loginPromise;
+  loginPromise = (async () => {
+    const token = window.prompt("AffiliateOS authentication token:");
+    if (!token) throw new Error("Authentication is required.");
+    await request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token })
+    }, true);
+  })().finally(() => { loginPromise = null; });
+  return loginPromise;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, skipAuthRetry = false): Promise<T> {
   const response = await fetch(url(path), { ...init, credentials: "include" });
   if (!response.ok) {
+    if (response.status === 401 && !skipAuthRetry && path !== "/api/v1/auth/login") {
+      await loginWithPrompt();
+      return request<T>(path, init, true);
+    }
     const error = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
     const requestError = new Error(error?.message ?? `Request failed: ${response.status}`);
     (requestError as Error & { status?: number; code?: string }).status = response.status;
@@ -22,7 +41,7 @@ const put = <T>(path: string, body: unknown) => request<T>(path, { method: "PUT"
 const remove = (path: string) => request<void>(path, { method: "DELETE" });
 
 export const api = {
-  login: (token: string) => post<{ authenticated: true; operatorId: string; role: string }>("/api/v1/auth/login", { token }),
+  login: (token: string) => request<{ authenticated: true; operatorId: string; role: string }>("/api/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }, true),
   logout: () => post<{ authenticated: false }>("/api/v1/auth/logout", {}),
   me: () => get<{ authenticated: true; operatorId: string; role: string }>("/api/v1/auth/me"),
   affiliates: () => get<ListResponse<Affiliate>>("/api/v1/affiliates"), createAffiliate: (input: CreateAffiliateRequest) => post<Affiliate>("/api/v1/affiliates", input),
