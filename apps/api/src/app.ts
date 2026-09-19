@@ -8,7 +8,11 @@ import { registerResourceRoutes } from "./http/routes.js";
 
 const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http://localhost:5173";
 
-export function createApp(services: Services = createInMemoryServices()) {
+type AppOptions = {
+  readinessCheck?: () => Promise<void>;
+};
+
+export function createApp(services: Services = createInMemoryServices(), options: AppOptions = {}) {
   const app = Fastify({
     logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*"] },
     bodyLimit: 1_048_576
@@ -21,6 +25,20 @@ export function createApp(services: Services = createInMemoryServices()) {
     service: "affiliateos-api",
     timestamp: new Date().toISOString()
   }));
+
+  app.get("/api/v1/ready", async (_request, reply) => {
+    if (!options.readinessCheck) {
+      return reply.send({ status: "ready", service: "affiliateos-api" });
+    }
+
+    try {
+      await options.readinessCheck();
+      return reply.send({ status: "ready", service: "affiliateos-api" });
+    } catch (error) {
+      app.log.warn({ err: error }, "database readiness check failed");
+      return reply.status(503).send({ status: "not_ready", service: "affiliateos-api" });
+    }
+  });
 
   registerResourceRoutes(app, services);
 
