@@ -9,11 +9,11 @@ export type CommissionStatus = "pending" | "approved" | "paid";
 
 export interface Affiliate { id: EntityId; name: string; email: string; status: AffiliateStatus; createdAt: IsoTimestamp; }
 export interface Offer { id: EntityId; name: string; status: OfferStatus; commissionRateBps: number; createdAt: IsoTimestamp; }
-export interface Conversion { id: EntityId; affiliateId: EntityId; offerId: EntityId; amountCents: MoneyCents; status: ConversionStatus; occurredAt: IsoTimestamp; }
+export interface Conversion { id: EntityId; affiliateId: EntityId; offerId: EntityId; amountCents: MoneyCents; status: ConversionStatus; occurredAt: IsoTimestamp; idempotencyKey?: string; }
 export interface Commission { id: EntityId; conversionId: EntityId; affiliateId: EntityId; amountCents: MoneyCents; status: CommissionStatus; createdAt: IsoTimestamp; }
 export interface CreateAffiliateRequest { name: string; email: string; }
 export interface CreateOfferRequest { name: string; status: "active" | "inactive"; commissionRateBps: number; }
-export interface CreateConversionRequest { affiliateId: EntityId; offerId: EntityId; amountCents: MoneyCents; occurredAt?: IsoTimestamp; }
+export interface CreateConversionRequest { affiliateId: EntityId; offerId: EntityId; amountCents: MoneyCents; occurredAt?: IsoTimestamp; idempotencyKey?: string; }
 export interface ListResponse<T> { data: T[]; }
 export interface ErrorResponse { error: string; status: "active" | "inactive"; message: string; }
 export interface HealthResponse { status: "ok"; service: "affiliateos-api"; timestamp: IsoTimestamp; }
@@ -37,7 +37,7 @@ export interface MarketplaceOfferInput { externalOfferId: string; priceCents?: n
 export interface AffiliateOffer { id: EntityId; productId: EntityId; affiliateAccountId: EntityId; externalOfferId?: string; priceCents?: number; currency?: string; commissionRateBps?: number; commissionAmountCents?: number; availability: ProductAvailability; availabilityMetadata: Record<string, unknown>; affiliateUrl?: string; affiliateLinkStatus: AffiliateLinkStatus; status: "active" | "inactive" | "archived"; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
 export type AudienceSegment = "beauty" | "skincare" | "baby" | "parenting" | "fashion" | "home" | "kitchen" | "electronics" | "lifestyle" | "deal-hunters";
 export type CampaignStatus = "draft" | "scheduled" | "active" | "paused" | "completed" | "archived";
-export interface GeneratedContent { platform: "tiktok" | "instagram" | "facebook" | "youtube-shorts" | "x" | "threads"; title: string; caption: string; script?: string; cta: string; }
+export type GeneratedContent = { platform: "tiktok" | "instagram" | "facebook" | "youtube-shorts" | "x" | "threads"; title: string; caption: string; script?: string; cta: string; };
 export interface Campaign { id: EntityId; name: string; objective: string; status: CampaignStatus; startAt?: IsoTimestamp; endAt?: IsoTimestamp; audience: Record<string, unknown>; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
 export interface CampaignOffer { campaignId: EntityId; affiliateOfferId: EntityId; createdAt: IsoTimestamp; }
 export interface TrackingLink { id: EntityId; affiliateOfferId: EntityId; campaignId?: EntityId; code: string; destinationUrl: string; status: "active" | "inactive" | "expired"; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
