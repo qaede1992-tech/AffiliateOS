@@ -61,6 +61,7 @@ export function createApp(services: Services = createInMemoryServices(), options
   app.register(cors, { origin: configuredCorsOrigin() });
 
   app.addHook("onRequest", async (request, reply) => {
+    reply.header("X-Request-Id", request.id);
     if (request.url === "/api/v1/health" || request.url === "/api/v1/ready") return;
 
     if (rateLimiter) {

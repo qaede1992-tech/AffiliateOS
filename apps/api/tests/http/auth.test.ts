@@ -19,6 +19,7 @@ test("protected API routes require bearer authentication", async () => {
     error: "UNAUTHORIZED",
     message: "Authentication is required."
   });
+  assert.ok(response.headers["x-request-id"]);
 
   await app.close();
 });
@@ -38,6 +39,7 @@ test("valid bearer authentication exposes the authenticated operator context", a
     operatorId: "operator-test",
     role: "operator"
   });
+  assert.ok(response.headers["x-request-id"]);
 
   await app.close();
 });
@@ -71,6 +73,8 @@ test("liveness and readiness remain available without authentication", async () 
 
   assert.equal(health.statusCode, 200);
   assert.equal(ready.statusCode, 200);
+  assert.ok(health.headers["x-request-id"]);
+  assert.ok(ready.headers["x-request-id"]);
 
   await app.close();
 });
