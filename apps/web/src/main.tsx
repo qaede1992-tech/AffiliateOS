@@ -38,6 +38,7 @@ function App() {
   const [offerName, setOfferName] = useState("");
   const [offerRate, setOfferRate] = useState("");
   const [isCreatingOffer, setIsCreatingOffer] = useState(false);
+  const [togglingMarketplaceSlug, setTogglingMarketplaceSlug] = useState<string | null>(null);
 
   const loadDashboard = async () => {
     const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, analytics] = await Promise.all([
@@ -99,6 +100,25 @@ function App() {
       setError(requestError instanceof Error ? requestError.message : "Unable to create offer.");
     } finally {
       setIsCreatingOffer(false);
+    }
+  };
+
+  const handleMarketplaceToggle = async (connection: MarketplaceConnectionView) => {
+    const enable = !connection.enabled;
+    if (enable) {
+      const confirmed = window.confirm(`Enable marketplace connection “${connection.name}”?\n\nThis will allow AffiliateOS to use this marketplace connection for operational workflows.`);
+      if (!confirmed) return;
+    }
+
+    setTogglingMarketplaceSlug(connection.slug);
+    setError(null);
+    try {
+      await api.marketplaceSetEnabled(connection.slug, enable);
+      await loadDashboard();
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to change marketplace connection state.");
+    } finally {
+      setTogglingMarketplaceSlug(null);
     }
   };
 
@@ -195,9 +215,9 @@ function App() {
         <section className="summary-grid">
           <article id="marketplaces">
             <span className="eyebrow">Integrations</span><h3>Marketplace Connections</h3>
-            <p>Credential references are never displayed. Connections become healthy only after supported verification.</p>
+            <p>Credential references are never displayed. New connections remain disabled until you explicitly confirm activation.</p>
             <div className="affiliate-list">{data.marketplaceProviders.length === 0 ? <p className="empty">No marketplace providers are registered.</p> : data.marketplaceProviders.map((provider) => <div className="affiliate-row" key={provider.slug}><div><strong>{provider.displayName}</strong><small>{provider.connectionMode === "mock" ? "Tests only — not a live marketplace connection" : "Official API adapter"}</small><small>Capabilities: {provider.capabilities.join(", ") || "none"}</small></div><span className={`badge ${provider.configured ? "active" : "inactive"}`}>{provider.configured ? "configured" : "unconfigured"}</span></div>)}</div>
-            <div className="affiliate-list connection-list">{data.marketplaceConnections.length === 0 ? <p className="empty">No connections configured.</p> : data.marketplaceConnections.map((connection) => <div className="affiliate-row" key={connection.id}><div><strong>{connection.name}</strong><small>{connection.providerSlug} · {connection.connectionMode === "mock" ? "test adapter" : "official API"}</small><small>Last check: {connection.lastSuccessfulCheckAt ? new Date(connection.lastSuccessfulCheckAt).toLocaleString() : "not verified"}</small></div><div className="affiliate-meta"><span className={`badge ${connection.enabled ? "active" : "inactive"}`}>{connection.enabled ? "enabled" : "disabled"}</span><small>{connection.healthStatus}</small></div></div>)}</div>
+            <div className="affiliate-list connection-list">{data.marketplaceConnections.length === 0 ? <p className="empty">No connections configured.</p> : data.marketplaceConnections.map((connection) => <div className="affiliate-row" key={connection.id}><div><strong>{connection.name}</strong><small>{connection.providerSlug} · {connection.connectionMode === "mock" ? "test adapter" : "official API"}</small><small>Last check: {connection.lastSuccessfulCheckAt ? new Date(connection.lastSuccessfulCheckAt).toLocaleString() : "not verified"}</small></div><div className="affiliate-meta"><span className={`badge ${connection.enabled ? "active" : "inactive"}`}>{connection.enabled ? "enabled" : "disabled"}</span><button type="button" onClick={() => void handleMarketplaceToggle(connection)} disabled={togglingMarketplaceSlug === connection.slug}>{togglingMarketplaceSlug === connection.slug ? "Saving..." : connection.enabled ? "Disable" : "Enable"}</button><small>{connection.healthStatus}</small></div></div>)}</div>
           </article>
 
           <article id="affiliates">
