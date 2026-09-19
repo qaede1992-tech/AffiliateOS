@@ -31,6 +31,27 @@ test("social accounts hide credential references from service responses", async 
   assert.equal((await services.socialAccounts.list()).length, 1);
 });
 
+test("social account connection metadata redacts sensitive values recursively", async () => {
+  const services = createInMemoryServices();
+  const account = await services.socialAccounts.create({
+    platform: "instagram",
+    accountReference: "creator-2",
+    connection: {
+      region: "ap-southeast-1",
+      accessToken: "secret-access-token",
+      nested: { api_key: "secret-api-key", label: "creator" },
+      items: [{ refreshToken: "secret-refresh-token", name: "profile" }]
+    }
+  });
+
+  assert.deepEqual(account.connection, {
+    region: "ap-southeast-1",
+    accessToken: "[REDACTED]",
+    nested: { api_key: "[REDACTED]", label: "creator" },
+    items: [{ refreshToken: "[REDACTED]", name: "profile" }]
+  });
+});
+
 test("social account duplicate identity is rejected", async () => {
   const services = createInMemoryServices();
   await services.socialAccounts.create({ platform: "tiktok", accountReference: "creator-1" });
