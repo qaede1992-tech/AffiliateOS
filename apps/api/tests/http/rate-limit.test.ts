@@ -43,8 +43,20 @@ test("rate limiter bounds active client buckets", () => {
   assert.equal(limiter.consume("c", 1_000).allowed, true);
   assert.equal(limiter.consume("c", 2_000).allowed, false);
 
-  // The oldest active bucket is evicted when the configured capacity is full.
+  // The earliest-expiring active bucket is evicted when capacity is full.
   assert.equal(limiter.consume("a", 2_000).allowed, true);
+});
+
+test("rate limiter evicts the earliest-expiring bucket rather than insertion-oldest bucket", () => {
+  const limiter = new InMemoryRateLimiter(1, 60_000, 2);
+
+  // b expires first even though a was inserted first.
+  assert.equal(limiter.consume("a", 2_000).allowed, true);
+  assert.equal(limiter.consume("b", 1_000).allowed, true);
+  assert.equal(limiter.consume("c", 3_000).allowed, true);
+
+  // a remains active, proving the earlier-expiring b was evicted.
+  assert.equal(limiter.consume("a", 3_000).allowed, false);
 });
 
 test("rate limiter removes expired buckets before admitting a new client", () => {

@@ -40,8 +40,7 @@ export class InMemoryRateLimiter {
     if (!current) {
       this.evictExpired(now);
       if (this.buckets.size >= this.maxBuckets) {
-        const oldestKey = this.buckets.keys().next().value;
-        if (oldestKey !== undefined) this.buckets.delete(oldestKey);
+        this.evictEarliestExpiring();
       }
     }
 
@@ -63,6 +62,20 @@ export class InMemoryRateLimiter {
     for (const [bucketKey, value] of this.buckets) {
       if (value.resetAt <= now) this.buckets.delete(bucketKey);
     }
+  }
+
+  private evictEarliestExpiring(): void {
+    let oldestKey: string | undefined;
+    let earliestResetAt = Number.POSITIVE_INFINITY;
+
+    for (const [bucketKey, value] of this.buckets) {
+      if (value.resetAt < earliestResetAt) {
+        oldestKey = bucketKey;
+        earliestResetAt = value.resetAt;
+      }
+    }
+
+    if (oldestKey !== undefined) this.buckets.delete(oldestKey);
   }
 }
 
