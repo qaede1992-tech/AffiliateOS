@@ -72,6 +72,7 @@ jobs:
           docker run --detach --name affiliateos-api --publish 3001:3001 \
             --env DATABASE_URL=postgresql://affiliateos:affiliateos@127.0.0.1:5432/affiliateos \
             --env API_CORS_ORIGIN=http://localhost:5173 \
+            --env API_AUTH_TOKEN=ci-smoke-test-token-123456789012345678901234 \
             affiliateos-api:ci
           for attempt in $(seq 1 20); do
             if curl --fail --silent http://127.0.0.1:3001/api/v1/health >/dev/null; then
