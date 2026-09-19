@@ -11,6 +11,7 @@ COPY apps/web/index.html apps/web/index.html
 COPY apps/web/src apps/web/src
 COPY packages/shared/tsconfig.json packages/shared/tsconfig.json
 COPY packages/shared/src packages/shared/src
+RUN npm run build --workspace @affiliateos/shared
 RUN npm run build --workspace @affiliateos/web
 
 FROM nginx:1.29-alpine
