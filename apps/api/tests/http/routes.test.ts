@@ -329,7 +329,7 @@ test("OAuth callback is reachable without a bearer token so external providers c
 
   const response = await app.inject({
     method: "GET",
-    url: "/api/v1/social-accounts/oauth/callback?platform=instagram&code=test&state=invalid",
+    url: "/api/v1/social-accounts/oauth/callback?platform=instagram&code=test&state=00000000-0000-4000-8000-000000000000",
   });
 
   assert.equal(response.statusCode, 400);
