@@ -33,7 +33,10 @@ export function createApp(services: Services = createInMemoryServices()) {
       return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." });
     }
 
-    const statusCode = "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
+    const statusCode =
+      error !== null && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number"
+        ? error.statusCode
+        : 500;
     const safeStatusCode = statusCode >= 400 && statusCode < 500 ? statusCode : 500;
 
     return reply.status(safeStatusCode).send({
