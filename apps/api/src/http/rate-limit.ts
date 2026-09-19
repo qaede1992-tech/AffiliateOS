@@ -10,18 +10,24 @@ type Bucket = {
   resetAt: number;
 };
 
+const DEFAULT_MAX_BUCKETS = 10_000;
+
 export class InMemoryRateLimiter {
   private readonly buckets = new Map<string, Bucket>();
 
   constructor(
     private readonly limit: number,
-    private readonly windowMs: number
+    private readonly windowMs: number,
+    private readonly maxBuckets = DEFAULT_MAX_BUCKETS
   ) {
     if (!Number.isInteger(limit) || limit < 1) {
       throw new Error("Rate-limit max must be a positive integer.");
     }
     if (!Number.isInteger(windowMs) || windowMs < 1_000) {
       throw new Error("Rate-limit window must be at least 1000 milliseconds.");
+    }
+    if (!Number.isInteger(maxBuckets) || maxBuckets < 1) {
+      throw new Error("Rate-limit max buckets must be a positive integer.");
     }
   }
 
@@ -31,14 +37,16 @@ export class InMemoryRateLimiter {
       ? { count: 0, resetAt: now + this.windowMs }
       : current;
 
-    bucket.count += 1;
-    this.buckets.set(key, bucket);
-
-    if (this.buckets.size > 10_000) {
-      for (const [bucketKey, value] of this.buckets) {
-        if (value.resetAt <= now) this.buckets.delete(bucketKey);
+    if (!current) {
+      this.evictExpired(now);
+      if (this.buckets.size >= this.maxBuckets) {
+        const oldestKey = this.buckets.keys().next().value;
+        if (oldestKey !== undefined) this.buckets.delete(oldestKey);
       }
     }
+
+    bucket.count += 1;
+    this.buckets.set(key, bucket);
 
     const allowed = bucket.count <= this.limit;
     const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1_000));
@@ -49,6 +57,12 @@ export class InMemoryRateLimiter {
       remaining: Math.max(0, this.limit - bucket.count),
       retryAfterSeconds
     };
+  }
+
+  private evictExpired(now: number): void {
+    for (const [bucketKey, value] of this.buckets) {
+      if (value.resetAt <= now) this.buckets.delete(bucketKey);
+    }
   }
 }
 
