@@ -56,5 +56,5 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services)
   app.get("/api/v1/social-accounts/:socialAccountId", async (request) => services.socialAccounts.get(socialAccountIdSchema.parse(request.params).socialAccountId));
   app.patch("/api/v1/social-accounts/:socialAccountId", writeGuard, async (request) => services.socialAccounts.update(socialAccountIdSchema.parse(request.params).socialAccountId, updateSocialAccountSchema.parse(request.body)));
   app.post("/api/v1/social-accounts/oauth/start", writeGuard, async (request) => { const input = socialOAuthStartSchema.parse(request.body); return services.socialOAuth.start(input.platform, input.redirectUri); });
-  app.get("/api/v1/social-accounts/oauth/callback", writeGuard, async (request) => { const input = socialOAuthCallbackSchema.parse(request.query); return services.socialOAuth.callback(input.platform, input.code, input.state); });
+  app.get("/api/v1/social-accounts/oauth/callback", async (request) => { const input = socialOAuthCallbackSchema.parse(request.query); return services.socialOAuth.callback(input.platform, input.code, input.state); });
 }
