@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { HealthResponse } from "@affiliateos/shared";
 import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
-import { authenticateRequest, type AuthConfig, type OperatorRole } from "./http/auth.js";
+import { authenticateRequest, authenticateToken, type AuthConfig, type OperatorRole } from "./http/auth.js";
 import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
 import { auditSecurityEvent } from "./http/app-audit.js";
 import { clearSessionCookie, createSessionCookieValue, readSessionCookie, setSessionCookie } from "./http/session.js";
@@ -79,12 +79,8 @@ export function createApp(services: Services = createInMemoryServices(), options
     reply.header("X-Frame-Options", "DENY");
     reply.header("Referrer-Policy", "no-referrer");
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    if (!isHealthEndpoint(request.url)) {
-      reply.header("Cache-Control", "no-store");
-    }
-    if (process.env.NODE_ENV === "production") {
-      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-    }
+    if (!isHealthEndpoint(request.url)) reply.header("Cache-Control", "no-store");
+    if (process.env.NODE_ENV === "production") reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   });
 
   app.addHook("onRequest", async (request, reply) => {
@@ -97,10 +93,7 @@ export function createApp(services: Services = createInMemoryServices(), options
       reply.header("X-RateLimit-Remaining", result.remaining);
       if (!result.allowed) {
         reply.header("Retry-After", result.retryAfterSeconds);
-        return reply.status(429).send({
-          error: "RATE_LIMITED",
-          message: "Too many requests. Please retry later."
-        });
+        return reply.status(429).send({ error: "RATE_LIMITED", message: "Too many requests. Please retry later." });
       }
     }
 
@@ -116,17 +109,10 @@ export function createApp(services: Services = createInMemoryServices(), options
     request.auth = context;
   });
 
-  app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({
-    status: "ok",
-    service: "affiliateos-api",
-    timestamp: new Date().toISOString()
-  }));
+  app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({ status: "ok", service: "affiliateos-api", timestamp: new Date().toISOString() }));
 
   app.get("/api/v1/ready", async (_request, reply) => {
-    if (!options.readinessCheck) {
-      return reply.send({ status: "ready", service: "affiliateos-api" });
-    }
-
+    if (!options.readinessCheck) return reply.send({ status: "ready", service: "affiliateos-api" });
     try {
       await options.readinessCheck();
       return reply.send({ status: "ready", service: "affiliateos-api" });
@@ -138,7 +124,7 @@ export function createApp(services: Services = createInMemoryServices(), options
 
   app.post("/api/v1/auth/login", async (request, reply) => {
     const input = z.object({ token: z.string().trim().min(1).max(4096) }).parse(request.body);
-    const context = authenticateRequest({ headers: { authorization: `Bearer ${input.token}` } } as never, auth);
+    const context = authenticateToken(input.token, auth);
     if (!context || !sessionSecret) {
       auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_login_credential" });
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Invalid authentication credential." });
@@ -158,23 +144,11 @@ export function createApp(services: Services = createInMemoryServices(), options
 
   app.setErrorHandler((error, request, reply) => {
     request.log.error(error);
-    if (error instanceof DomainError) {
-      return reply.status(error.statusCode).send({ error: error.code, message: error.message });
-    }
-    if (error instanceof z.ZodError) {
-      return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." });
-    }
-
-    const statusCode =
-      error !== null && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number"
-        ? error.statusCode
-        : 500;
+    if (error instanceof DomainError) return reply.status(error.statusCode).send({ error: error.code, message: error.message });
+    if (error instanceof z.ZodError) return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." });
+    const statusCode = error !== null && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
     const safeStatusCode = statusCode >= 400 && statusCode < 500 ? statusCode : 500;
-
-    return reply.status(safeStatusCode).send({
-      error: "INTERNAL_SERVER_ERROR",
-      message: safeStatusCode === 500 ? "An unexpected error occurred." : "The request could not be processed."
-    });
+    return reply.status(safeStatusCode).send({ error: "INTERNAL_SERVER_ERROR", message: safeStatusCode === 500 ? "An unexpected error occurred." : "The request could not be processed." });
   });
 
   return app;
