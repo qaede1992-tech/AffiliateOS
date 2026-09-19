@@ -54,6 +54,31 @@ test("analytics includes explicitly attributed conversion revenue and commission
   assert.deepEqual(await analytics.campaign(campaignId), { campaignId, clickCount: 1, trackingLinkCount: 1, contentCount: 0, publishedContentCount: 0, scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 12500, attributedCommissionCents: 1250, conversionRate: 1 });
 });
 
+test("analytics excludes commissions belonging to rejected attributed conversions", async () => {
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const contents = new InMemoryRepository<import("@affiliateos/shared").Content>();
+  const links = new InMemoryTrackingLinkRepository();
+  const clicks = new InMemoryClickRepository();
+  const conversions = new InMemoryRepository<import("@affiliateos/shared").Conversion>();
+  const commissions = new InMemoryRepository<import("@affiliateos/shared").Commission>();
+  const attributions = new InMemoryConversionAttributionRepository();
+  const now = new Date().toISOString();
+  const campaignId = "00000000-0000-0000-0000-000000000301";
+  const linkId = "00000000-0000-0000-0000-000000000302";
+  const conversionId = "00000000-0000-0000-0000-000000000303";
+  await campaigns.save({ id: campaignId, name: "Rejected", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
+  await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000304", campaignId, code: "reject1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", offerId: "00000000-0000-0000-0000-000000000306", amountCents: 5000, status: "rejected", occurredAt: now });
+  await commissions.save({ id: "00000000-0000-0000-0000-000000000307", conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", amountCents: 500, status: "rejected", createdAt: now });
+  await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
+
+  const analytics = new AnalyticsService(campaigns, links, clicks, contents, undefined, conversions, commissions, attributions);
+  const result = await analytics.campaign(campaignId);
+  assert.equal(result.attributedConversionCount, 0);
+  assert.equal(result.attributedRevenueCents, 0);
+  assert.equal(result.attributedCommissionCents, 0);
+});
+
 test("analytics delegates to the database reader when configured", async () => {
   const reader = {
     async overview() { return { clickCount: 7, trackingLinkCount: 3, campaignCount: 2, contentCount: 4, publishedContentCount: 2, scheduledContentCount: 1, attributedConversionCount: 0, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0, campaigns: [] }; },
