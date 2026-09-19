@@ -66,7 +66,8 @@ All application endpoints are under `/api/v1`. The API includes:
 - database-backed analytics overview and campaign analytics
 - content creation/listing/update
 - social-account registration/update and OAuth start/callback state handling
-- health check at `GET /api/v1/health`
+- liveness check at `GET /api/v1/health`
+- dependency readiness check at `GET /api/v1/ready` (production wiring verifies PostgreSQL)
 
 The product-opportunity score accepts optional `commissionRateBps` and `audienceRelevance` (0–1), and returns transparent score reasons. The score is a prioritisation signal, **not a sales forecast or guarantee**.
 
@@ -92,7 +93,7 @@ Do not put API keys, OAuth tokens, or marketplace credentials in `.env.example`,
 
 ## HTTP runtime hardening
 
-The API supports an explicit CORS origin, limits request bodies to 1 MiB, redacts sensitive credential/configuration request fields from logs, and preserves appropriate client-error status codes such as `413` for oversized request bodies.
+The API supports an explicit CORS origin, limits request bodies to 1 MiB, redacts sensitive credential/configuration request fields from logs, and preserves appropriate client-error status codes such as `413` for oversized request bodies. `GET /api/v1/ready` performs the production database dependency check and returns `503` when PostgreSQL is unavailable.
 
 ## Verification
 
@@ -103,7 +104,7 @@ npm run build
 npm run db:check
 ```
 
-CI validates tests, typechecking, production builds, and migration checks. HTTP regression coverage includes configured CORS behavior and the 1 MiB request-body limit.
+CI validates tests, typechecking, production builds, and migration checks. HTTP regression coverage includes configured CORS behavior, the 1 MiB request-body limit, and readiness failure handling.
 
 ## Production completion checklist
 
