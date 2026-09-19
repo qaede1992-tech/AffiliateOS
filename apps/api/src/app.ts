@@ -4,15 +4,38 @@ import { z } from "zod";
 import type { HealthResponse } from "@affiliateos/shared";
 import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
+import { authenticateRequest, type AuthConfig, type OperatorRole } from "./http/auth.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
 const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http://localhost:5173";
 
+const configuredAuth = (): AuthConfig => {
+  const token = process.env.API_AUTH_TOKEN?.trim();
+  const production = process.env.NODE_ENV === "production";
+  if (production && (!token || token.length < 32)) {
+    throw new Error("API_AUTH_TOKEN must be at least 32 characters in production.");
+  }
+
+  const role = (process.env.API_AUTH_OPERATOR_ROLE?.trim() || "admin") as OperatorRole;
+  if (!["admin", "operator", "viewer"].includes(role)) {
+    throw new Error("API_AUTH_OPERATOR_ROLE must be admin, operator, or viewer.");
+  }
+
+  return {
+    enabled: production || Boolean(token),
+    token,
+    operatorId: process.env.API_AUTH_OPERATOR_ID?.trim() || "development-operator",
+    role
+  };
+};
+
 type AppOptions = {
   readinessCheck?: () => Promise<void>;
+  auth?: AuthConfig;
 };
 
 export function createApp(services: Services = createInMemoryServices(), options: AppOptions = {}) {
+  const auth = options.auth ?? configuredAuth();
   const app = Fastify({
     logger: {
       redact: [
@@ -27,7 +50,17 @@ export function createApp(services: Services = createInMemoryServices(), options
     bodyLimit: 1_048_576
   });
 
+  app.decorateRequest("auth", null);
   app.register(cors, { origin: configuredCorsOrigin() });
+
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url === "/api/v1/health" || request.url === "/api/v1/ready") return;
+    const context = authenticateRequest(request, auth);
+    if (!context) {
+      return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." });
+    }
+    request.auth = context;
+  });
 
   app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({
     status: "ok",
@@ -48,6 +81,8 @@ export function createApp(services: Services = createInMemoryServices(), options
       return reply.status(503).send({ status: "not_ready", service: "affiliateos-api" });
     }
   });
+
+  app.get("/api/v1/auth/me", async (request) => ({ authenticated: true, operatorId: request.auth!.operatorId, role: request.auth!.role }));
 
   registerResourceRoutes(app, services);
 
