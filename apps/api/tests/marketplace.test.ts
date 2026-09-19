@@ -28,6 +28,22 @@ test("marketplace endpoints normalize products, persist offers, and generate moc
   await app.close();
 });
 
+test("marketplace provider numeric overflow is rejected before persistence", async () => {
+  const registry = new MarketplaceProviderRegistry();
+  registry.register(new MockMarketplaceProvider([{ externalProductId: "sku-overflow", name: "Unsafe product", priceCents: Number.MAX_SAFE_INTEGER + 2, currency: "USD", productUrl: "https://catalog.example.test/products/unsafe", availability: "in_stock" }], { "sku-overflow": [{ externalOfferId: "offer-overflow", priceCents: 100, currency: "USD", commissionRateBps: 1200, availability: "in_stock" }] }));
+  const { createServices } = await import("../src/domain/container.js");
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
+  await repos.marketplaceConnections.save({ ...connection, slug: "overflow-catalog" });
+  const configured = createServices(repos, { run: (work) => work({ conversions: repos.conversions, commissions: repos.commissions }) }, registry);
+  const app = createApp(configured);
+  const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/overflow-catalog/products/discover" });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error, "INVALID_MARKETPLACE_NUMERIC_VALUE");
+  assert.equal((await repos.products.list()).length, 0);
+  await app.close();
+});
+
 test("unconfigured marketplace never impersonates a connected provider", async () => {
   const app = createApp();
   const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/not-real/products/discover" });
