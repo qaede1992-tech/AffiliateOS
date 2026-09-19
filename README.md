@@ -83,12 +83,17 @@ Connection `configuration` rejects secret-like fields (`token`, `secret`, `passw
 
 Do not put API keys, OAuth tokens, or marketplace credentials in `.env.example`, source code, migrations, or the database metadata JSON. Production adapters must use the official OAuth/API scopes and consent flows of their platforms; AffiliateOS intentionally does not scrape marketplaces, create accounts, or post automatically without authorization.
 
+## HTTP runtime hardening
+
+The API accepts an explicit `API_CORS_ORIGIN` setting restricted to the deployed dashboard origin; the local default is `http://localhost:5173`. Request bodies are limited to 1 MiB. Sensitive credential/configuration request fields are redacted from API logs.
+
 ## Verification
 
 ```bash
 npm run typecheck
 npm test
 npm run build
+npm run db:check
 ```
 
 Tests cover existing affiliate/conversion/commission behavior plus provider registration, product scoring, audience matching, and claim-safe content generation.

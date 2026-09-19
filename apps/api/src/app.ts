@@ -6,10 +6,15 @@ import { createInMemoryServices, type Services } from "./domain/container.js";
 import { DomainError } from "./domain/errors.js";
 import { registerResourceRoutes } from "./http/routes.js";
 
-export function createApp(services: Services = createInMemoryServices()) {
-  const app = Fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*"] } });
+const configuredCorsOrigin = () => process.env.API_CORS_ORIGIN?.trim() || "http://localhost:5173";
 
-  app.register(cors, { origin: true });
+export function createApp(services: Services = createInMemoryServices()) {
+  const app = Fastify({
+    logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.credentialReference", "req.body.configuration.*"] },
+    bodyLimit: 1_048_576
+  });
+
+  app.register(cors, { origin: configuredCorsOrigin() });
 
   app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({
     status: "ok",
