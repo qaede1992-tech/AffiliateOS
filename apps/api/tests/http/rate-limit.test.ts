@@ -35,6 +35,29 @@ test("rate limiter keeps clients isolated", () => {
   assert.equal(limiter.consume("b", 2_000).allowed, true);
 });
 
+test("rate limiter bounds active client buckets", () => {
+  const limiter = new InMemoryRateLimiter(1, 60_000, 2);
+
+  assert.equal(limiter.consume("a", 1_000).allowed, true);
+  assert.equal(limiter.consume("b", 1_000).allowed, true);
+  assert.equal(limiter.consume("c", 1_000).allowed, true);
+  assert.equal(limiter.consume("c", 2_000).allowed, false);
+
+  // The oldest active bucket is evicted when the configured capacity is full.
+  assert.equal(limiter.consume("a", 2_000).allowed, true);
+});
+
+test("rate limiter removes expired buckets before admitting a new client", () => {
+  const limiter = new InMemoryRateLimiter(1, 1_000, 2);
+
+  assert.equal(limiter.consume("a", 1_000).allowed, true);
+  assert.equal(limiter.consume("b", 1_000).allowed, true);
+  assert.equal(limiter.consume("c", 2_000).allowed, true);
+
+  // Both prior buckets expired, so admitting c does not evict an active bucket.
+  assert.equal(limiter.consume("b", 2_000).allowed, true);
+});
+
 test("authenticated API routes return rate-limit headers and 429 when exhausted", async () => {
   const app = createApp(undefined, {
     auth,
