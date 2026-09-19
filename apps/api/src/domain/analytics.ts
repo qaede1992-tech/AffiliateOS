@@ -93,9 +93,10 @@ export class AnalyticsService {
 
   private buildCampaign(campaignId: string, trackingLinks: TrackingLink[], allClicks: Click[], contents: Content[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]): CampaignAnalytics {
     const attributed = this.attribute(allClicks, trackingLinks, conversions, commissions, attributions);
+    const clickCount = allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length;
     return {
       campaignId,
-      clickCount: allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length,
+      clickCount,
       trackingLinkCount: trackingLinks.length,
       contentCount: contents.length,
       publishedContentCount: contents.filter((item) => item.status === "published").length,
@@ -103,7 +104,7 @@ export class AnalyticsService {
       attributedConversionCount: attributed.count,
       attributedRevenueCents: attributed.revenueCents,
       attributedCommissionCents: attributed.commissionCents,
-      conversionRate: rate(attributed.count, allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length)
+      conversionRate: rate(attributed.count, clickCount)
     };
   }
 
@@ -111,10 +112,11 @@ export class AnalyticsService {
     const linkIds = new Set(links.map((link) => link.id));
     const conversionIds = new Set(attributions.filter((item) => linkIds.has(item.trackingLinkId)).map((item) => item.conversionId));
     const validConversions = conversions.filter((item) => conversionIds.has(item.id) && item.status !== "rejected");
+    const validConversionIds = new Set(validConversions.map((item) => item.id));
     return {
       count: validConversions.length,
       revenueCents: validConversions.reduce((sum, item) => sum + item.amountCents, 0),
-      commissionCents: commissions.filter((item) => conversionIds.has(item.conversionId)).reduce((sum, item) => sum + item.amountCents, 0)
+      commissionCents: commissions.filter((item) => validConversionIds.has(item.conversionId)).reduce((sum, item) => sum + item.amountCents, 0)
     };
   }
 }
