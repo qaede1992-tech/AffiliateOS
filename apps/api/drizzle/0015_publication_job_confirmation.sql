@@ -1,2 +1,0 @@
--- publication_jobs.status intentionally remains varchar so the asynchronous
--- publication lifecycle can add awaiting_confirmation without an enum migration.
