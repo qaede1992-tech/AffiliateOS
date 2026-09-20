@@ -11,7 +11,8 @@ export interface ProviderConversionResolver {
 export class ProviderConversionProcessor {
   constructor(private readonly conversions: ConversionService, private readonly resolver: ProviderConversionResolver) {}
 
-  async process(event: NormalizedProviderConversion): Promise<Conversion> {
+  async process(accountScope: string, event: NormalizedProviderConversion): Promise<Conversion> {
+    if (!accountScope.trim()) throw new DomainError("PROVIDER_CONVERSION_ACCOUNT_MISSING", "Provider conversion account scope is required.", 422);
     if (!event.affiliateReference) throw new DomainError("PROVIDER_CONVERSION_AFFILIATE_MISSING", "Provider conversion is missing an affiliate reference.", 422);
     if (!event.offerReference) throw new DomainError("PROVIDER_CONVERSION_OFFER_MISSING", "Provider conversion is missing an offer reference.", 422);
 
@@ -25,7 +26,7 @@ export class ProviderConversionProcessor {
       offerId,
       amountCents: event.amountCents,
       occurredAt: event.occurredAt,
-      idempotencyKey: `provider:${event.externalConversionId}`
+      idempotencyKey: `provider:${accountScope}:${event.externalConversionId}`
     });
   }
 }
