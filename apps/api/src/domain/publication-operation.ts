@@ -11,6 +11,8 @@ export interface PublicationOperation {
   status: PublicationOperationStatus;
   externalPostId?: string;
   lastError?: string;
+  checkAttemptCount: number;
+  nextCheckAt?: IsoTimestamp;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 }
