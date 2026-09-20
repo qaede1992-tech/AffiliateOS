@@ -5,7 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import type { PublicationJobRepository } from "./publication-job.js";
 import { PublicationOperationService } from "./publication-operation-service.js";
-import { InMemoryPublicationOperationRepository, type PublicationOperationRepository } from "./publication-operation.js";
+import type { PublicationOperationRepository } from "./publication-operation.js";
 
 const INITIAL_RETRY_DELAY_MS = 60 * 1000;
 const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
@@ -46,7 +46,7 @@ export class PublicationWorker {
     private readonly contentService?: ContentService,
     operationRepository?: PublicationOperationRepository
   ) {
-    this.operations = new PublicationOperationService(operationRepository ?? new InMemoryPublicationOperationRepository());
+    this.operations = new PublicationOperationService(operationRepository ?? new InMemoryFallbackPublicationOperationRepository());
   }
 
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
@@ -114,8 +114,19 @@ export class PublicationWorker {
           provider: result.provider ?? result.content.platform,
           providerOperationId: result.providerOperationId
         }, now);
+        if (operation.status === "published" && operation.externalPostId) {
+          await this.contentService?.update(job.contentId, { status: "published", publishedAt: now.toISOString() });
+          await this.jobService.succeed(job.id, operation.externalPostId, now);
+          return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: operation.externalPostId };
+        }
+        if (operation.status === "failed") {
+          const error = operation.lastError ?? "Publication operation failed.";
+          await this.contentService?.update(job.contentId, { status: "failed" });
+          await this.jobService.fail(job.id, error, now);
+          return { jobId: job.id, contentId: job.contentId, status: "failed", error };
+        }
         await this.jobService.awaitConfirmation(job.id, now);
-        return { jobId: job.id, contentId: job.contentId, status: "awaiting_confirmation", error: operation.status === "failed" ? operation.lastError : undefined };
+        return { jobId: job.id, contentId: job.contentId, status: "awaiting_confirmation" };
       }
 
       if (result.status === "unsupported") {
@@ -140,4 +151,12 @@ export class PublicationWorker {
     if (content.status !== "failed") return;
     await this.contentService.update(content.id, { status: "scheduled" });
   }
+}
+
+class InMemoryFallbackPublicationOperationRepository implements PublicationOperationRepository {
+  private readonly operations = new Map<string, import("./publication-operation.js").PublicationOperation>();
+  async list() { return [...this.operations.values()]; }
+  async findById(id: string) { return this.operations.get(id); }
+  async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
+  async save(operation: import("./publication-operation.js").PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
 }
