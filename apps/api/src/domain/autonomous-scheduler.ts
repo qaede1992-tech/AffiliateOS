@@ -54,7 +54,11 @@ export class AutonomousScheduler {
 
   async runNow(input: AutonomousCycleInput = this.input): Promise<AutonomousCycleResult | undefined> {
     if (this.activeRun) return this.activeRun;
-    this.activeRun = this.cycle.runOnce(input)
+    const effectiveInput: AutonomousCycleInput = {
+      ...input,
+      idempotencyNamespace: input.idempotencyNamespace ?? this.cycleNamespace()
+    };
+    this.activeRun = this.cycle.runOnce(effectiveInput)
       .then(async (result) => {
         if (result && this.onResult) await this.onResult(result);
         return result;
@@ -70,7 +74,7 @@ export class AutonomousScheduler {
   }
 
   private async runAndSchedule(): Promise<void> {
-    await this.runNow({ ...this.input, idempotencyNamespace: this.input.idempotencyNamespace ?? this.cycleNamespace() });
+    await this.runNow();
     if (!this.started) return;
     this.timer = setTimeout(() => {
       this.timer = undefined;
