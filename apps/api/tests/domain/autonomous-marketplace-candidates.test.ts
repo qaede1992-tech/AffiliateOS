@@ -30,11 +30,15 @@ describe("autonomous marketplace candidate provider", () => {
     const marketplace = {
       listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
       discoverProducts: async (slug: string) => { calls.push(`discover:${slug}`); return [p]; },
-      getOffers: async (slug: string, externalProductId: string) => { calls.push(`offers:${slug}:${externalProductId}`); return [offer]; }
+      getOffers: async (slug: string, externalProductId: string) => { calls.push(`offers:${slug}:${externalProductId}`); return [{ ...offer, affiliateUrl: undefined, affiliateLinkStatus: "not_generated" as const }]; },
+      generateAffiliateLink: async (slug: string, externalProductId: string, externalOfferId: string) => {
+        calls.push(`link:${slug}:${externalProductId}:${externalOfferId}`);
+        return { ...offer, affiliateUrl: "https://example.invalid/generated", affiliateLinkStatus: "active" as const };
+      }
     } as any;
 
     const result = await new AutonomousMarketplaceCandidateProvider(marketplace).listCandidates();
-    assert.deepEqual(calls, ["discover:marketplace-1", "offers:marketplace-1:external-product-1"]);
+    assert.deepEqual(calls, ["discover:marketplace-1", "offers:marketplace-1:external-product-1", "link:marketplace-1:external-product-1:external-offer-1"]);
     assert.equal(result.length, 1);
     assert.equal(result[0].offers[0].id, "offer-1");
   });
