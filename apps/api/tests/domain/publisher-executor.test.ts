@@ -98,8 +98,9 @@ describe("PublisherExecutor", () => {
     assert.equal(receivedKey, "publication-job:job-1");
   });
 
-  it("does not publish content before its scheduled time", async () => {
+  it("does not require an active account before the scheduled time", async () => {
     const { contentService, socialAccounts, created } = await setup();
+    await socialAccounts.save({ ...account, status: "inactive" });
     let published = false;
     const publisher: SocialPublisher = {
       supports: () => true,
@@ -108,6 +109,7 @@ describe("PublisherExecutor", () => {
     const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
     const result = await executor.execute(created.id, new Date("2026-09-20T09:00:00.000Z"));
     assert.equal(result.status, "not_due");
+    assert.equal(result.account, undefined);
     assert.equal(published, false);
     assert.equal(result.content.status, "scheduled");
   });
