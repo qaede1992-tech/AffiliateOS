@@ -52,6 +52,33 @@ describe("PublisherExecutor", () => {
     assert.equal(published, 1);
   });
 
+  it("returns unsupported when a publisher supports the platform but not the content capability", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    let published = false;
+    const publisher: SocialPublisher = {
+      supports: (platform) => platform === "tiktok",
+      supportsContent: (content) => content.contentType === "video",
+      publish: async () => { published = true; return { externalPostId: "should-not-publish" }; }
+    };
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    const result = await executor.execute(created.id, new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(result.status, "unsupported");
+    assert.equal(result.content.status, "scheduled");
+    assert.equal(published, false);
+  });
+
+  it("preserves compatibility for publishers without an explicit content capability method", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => ({ externalPostId: "external-post-compatible" })
+    };
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    const result = await executor.execute(created.id, new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(result.status, "published");
+    assert.equal(result.externalPostId, "external-post-compatible");
+  });
+
   it("publishes through the explicitly bound account when multiple accounts share a platform", async () => {
     const { contentService, socialAccounts, created } = await setup();
     const secondary: SocialAccount = {
