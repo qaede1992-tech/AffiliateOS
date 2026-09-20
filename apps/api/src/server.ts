@@ -18,6 +18,7 @@ const services = createServices(
   new DrizzleConversionAttributionRepository(persistence.db)
 );
 const app = createApp(services, {
+  providerEvents: persistence.providerEvents,
   readinessCheck: async () => {
     await persistence.db.execute(sql`SELECT 1`);
   }
@@ -31,10 +32,6 @@ try {
   process.exit(1);
 }
 
-const shutdown = async () => {
-  await app.close();
-  await persistence.close();
-};
-
+const shutdown = async () => { await app.close(); await persistence.close(); };
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
