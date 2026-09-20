@@ -27,7 +27,30 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
         for (const product of products) {
           try {
             const offers = await this.marketplace.getOffers(connection.slug, product.externalProductId);
-            candidates.push({ product, offers });
+            const preparedOffers = await Promise.all(offers.map(async (offer) => {
+              if (
+                offer.status !== "active" ||
+                offer.availability === "out_of_stock" ||
+                offer.affiliateLinkStatus === "active" ||
+                !offer.externalOfferId
+              ) {
+                return offer;
+              }
+
+              try {
+                return await this.marketplace.generateAffiliateLink(
+                  connection.slug,
+                  product.externalProductId,
+                  offer.externalOfferId
+                );
+              } catch {
+                // A provider may not support affiliate-link generation yet, or the
+                // current offer may not be linkable. Keep the candidate so the
+                // selector can reject it without aborting the marketplace cycle.
+                return offer;
+              }
+            }));
+            candidates.push({ product, offers: preparedOffers });
           } catch {
             candidates.push({ product, offers: [] });
           }
