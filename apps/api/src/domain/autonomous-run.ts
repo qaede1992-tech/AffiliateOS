@@ -17,8 +17,10 @@ export interface AutonomousRun {
 
 export interface AutonomousRunRepository {
   findByIdempotencyKey(key: string): Promise<AutonomousRun | undefined>;
+  findById?(id: EntityId): Promise<AutonomousRun | undefined>;
   save(run: AutonomousRun): Promise<AutonomousRun>;
   saveIfAbsent?(run: AutonomousRun): Promise<AutonomousRun>;
+  transition?(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun): Promise<AutonomousRun | undefined>;
 }
 
 export class InMemoryAutonomousRunRepository implements AutonomousRunRepository {
@@ -26,6 +28,10 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
 
   async findByIdempotencyKey(key: string) {
     return this.runs.get(key);
+  }
+
+  async findById(id: EntityId) {
+    return [...this.runs.values()].find((run) => run.id === id);
   }
 
   async save(run: AutonomousRun) {
@@ -36,6 +42,13 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   async saveIfAbsent(run: AutonomousRun) {
     const existing = this.runs.get(run.idempotencyKey);
     if (existing) return existing;
+    this.runs.set(run.idempotencyKey, run);
+    return run;
+  }
+
+  async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) {
+    const current = await this.findById(id);
+    if (!current || !expected.includes(current.status)) return undefined;
     this.runs.set(run.idempotencyKey, run);
     return run;
   }
