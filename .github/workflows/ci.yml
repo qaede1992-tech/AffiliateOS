@@ -91,6 +91,10 @@ jobs:
             --header "Authorization: Bearer $token" \
             http://127.0.0.1:3001/api/v1/auth/me)
           test "$authorized_status" = '200'
+          cookie_headers=$(curl --silent --include --request POST --header 'Content-Type: application/json' --data "{\"token\":\"$token\"}" http://127.0.0.1:3001/api/v1/auth/login)
+          printf '%s\n' "$cookie_headers" | grep -F 'affiliateos_session=' >/dev/null
+          printf '%s\n' "$cookie_headers" | grep -F 'HttpOnly' >/dev/null
+          printf '%s\n' "$cookie_headers" | grep -F 'SameSite=Strict' >/dev/null
       - name: Smoke test web container
         run: |
           set -euo pipefail
