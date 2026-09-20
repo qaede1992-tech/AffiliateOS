@@ -12,7 +12,7 @@ export class InMemoryRepository<T extends { id: EntityId }> {
 export class InMemoryMarketplaceConnectionRepository extends InMemoryRepository<import("@affiliateos/shared").MarketplaceConnection> implements MarketplaceConnectionRepository { async findBySlug(slug: string) { return (await this.list()).find((connection) => connection.slug === slug); } }
 export class InMemoryProductCatalogRepository extends InMemoryRepository<import("@affiliateos/shared").Product> implements ProductCatalogRepository { async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { return (await this.list()).find((product) => product.marketplaceId === marketplaceId && product.externalProductId === externalProductId); } }
 export class InMemoryAffiliateOfferRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateOffer> implements AffiliateOfferRepository { async findByAccountOffer(affiliateAccountId: string, externalOfferId: string) { return (await this.list()).find((offer) => offer.affiliateAccountId === affiliateAccountId && offer.externalOfferId === externalOfferId); } }
-export class InMemoryAffiliateAccountRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateAccount> implements AffiliateAccountRepository { async findByMarketplace(marketplaceId: string) { return (await this.list()).find((account) => account.marketplaceId === marketplaceId); } }
+export class InMemoryAffiliateAccountRepository extends InMemoryRepository<import("@affiliateos.shared").AffiliateAccount> implements AffiliateAccountRepository { async findByMarketplace(marketplaceId: string) { return (await this.list()).find((account) => account.marketplaceId === marketplaceId); } }
 export class InMemoryCampaignOfferRepository implements CampaignOfferRepository {
   private readonly entities = new Map<string, CampaignOffer>();
   async listByCampaign(campaignId: EntityId) { return [...this.entities.values()].filter((item) => item.campaignId === campaignId); }
@@ -34,13 +34,24 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
   async findById(id: EntityId) { return this.jobs.get(id); }
-  async findByIdempotencyKey(key: string) { return [...this.jobs.values()].find((job) => job.idempotencyKey === key); }
+  async findByIdempotencyKey(key: string) {
+    for (const job of this.jobs.values()) {
+      if (job.idempotencyKey === key) return job;
+    }
+    return undefined;
+  }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
   async saveIfAbsent(job: PublicationJob) {
-    const existing = await this.findByIdempotencyKey(job.idempotencyKey);
+    const existing = this.findByIdempotencyKeySync(job.idempotencyKey);
     if (existing) return existing;
     this.jobs.set(job.id, job);
     return job;
+  }
+  private findByIdempotencyKeySync(key: string) {
+    for (const job of this.jobs.values()) {
+      if (job.idempotencyKey === key) return job;
+    }
+    return undefined;
   }
   async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
     const job = this.jobs.get(id);
