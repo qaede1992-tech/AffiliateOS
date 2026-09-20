@@ -46,10 +46,13 @@ test("marketplace persistence recovers from concurrent unique inserts", async ()
   let productLookup = true;
   let accountLookup = true;
   let offerLookup = true;
+  let productSave = true;
+  let accountSave = true;
+  let offerSave = true;
   const uniqueViolation = () => Object.assign(new Error("duplicate key"), { code: "23505" });
-  const products = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplaceProduct() { if (productLookup) { productLookup = false; return undefined; } return racedProduct; }, async save() { throw uniqueViolation(); } };
-  const accounts = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplace() { if (accountLookup) { accountLookup = false; return undefined; } return racedAccount; }, async save() { throw uniqueViolation(); } };
-  const offers = { async list() { return []; }, async findById() { return undefined; }, async findByAccountOffer() { if (offerLookup) { offerLookup = false; return undefined; } return racedOffer; }, async save() { throw uniqueViolation(); } };
+  const products = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplaceProduct() { if (productLookup) { productLookup = false; return undefined; } return racedProduct; }, async save(entity: typeof racedProduct) { if (productSave) { productSave = false; throw uniqueViolation(); } return entity; } };
+  const accounts = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplace() { if (accountLookup) { accountLookup = false; return undefined; } return racedAccount; }, async save(entity: typeof racedAccount) { if (accountSave) { accountSave = false; throw uniqueViolation(); } return entity; } };
+  const offers = { async list() { return []; }, async findById() { return undefined; }, async findByAccountOffer() { if (offerLookup) { offerLookup = false; return undefined; } return racedOffer; }, async save(entity: typeof racedOffer) { if (offerSave) { offerSave = false; throw uniqueViolation(); } return entity; } };
   const connections = { async list() { return [connection]; }, async findById() { return connection; }, async findBySlug() { return connection; }, async save(entity: typeof connection) { return entity; } };
   const service = new MarketplaceService(registry, connections, products, accounts, offers);
   const result = await service.getOffers(connection.slug, "sku-race");
