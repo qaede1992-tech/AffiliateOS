@@ -83,7 +83,10 @@ export class CampaignOrchestrator {
 
     let currentCampaignId = run?.campaignId;
     try {
-      if (run) await this.autonomousRuns!.transition(run.id, "processing");
+      if (run) {
+        const claim = await this.autonomousRuns!.claimProcessing(run.id);
+        if (!claim.acquired && claim.run.status === "processing") throw new Error("Autonomous run is already being processed.");
+      }
 
       const audience = input.audience ?? [];
       const requestedPlatforms = [...new Set(input.platforms ?? defaultPlatforms)];
