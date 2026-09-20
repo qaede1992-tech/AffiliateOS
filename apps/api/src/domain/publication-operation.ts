@@ -24,6 +24,7 @@ export interface PublicationOperationRepository {
 
 export class InMemoryPublicationOperationRepository implements PublicationOperationRepository {
   private readonly operations = new Map<EntityId, PublicationOperation>();
+
   async list() { return [...this.operations.values()]; }
   async findById(id: EntityId) { return this.operations.get(id); }
   async findByProviderOperation(provider: string, providerOperationId: string) {
