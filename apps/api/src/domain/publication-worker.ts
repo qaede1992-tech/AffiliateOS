@@ -4,6 +4,8 @@ import { PublisherExecutor } from "./publisher-executor.js";
 import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import type { PublicationJobRepository } from "./publication-job.js";
+import { PublicationOperationService } from "./publication-operation-service.js";
+import type { PublicationOperationRepository } from "./publication-operation.js";
 
 const INITIAL_RETRY_DELAY_MS = 60 * 1000;
 const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
@@ -29,20 +31,26 @@ const isStaleProcessingJob = (job: PublicationJob, now: Date): boolean => {
 export type PublicationWorkerResult = {
   jobId: EntityId;
   contentId: EntityId;
-  status: "succeeded" | "failed" | "skipped";
+  status: "succeeded" | "failed" | "awaiting_confirmation" | "processing" | "skipped";
   externalPostId?: string;
   error?: string;
 };
 
 export class PublicationWorker {
+  private readonly operations: PublicationOperationService;
+
   constructor(
     private readonly jobs: PublicationJobRepository,
     private readonly jobService: PublicationJobService,
     private readonly executor: PublisherExecutor,
-    private readonly contentService?: ContentService
-  ) {}
+    private readonly contentService?: ContentService,
+    operationRepository?: PublicationOperationRepository
+  ) {
+    this.operations = new PublicationOperationService(operationRepository ?? new InMemoryFallbackPublicationOperationRepository());
+  }
 
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
+    const results = await this.reconcile(now);
     const candidates = (await this.jobs.list())
       .filter((job) => {
         if (!isDue(job, now)) return false;
@@ -52,11 +60,40 @@ export class PublicationWorker {
       })
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
-    const results: PublicationWorkerResult[] = [];
     for (const candidate of candidates) {
       const claimed = await this.jobService.claim(candidate.id, now);
       if (!claimed) continue;
       results.push(await this.process(claimed, now));
+    }
+    return results;
+  }
+
+  private async reconcile(now: Date): Promise<PublicationWorkerResult[]> {
+    const results: PublicationWorkerResult[] = [];
+    for (const operation of await this.operations.list()) {
+      if (operation.status !== "accepted" && operation.status !== "processing") continue;
+      try {
+        const checked = await this.executor.check(operation);
+        if (checked.result.status === "processing") {
+          await this.operations.transition(operation.id, "processing", {}, now);
+          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing" });
+          continue;
+        }
+        if (checked.result.status === "published") {
+          await this.operations.transition(operation.id, "published", { externalPostId: checked.result.externalPostId }, now);
+          await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
+          await this.jobService.succeed(operation.jobId, checked.result.externalPostId, now);
+          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "succeeded", externalPostId: checked.result.externalPostId });
+          continue;
+        }
+        await this.operations.transition(operation.id, "failed", { error: checked.result.error }, now);
+        await this.contentService?.update(operation.contentId, { status: "failed" });
+        await this.jobService.fail(operation.jobId, checked.result.error, now);
+        results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing", error: message });
+      }
     }
     return results;
   }
@@ -67,12 +104,18 @@ export class PublicationWorker {
       const result = await this.executor.execute(job.contentId, now, job.idempotencyKey);
       if (result.status === "published" && result.externalPostId) {
         await this.jobService.succeed(job.id, result.externalPostId, now);
-        return {
-          jobId: job.id,
+        return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: result.externalPostId };
+      }
+
+      if (result.status === "accepted" && result.providerOperationId) {
+        const operation = await this.operations.create({
           contentId: job.contentId,
-          status: "succeeded",
-          externalPostId: result.externalPostId
-        };
+          jobId: job.id,
+          provider: result.provider ?? result.content.platform,
+          providerOperationId: result.providerOperationId
+        }, now);
+        await this.jobService.awaitConfirmation(job.id, now);
+        return { jobId: job.id, contentId: job.contentId, status: "awaiting_confirmation", error: operation.status === "failed" ? operation.lastError : undefined };
       }
 
       if (result.status === "unsupported") {
@@ -97,4 +140,12 @@ export class PublicationWorker {
     if (content.status !== "failed") return;
     await this.contentService.update(content.id, { status: "scheduled" });
   }
+}
+
+class InMemoryFallbackPublicationOperationRepository implements PublicationOperationRepository {
+  private readonly operations = new Map<string, import("./publication-operation.js").PublicationOperation>();
+  async list() { return [...this.operations.values()]; }
+  async findById(id: string) { return this.operations.get(id); }
+  async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
+  async save(operation: import("./publication-operation.js").PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
 }
