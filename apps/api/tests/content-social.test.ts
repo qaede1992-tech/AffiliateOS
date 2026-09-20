@@ -10,7 +10,10 @@ test("content can be created, listed by campaign, and transitioned", async () =>
   await assert.rejects(() => services.content.update(content.id, { status: "scheduled" }), /requires scheduledAt/i);
   const scheduled = await services.content.update(content.id, { status: "scheduled", scheduledAt: "2026-10-01T10:00:00.000Z" });
   assert.equal(scheduled.status, "scheduled");
-  await assert.rejects(() => services.content.update(content.id, { status: "draft" }), /cannot transition/i);
+  const draft = await services.content.update(content.id, { status: "draft" });
+  assert.equal(draft.status, "draft");
+  const rescheduled = await services.content.update(content.id, { status: "scheduled", scheduledAt: "2026-10-01T10:00:00.000Z" });
+  assert.equal(rescheduled.status, "scheduled");
   const published = await services.content.update(content.id, { status: "published", publishedAt: "2026-10-01T11:00:00.000Z" });
   assert.equal(published.status, "published");
 });
