@@ -77,6 +77,7 @@ export class AutonomousScheduler {
   }
 
   private cycleNamespace(): string {
-    return `autonomous-cycle:${this.now().toISOString().slice(0, 10)}`;
+    const bucket = Math.floor(this.now().getTime() / this.intervalMs);
+    return `autonomous-cycle:${bucket}`;
   }
 }
