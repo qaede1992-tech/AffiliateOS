@@ -1,6 +1,7 @@
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
 import type { CampaignService, TrackingService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
+import type { DistributionEngine, DistributionPlan } from "./distribution-engine.js";
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
 
 export type CampaignOrchestratorInput = {
@@ -11,6 +12,7 @@ export type CampaignOrchestratorInput = {
   objective?: string;
   audience?: AudienceSegment[];
   platforms?: ContentPlatform[];
+  scheduledAt?: string;
 };
 
 export type GeneratedCampaignContent = {
@@ -48,6 +50,7 @@ export type CampaignOrchestrationResult = {
   offerAttachment: Awaited<ReturnType<CampaignService["attachOffer"]>>;
   trackingLink: Awaited<ReturnType<TrackingService["create"]>>;
   content: Awaited<ReturnType<ContentService["create"]>>[];
+  distribution: DistributionPlan[];
 };
 
 export class CampaignOrchestrator {
@@ -55,7 +58,8 @@ export class CampaignOrchestrator {
     private readonly campaigns: CampaignService,
     private readonly tracking: TrackingService,
     private readonly content: ContentService,
-    private readonly contentGenerator: CampaignContentGenerator = new DeterministicCampaignContentGenerator()
+    private readonly contentGenerator: CampaignContentGenerator = new DeterministicCampaignContentGenerator(),
+    private readonly distribution?: DistributionEngine
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
@@ -64,6 +68,7 @@ export class CampaignOrchestrator {
     if (input.offer.productId !== input.product.id) throw new Error("Affiliate offer must belong to the selected product.");
     if (input.offer.affiliateLinkStatus !== "active" || input.offer.status !== "active") throw new Error("Campaign orchestration requires an active affiliate offer and affiliate link.");
     if (!input.offer.affiliateUrl) throw new Error("Campaign orchestration requires an affiliate URL.");
+    if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const audience = input.audience ?? [];
     const campaign = await this.campaigns.create({
@@ -81,6 +86,13 @@ export class CampaignOrchestrator {
       return this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
     }));
 
-    return { campaign, offerAttachment, trackingLink, content };
+    const distribution: DistributionPlan[] = [];
+    if (input.scheduledAt) {
+      for (const item of content) {
+        distribution.push(await this.distribution!.schedule({ content: item, scheduledAt: input.scheduledAt }));
+      }
+    }
+
+    return { campaign, offerAttachment, trackingLink, content: distribution.length ? distribution.map((item) => item.content) : content, distribution };
   }
 }
