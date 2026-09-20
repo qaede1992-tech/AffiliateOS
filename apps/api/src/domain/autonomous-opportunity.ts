@@ -20,6 +20,21 @@ export type OpportunitySelectionResult = {
 
 const unique = <T>(items: T[]): T[] => [...new Set(items)];
 
+const rejectionReasons = (
+  item: ScoredOpportunity,
+  minimumScore: number,
+  requiredAudience: AudienceSegment[]
+): string[] => {
+  const reasons = [...item.reasons];
+  if (item.product.status !== "active") reasons.push("Product is not active");
+  if (item.score < minimumScore) reasons.push(`Score ${item.score} is below minimum ${minimumScore}`);
+  if (!item.offerId) reasons.push("No eligible affiliate offer");
+  if (requiredAudience.length > 0 && item.breakdown.audienceFit <= 0) {
+    reasons.push("Does not match the required audience");
+  }
+  return unique(reasons);
+};
+
 export class AutonomousOpportunitySelector {
   select(
     candidates: OpportunityCandidateSource[],
@@ -46,7 +61,13 @@ export class AutonomousOpportunitySelector {
     const selectedIds = new Set(selected.map((item) => item.product.id));
     const rejected = scored
       .filter((item) => !selectedIds.has(item.product.id))
-      .map((item) => ({ productId: item.product.id, score: item.score, reasons: item.reasons }));
+      .map((item) => ({
+        productId: item.product.id,
+        score: item.score,
+        reasons: selected.length < eligible.length && eligible.some((candidate) => candidate.product.id === item.product.id)
+          ? ["Selection limit reached"]
+          : rejectionReasons(item, minimumScore, requiredAudience)
+      }));
 
     return { selected, rejected };
   }
