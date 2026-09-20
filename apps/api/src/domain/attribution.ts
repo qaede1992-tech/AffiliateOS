@@ -4,6 +4,10 @@ import type { Repository } from "./repository.js";
 
 const now = () => new Date().toISOString();
 
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505");
+}
+
 export interface ConversionAttributionRepository {
   list(): Promise<ConversionAttribution[]>;
   findByConversion(conversionId: string): Promise<ConversionAttribution | undefined>;
@@ -39,6 +43,17 @@ export class ConversionAttributionService {
       if (existing.trackingLinkId === input.trackingLinkId) return existing;
       throw new DomainError("CONVERSION_ALREADY_ATTRIBUTED", "The conversion is already attributed to another tracking link.", 409);
     }
-    return this.attributions.save({ conversionId: conversion.id, trackingLinkId: trackingLink.id, attributedAt: now() });
+    try {
+      return await this.attributions.save({ conversionId: conversion.id, trackingLinkId: trackingLink.id, attributedAt: now() });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const raced = await this.attributions.findByConversion(conversionId);
+        if (raced) {
+          if (raced.trackingLinkId === input.trackingLinkId) return raced;
+          throw new DomainError("CONVERSION_ALREADY_ATTRIBUTED", "The conversion is already attributed to another tracking link.", 409);
+        }
+      }
+      throw error;
+    }
   }
 }
