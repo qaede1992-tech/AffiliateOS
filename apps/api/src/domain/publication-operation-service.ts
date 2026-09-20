@@ -9,7 +9,23 @@ export class PublicationOperationService {
     const existing = await this.operations.findByProviderOperation(input.provider, input.providerOperationId);
     if (existing) return existing;
     const timestamp = now.toISOString();
-    return this.operations.save({ id: randomUUID(), contentId: input.contentId, jobId: input.jobId, provider: input.provider, providerOperationId: input.providerOperationId, status: input.status ?? "accepted", createdAt: timestamp, updatedAt: timestamp });
+    const operation: PublicationOperation = {
+      id: randomUUID(),
+      contentId: input.contentId,
+      jobId: input.jobId,
+      provider: input.provider,
+      providerOperationId: input.providerOperationId,
+      status: input.status ?? "accepted",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    try {
+      return await this.operations.save(operation);
+    } catch (error) {
+      const concurrent = await this.operations.findByProviderOperation(input.provider, input.providerOperationId);
+      if (concurrent) return concurrent;
+      throw error;
+    }
   }
 
   async transition(id: EntityId, status: PublicationOperationStatus, details: { externalPostId?: string; error?: string } = {}, now = new Date()): Promise<PublicationOperation> {
