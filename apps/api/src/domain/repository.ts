@@ -3,6 +3,7 @@ import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Co
 import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
+import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
 
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
@@ -53,16 +54,24 @@ export class InMemoryPublicationOperationRepository implements PublicationOperat
   async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
   async save(operation: PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
 }
+export class InMemoryAutonomousRunRepository implements AutonomousRunRepository {
+  private readonly runs = new Map<EntityId, AutonomousRun>();
+  async findByIdempotencyKey(key: string) { return [...this.runs.values()].find((run) => run.idempotencyKey === key); }
+  async findById(id: EntityId) { return this.runs.get(id); }
+  async save(run: AutonomousRun) { this.runs.set(run.id, run); return run; }
+  async saveIfAbsent(run: AutonomousRun) { const existing = await this.findByIdempotencyKey(run.idempotencyKey); if (existing) return existing; this.runs.set(run.id, run); return run; }
+  async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) { const current = this.runs.get(id); if (!current || !expected.includes(current.status)) return undefined; this.runs.set(id, run); return run; }
+}
 export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: Repository<Commission>;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository;
+  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns: AutonomousRunRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
-export interface ProductCatalogRepository extends Repository<import("@affiliateos/shared").Product> { findByMarketplaceProduct(marketplaceId: EntityId, externalProductId: string): Promise<import("@affiliateos/shared").Product | undefined>; }
-export interface AffiliateAccountRepository extends Repository<import("@affiliateos/shared").AffiliateAccount> { findByMarketplace(marketplaceId: EntityId): Promise<import("@affiliateos/shared").AffiliateAccount | undefined>; }
+export interface ProductCatalogRepository extends Repository<import("@affiliateos/shared").Product> { findByMarketplaceProduct(marketplaceId: string, externalProductId: string): Promise<import("@affiliateos/shared").Product | undefined>; }
+export interface AffiliateAccountRepository extends Repository<import("@affiliateos/shared").AffiliateAccount> { findByMarketplace(marketplaceId: string): Promise<import("@affiliateos/shared").AffiliateAccount | undefined>; }
 export interface AffiliateOfferRepository extends Repository<import("@affiliateos/shared").AffiliateOffer> { findByAccountOffer(affiliateAccountId: string, externalOfferId: string): Promise<import("@affiliateos/shared").AffiliateOffer | undefined>; }
 export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId): Promise<CampaignOffer[]>; find(campaignId: EntityId, affiliateOfferId: EntityId): Promise<CampaignOffer | undefined>; save(entity: CampaignOffer): Promise<CampaignOffer>; remove(campaignId: EntityId, affiliateOfferId: EntityId): Promise<void>; }
 export interface TrackingLinkRepository extends Repository<TrackingLink> { findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
