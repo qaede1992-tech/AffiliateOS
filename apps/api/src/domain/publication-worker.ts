@@ -6,6 +6,7 @@ import type { PublicationJobRepository } from "./publication-job.js";
 
 const INITIAL_RETRY_DELAY_MS = 60 * 1000;
 const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
+export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const publicationRetryDelayMs = (attemptCount: number): number => {
   if (attemptCount <= 0) return 0;
@@ -14,6 +15,15 @@ export const publicationRetryDelayMs = (attemptCount: number): number => {
 
 const retryEligibleAt = (job: PublicationJob): number =>
   new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
+
+const isDue = (job: PublicationJob, now: Date): boolean =>
+  new Date(job.scheduledAt).getTime() <= now.getTime();
+
+const isStaleProcessingJob = (job: PublicationJob, now: Date): boolean => {
+  if (job.status !== "processing" || !job.lockedAt) return false;
+  const lockedAt = new Date(job.lockedAt).getTime();
+  return Number.isFinite(lockedAt) && now.getTime() - lockedAt >= PUBLICATION_JOB_LOCK_TIMEOUT_MS;
+};
 
 export type PublicationWorkerResult = {
   jobId: EntityId;
@@ -32,9 +42,12 @@ export class PublicationWorker {
 
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
     const candidates = (await this.jobs.list())
-      .filter((job) => job.status === "pending" || job.status === "failed")
-      .filter((job) => new Date(job.scheduledAt).getTime() <= now.getTime())
-      .filter((job) => job.status === "pending" || retryEligibleAt(job) <= now.getTime())
+      .filter((job) => {
+        if (!isDue(job, now)) return false;
+        if (job.status === "pending") return true;
+        if (job.status === "failed") return retryEligibleAt(job) <= now.getTime();
+        return isStaleProcessingJob(job, now);
+      })
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
     const results: PublicationWorkerResult[] = [];
