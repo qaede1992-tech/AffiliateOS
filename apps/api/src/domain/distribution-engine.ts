@@ -32,8 +32,8 @@ export class DistributionEngine {
   async schedule(request: DistributionRequest): Promise<DistributionPlan> {
     const scheduledAt = new Date(request.scheduledAt);
     if (!Number.isFinite(scheduledAt.getTime())) throw new Error("Distribution requires a valid scheduledAt timestamp.");
-    if (request.content.status !== "draft" && request.content.status !== "failed") {
-      throw new Error("Only draft or failed content can be scheduled for distribution.");
+    if (request.content.status !== "draft") {
+      throw new Error("Only draft content can be scheduled for distribution.");
     }
 
     const accounts = await this.socialAccounts.list();
