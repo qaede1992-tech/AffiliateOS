@@ -26,9 +26,7 @@ export class InMemoryClickRepository extends InMemoryRepository<Click> implement
   async findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string) { return (await this.listByTrackingLink(trackingLinkId)).find((click) => click.idempotencyKey === idempotencyKey); }
   async countByTrackingLink(trackingLinkId: EntityId) { return (await this.listByTrackingLink(trackingLinkId)).length; }
 }
-export class InMemoryConversionRepository extends InMemoryRepository<Conversion> implements ConversionRepository {
-  async findByIdempotencyKey(idempotencyKey: string) { return (await this.list()).find((conversion) => conversion.idempotencyKey === idempotencyKey); }
-}
+export class InMemoryConversionRepository extends InMemoryRepository<Conversion> implements ConversionRepository { async findByIdempotencyKey(idempotencyKey: string) { return (await this.list()).find((conversion) => conversion.idempotencyKey === idempotencyKey); } }
 export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> implements TrackingLinkRepository { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
 export class InMemorySocialAccountRepository extends InMemoryRepository<SocialAccount> implements SocialAccountRepository { async findByPlatformAccount(platform: string, accountReference: string) { return (await this.list()).find((account) => account.platform === platform && account.accountReference === accountReference); } }
 export class InMemoryMediaAssetRepository implements MediaAssetRepository {
@@ -41,10 +39,7 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
   async findById(id: EntityId) { return this.jobs.get(id); }
-  async findByIdempotencyKey(key: string) {
-    for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job;
-    return undefined;
-  }
+  async findByIdempotencyKey(key: string) { for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job; return undefined; }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
   async saveIfAbsent(job: PublicationJob) { const existing = this.findByIdempotencyKeySync(job.idempotencyKey); if (existing) return existing; this.jobs.set(job.id, job); return job; }
   private findByIdempotencyKeySync(key: string) { for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job; return undefined; }
@@ -54,7 +49,7 @@ export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: Repository<Commission>;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: SocialAccountRepository; mediaAssets: MediaAssetRepository; publicationJobs: PublicationJobRepository;
+  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
