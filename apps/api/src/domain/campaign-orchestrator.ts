@@ -13,6 +13,7 @@ export type CampaignOrchestratorInput = {
   audience?: AudienceSegment[];
   platforms?: ContentPlatform[];
   scheduledAt?: string;
+  idempotencyKey?: string;
 };
 
 export type GeneratedCampaignContent = {
@@ -33,6 +34,7 @@ export interface CampaignContentGenerator {
 }
 
 const defaultPlatforms: ContentPlatform[] = ["tiktok", "instagram", "facebook"];
+const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
 
 export class DeterministicCampaignContentGenerator implements CampaignContentGenerator {
   generate(input: { product: Product; offer: AffiliateOffer; opportunity: ScoredOpportunity; platform: ContentPlatform }): GeneratedCampaignContent {
@@ -71,28 +73,46 @@ export class CampaignOrchestrator {
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const audience = input.audience ?? [];
-    const campaign = await this.campaigns.create({
-      name: input.campaignName ?? `Autonomous: ${input.product.name}`,
-      objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
-      status: "draft",
-      audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score }
-    });
-    const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
-    const trackingLink = await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl });
+    const requestedPlatforms = [...new Set(input.platforms ?? defaultPlatforms)];
+    let campaign: Awaited<ReturnType<CampaignService["create"]>> | undefined;
+    if (input.idempotencyKey) {
+      const campaigns = await this.campaigns.list();
+      campaign = campaigns.find((candidate) => orchestrationKey(candidate) === input.idempotencyKey);
+    }
+    if (!campaign) {
+      campaign = await this.campaigns.create({
+        name: input.campaignName ?? `Autonomous: ${input.product.name}`,
+        objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
+        status: "draft",
+        audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: input.idempotencyKey }
+      });
+    }
 
-    const platforms = [...new Set(input.platforms ?? defaultPlatforms)];
-    const content = await Promise.all(platforms.map((platform) => {
-      const generated = this.contentGenerator.generate({ product: input.product, offer: input.offer, opportunity: input.opportunity, platform });
-      return this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
-    }));
+    const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
+    const existingLinks = await this.tracking.list(campaign.id);
+    const trackingLink = existingLinks.find((link) => link.affiliateOfferId === input.offer.id && link.destinationUrl === input.offer.affiliateUrl) ??
+      await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl });
+
+    const existingContent = await this.content.list(campaign.id);
+    const content: Awaited<ReturnType<ContentService["create"]>>[] = [];
+    for (const platform of requestedPlatforms) {
+      const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion");
+      if (existing) content.push(existing);
+      else {
+        const generated = this.contentGenerator.generate({ product: input.product, offer: input.offer, opportunity: input.opportunity, platform });
+        content.push(await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" }));
+      }
+    }
 
     const distribution: DistributionPlan[] = [];
     if (input.scheduledAt) {
       for (const item of content) {
+        if (item.status === "scheduled" && item.scheduledAt === input.scheduledAt) continue;
+        if (item.status !== "draft") continue;
         distribution.push(await this.distribution!.schedule({ content: item, scheduledAt: input.scheduledAt }));
       }
     }
 
-    return { campaign, offerAttachment, trackingLink, content: distribution.length ? distribution.map((item) => item.content) : content, distribution };
+    return { campaign, offerAttachment, trackingLink, content, distribution };
   }
 }
