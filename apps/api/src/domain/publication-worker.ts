@@ -4,6 +4,17 @@ import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import type { PublicationJobRepository } from "./publication-job.js";
 
+const INITIAL_RETRY_DELAY_MS = 60 * 1000;
+const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
+
+export const publicationRetryDelayMs = (attemptCount: number): number => {
+  if (attemptCount <= 0) return 0;
+  return Math.min(MAX_RETRY_DELAY_MS, INITIAL_RETRY_DELAY_MS * 2 ** (attemptCount - 1));
+};
+
+const retryEligibleAt = (job: PublicationJob): number =>
+  new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
+
 export type PublicationWorkerResult = {
   jobId: EntityId;
   contentId: EntityId;
@@ -23,6 +34,7 @@ export class PublicationWorker {
     const candidates = (await this.jobs.list())
       .filter((job) => job.status === "pending" || job.status === "failed")
       .filter((job) => new Date(job.scheduledAt).getTime() <= now.getTime())
+      .filter((job) => job.status === "pending" || retryEligibleAt(job) <= now.getTime())
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
     const results: PublicationWorkerResult[] = [];
@@ -36,7 +48,7 @@ export class PublicationWorker {
 
   private async process(job: PublicationJob, now: Date): Promise<PublicationWorkerResult> {
     try {
-      const result = await this.executor.execute(job.contentId, now);
+      const result = await this.executor.execute(job.contentId, now, job.idempotencyKey);
       if (result.status === "published" && result.externalPostId) {
         await this.jobService.succeed(job.id, result.externalPostId, now);
         return {
