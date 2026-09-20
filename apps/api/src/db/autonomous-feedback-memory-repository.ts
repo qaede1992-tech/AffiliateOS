@@ -7,6 +7,7 @@ type SnapshotRow = typeof autonomousFeedbackSnapshots.$inferSelect;
 
 const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   id: row.id,
+  observationKey: row.observationKey,
   productId: row.productId,
   clickCount: row.clickCount,
   conversionCount: row.conversionCount,
@@ -22,6 +23,7 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
   async save(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot> {
     await this.db.insert(autonomousFeedbackSnapshots).values({
       id: snapshot.id,
+      observationKey: snapshot.observationKey,
       productId: snapshot.productId,
       clickCount: snapshot.clickCount,
       conversionCount: snapshot.conversionCount,
@@ -33,10 +35,38 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
     return snapshot;
   }
 
+  async saveIfAbsent(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot> {
+    const rows = await this.db.insert(autonomousFeedbackSnapshots)
+      .values({
+        id: snapshot.id,
+        observationKey: snapshot.observationKey,
+        productId: snapshot.productId,
+        clickCount: snapshot.clickCount,
+        conversionCount: snapshot.conversionCount,
+        attributedCommissionCents: snapshot.attributedCommissionCents,
+        conversionRate: snapshot.conversionRate,
+        adjustment: snapshot.adjustment,
+        observedAt: snapshot.observedAt
+      })
+      .onConflictDoNothing({ target: autonomousFeedbackSnapshots.observationKey })
+      .returning();
+    if (rows[0]) return toDomain(rows[0]);
+    const existing = await this.latestByObservationKey(snapshot.observationKey);
+    if (!existing) throw new Error("Autonomous feedback snapshot insert was skipped but no observation was found.");
+    return existing;
+  }
+
+  private async latestByObservationKey(observationKey: string): Promise<AutonomousFeedbackSnapshot | undefined> {
+    const rows = await this.db.select().from(autonomousFeedbackSnapshots)
+      .where(eq(autonomousFeedbackSnapshots.observationKey, observationKey))
+      .limit(1);
+    return rows[0] ? toDomain(rows[0]) : undefined;
+  }
+
   async latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
     const rows = await this.db.select().from(autonomousFeedbackSnapshots)
       .where(eq(autonomousFeedbackSnapshots.productId, productId))
-      .orderBy(desc(autonomousFeedbackSnapshots.observedAt))
+      .orderBy(desc(autonomousFeedbackSnapshots.observedAt), desc(autonomousFeedbackSnapshots.id))
       .limit(1);
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
