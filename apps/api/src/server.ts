@@ -26,12 +26,18 @@ const app = createApp(services, {
 
 try {
   await app.listen({ host: environment.API_HOST, port: environment.API_PORT });
+  services.publicationScheduler.start();
 } catch (error) {
   app.log.error(error);
+  await services.publicationScheduler.stop();
   await persistence.close();
   process.exit(1);
 }
 
-const shutdown = async () => { await app.close(); await persistence.close(); };
+const shutdown = async () => {
+  await services.publicationScheduler.stop();
+  await app.close();
+  await persistence.close();
+};
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
