@@ -14,6 +14,29 @@ describe("autonomous run", () => {
     assert.equal(second.offerId, "offer-1");
   });
 
+  it("claims an accepted run exactly once", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-claim", productId: "product-1", offerId: "offer-1" });
+    const [first, second] = await Promise.all([
+      service.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z")),
+      service.claimProcessing(accepted.id, new Date("2026-09-20T10:00:01.000Z"))
+    ]);
+    assert.equal([first.acquired, second.acquired].filter(Boolean).length, 1);
+    assert.equal((await repository.findById(accepted.id))?.status, "processing");
+  });
+
+  it("does not reclaim a run already in progress", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-busy", productId: "product-1", offerId: "offer-1" });
+    const first = await service.claimProcessing(accepted.id);
+    const second = await service.claimProcessing(accepted.id);
+    assert.equal(first.acquired, true);
+    assert.equal(second.acquired, false);
+    assert.equal(second.run.status, "processing");
+  });
+
   it("persists campaign binding and errors through lifecycle transitions", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
