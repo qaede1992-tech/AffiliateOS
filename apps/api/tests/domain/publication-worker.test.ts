@@ -5,7 +5,7 @@ import { ContentService } from "../../src/domain/content.js";
 import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
 import { PublicationJobService } from "../../src/domain/publication-job-service.js";
 import { InMemoryPublicationJobRepository } from "../../src/domain/publication-job.js";
-import { PublicationWorker } from "../../src/domain/publication-worker.js";
+import { PublicationWorker, publicationRetryDelayMs } from "../../src/domain/publication-worker.js";
 import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
 import { InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
 
@@ -62,7 +62,7 @@ describe("PublicationWorker", () => {
     assert.equal(publishes, 1);
   });
 
-  it("records adapter failures and retries failed jobs", async () => {
+  it("records adapter failures and retries failed jobs after the backoff", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
     const publisher: SocialPublisher = {
@@ -77,14 +77,24 @@ describe("PublicationWorker", () => {
     const job = await jobService.enqueue(content);
 
     const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const blocked = await worker.runOnce(new Date("2026-09-20T11:00:59.999Z"));
     const second = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
     const stored = await jobs.findById(job.id);
 
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
+    assert.deepEqual(blocked, []);
     assert.equal(second[0]?.status, "succeeded");
     assert.equal(stored?.attemptCount, 2);
     assert.equal(stored?.status, "succeeded");
+  });
+
+  it("uses exponential retry delays capped at one hour", () => {
+    assert.equal(publicationRetryDelayMs(0), 0);
+    assert.equal(publicationRetryDelayMs(1), 60_000);
+    assert.equal(publicationRetryDelayMs(2), 120_000);
+    assert.equal(publicationRetryDelayMs(3), 240_000);
+    assert.equal(publicationRetryDelayMs(20), 3_600_000);
   });
 
   it("leaves future jobs untouched", async () => {
