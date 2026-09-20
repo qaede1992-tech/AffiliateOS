@@ -1,7 +1,7 @@
 import type { Content, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
 import type { SocialAccountRepository } from "./repository.js";
-import type { SocialPublisher } from "./distribution-engine.js";
+import { publisherSupportsContent, type SocialPublisher } from "./distribution-engine.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 
 export type PublishExecutionResult = {
@@ -27,7 +27,7 @@ export class PublisherExecutor {
     if (scheduledAt.getTime() > now.getTime()) return { content, status: "not_due" };
 
     const account = await this.findAccount(content);
-    const publisher = this.publishers.find((candidate) => candidate.supports(content.platform));
+    const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content));
     if (!publisher) return { content, account, status: "unsupported" };
 
     try {
