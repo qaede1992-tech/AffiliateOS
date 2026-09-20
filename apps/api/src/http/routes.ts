@@ -12,6 +12,12 @@ const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   app.get("/api/v1/publishers/readiness", async () => list(services.publisherReadiness.list()));
+  app.get("/api/v1/autonomous/status", async () => ({ running: services.autonomousScheduler.isRunning }));
+  app.post("/api/v1/autonomous/cycles/run", writeGuard, async (request, reply) => {
+    const result = await services.autonomousScheduler.runNow();
+    auditSecurityEvent(request.log, request, "autonomous_cycle_triggered", { executed: Boolean(result) });
+    return reply.status(result ? 200 : 202).send(result ? { status: "completed", result } : { status: "already_running" });
+  });
   app.post("/api/v1/marketplaces/:connectionSlug/events", async (request, reply) => {
     if (!providerEvents) return reply.status(503).send({ error: "PROVIDER_EVENT_STORE_UNAVAILABLE", message: "Provider event persistence is unavailable." });
     const { connectionSlug } = marketplaceSlugSchema.parse(request.params); const rawBody = getRawBody(request); if (!rawBody) return reply.status(400).send({ error: "RAW_BODY_UNAVAILABLE", message: "The provider event body could not be verified." });
