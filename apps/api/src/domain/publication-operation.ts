@@ -20,6 +20,7 @@ export interface PublicationOperationRepository {
   findById(id: EntityId): Promise<PublicationOperation | undefined>;
   findByProviderOperation(provider: string, providerOperationId: string): Promise<PublicationOperation | undefined>;
   save(operation: PublicationOperation): Promise<PublicationOperation>;
+  transition?(id: EntityId, expected: PublicationOperationStatus[], operation: PublicationOperation): Promise<PublicationOperation | undefined>;
 }
 
 export class InMemoryPublicationOperationRepository implements PublicationOperationRepository {
@@ -31,4 +32,10 @@ export class InMemoryPublicationOperationRepository implements PublicationOperat
     return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId);
   }
   async save(operation: PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
+  async transition(id: EntityId, expected: PublicationOperationStatus[], operation: PublicationOperation) {
+    const current = this.operations.get(id);
+    if (!current || !expected.includes(current.status)) return undefined;
+    this.operations.set(id, operation);
+    return operation;
+  }
 }
