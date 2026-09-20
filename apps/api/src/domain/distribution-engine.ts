@@ -5,8 +5,15 @@ import type { SocialAccountRepository } from "./repository.js";
 
 export type DistributionRequest = { content: Content; scheduledAt: string; accountId?: string };
 export type DistributionPlan = { content: Content; account: SocialAccount; scheduledAt: string; publishable: boolean };
-export interface SocialPublisher { supports(platform: string): boolean; publish(input: { content: Content; account: SocialAccount; credential?: unknown; idempotencyKey: string }): Promise<{ externalPostId: string }>; }
+export interface SocialPublisher {
+  supports(platform: string): boolean;
+  supportsContent?(content: Content): boolean;
+  publish(input: { content: Content; account: SocialAccount; credential?: unknown; idempotencyKey: string }): Promise<{ externalPostId: string }>;
+}
+export const publisherSupportsContent = (publisher: SocialPublisher, content: Content): boolean =>
+  publisher.supports(content.platform) && (publisher.supportsContent?.(content) ?? true);
 const platformMatches = (content: Content, account: SocialAccount) => content.platform === account.platform;
+
 export class DistributionEngine {
   constructor(private readonly contentService: ContentService, private readonly socialAccounts: SocialAccountRepository, private readonly publishers: SocialPublisher[] = [], private readonly publicationJobs?: PublicationJobService) {}
   async schedule(request: DistributionRequest): Promise<DistributionPlan> {
@@ -26,7 +33,7 @@ export class DistributionEngine {
         throw error;
       }
     }
-    const publishable = this.publishers.some((publisher) => publisher.supports(request.content.platform));
+    const publishable = this.publishers.some((publisher) => publisherSupportsContent(publisher, request.content));
     return { content: updated, account, scheduledAt: scheduledAt.toISOString(), publishable };
   }
   listPublishers(platform?: ContentPlatform): SocialPublisher[] { return platform ? this.publishers.filter((publisher) => publisher.supports(platform)) : [...this.publishers]; }
