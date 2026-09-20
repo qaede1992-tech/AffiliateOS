@@ -12,6 +12,10 @@ const allowedTransitions: Record<PublicationOperationStatus, PublicationOperatio
 export class PublicationOperationService {
   constructor(private readonly operations: PublicationOperationRepository) {}
 
+  async list(): Promise<PublicationOperation[]> {
+    return this.operations.list();
+  }
+
   async create(input: { contentId: EntityId; jobId: EntityId; provider: string; providerOperationId: string; status?: PublicationOperationStatus }, now = new Date()): Promise<PublicationOperation> {
     const existing = await this.operations.findByProviderOperation(input.provider, input.providerOperationId);
     if (existing) return existing;
