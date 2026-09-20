@@ -36,6 +36,13 @@ class StubContent {
   created: unknown[] = [];
   async create(input: Record<string, unknown>) { this.created.push(input); return { id: `content-${this.created.length}`, ...input } as unknown as Content; }
 }
+class StubDistribution {
+  scheduled: Content[] = [];
+  async schedule(input: { content: Content; scheduledAt: string }) {
+    this.scheduled.push(input.content);
+    return { content: { ...input.content, status: "scheduled", scheduledAt: input.scheduledAt, socialAccountId: "social-1" }, account: { id: "social-1" }, scheduledAt: input.scheduledAt, publishable: false } as never;
+  }
+}
 
 describe("campaign orchestrator", () => {
   it("connects a selected opportunity to campaign, tracking, and platform-specific content", async () => {
@@ -49,6 +56,27 @@ describe("campaign orchestrator", () => {
     assert.equal(result.content.length, 2);
     assert.deepEqual(result.content.map((item) => item.platform), ["tiktok", "instagram"]);
     assert.equal(content.created.length, 2);
+    assert.equal(result.distribution.length, 0);
+  });
+
+  it("schedules every generated platform when an explicit schedule is requested", async () => {
+    const content = new StubContent();
+    const distribution = new StubDistribution();
+    const scheduledAt = "2026-09-21T12:00:00.000Z";
+    const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never, undefined, distribution as never).execute({
+      opportunity, offer, product, platforms: ["tiktok", "instagram"], scheduledAt
+    });
+    assert.equal(distribution.scheduled.length, 2);
+    assert.equal(result.distribution.length, 2);
+    assert.ok(result.content.every((item) => item.status === "scheduled"));
+    assert.ok(result.content.every((item) => item.scheduledAt === scheduledAt));
+  });
+
+  it("requires a distribution engine for explicit scheduling", async () => {
+    await assert.rejects(
+      () => new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, new StubContent() as never).execute({ opportunity, offer, product, scheduledAt: "2026-09-21T12:00:00.000Z" }),
+      /distribution engine/
+    );
   });
 
   it("fails closed when the selected offer cannot be used for promotion", async () => {
