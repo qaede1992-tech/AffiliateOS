@@ -8,6 +8,7 @@ import { DrizzleConversionAttributionRepository } from "./db/attribution.js";
 import { DrizzleOAuthStateRepository } from "./db/oauth-state.js";
 import { DrizzlePublicationOperationRepository } from "./db/publication-operation-repository.js";
 import { DrizzleAutonomousRunRepository } from "./db/autonomous-run-repository.js";
+import { DrizzleAutonomousFeedbackMemoryRepository } from "./db/autonomous-feedback-memory-repository.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const services = createServices(
@@ -22,7 +23,8 @@ const services = createServices(
   undefined,
   new DrizzlePublicationOperationRepository(persistence.db),
   new DrizzleAutonomousRunRepository(persistence.db),
-  environment.AUTONOMOUS_CYCLE_INTERVAL_MS
+  environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
+  new DrizzleAutonomousFeedbackMemoryRepository(persistence.db)
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
