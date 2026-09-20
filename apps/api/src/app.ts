@@ -9,156 +9,32 @@ import { configuredRateLimit, InMemoryRateLimiter } from "./http/rate-limit.js";
 import { auditSecurityEvent } from "./http/app-audit.js";
 import { clearSessionCookie, createSessionCookieValue, readSessionCookie, setSessionCookie } from "./http/session.js";
 import { registerResourceRoutes } from "./http/routes.js";
+import { captureRawBody } from "./http/raw-body.js";
+import type { ProviderEventStore } from "./db/provider-events.js";
 
-export const configuredCorsOrigin = (production = process.env.NODE_ENV === "production") => {
-  const origin = process.env.API_CORS_ORIGIN?.trim();
-  if (production && !origin) {
-    throw new Error("API_CORS_ORIGIN must be configured in production.");
-  }
-  return origin || "http://localhost:5173";
-};
+export const configuredCorsOrigin = (production = process.env.NODE_ENV === "production") => { const origin = process.env.API_CORS_ORIGIN?.trim(); if (production && !origin) throw new Error("API_CORS_ORIGIN must be configured in production."); return origin || "http://localhost:5173"; };
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
+const isPublicProviderEvent = (url: string) => /^\/api\/v1\/marketplaces\/[^/]+\/events(?:\?|$)/.test(url);
 const isHealthEndpoint = (url: string) => url === "/api/v1/health" || url === "/api/v1/ready";
 const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
 const isStateChangingMethod = (method: string) => ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 
-const configuredAuth = (): AuthConfig => {
-  const token = process.env.API_AUTH_TOKEN?.trim();
-  const production = process.env.NODE_ENV === "production";
-  if (production && (!token || token.length < 32)) {
-    throw new Error("API_AUTH_TOKEN must be at least 32 characters in production.");
-  }
-
-  const role = (process.env.API_AUTH_OPERATOR_ROLE?.trim() || "admin") as OperatorRole;
-  if (!["admin", "operator", "viewer"].includes(role)) {
-    throw new Error("API_AUTH_OPERATOR_ROLE must be admin, operator, or viewer.");
-  }
-
-  return {
-    enabled: production || Boolean(token),
-    token,
-    operatorId: process.env.API_AUTH_OPERATOR_ID?.trim() || "development-operator",
-    role
-  };
-};
-
-type AppOptions = {
-  readinessCheck?: () => Promise<void>;
-  auth?: AuthConfig;
-  rateLimit?: { enabled: boolean; limit: number; windowMs: number };
-};
+const configuredAuth = (): AuthConfig => { const token = process.env.API_AUTH_TOKEN?.trim(); const production = process.env.NODE_ENV === "production"; if (production && (!token || token.length < 32)) throw new Error("API_AUTH_TOKEN must be at least 32 characters in production."); const role = (process.env.API_AUTH_OPERATOR_ROLE?.trim() || "admin") as OperatorRole; if (!["admin", "operator", "viewer"].includes(role)) throw new Error("API_AUTH_OPERATOR_ROLE must be admin, operator, or viewer."); return { enabled: production || Boolean(token), token, operatorId: process.env.API_AUTH_OPERATOR_ID?.trim() || "development-operator", role }; };
+type AppOptions = { readinessCheck?: () => Promise<void>; auth?: AuthConfig; rateLimit?: { enabled: boolean; limit: number; windowMs: number }; providerEvents?: ProviderEventStore };
 
 export function createApp(services: Services = createInMemoryServices(), options: AppOptions = {}) {
-  const auth = options.auth ?? configuredAuth();
-  const rateLimitConfig = options.rateLimit ?? configuredRateLimit();
-  const rateLimiter = rateLimitConfig.enabled
-    ? new InMemoryRateLimiter(rateLimitConfig.limit, rateLimitConfig.windowMs)
-    : null;
-  const sessionSecret = auth.token;
-  const production = process.env.NODE_ENV === "production";
-  const corsOrigin = configuredCorsOrigin();
-
-  const app = Fastify({
-    logger: {
-      redact: [
-        "req.headers.authorization",
-        "req.headers.cookie",
-        "req.body.token",
-        "req.body.credentialReference",
-        "req.body.configuration.*",
-        "req.query.code",
-        "req.query.state"
-      ]
-    },
-    bodyLimit: 1_048_576
-  });
-
-  app.decorateRequest("auth", null);
+  const auth = options.auth ?? configuredAuth(); const rateLimitConfig = options.rateLimit ?? configuredRateLimit(); const rateLimiter = rateLimitConfig.enabled ? new InMemoryRateLimiter(rateLimitConfig.limit, rateLimitConfig.windowMs) : null; const sessionSecret = auth.token; const production = process.env.NODE_ENV === "production"; const corsOrigin = configuredCorsOrigin();
+  const app = Fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.token", "req.body.credentialReference", "req.body.configuration.*", "req.query.code", "req.query.state"] }, bodyLimit: 1_048_576 });
   app.register(cors, { origin: corsOrigin, credentials: true });
-
-  app.addHook("onSend", async (request, reply) => {
-    reply.header("X-Content-Type-Options", "nosniff");
-    reply.header("X-Frame-Options", "DENY");
-    reply.header("Referrer-Policy", "no-referrer");
-    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    if (!isHealthEndpoint(request.url)) reply.header("Cache-Control", "no-store");
-    if (process.env.NODE_ENV === "production") reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  });
-
-  app.addHook("onRequest", async (request, reply) => {
-    reply.header("X-Request-Id", request.id);
-    if (isHealthEndpoint(request.url)) return;
-
-    if (rateLimiter) {
-      const result = rateLimiter.consume(request.ip);
-      reply.header("X-RateLimit-Limit", result.limit);
-      reply.header("X-RateLimit-Remaining", result.remaining);
-      if (!result.allowed) {
-        reply.header("Retry-After", result.retryAfterSeconds);
-        return reply.status(429).send({ error: "RATE_LIMITED", message: "Too many requests. Please retry later." });
-      }
-    }
-
-    if (isPublicCallback(request.url) || isPublicAuthEndpoint(request.url)) return;
-
-    const bearerContext = authenticateRequest(request, auth);
-    const sessionContext = sessionSecret ? readSessionCookie(request, sessionSecret) : null;
-    const context = bearerContext ?? sessionContext;
-    if (!context) {
-      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_authentication" });
-      return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." });
-    }
-    if (sessionContext && !bearerContext && isStateChangingMethod(request.method)) {
-      const origin = request.headers.origin;
-      if (!origin || origin !== corsOrigin) {
-        auditSecurityEvent(request.log, request, "authorization_denied", { reason: "invalid_session_request_origin" });
-        return reply.status(403).send({ error: "CSRF_ORIGIN_REJECTED", message: "The request origin is not allowed." });
-      }
-    }
-    request.auth = context;
-  });
-
+  app.addHook("preParsing", captureRawBody);
+  app.addHook("onSend", async (request, reply) => { reply.header("X-Content-Type-Options", "nosniff"); reply.header("X-Frame-Options", "DENY"); reply.header("Referrer-Policy", "no-referrer"); reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()"); if (!isHealthEndpoint(request.url)) reply.header("Cache-Control", "no-store"); if (production) reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); });
+  app.addHook("onRequest", async (request, reply) => { reply.header("X-Request-Id", request.id); if (isHealthEndpoint(request.url)) return; if (rateLimiter) { const result = rateLimiter.consume(request.ip); reply.header("X-RateLimit-Limit", result.limit); reply.header("X-RateLimit-Remaining", result.remaining); if (!result.allowed) { reply.header("Retry-After", result.retryAfterSeconds); return reply.status(429).send({ error: "RATE_LIMITED", message: "Too many requests. Please retry later." }); } } if (isPublicCallback(request.url) || isPublicAuthEndpoint(request.url) || isPublicProviderEvent(request.url)) return; const bearerContext = authenticateRequest(request, auth); const sessionContext = sessionSecret ? readSessionCookie(request, sessionSecret) : null; const context = bearerContext ?? sessionContext; if (!context) { auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_authentication" }); return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." }); } if (sessionContext && !bearerContext && isStateChangingMethod(request.method)) { const origin = request.headers.origin; if (!origin || origin !== corsOrigin) { auditSecurityEvent(request.log, request, "authorization_denied", { reason: "invalid_session_request_origin" }); return reply.status(403).send({ error: "CSRF_ORIGIN_REJECTED", message: "The request origin is not allowed." }); } } request.auth = context; });
   app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({ status: "ok", service: "affiliateos-api", timestamp: new Date().toISOString() }));
-
-  app.get("/api/v1/ready", async (_request, reply) => {
-    if (!options.readinessCheck) return reply.send({ status: "ready", service: "affiliateos-api" });
-    try {
-      await options.readinessCheck();
-      return reply.send({ status: "ready", service: "affiliateos-api" });
-    } catch (error) {
-      app.log.warn({ err: error }, "database readiness check failed");
-      return reply.status(503).send({ status: "not_ready", service: "affiliateos-api" });
-    }
-  });
-
-  app.post("/api/v1/auth/login", async (request, reply) => {
-    const input = z.object({ token: z.string().trim().min(1).max(4096) }).parse(request.body);
-    const context = authenticateToken(input.token, auth);
-    if (!context || !sessionSecret) {
-      auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_login_credential" });
-      return reply.status(401).send({ error: "UNAUTHORIZED", message: "Invalid authentication credential." });
-    }
-    setSessionCookie(reply, createSessionCookieValue(context, sessionSecret), production);
-    return reply.send({ authenticated: true, operatorId: context.operatorId, role: context.role });
-  });
-
-  app.post("/api/v1/auth/logout", async (_request, reply) => {
-    clearSessionCookie(reply, production);
-    return reply.send({ authenticated: false });
-  });
-
+  app.get("/api/v1/ready", async (_request, reply) => { if (!options.readinessCheck) return reply.send({ status: "ready", service: "affiliateos-api" }); try { await options.readinessCheck(); return reply.send({ status: "ready", service: "affiliateos-api" }); } catch (error) { app.log.warn({ err: error }, "database readiness check failed"); return reply.status(503).send({ status: "not_ready", service: "affiliateos-api" }); } });
+  app.post("/api/v1/auth/login", async (request, reply) => { const input = z.object({ token: z.string().trim().min(1).max(4096) }).parse(request.body); const context = authenticateToken(input.token, auth); if (!context || !sessionSecret) { auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_login_credential" }); return reply.status(401).send({ error: "UNAUTHORIZED", message: "Invalid authentication credential." }); } setSessionCookie(reply, createSessionCookieValue(context, sessionSecret), production); return reply.send({ authenticated: true, operatorId: context.operatorId, role: context.role }); });
+  app.post("/api/v1/auth/logout", async (_request, reply) => { clearSessionCookie(reply, production); return reply.send({ authenticated: false }); });
   app.get("/api/v1/auth/me", async (request) => ({ authenticated: true, operatorId: request.auth!.operatorId, role: request.auth!.role }));
-
-  registerResourceRoutes(app, services);
-
-  app.setErrorHandler((error, request, reply) => {
-    request.log.error(error);
-    if (error instanceof DomainError) return reply.status(error.statusCode).send({ error: error.code, message: error.message });
-    if (error instanceof z.ZodError) return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." });
-    const statusCode = error !== null && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
-    const safeStatusCode = statusCode >= 400 && statusCode < 500 ? statusCode : 500;
-    return reply.status(safeStatusCode).send({ error: "INTERNAL_SERVER_ERROR", message: safeStatusCode === 500 ? "An unexpected error occurred." : "The request could not be processed." });
-  });
-
+  registerResourceRoutes(app, services, options.providerEvents);
+  app.setErrorHandler((error, request, reply) => { request.log.error(error); if (error instanceof DomainError) return reply.status(error.statusCode).send({ error: error.code, message: error.message }); if (error instanceof z.ZodError) return reply.status(400).send({ error: "VALIDATION_ERROR", message: "The request body is invalid." }); const statusCode = error !== null && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500; const safeStatusCode = statusCode >= 400 && statusCode < 500 ? statusCode : 500; return reply.status(safeStatusCode).send({ error: "INTERNAL_SERVER_ERROR", message: safeStatusCode === 500 ? "An unexpected error occurred." : "The request could not be processed." }); });
   return app;
 }
