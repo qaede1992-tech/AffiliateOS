@@ -11,6 +11,7 @@ import { ConversionAttributionService, InMemoryConversionAttributionRepository, 
 import { InMemoryOAuthStateRepository, InMemorySocialOAuthProviderRegistry, SocialOAuthService, type OAuthStateRepository } from "./oauth.js";
 import { CampaignOrchestrator } from "./campaign-orchestrator.js";
 import { DistributionEngine, type SocialPublisher } from "./distribution-engine.js";
+import { SocialPublisherRegistry } from "./social-publisher-registry.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import { PublisherExecutor } from "./publisher-executor.js";
 import { PublicationWorker } from "./publication-worker.js";
@@ -27,8 +28,9 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
-  const distribution = new DistributionEngine(content, repositories.socialAccounts, socialPublishers, publicationJobs);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, distribution.listPublishers());
+  const publisherRegistry = new SocialPublisherRegistry(socialPublishers);
+  const distribution = new DistributionEngine(content, repositories.socialAccounts, publisherRegistry.list(), publicationJobs);
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publisherRegistry.list());
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   return {
