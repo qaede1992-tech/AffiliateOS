@@ -6,7 +6,9 @@ const environmentSchema = z.object({
   DATABASE_URL: z.string().url().refine((value) => /^postgres(?:ql)?:\/\//.test(value), { message: "DATABASE_URL must use the postgres:// or postgresql:// protocol." }),
   API_AUTH_TOKEN: z.string().trim().min(32).optional(),
   API_AUTH_OPERATOR_ID: z.string().trim().min(1).default("development-operator"),
-  API_AUTH_OPERATOR_ROLE: z.enum(["admin", "operator", "viewer"]).default("admin")
+  API_AUTH_OPERATOR_ROLE: z.enum(["admin", "operator", "viewer"]).default("admin"),
+  AUTONOMOUS_CYCLE_ENABLED: z.preprocess((value) => value === undefined ? false : value, z.coerce.boolean()),
+  AUTONOMOUS_CYCLE_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000)
 });
 
 export const environment = environmentSchema.parse(process.env);
