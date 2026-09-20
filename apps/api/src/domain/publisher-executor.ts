@@ -21,30 +21,19 @@ export class PublisherExecutor {
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`): Promise<PublishExecutionResult> {
     const content = await this.contentService.get(contentId);
-    if (content.status !== "scheduled") {
-      throw new Error("Only scheduled content can be published.");
-    }
-
+    if (content.status !== "scheduled") throw new Error("Only scheduled content can be published.");
     const scheduledAt = content.scheduledAt ? new Date(content.scheduledAt) : null;
-    if (!scheduledAt || !Number.isFinite(scheduledAt.getTime())) {
-      throw new Error("Scheduled content requires a valid scheduledAt timestamp.");
-    }
-    if (scheduledAt.getTime() > now.getTime()) {
-      return { content, status: "not_due" };
-    }
+    if (!scheduledAt || !Number.isFinite(scheduledAt.getTime())) throw new Error("Scheduled content requires a valid scheduledAt timestamp.");
+    if (scheduledAt.getTime() > now.getTime()) return { content, status: "not_due" };
 
-    const account = await this.findAccount(content.platform);
+    const account = await this.findAccount(content);
     const publisher = this.publishers.find((candidate) => candidate.supports(content.platform));
     if (!publisher) return { content, account, status: "unsupported" };
 
     try {
       const credential = await this.resolveCredential(account);
       const result = await publisher.publish({ content, account, credential, idempotencyKey });
-      const publishedAt = now.toISOString();
-      const updated = await this.contentService.update(content.id, {
-        status: "published",
-        publishedAt
-      });
+      const updated = await this.contentService.update(content.id, { status: "published", publishedAt: now.toISOString() });
       return { content: updated, account, externalPostId: result.externalPostId, status: "published" };
     } catch (error) {
       await this.contentService.update(content.id, { status: "failed" });
@@ -58,10 +47,17 @@ export class PublisherExecutor {
     return this.credentialResolver.resolve(account.credentialReference);
   }
 
-  private async findAccount(platform: string): Promise<SocialAccount> {
+  private async findAccount(content: Content): Promise<SocialAccount> {
     const accounts = await this.socialAccounts.list();
-    const account = accounts.find((candidate) => candidate.status === "active" && candidate.platform === platform);
-    if (!account) throw new Error(`No active social account is available for ${platform}.`);
+    if (content.socialAccountId) {
+      const account = accounts.find((candidate) => candidate.id === content.socialAccountId);
+      if (!account) throw new Error("The configured social account does not exist.");
+      if (account.status !== "active") throw new Error("The configured social account is not active.");
+      if (account.platform !== content.platform) throw new Error("The configured social account platform does not match content platform.");
+      return account;
+    }
+    const account = accounts.find((candidate) => candidate.status === "active" && candidate.platform === content.platform);
+    if (!account) throw new Error(`No active social account is available for ${content.platform}.`);
     return account;
   }
 }
