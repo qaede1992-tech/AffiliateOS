@@ -1,5 +1,6 @@
 import type { Content, ContentPlatform, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
+import type { PublicationJobService } from "./publication-job-service.js";
 import type { SocialAccountRepository } from "./repository.js";
 
 export type DistributionRequest = {
@@ -26,7 +27,8 @@ export class DistributionEngine {
   constructor(
     private readonly contentService: ContentService,
     private readonly socialAccounts: SocialAccountRepository,
-    private readonly publishers: SocialPublisher[] = []
+    private readonly publishers: SocialPublisher[] = [],
+    private readonly publicationJobs?: PublicationJobService
   ) {}
 
   async schedule(request: DistributionRequest): Promise<DistributionPlan> {
@@ -47,6 +49,7 @@ export class DistributionEngine {
       status: "scheduled",
       scheduledAt: scheduledAt.toISOString()
     });
+    if (this.publicationJobs) await this.publicationJobs.enqueue(updated);
     const publishable = this.publishers.some((publisher) => publisher.supports(request.content.platform));
     return { content: updated, account, scheduledAt: scheduledAt.toISOString(), publishable };
   }
