@@ -11,6 +11,7 @@
     { "idx": 6, "version": "7", "when": 1789982400000, "tag": "0006_oauth_states", "breakpoints": true },
     { "idx": 7, "version": "7", "when": 1790068800000, "tag": "0007_conversion_attributions", "breakpoints": true },
     { "idx": 8, "version": "7", "when": 1790155200000, "tag": "0008_conversion_idempotency", "breakpoints": true },
-    { "idx": 9, "version": "7", "when": 1790241600000, "tag": "0009_provider_events", "breakpoints": true }
+    { "idx": 9, "version": "7", "when": 1790241600000, "tag": "0009_provider_events", "breakpoints": true },
+    { "idx": 10, "version": "7", "when": 1790335200000, "tag": "0017_autonomous_runs", "breakpoints": true }
   ]
 }
