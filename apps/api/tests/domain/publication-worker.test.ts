@@ -97,6 +97,31 @@ describe("PublicationWorker", () => {
     assert.equal(publicationRetryDelayMs(20), 3_600_000);
   });
 
+  it("recovers a stale processing job", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    let publishes = 0;
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => { publishes += 1; return { externalPostId: "external-post-recovered" }; }
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
+    const job = await jobService.enqueue(content);
+    await jobs.save({
+      ...job,
+      status: "processing",
+      attemptCount: 1,
+      lockedAt: "2026-09-20T10:40:00.000Z",
+      updatedAt: "2026-09-20T10:40:00.000Z"
+    });
+
+    const results = await worker.runOnce(new Date("2026-09-20T10:50:00.000Z"));
+    const stored = await jobs.findById(job.id);
+
+    assert.equal(results[0]?.status, "succeeded");
+    assert.equal(stored?.attemptCount, 2);
+    assert.equal(publishes, 1);
+  });
+
   it("leaves future jobs untouched", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup("2026-09-20T12:00:00.000Z");
     const worker = workerFor(contentService, socialAccounts, jobs, jobService);
