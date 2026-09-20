@@ -23,6 +23,7 @@ export interface PublicationJobRepository {
   findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>;
   save(job: PublicationJob): Promise<PublicationJob>;
   claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>;
+  saveIfAbsent?(job: PublicationJob): Promise<PublicationJob>;
 }
 
 export class InMemoryPublicationJobRepository implements PublicationJobRepository {
@@ -31,6 +32,12 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
   async findById(id: EntityId) { return this.jobs.get(id); }
   async findByIdempotencyKey(key: string) { return [...this.jobs.values()].find((job) => job.idempotencyKey === key); }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
+  async saveIfAbsent(job: PublicationJob) {
+    const existing = await this.findByIdempotencyKey(job.idempotencyKey);
+    if (existing) return existing;
+    this.jobs.set(job.id, job);
+    return job;
+  }
 
   async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
     const job = this.jobs.get(id);
