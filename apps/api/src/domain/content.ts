@@ -6,41 +6,13 @@ import type { Repository, SocialAccountRepository } from "./repository.js";
 const now = () => new Date().toISOString();
 
 const contentTransitions: Record<Content["status"], Content["status"][]> = {
-  draft: ["draft", "scheduled", "archived"],
-  scheduled: ["scheduled", "published", "failed", "archived"],
-  published: ["published", "archived"],
-  failed: ["failed", "draft", "archived"],
-  archived: ["archived"]
+  draft: ["draft", "scheduled", "archived"], scheduled: ["scheduled", "published", "failed", "archived"], published: ["published", "archived"], failed: ["failed", "draft", "archived"], archived: ["archived"]
 };
-
-function isUniqueViolation(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505");
-}
-
-function validateContentTiming(status: Content["status"], scheduledAt: string | undefined, publishedAt: string | undefined) {
-  if (status === "scheduled" && !scheduledAt) throw new DomainError("CONTENT_SCHEDULE_REQUIRED", "Scheduled content requires scheduledAt.");
-  if (status === "published" && !publishedAt) throw new DomainError("CONTENT_PUBLISHED_AT_REQUIRED", "Published content requires publishedAt.");
-  if (scheduledAt && publishedAt && Date.parse(scheduledAt) > Date.parse(publishedAt)) {
-    throw new DomainError("INVALID_CONTENT_DATES", "scheduledAt must be before publishedAt.");
-  }
-}
-
-function validateContentTransition(current: Content["status"], next: Content["status"] | undefined) {
-  if (next && !contentTransitions[current].includes(next)) {
-    throw new DomainError("INVALID_CONTENT_TRANSITION", `Content cannot transition from ${current} to ${next}.`);
-  }
-}
-
+function isUniqueViolation(error: unknown): boolean { return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505"); }
+function validateContentTiming(status: Content["status"], scheduledAt: string | undefined, publishedAt: string | undefined) { if (status === "scheduled" && !scheduledAt) throw new DomainError("CONTENT_SCHEDULE_REQUIRED", "Scheduled content requires scheduledAt."); if (status === "published" && !publishedAt) throw new DomainError("CONTENT_PUBLISHED_AT_REQUIRED", "Published content requires publishedAt."); if (scheduledAt && publishedAt && Date.parse(scheduledAt) > Date.parse(publishedAt)) throw new DomainError("INVALID_CONTENT_DATES", "scheduledAt must be before publishedAt."); }
+function validateContentTransition(current: Content["status"], next: Content["status"] | undefined) { if (next && !contentTransitions[current].includes(next)) throw new DomainError("INVALID_CONTENT_TRANSITION", `Content cannot transition from ${current} to ${next}.`); }
 const sensitiveConnectionKey = /(?:password|passcode|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|private[_-]?key|signing[_-]?key)/i;
-
-export function redactSensitiveConnectionValues(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map((item) => redactSensitiveConnectionValues(item));
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
-    key,
-    sensitiveConnectionKey.test(key) ? "[REDACTED]" : redactSensitiveConnectionValues(nested)
-  ]));
-}
+export function redactSensitiveConnectionValues(value: unknown): unknown { if (Array.isArray(value)) return value.map((item) => redactSensitiveConnectionValues(item)); if (!value || typeof value !== "object") return value; return Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, sensitiveConnectionKey.test(key) ? "[REDACTED]" : redactSensitiveConnectionValues(nested)])); }
 
 export class ContentService {
   constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>) {}
@@ -59,5 +31,6 @@ export class SocialAccountService {
   async get(id: string) { const account = await this.accounts.findById(id); if (!account) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); return this.view(account); }
   async create(input: CreateSocialAccountRequest) { if (await this.accounts.findByPlatformAccount(input.platform, input.accountReference)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); const createdAt = now(); const account: SocialAccount = { id: randomUUID(), platform: input.platform, accountReference: input.accountReference, status: input.status ?? "pending", connection: input.connection ?? {}, credentialReference: input.credentialReference, createdAt, updatedAt: createdAt }; try { return this.view(await this.accounts.save(account)); } catch (error) { if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); throw error; } }
   async update(id: string, input: import("@affiliateos/shared").UpdateSocialAccountRequest) { const current = await this.accounts.findById(id); if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); const platform = input.platform ?? current.platform; const accountReference = input.accountReference ?? current.accountReference; const duplicate = await this.accounts.findByPlatformAccount(platform, accountReference); if (duplicate && duplicate.id !== id) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); const updated: SocialAccount = { ...current, ...input, platform, accountReference, updatedAt: now() }; try { return this.view(await this.accounts.save(updated)); } catch (error) { if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); throw error; } }
+  async rotateCredential(id: string, credentialReference: string) { const current = await this.accounts.findById(id); if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); if (!credentialReference.trim()) throw new DomainError("SOCIAL_CREDENTIAL_REFERENCE_REQUIRED", "A credential reference is required."); const rotated: SocialAccount = { ...current, status: "active", credentialReference: credentialReference.trim(), updatedAt: now() }; return this.view(await this.accounts.save(rotated)); }
   async revokeCredential(id: string) { const current = await this.accounts.findById(id); if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); if (!current.credentialReference) return this.view(current); const revoked: SocialAccount = { ...current, status: "inactive", credentialReference: undefined, updatedAt: now() }; return this.view(await this.accounts.save(revoked)); }
 }
