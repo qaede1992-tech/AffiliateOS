@@ -25,11 +25,25 @@ test("processes a normalized provider conversion through the existing idempotent
     resolveOffer: async (reference) => reference === "offer_300" ? offer.id : undefined
   });
 
-  const first = await processor.process(event);
-  const second = await processor.process(event);
+  const first = await processor.process("account-a", event);
+  const second = await processor.process("account-a", event);
   assert.equal(first.id, second.id);
   assert.equal((await services.conversions.list()).length, 1);
   assert.equal((await services.commissions.list()).length, 1);
+});
+
+test("keeps identical external conversion IDs isolated by provider account scope", async () => {
+  const services = createInMemoryServices();
+  const affiliate = await services.affiliates.create({ name: "Provider affiliate", email: "provider-2@example.com" });
+  const offer = await services.offers.create({ name: "Provider offer", status: "active", commissionRateBps: 1000 });
+  const processor = new ProviderConversionProcessor(services.conversions, {
+    resolveAffiliate: async () => affiliate.id,
+    resolveOffer: async () => offer.id
+  });
+  const first = await processor.process("account-a", event);
+  const second = await processor.process("account-b", event);
+  assert.notEqual(first.id, second.id);
+  assert.equal((await services.conversions.list()).length, 2);
 });
 
 test("fails closed when provider references cannot be resolved", async () => {
@@ -38,5 +52,5 @@ test("fails closed when provider references cannot be resolved", async () => {
     resolveAffiliate: async () => undefined,
     resolveOffer: async () => undefined
   });
-  await assert.rejects(() => processor.process(event), { code: "PROVIDER_CONVERSION_AFFILIATE_UNKNOWN" });
+  await assert.rejects(() => processor.process("account-a", event), { code: "PROVIDER_CONVERSION_AFFILIATE_UNKNOWN" });
 });
