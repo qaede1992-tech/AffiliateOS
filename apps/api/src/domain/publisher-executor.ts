@@ -1,14 +1,17 @@
 import type { Content, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
-import type { SocialAccountRepository } from "./repository.js";
 import { publisherSupportsContent, type SocialPublisher } from "./distribution-engine.js";
+import type { SocialAccountRepository } from "./repository.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 
 export type PublishExecutionResult = {
   content: Content;
   account?: SocialAccount;
+  publisher?: SocialPublisher;
+  provider?: string;
+  providerOperationId?: string;
   externalPostId?: string;
-  status: "published" | "not_due" | "unsupported" | "failed";
+  status: "published" | "accepted" | "not_due" | "unsupported" | "failed";
 };
 
 export class PublisherExecutor {
@@ -33,8 +36,18 @@ export class PublisherExecutor {
     try {
       const credential = await this.resolveCredential(account);
       const result = await publisher.publish({ content, account, credential, idempotencyKey });
+      if (result.status === "accepted") {
+        return {
+          content,
+          account,
+          publisher,
+          provider: publisher.provider ?? content.platform,
+          providerOperationId: result.providerOperationId,
+          status: "accepted"
+        };
+      }
       const updated = await this.contentService.update(content.id, { status: "published", publishedAt: now.toISOString() });
-      return { content: updated, account, externalPostId: result.externalPostId, status: "published" };
+      return { content: updated, account, publisher, provider: publisher.provider ?? content.platform, externalPostId: result.externalPostId, status: "published" };
     } catch (error) {
       await this.contentService.update(content.id, { status: "failed" });
       throw error;
