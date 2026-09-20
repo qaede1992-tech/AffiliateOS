@@ -31,7 +31,7 @@ const platformMatches = (content: Content, account: SocialAccount) => content.pl
 export class DistributionEngine {
   constructor(private readonly contentService: ContentService, private readonly socialAccounts: SocialAccountRepository, private readonly publishers: SocialPublisher[] = [], private readonly publicationJobs?: import("./publication-job-service.js").PublicationJobService) {}
 
-  async schedule(request: DistributionRequest): Promise<DistributionPlan> {
+  async validate(request: DistributionRequest): Promise<SocialAccount> {
     const scheduledAt = new Date(request.scheduledAt);
     if (!Number.isFinite(scheduledAt.getTime())) throw new Error("Distribution requires a valid scheduledAt timestamp.");
     if (request.content.status !== "draft") throw new Error("Only draft content can be scheduled for distribution.");
@@ -40,6 +40,12 @@ export class DistributionEngine {
     if (!account) throw new Error(`No social account is available for ${request.content.platform}.`);
     if (account.status !== "active") throw new Error("Distribution requires an active social account.");
     if (!platformMatches(request.content, account)) throw new Error("Distribution account platform does not match content platform.");
+    return account;
+  }
+
+  async schedule(request: DistributionRequest): Promise<DistributionPlan> {
+    const scheduledAt = new Date(request.scheduledAt);
+    const account = await this.validate(request);
     const updated = await this.contentService.update(request.content.id, { status: "scheduled", scheduledAt: scheduledAt.toISOString(), socialAccountId: account.id });
     if (this.publicationJobs) {
       try { await this.publicationJobs.enqueue(updated); }
@@ -50,6 +56,12 @@ export class DistributionEngine {
     }
     const publishable = this.publishers.some((publisher) => publisherSupportsContent(publisher, request.content));
     return { content: updated, account, scheduledAt: scheduledAt.toISOString(), publishable };
+  }
+
+  async validateBatch(requests: DistributionRequest[]): Promise<SocialAccount[]> {
+    const accounts: SocialAccount[] = [];
+    for (const request of requests) accounts.push(await this.validate(request));
+    return accounts;
   }
 
   listPublishers(platform?: ContentPlatform): SocialPublisher[] { return platform ? this.publishers.filter((publisher) => publisher.supports(platform)) : [...this.publishers]; }
