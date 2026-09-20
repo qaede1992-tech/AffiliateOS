@@ -51,13 +51,16 @@ describe("autonomous opportunity selection", () => {
     assert.deepEqual(result.selected.map((item) => item.product.id), ["good"]);
     assert.ok(result.rejected.map((item) => item.productId).includes("inactive"));
     assert.ok(result.rejected.map((item) => item.productId).includes("no-offer"));
+    assert.ok(result.rejected.find((item) => item.productId === "inactive")?.reasons.includes("Product is not active"));
+    assert.ok(result.rejected.find((item) => item.productId === "no-offer")?.reasons.includes("No eligible affiliate offer"));
   });
 
-  it("honors maximum results deterministically", () => {
+  it("honors maximum results deterministically and explains capped candidates", () => {
     const candidates = ["a", "b", "c"].map((id) => ({ product: product(id), offers: [offer(id)] }));
     const result = new AutonomousOpportunitySelector().select(candidates, { minimumScore: 0, maximumResults: 2 });
     assert.equal(result.selected.length, 2);
     assert.deepEqual(result.selected.map((item) => item.product.id), ["a", "b"]);
+    assert.deepEqual(result.rejected, [{ productId: "c", score: result.rejected[0].score, reasons: ["Selection limit reached"] }]);
   });
 
   it("does not select a product that misses a required audience", () => {
@@ -65,5 +68,6 @@ describe("autonomous opportunity selection", () => {
       { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }
     ], { minimumScore: 0, requiredAudience: ["skincare"] });
     assert.equal(result.selected.length, 0);
+    assert.ok(result.rejected[0]?.reasons.includes("Does not match the required audience"));
   });
 });
