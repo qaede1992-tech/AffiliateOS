@@ -18,7 +18,8 @@
     "start": "npm run start --workspace @affiliateos/api",
     "clean": "npm run clean --workspaces --if-present",
     "db:check": "npm run db:check --workspace @affiliateos/api",
-    "db:verify": "npm run db:verify --workspace @affiliateos/api"
+    "db:verify": "npm run db:verify --workspace @affiliateos/api",
+    "db:verify:applied": "npm run db:verify:applied --workspace @affiliateos/api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
