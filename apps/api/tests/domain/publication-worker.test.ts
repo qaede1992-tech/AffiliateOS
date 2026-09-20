@@ -91,6 +91,34 @@ describe("PublicationWorker", () => {
     assert.equal((await contentService.get(content.id)).status, "published");
   });
 
+  it("reconciles an accepted operation after the worker instance is recreated", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const operations = new InMemoryPublicationOperationRepository();
+    let checks = 0;
+    const publisher: SocialPublisher = {
+      provider: "restart-safe-provider",
+      supports: () => true,
+      publish: async () => ({ status: "accepted", providerOperationId: "restart-safe-operation" }),
+      checkPublication: async () => {
+        checks += 1;
+        return { status: "published", externalPostId: "restart-safe-post" };
+      }
+    };
+    const firstWorker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const job = await jobService.enqueue(content);
+    const accepted = await firstWorker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(accepted[0]?.status, "awaiting_confirmation");
+    assert.equal((await operations.list()).length, 1);
+
+    const restartedWorker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const recovered = await restartedWorker.runOnce(new Date("2026-09-20T11:30:00.000Z"));
+    assert.deepEqual(recovered[0], { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "restart-safe-post" });
+    assert.equal(checks, 1);
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+    assert.equal((await contentService.get(content.id)).status, "published");
+    assert.equal((await operations.findByProviderOperation("restart-safe-provider", "restart-safe-operation"))?.status, "published");
+  });
+
   it("records adapter failures and restores failed content before retrying after backoff", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
