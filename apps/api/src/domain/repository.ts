@@ -1,5 +1,6 @@
 import type { EntityId } from "@affiliateos/shared";
 import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, Offer, TrackingLink, SocialAccount } from "@affiliateos/shared";
+import type { PublicationJob } from "./publication-job.js";
 
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
@@ -29,11 +30,29 @@ export class InMemoryConversionRepository extends InMemoryRepository<Conversion>
 }
 export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> implements TrackingLinkRepository { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
 export class InMemorySocialAccountRepository extends InMemoryRepository<SocialAccount> implements SocialAccountRepository { async findByPlatformAccount(platform: string, accountReference: string) { return (await this.list()).find((account) => account.platform === platform && account.accountReference === accountReference); } }
+export class InMemoryPublicationJobRepository implements PublicationJobRepository {
+  private readonly jobs = new Map<EntityId, PublicationJob>();
+  async list() { return [...this.jobs.values()]; }
+  async findById(id: EntityId) { return this.jobs.get(id); }
+  async findByIdempotencyKey(key: string) { return [...this.jobs.values()].find((job) => job.idempotencyKey === key); }
+  async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
+  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
+    const job = this.jobs.get(id);
+    if (!job || job.status === "succeeded") return undefined;
+    const scheduled = new Date(job.scheduledAt).getTime();
+    const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
+    const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
+    if (scheduled > nowDate.getTime() || lockFresh) return undefined;
+    const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() };
+    this.jobs.set(id, claimed);
+    return claimed;
+  }
+}
 export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: Repository<Commission>;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: SocialAccountRepository;
+  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
@@ -44,4 +63,5 @@ export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId):
 export interface TrackingLinkRepository extends Repository<TrackingLink> { findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
 export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
 export interface SocialAccountRepository extends Repository<SocialAccount> { findByPlatformAccount(platform: string, accountReference: string): Promise<SocialAccount | undefined>; }
+export interface PublicationJobRepository extends Repository<PublicationJob> { findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>; claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>; }
 export interface TransactionManager { run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T>; }
