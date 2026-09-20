@@ -6,7 +6,7 @@ import type { Repository, SocialAccountRepository } from "./repository.js";
 const now = () => new Date().toISOString();
 
 const contentTransitions: Record<Content["status"], Content["status"][]> = {
-  draft: ["draft", "scheduled", "archived"], scheduled: ["scheduled", "published", "failed", "archived"], published: ["published", "archived"], failed: ["failed", "draft", "archived"], archived: ["archived"]
+  draft: ["draft", "scheduled", "archived"], scheduled: ["scheduled", "published", "failed", "draft", "archived"], published: ["published", "archived"], failed: ["failed", "draft", "archived"], archived: ["archived"]
 };
 function isUniqueViolation(error: unknown): boolean { return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505"); }
 function validateContentTiming(status: Content["status"], scheduledAt: string | undefined, publishedAt: string | undefined) { if (status === "scheduled" && !scheduledAt) throw new DomainError("CONTENT_SCHEDULE_REQUIRED", "Scheduled content requires scheduledAt."); if (status === "published" && !publishedAt) throw new DomainError("CONTENT_PUBLISHED_AT_REQUIRED", "Published content requires publishedAt."); if (scheduledAt && publishedAt && Date.parse(scheduledAt) > Date.parse(publishedAt)) throw new DomainError("INVALID_CONTENT_DATES", "scheduledAt must be before publishedAt."); }
