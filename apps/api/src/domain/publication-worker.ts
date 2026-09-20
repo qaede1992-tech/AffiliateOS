@@ -1,4 +1,5 @@
 import type { EntityId } from "@affiliateos/shared";
+import { ContentService } from "./content.js";
 import { PublisherExecutor } from "./publisher-executor.js";
 import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
@@ -37,7 +38,8 @@ export class PublicationWorker {
   constructor(
     private readonly jobs: PublicationJobRepository,
     private readonly jobService: PublicationJobService,
-    private readonly executor: PublisherExecutor
+    private readonly executor: PublisherExecutor,
+    private readonly contentService?: ContentService
   ) {}
 
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
@@ -61,6 +63,7 @@ export class PublicationWorker {
 
   private async process(job: PublicationJob, now: Date): Promise<PublicationWorkerResult> {
     try {
+      await this.prepareRetry(job);
       const result = await this.executor.execute(job.contentId, now, job.idempotencyKey);
       if (result.status === "published" && result.externalPostId) {
         await this.jobService.succeed(job.id, result.externalPostId, now);
@@ -86,5 +89,12 @@ export class PublicationWorker {
       await this.jobService.fail(job.id, error, now);
       return { jobId: job.id, contentId: job.contentId, status: "failed", error: message };
     }
+  }
+
+  private async prepareRetry(job: PublicationJob): Promise<void> {
+    if (job.attemptCount <= 1 || !this.contentService) return;
+    const content = await this.contentService.get(job.contentId);
+    if (content.status !== "failed") return;
+    await this.contentService.update(content.id, { status: "scheduled" });
   }
 }
