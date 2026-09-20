@@ -25,10 +25,11 @@ import { InMemoryAutonomousRunRepository, type AutonomousRunRepository } from ".
 import type { PublicationOperationRepository } from "./publication-operation.js";
 import { AutonomousCycleService } from "./autonomous-cycle.js";
 import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace-candidates.js";
+import { AutonomousScheduler } from "./autonomous-scheduler.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
-  campaigns: CampaignService; tracking: TrackingService; content: ContentService; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousCycle: AutonomousCycleService; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
+  campaigns: CampaignService; tracking: TrackingService; content: ContentService; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService;
 }
 
@@ -50,11 +51,12 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers);
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution);
+  const autonomousScheduler = new AutonomousScheduler(autonomousCycle);
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers),
     conversions: new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager),
     commissions: new CommissionService(repositories.commissions),
-    marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousCycle, distribution,
+    marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousCycle, autonomousScheduler, distribution,
     socialAccounts: new SocialAccountService(repositories.socialAccounts),
     socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository),
     analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository),
