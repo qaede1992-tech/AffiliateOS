@@ -2,6 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { EntityId } from "@affiliateos/shared";
 import type { PublicationOperation, PublicationOperationRepository, PublicationOperationStatus } from "./publication-operation.js";
 
+const allowedTransitions: Record<PublicationOperationStatus, PublicationOperationStatus[]> = {
+  accepted: ["accepted", "processing", "published", "failed"],
+  processing: ["processing", "published", "failed"],
+  published: ["published"],
+  failed: ["failed"]
+};
+
 export class PublicationOperationService {
   constructor(private readonly operations: PublicationOperationRepository) {}
 
@@ -31,7 +38,18 @@ export class PublicationOperationService {
   async transition(id: EntityId, status: PublicationOperationStatus, details: { externalPostId?: string; error?: string } = {}, now = new Date()): Promise<PublicationOperation> {
     const operation = await this.operations.findById(id);
     if (!operation) throw new Error("Publication operation does not exist.");
-    if (operation.status === "published" || operation.status === "failed") return operation;
-    return this.operations.save({ ...operation, status, externalPostId: details.externalPostId ?? operation.externalPostId, lastError: details.error, updatedAt: now.toISOString() });
+    if (!allowedTransitions[operation.status].includes(status)) return operation;
+    const next: PublicationOperation = {
+      ...operation,
+      status,
+      externalPostId: details.externalPostId ?? operation.externalPostId,
+      lastError: details.error,
+      updatedAt: now.toISOString()
+    };
+    if (this.operations.transition) {
+      const transitioned = await this.operations.transition(id, [operation.status], next);
+      return transitioned ?? (await this.operations.findById(id)) ?? operation;
+    }
+    return this.operations.save(next);
   }
 }
