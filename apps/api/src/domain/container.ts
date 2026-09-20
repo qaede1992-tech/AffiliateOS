@@ -19,12 +19,14 @@ import { PublicationWorker } from "./publication-worker.js";
 import { PublicationScheduler } from "./publication-scheduler.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 import { AutonomousRunService } from "./autonomous-run-service.js";
+import { AutonomousExecutionService } from "./autonomous-execution.js";
+import { AutonomousOpportunitySelector } from "./autonomous-opportunity.js";
 import { InMemoryAutonomousRunRepository, type AutonomousRunRepository } from "./autonomous-run.js";
 import type { PublicationOperationRepository } from "./publication-operation.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
-  campaigns: CampaignService; tracking: TrackingService; content: ContentService; campaignOrchestrator: CampaignOrchestrator; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
+  campaigns: CampaignService; tracking: TrackingService; content: ContentService; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService;
 }
 
@@ -41,13 +43,14 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   const autonomousRuns = new AutonomousRunService(autonomousRunRepository);
+  const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns);
+  const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator);
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers),
     conversions: new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager),
     commissions: new CommissionService(repositories.commissions),
     marketplace: new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers),
-    campaigns, tracking, content, campaignOrchestrator: new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns),
-    distribution,
+    campaigns, tracking, content, campaignOrchestrator, autonomousExecution, distribution,
     socialAccounts: new SocialAccountService(repositories.socialAccounts),
     socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository),
     analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository),
