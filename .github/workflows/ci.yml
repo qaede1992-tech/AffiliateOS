@@ -68,23 +68,41 @@ jobs:
       - name: Smoke test API container
         run: |
           set -euo pipefail
-          trap 'docker rm --force affiliateos-api >/dev/null 2>&1 || true' EXIT
+          trap 'docker rm --force affiliateos-api >/dev/null 2>&1 || true; docker rm --force affiliateos-postgres >/dev/null 2>&1 || true; docker network rm affiliateos-smoke >/dev/null 2>&1 || true' EXIT
           token='ci-smoke-test-token-123456789012345678901234'
-          docker run --detach --name affiliateos-api --publish 3001:3001 \
-            --env DATABASE_URL=postgresql://affiliateos:affiliateos@127.0.0.1:5432/affiliateos \
+          docker network create affiliateos-smoke
+          docker run --detach --name affiliateos-postgres --network affiliateos-smoke \
+            --env POSTGRES_DB=affiliateos \
+            --env POSTGRES_USER=affiliateos \
+            --env POSTGRES_PASSWORD=affiliateos \
+            postgres:16-alpine
+          for attempt in $(seq 1 30); do
+            if docker exec affiliateos-postgres pg_isready -U affiliateos -d affiliateos >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs affiliateos-postgres
+              exit 1
+            fi
+            sleep 1
+          done
+          docker run --detach --name affiliateos-api --network affiliateos-smoke --publish 3001:3001 \
+            --env DATABASE_URL=postgresql://affiliateos:affiliateos@affiliateos-postgres:5432/affiliateos \
             --env API_CORS_ORIGIN=http://localhost:5173 \
             --env API_AUTH_TOKEN="$token" \
             affiliateos-api:ci
-          for attempt in $(seq 1 20); do
+          for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:3001/api/v1/health >/dev/null; then
               break
             fi
-            if [ "$attempt" -eq 20 ]; then
+            if [ "$attempt" -eq 30 ]; then
               docker logs affiliateos-api
               exit 1
             fi
             sleep 1
           done
+          readiness_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3001/api/v1/ready)
+          test "$readiness_status" = '200'
           unauthorized_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3001/api/v1/auth/me)
           test "$unauthorized_status" = '401'
           authorized_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
