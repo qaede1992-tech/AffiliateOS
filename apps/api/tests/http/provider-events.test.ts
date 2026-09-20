@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import { createApp } from "../../src/app.js";
-import { createServices } from "../../src/domain/container.js";
+import { createInMemoryServices } from "../../src/domain/container.js";
 import { MarketplaceProviderRegistry } from "../../src/domain/foundations.js";
+import { MarketplaceService } from "../../src/domain/marketplace.js";
 import { SignedMockMarketplaceProvider } from "../../src/domain/signed-mock-marketplace-provider.js";
-import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } from "../../src/domain/repository.js";
+import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository } from "../../src/domain/repository.js";
 
 const secret = "integration-provider-secret";
 const connection = {
@@ -23,35 +24,32 @@ const connection = {
   updatedAt: "2026-01-01T00:00:00.000Z"
 };
 
-function buildHarness() {
+async function buildHarness() {
   const registry = new MarketplaceProviderRegistry();
   registry.register(new SignedMockMarketplaceProvider(secret));
-  const repos = {
-    affiliates: new InMemoryRepository<any>(),
-    offers: new InMemoryRepository<any>(),
-    conversions: new InMemoryRepository<any>(),
-    commissions: new InMemoryRepository<any>(),
-    marketplaceConnections: new InMemoryMarketplaceConnectionRepository(),
-    affiliateAccounts: new InMemoryAffiliateAccountRepository(),
-    products: new InMemoryProductCatalogRepository(),
-    affiliateOffers: new InMemoryAffiliateOfferRepository()
-  };
-  return (async () => {
-    await repos.marketplaceConnections.save(connection);
-    const services = createServices(repos, { run: (work) => work({ conversions: repos.conversions, commissions: repos.commissions }) }, registry);
-    const events = new Map<string, number>();
-    const providerEvents = {
-      async insertIfNew(event: { externalEventId: string }) {
-        if (events.has(event.externalEventId)) return false;
-        events.set(event.externalEventId, 1);
-        return true;
-      }
-    } as any;
-    return { app: createApp(services, { providerEvents }), events };
-  })();
+  const connections = new InMemoryMarketplaceConnectionRepository();
+  await connections.save(connection);
+  const accounts = new InMemoryAffiliateAccountRepository();
+  const services = createInMemoryServices();
+  services.marketplace = new MarketplaceService(
+    registry,
+    connections,
+    new InMemoryProductCatalogRepository(),
+    accounts,
+    new InMemoryAffiliateOfferRepository()
+  );
+  const events = new Map<string, number>();
+  const providerEvents = {
+    async insertIfNew(event: { externalEventId: string }) {
+      if (events.has(event.externalEventId)) return false;
+      events.set(event.externalEventId, 1);
+      return true;
+    }
+  } as any;
+  return { app: createApp(services, { providerEvents }), events };
 }
 
-function signedHeaders(body: string, nowMs = Date.parse("2026-09-20T10:00:00.000Z")) {
+function signedHeaders(body: string, nowMs = Date.now()) {
   const timestamp = Math.floor(nowMs / 1000).toString();
   const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
   return { "x-provider-timestamp": timestamp, "x-provider-signature": `v1=${signature}` };
@@ -82,7 +80,7 @@ test("rejects tampered provider event bodies", async () => {
 test("rejects expired provider signatures", async () => {
   const { app } = await buildHarness();
   const body = JSON.stringify({ id: "evt_102", type: "conversion.created" });
-  const headers = signedHeaders(body, Date.parse("2026-09-20T09:00:00.000Z"));
+  const headers = signedHeaders(body, Date.now() - 6 * 60 * 1000);
   const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/signed-test/events", headers, payload: body });
   assert.equal(response.statusCode, 401);
   await app.close();
@@ -97,7 +95,7 @@ test("rejects event ingestion for an unknown connection", async () => {
   await app.close();
 });
 
-test("does not allow an unsigned provider adapter to ingest events", async () => {
+test("rejects unsigned provider events", async () => {
   const { app } = await buildHarness();
   const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/signed-test/events", payload: JSON.stringify({ id: "evt_104", type: "conversion.created" }) });
   assert.equal(response.statusCode, 401);
