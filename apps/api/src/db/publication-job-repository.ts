@@ -1,10 +1,9 @@
-import { sql } from "drizzle-orm";
+import { and, eq, lte, or, sql } from "drizzle-orm";
 import type { PublicationJob } from "../domain/publication-job.js";
 import type { PublicationJobRepository } from "../domain/repository.js";
 import { publicationJobs } from "./schema.js";
 
 type DatabaseExecutor = any;
-
 type PublicationJobRow = typeof publicationJobs.$inferSelect;
 
 const toPublicationJob = (row: PublicationJobRow): PublicationJob => ({
@@ -30,12 +29,12 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
   }
 
   async findById(id: string): Promise<PublicationJob | undefined> {
-    const rows = await this.db.select().from(publicationJobs).where(sql`${publicationJobs.id} = ${id}`).limit(1);
+    const rows = await this.db.select().from(publicationJobs).where(eq(publicationJobs.id, id)).limit(1);
     return rows[0] ? toPublicationJob(rows[0]) : undefined;
   }
 
   async findByIdempotencyKey(key: string): Promise<PublicationJob | undefined> {
-    const rows = await this.db.select().from(publicationJobs).where(sql`${publicationJobs.idempotencyKey} = ${key}`).limit(1);
+    const rows = await this.db.select().from(publicationJobs).where(eq(publicationJobs.idempotencyKey, key)).limit(1);
     return rows[0] ? toPublicationJob(rows[0]) : undefined;
   }
 
@@ -54,7 +53,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
       updatedAt: job.updatedAt
     };
     const existing = await this.findById(job.id);
-    if (existing) await this.db.update(publicationJobs).set(values).where(sql`${publicationJobs.id} = ${job.id}`);
+    if (existing) await this.db.update(publicationJobs).set(values).where(eq(publicationJobs.id, job.id));
     else await this.db.insert(publicationJobs).values(values);
     return job;
   }
@@ -62,22 +61,23 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
   async claimDue(id: string, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined> {
     const nowIso = now.toISOString();
     const staleCutoff = new Date(now.getTime() - lockTimeoutMs).toISOString();
-    const result = await this.db.execute(sql`
-      UPDATE ${publicationJobs}
-      SET
-        status = 'processing',
-        attempt_count = attempt_count + 1,
-        locked_at = ${nowIso},
-        updated_at = ${nowIso}
-      WHERE id = ${id}
-        AND scheduled_at <= ${nowIso}
-        AND (
-          status IN ('pending', 'failed')
-          OR (status = 'processing' AND locked_at IS NOT NULL AND locked_at < ${staleCutoff})
+    const rows = await this.db.update(publicationJobs)
+      .set({
+        status: "processing",
+        attemptCount: sql`${publicationJobs.attemptCount} + 1`,
+        lockedAt: nowIso,
+        updatedAt: nowIso
+      })
+      .where(and(
+        eq(publicationJobs.id, id),
+        lte(publicationJobs.scheduledAt, nowIso),
+        or(
+          eq(publicationJobs.status, "pending"),
+          eq(publicationJobs.status, "failed"),
+          and(eq(publicationJobs.status, "processing"), lte(publicationJobs.lockedAt, staleCutoff))
         )
-      RETURNING *
-    `);
-    const row = result.rows[0] as PublicationJobRow | undefined;
-    return row ? toPublicationJob(row) : undefined;
+      ))
+      .returning();
+    return rows[0] ? toPublicationJob(rows[0]) : undefined;
   }
 }
