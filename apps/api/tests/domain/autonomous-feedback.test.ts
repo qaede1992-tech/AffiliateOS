@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildSignals } from "../../src/domain/autonomous-feedback.js";
+import { buildSignals, AutonomousAnalyticsFeedbackProvider } from "../../src/domain/autonomous-feedback.js";
+import { InMemoryAutonomousFeedbackMemoryRepository } from "../../src/domain/autonomous-feedback-memory.js";
 
 const campaign = (productId: string, clicks: number, conversions: number, commission = 0) => ({
   campaignId: `${productId}-campaign`, productId, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
@@ -22,5 +23,23 @@ describe("Autonomous analytics feedback", () => {
   it("penalizes products with weak conversion performance", () => {
     const signals = buildSignals({ clickCount: 100, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 0, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0, campaigns: [campaign("p1", 100, 0)] });
     assert.equal(signals.get("p1")?.adjustment, -8);
+  });
+
+  it("persists snapshots and applies a bounded incremental trend adjustment", async () => {
+    const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+    let current = { clickCount: 100, conversions: 2 };
+    const provider = new AutonomousAnalyticsFeedbackProvider(
+      { overview: async () => ({ ...current, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: current.conversions, attributedRevenueCents: 100000, attributedCommissionCents: 10000, conversionRate: current.conversions / current.clickCount, campaigns: [campaign("p1", current.clickCount, current.conversions, 10000)] }) },
+      memory,
+      () => new Date("2026-09-21T01:00:00.000Z")
+    );
+
+    await provider.getSignals();
+    current = { clickCount: 120, conversions: 4 };
+    const signal = (await provider.getSignals()).get("p1");
+    assert.ok(signal);
+    assert.equal(signal.trendAdjustment, 2);
+    assert.equal(signal.adjustment, 7.33);
+    assert.ok(await memory.latestByProduct("p1"));
   });
 });
