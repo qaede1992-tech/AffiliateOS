@@ -70,13 +70,15 @@ export class ProviderReplayGuard {
     if (!Number.isInteger(maxEntries) || maxEntries <= 0) throw new Error("Provider replay max entries must be positive.");
   }
 
-  consume(eventId: string, nowMs = Date.now()): boolean {
-    const normalized = eventId.trim();
-    if (!normalized || normalized.length > 256) return false;
+  consume(scope: string, eventId: string, nowMs = Date.now()): boolean {
+    const normalizedScope = scope.trim();
+    const normalizedEventId = eventId.trim();
+    if (!normalizedScope || normalizedScope.length > 256 || !normalizedEventId || normalizedEventId.length > 256) return false;
     this.prune(nowMs);
-    if (this.seen.has(normalized)) return false;
+    const key = `${normalizedScope}:${normalizedEventId}`;
+    if (this.seen.has(key)) return false;
     if (this.seen.size >= this.maxEntries) this.evictOldest();
-    this.seen.set(normalized, nowMs + this.ttlMs);
+    this.seen.set(key, nowMs + this.ttlMs);
     return true;
   }
 
