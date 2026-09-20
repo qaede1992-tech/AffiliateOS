@@ -9,6 +9,8 @@ import type { PublicationOperationRepository } from "./publication-operation.js"
 
 const INITIAL_RETRY_DELAY_MS = 60 * 1000;
 const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
+const ACCEPTED_RECONCILIATION_DELAY_MS = 30 * 1000;
+const PROCESSING_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const publicationRetryDelayMs = (attemptCount: number): number => {
@@ -26,6 +28,13 @@ const isStaleProcessingJob = (job: PublicationJob, now: Date): boolean => {
   if (job.status !== "processing" || !job.lockedAt) return false;
   const lockedAt = new Date(job.lockedAt).getTime();
   return Number.isFinite(lockedAt) && now.getTime() - lockedAt >= PUBLICATION_JOB_LOCK_TIMEOUT_MS;
+};
+
+const reconciliationEligibleAt = (operation: import("./publication-operation.js").PublicationOperation): number => {
+  const updatedAt = new Date(operation.updatedAt).getTime();
+  if (!Number.isFinite(updatedAt)) return 0;
+  const delay = operation.status === "accepted" ? ACCEPTED_RECONCILIATION_DELAY_MS : PROCESSING_RECONCILIATION_DELAY_MS;
+  return updatedAt + delay;
 };
 
 export type PublicationWorkerResult = {
@@ -72,6 +81,7 @@ export class PublicationWorker {
     const results: PublicationWorkerResult[] = [];
     for (const operation of await this.operations.list()) {
       if (operation.status !== "accepted" && operation.status !== "processing") continue;
+      if (reconciliationEligibleAt(operation) > now.getTime()) continue;
       try {
         const checked = await this.executor.check(operation);
         if (checked.result.status === "processing") {
@@ -92,6 +102,7 @@ export class PublicationWorker {
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        await this.operations.transition(operation.id, "processing", { error: message }, now);
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing", error: message });
       }
     }
@@ -159,4 +170,10 @@ class InMemoryFallbackPublicationOperationRepository implements PublicationOpera
   async findById(id: string) { return this.operations.get(id); }
   async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
   async save(operation: import("./publication-operation.js").PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
+  async saveIfAbsent(operation: import("./publication-operation.js").PublicationOperation) {
+    const existing = await this.findByProviderOperation(operation.provider, operation.providerOperationId);
+    if (existing) return existing;
+    this.operations.set(operation.id, operation);
+    return operation;
+  }
 }
