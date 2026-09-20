@@ -7,7 +7,17 @@ export type AutonomousSchedulerOptions = {
   onError?: (error: unknown) => void | Promise<void>;
 };
 
+export type AutonomousSchedulerStatus = {
+  running: boolean;
+  active: boolean;
+  lastStartedAt?: string;
+  lastCompletedAt?: string;
+  lastResult?: AutonomousCycleResult;
+  lastError?: string;
+};
+
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
+const MIN_INTERVAL_MS = 5 * 60_000;
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class AutonomousScheduler {
@@ -18,6 +28,10 @@ export class AutonomousScheduler {
   private timer?: TimerHandle;
   private activeRun?: Promise<AutonomousCycleResult | undefined>;
   private started = false;
+  private lastStartedAt?: string;
+  private lastCompletedAt?: string;
+  private lastResult?: AutonomousCycleResult;
+  private lastError?: string;
 
   constructor(
     private readonly cycle: AutonomousCycleService,
@@ -25,8 +39,8 @@ export class AutonomousScheduler {
     options: AutonomousSchedulerOptions = {}
   ) {
     this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
-    if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) {
-      throw new Error("Autonomous scheduler interval must be a positive finite number.");
+    if (!Number.isFinite(this.intervalMs) || this.intervalMs < MIN_INTERVAL_MS) {
+      throw new Error("Autonomous scheduler interval must be at least 5 minutes.");
     }
     this.now = options.now ?? (() => new Date());
     this.onResult = options.onResult;
@@ -35,6 +49,17 @@ export class AutonomousScheduler {
 
   get isRunning(): boolean {
     return this.started;
+  }
+
+  get status(): AutonomousSchedulerStatus {
+    return {
+      running: this.started,
+      active: Boolean(this.activeRun),
+      lastStartedAt: this.lastStartedAt,
+      lastCompletedAt: this.lastCompletedAt,
+      lastResult: this.lastResult,
+      lastError: this.lastError
+    };
   }
 
   start(): void {
@@ -58,12 +83,18 @@ export class AutonomousScheduler {
       ...input,
       idempotencyNamespace: input.idempotencyNamespace ?? this.cycleNamespace()
     };
+    this.lastStartedAt = this.now().toISOString();
+    this.lastError = undefined;
     this.activeRun = this.cycle.runOnce(effectiveInput)
       .then(async (result) => {
-        if (result && this.onResult) await this.onResult(result);
+        this.lastResult = result;
+        this.lastCompletedAt = this.now().toISOString();
+        if (this.onResult) await this.onResult(result);
         return result;
       })
       .catch(async (error) => {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        this.lastCompletedAt = this.now().toISOString();
         if (this.onError) await this.onError(error);
         return undefined;
       })
