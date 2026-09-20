@@ -30,6 +30,15 @@ async function buildHarness() {
   const connections = new InMemoryMarketplaceConnectionRepository();
   await connections.save(connection);
   const accounts = new InMemoryAffiliateAccountRepository();
+  await accounts.save({
+    id: "00000000-0000-4000-8000-000000000041",
+    marketplaceId: connection.id,
+    name: "Signed test account",
+    status: "active",
+    configuration: {},
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  });
   const services = createInMemoryServices();
   services.marketplace = new MarketplaceService(
     registry,
