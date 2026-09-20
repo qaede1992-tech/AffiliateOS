@@ -20,36 +20,35 @@ const opportunity: ScoredOpportunity = {
   product, offerId: offer.id, score: 82, breakdown: { commission: 20, demand: 20, audienceFit: 15, socialProof: 15, priceAppeal: 7, availability: 5, confidencePenalty: 0, total: 82 },
   reasons: ["Strong commission", "Strong demand"], disclaimer: "Scores are decision support only."
 };
-
 const campaign: Campaign = { id: "campaign-1", name: "Autonomous: Skincare Serum", objective: "Drive qualified affiliate traffic and conversions", status: "draft", audience: {}, createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z" };
 const attachment = { campaignId: campaign.id, affiliateOfferId: offer.id, createdAt: campaign.createdAt };
 const link: TrackingLink = { id: "link-1", affiliateOfferId: offer.id, campaignId: campaign.id, code: "abc123", destinationUrl: offer.affiliateUrl!, status: "active", createdAt: campaign.createdAt, updatedAt: campaign.updatedAt };
 
 class StubCampaigns {
-  async create() { return campaign; }
+  created = 0;
+  async list() { return this.created ? [{ ...campaign, audience: { autonomousOrchestrationKey: "run-1" } }] : []; }
+  async create() { this.created += 1; return campaign; }
   async attachOffer() { return attachment; }
 }
 class StubTracking {
-  async create() { return link; }
+  created = 0;
+  async list() { return this.created ? [link] : []; }
+  async create() { this.created += 1; return link; }
 }
 class StubContent {
-  created: unknown[] = [];
-  async create(input: Record<string, unknown>) { this.created.push(input); return { id: `content-${this.created.length}`, ...input } as unknown as Content; }
+  created: Content[] = [];
+  async list() { return this.created; }
+  async create(input: Record<string, unknown>) { const item = { id: `content-${this.created.length + 1}`, ...input } as unknown as Content; this.created.push(item); return item; }
 }
 class StubDistribution {
   scheduled: Content[] = [];
-  async schedule(input: { content: Content; scheduledAt: string }) {
-    this.scheduled.push(input.content);
-    return { content: { ...input.content, status: "scheduled", scheduledAt: input.scheduledAt, socialAccountId: "social-1" }, account: { id: "social-1" }, scheduledAt: input.scheduledAt, publishable: false } as never;
-  }
+  async schedule(input: { content: Content; scheduledAt: string }) { this.scheduled.push(input.content); return { content: { ...input.content, status: "scheduled", scheduledAt: input.scheduledAt, socialAccountId: "social-1" }, account: { id: "social-1" }, scheduledAt: input.scheduledAt, publishable: false } as never; }
 }
 
 describe("campaign orchestrator", () => {
   it("connects a selected opportunity to campaign, tracking, and platform-specific content", async () => {
     const content = new StubContent();
-    const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({
-      opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"]
-    });
+    const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"] });
     assert.equal(result.campaign.id, campaign.id);
     assert.equal(result.offerAttachment.affiliateOfferId, offer.id);
     assert.equal(result.trackingLink.destinationUrl, offer.affiliateUrl);
@@ -63,28 +62,34 @@ describe("campaign orchestrator", () => {
     const content = new StubContent();
     const distribution = new StubDistribution();
     const scheduledAt = "2026-09-21T12:00:00.000Z";
-    const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never, undefined, distribution as never).execute({
-      opportunity, offer, product, platforms: ["tiktok", "instagram"], scheduledAt
-    });
+    const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never, undefined, distribution as never).execute({ opportunity, offer, product, platforms: ["tiktok", "instagram"], scheduledAt });
     assert.equal(distribution.scheduled.length, 2);
     assert.equal(result.distribution.length, 2);
     assert.ok(result.content.every((item) => item.status === "scheduled"));
     assert.ok(result.content.every((item) => item.scheduledAt === scheduledAt));
   });
 
+  it("is idempotent for a supplied orchestration key", async () => {
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    const content = new StubContent();
+    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never);
+    const input = { opportunity, offer, product, idempotencyKey: "run-1", platforms: ["tiktok", "instagram"] as const };
+    const first = await orchestrator.execute(input);
+    const second = await orchestrator.execute(input);
+    assert.equal(campaigns.created, 1);
+    assert.equal(tracking.created, 1);
+    assert.equal(content.created.length, 2);
+    assert.equal(second.campaign.id, first.campaign.id);
+    assert.equal(second.trackingLink.id, first.trackingLink.id);
+    assert.deepEqual(second.content.map((item) => item.id), first.content.map((item) => item.id));
+  });
+
   it("requires a distribution engine for explicit scheduling", async () => {
-    await assert.rejects(
-      () => new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, new StubContent() as never).execute({ opportunity, offer, product, scheduledAt: "2026-09-21T12:00:00.000Z" }),
-      /distribution engine/
-    );
+    await assert.rejects(() => new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, new StubContent() as never).execute({ opportunity, offer, product, scheduledAt: "2026-09-21T12:00:00.000Z" }), /distribution engine/);
   });
 
   it("fails closed when the selected offer cannot be used for promotion", async () => {
-    await assert.rejects(
-      () => new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, new StubContent() as never).execute({
-        opportunity, offer: { ...offer, affiliateLinkStatus: "unavailable", affiliateUrl: undefined }, product
-      }),
-      /active affiliate offer and affiliate link/
-    );
+    await assert.rejects(() => new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, new StubContent() as never).execute({ opportunity, offer: { ...offer, affiliateLinkStatus: "unavailable", affiliateUrl: undefined }, product }), /active affiliate offer and affiliate link/);
   });
 });
