@@ -1,5 +1,6 @@
 import type { EntityId } from "@affiliateos/shared";
-import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, Offer, TrackingLink, SocialAccount } from "@affiliateos/shared";
+import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, Offer, Product, TrackingLink, SocialAccount } from "@affiliateos/shared";
+import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
 
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
@@ -30,52 +31,36 @@ export class InMemoryConversionRepository extends InMemoryRepository<Conversion>
 }
 export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> implements TrackingLinkRepository { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
 export class InMemorySocialAccountRepository extends InMemoryRepository<SocialAccount> implements SocialAccountRepository { async findByPlatformAccount(platform: string, accountReference: string) { return (await this.list()).find((account) => account.platform === platform && account.accountReference === accountReference); } }
+export class InMemoryMediaAssetRepository implements MediaAssetRepository {
+  private readonly assets = new Map<EntityId, MediaAsset>();
+  async listByContent(contentId: EntityId) { return [...this.assets.values()].filter((asset) => asset.contentId === contentId); }
+  async findById(id: EntityId) { return this.assets.get(id); }
+  async save(asset: MediaAsset) { this.assets.set(asset.id, asset); return asset; }
+}
 export class InMemoryPublicationJobRepository implements PublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
   async findById(id: EntityId) { return this.jobs.get(id); }
   async findByIdempotencyKey(key: string) {
-    for (const job of this.jobs.values()) {
-      if (job.idempotencyKey === key) return job;
-    }
+    for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job;
     return undefined;
   }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
-  async saveIfAbsent(job: PublicationJob) {
-    const existing = this.findByIdempotencyKeySync(job.idempotencyKey);
-    if (existing) return existing;
-    this.jobs.set(job.id, job);
-    return job;
-  }
-  private findByIdempotencyKeySync(key: string) {
-    for (const job of this.jobs.values()) {
-      if (job.idempotencyKey === key) return job;
-    }
-    return undefined;
-  }
-  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
-    const job = this.jobs.get(id);
-    if (!job || job.status === "succeeded") return undefined;
-    const scheduled = new Date(job.scheduledAt).getTime();
-    const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
-    const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
-    if (scheduled > nowDate.getTime() || lockFresh) return undefined;
-    const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() };
-    this.jobs.set(id, claimed);
-    return claimed;
-  }
+  async saveIfAbsent(job: PublicationJob) { const existing = this.findByIdempotencyKeySync(job.idempotencyKey); if (existing) return existing; this.jobs.set(job.id, job); return job; }
+  private findByIdempotencyKeySync(key: string) { for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job; return undefined; }
+  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) { const job = this.jobs.get(id); if (!job || job.status === "succeeded") return undefined; const scheduled = new Date(job.scheduledAt).getTime(); const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined; const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs; if (scheduled > nowDate.getTime() || lockFresh) return undefined; const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() }; this.jobs.set(id, claimed); return claimed; }
 }
 export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: Repository<Commission>;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository;
+  contents: Repository<Content>; socialAccounts: SocialAccountRepository; mediaAssets: MediaAssetRepository; publicationJobs: PublicationJobRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
 export interface ProductCatalogRepository extends Repository<import("@affiliateos/shared").Product> { findByMarketplaceProduct(marketplaceId: EntityId, externalProductId: string): Promise<import("@affiliateos/shared").Product | undefined>; }
 export interface AffiliateAccountRepository extends Repository<import("@affiliateos/shared").AffiliateAccount> { findByMarketplace(marketplaceId: EntityId): Promise<import("@affiliateos/shared").AffiliateAccount | undefined>; }
-export interface AffiliateOfferRepository extends Repository<import("@affiliateos/shared").AffiliateOffer> { findByAccountOffer(affiliateAccountId: EntityId, externalOfferId: string): Promise<import("@affiliateos/shared").AffiliateOffer | undefined>; }
+export interface AffiliateOfferRepository extends Repository<import("@affiliateos/shared").AffiliateOffer> { findByAccountOffer(affiliateAccountId: string, externalOfferId: string): Promise<import("@affiliateos/shared").AffiliateOffer | undefined>; }
 export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId): Promise<CampaignOffer[]>; find(campaignId: EntityId, affiliateOfferId: EntityId): Promise<CampaignOffer | undefined>; save(entity: CampaignOffer): Promise<CampaignOffer>; remove(campaignId: EntityId, affiliateOfferId: EntityId): Promise<void>; }
 export interface TrackingLinkRepository extends Repository<TrackingLink> { findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
 export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
