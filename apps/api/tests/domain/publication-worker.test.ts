@@ -8,6 +8,7 @@ import { InMemoryPublicationJobRepository } from "../../src/domain/publication-j
 import { PublicationWorker, publicationRetryDelayMs } from "../../src/domain/publication-worker.js";
 import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
 import { InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
+import { InMemoryPublicationOperationRepository } from "../../src/domain/publication-operation.js";
 
 const product: Product = {
   id: "product-1", marketplaceId: "marketplace-1", externalProductId: "external-1", name: "Demo Product",
@@ -67,13 +68,7 @@ describe("PublicationWorker", () => {
         return checks === 1 ? { status: "processing" } : { status: "published", externalPostId: "external-post-async" };
       }
     };
-    const operations = new (class implements import("../../src/domain/publication-operation.js").PublicationOperationRepository {
-      private readonly values = new Map<string, import("../../src/domain/publication-operation.js").PublicationOperation>();
-      async list() { return [...this.values.values()]; }
-      async findById(id: string) { return this.values.get(id); }
-      async findByProviderOperation(provider: string, id: string) { return [...this.values.values()].find((value) => value.provider === provider && value.providerOperationId === id); }
-      async save(value: import("../../src/domain/publication-operation.js").PublicationOperation) { this.values.set(value.id, value); return value; }
-    })();
+    const operations = new InMemoryPublicationOperationRepository();
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
     const job = await jobService.enqueue(content);
 
@@ -82,11 +77,15 @@ describe("PublicationWorker", () => {
     assert.equal((await jobs.findById(job.id))?.status, "awaiting_confirmation");
     assert.equal((await contentService.get(content.id)).status, "scheduled");
 
-    const second = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    const blocked = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    assert.deepEqual(blocked, []);
+    assert.equal(checks, 0);
+
+    const second = await worker.runOnce(new Date("2026-09-20T11:30:00.000Z"));
     assert.equal(second[0]?.status, "processing");
     assert.equal((await contentService.get(content.id)).status, "scheduled");
 
-    const third = await worker.runOnce(new Date("2026-09-20T11:02:00.000Z"));
+    const third = await worker.runOnce(new Date("2026-09-20T13:30:00.000Z"));
     assert.deepEqual(third[0], { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "external-post-async" });
     assert.equal((await jobs.findById(job.id))?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
