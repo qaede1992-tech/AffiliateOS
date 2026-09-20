@@ -5,7 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import type { PublicationJobRepository } from "./publication-job.js";
 import { PublicationOperationService } from "./publication-operation-service.js";
-import type { PublicationOperationRepository } from "./publication-operation.js";
+import { InMemoryPublicationOperationRepository, type PublicationOperationRepository } from "./publication-operation.js";
 
 const INITIAL_RETRY_DELAY_MS = 60 * 1000;
 const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
@@ -46,7 +46,7 @@ export class PublicationWorker {
     private readonly contentService?: ContentService,
     operationRepository?: PublicationOperationRepository
   ) {
-    this.operations = new PublicationOperationService(operationRepository ?? new InMemoryFallbackPublicationOperationRepository());
+    this.operations = new PublicationOperationService(operationRepository ?? new InMemoryPublicationOperationRepository());
   }
 
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
@@ -140,12 +140,4 @@ export class PublicationWorker {
     if (content.status !== "failed") return;
     await this.contentService.update(content.id, { status: "scheduled" });
   }
-}
-
-class InMemoryFallbackPublicationOperationRepository implements PublicationOperationRepository {
-  private readonly operations = new Map<string, import("./publication-operation.js").PublicationOperation>();
-  async list() { return [...this.operations.values()]; }
-  async findById(id: string) { return this.operations.get(id); }
-  async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
-  async save(operation: import("./publication-operation.js").PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
 }
