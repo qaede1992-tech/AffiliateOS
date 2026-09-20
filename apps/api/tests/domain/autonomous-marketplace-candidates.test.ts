@@ -39,6 +39,71 @@ describe("autonomous marketplace candidate provider", () => {
     assert.equal(result[0].offers[0].id, "offer-1");
   });
 
+
+  it("prepares missing affiliate links without aborting the discovery cycle", async () => {
+    const p = product("product-2");
+    const offer = {
+      id: "offer-2",
+      productId: p.id,
+      affiliateAccountId: "account-1",
+      externalOfferId: "external-offer-2",
+      priceCents: 1000,
+      currency: "USD",
+      commissionRateBps: 1500,
+      commissionAmountCents: 150,
+      availability: "in_stock" as const,
+      availabilityMetadata: {},
+      affiliateLinkStatus: "not_generated" as const,
+      status: "active" as const,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    };
+    const marketplace = {
+      listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      discoverProducts: async () => [p],
+      getOffers: async () => [offer],
+      generateAffiliateLink: async (slug: string, externalProductId: string, externalOfferId: string) => {
+        assert.equal(slug, "marketplace-1");
+        assert.equal(externalProductId, "external-product-2");
+        assert.equal(externalOfferId, "external-offer-2");
+        return { ...offer, affiliateUrl: "https://example.invalid/affiliate-2", affiliateLinkStatus: "active" as const };
+      }
+    } as any;
+
+    const result = await new AutonomousMarketplaceCandidateProvider(marketplace).listCandidates();
+    assert.equal(result[0].offers[0].affiliateLinkStatus, "active");
+    assert.equal(result[0].offers[0].affiliateUrl, "https://example.invalid/affiliate-2");
+  });
+
+  it("keeps an offer when affiliate-link preparation is unsupported or fails", async () => {
+    const p = product("product-3");
+    const offer = {
+      id: "offer-3",
+      productId: p.id,
+      affiliateAccountId: "account-1",
+      externalOfferId: "external-offer-3",
+      priceCents: 1000,
+      currency: "USD",
+      commissionRateBps: 1000,
+      commissionAmountCents: 100,
+      availability: "in_stock" as const,
+      availabilityMetadata: {},
+      affiliateLinkStatus: "not_generated" as const,
+      status: "active" as const,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    };
+    const marketplace = {
+      listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      discoverProducts: async () => [p],
+      getOffers: async () => [offer],
+      generateAffiliateLink: async () => { throw new Error("provider does not support links"); }
+    } as any;
+
+    const result = await new AutonomousMarketplaceCandidateProvider(marketplace).listCandidates();
+    assert.equal(result[0].offers[0].affiliateLinkStatus, "not_generated");
+  });
+
   it("skips inactive connections and isolates discovery failures", async () => {
     const marketplace = {
       listConnections: async () => [
