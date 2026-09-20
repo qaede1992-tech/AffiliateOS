@@ -16,7 +16,7 @@ export class AutonomousScheduler {
   private readonly onResult?: AutonomousSchedulerOptions["onResult"];
   private readonly onError?: AutonomousSchedulerOptions["onError"];
   private timer?: TimerHandle;
-  private activeRun?: Promise<void>;
+  private activeRun?: Promise<AutonomousCycleResult | undefined>;
   private started = false;
 
   constructor(
@@ -52,14 +52,16 @@ export class AutonomousScheduler {
     await this.activeRun;
   }
 
-  async runNow(input: AutonomousCycleInput = this.input): Promise<void> {
+  async runNow(input: AutonomousCycleInput = this.input): Promise<AutonomousCycleResult | undefined> {
     if (this.activeRun) return this.activeRun;
     this.activeRun = this.cycle.runOnce(input)
       .then(async (result) => {
         if (result && this.onResult) await this.onResult(result);
+        return result;
       })
       .catch(async (error) => {
         if (this.onError) await this.onError(error);
+        return undefined;
       })
       .finally(() => {
         this.activeRun = undefined;
