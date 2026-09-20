@@ -81,6 +81,7 @@ export class CampaignOrchestrator {
     if (run && run.opportunityProductId !== input.product.id) throw new Error("Autonomous run idempotency key is already bound to a different product.");
     if (run && run.offerId !== input.offer.id) throw new Error("Autonomous run idempotency key is already bound to a different affiliate offer.");
 
+    let currentCampaignId = run?.campaignId;
     try {
       if (run) await this.autonomousRuns!.transition(run.id, "processing");
 
@@ -99,6 +100,7 @@ export class CampaignOrchestrator {
           audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: input.idempotencyKey }
         });
       }
+      currentCampaignId = campaign.id;
       if (run) await this.autonomousRuns!.transition(run.id, "processing", { campaignId: campaign.id });
 
       const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
@@ -107,7 +109,7 @@ export class CampaignOrchestrator {
         await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl });
 
       const existingContent = await this.content.list(campaign.id);
-      const content: Awaited<ReturnType<ContentService["create"]>>[] = [];
+      let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
       for (const platform of requestedPlatforms) {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion");
         if (existing) content.push(existing);
@@ -122,14 +124,18 @@ export class CampaignOrchestrator {
         const requests = content.filter((item) => item.status === "draft").map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
         if (requests.length) {
           await this.distribution!.validateBatch(requests);
-          for (const request of requests) distribution.push(await this.distribution!.schedule(request));
+          const scheduled = [] as Awaited<ReturnType<DistributionEngine["schedule"]>>[];
+          for (const request of requests) scheduled.push(await this.distribution!.schedule(request));
+          distribution.push(...scheduled);
+          const scheduledById = new Map(scheduled.map((plan) => [plan.content.id, plan.content]));
+          content = content.map((item) => scheduledById.get(item.id) ?? item);
         }
       }
 
       if (run) await this.autonomousRuns!.transition(run.id, "completed", { campaignId: campaign.id });
       return { campaign, offerAttachment, trackingLink, content, distribution };
     } catch (error) {
-      if (run) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: run.campaignId, error: error instanceof Error ? error.message : String(error) });
+      if (run) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: currentCampaignId, error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
