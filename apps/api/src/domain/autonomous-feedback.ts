@@ -9,7 +9,11 @@ export type OpportunityPerformanceSignal = {
   trendAdjustment: number;
 };
 
-export interface AutonomousFeedbackProvider { getSignals(): Promise<Map<string, OpportunityPerformanceSignal>>; }
+export type AutonomousFeedbackContext = {
+  observationKey?: string;
+};
+
+export interface AutonomousFeedbackProvider { getSignals(context?: AutonomousFeedbackContext): Promise<Map<string, OpportunityPerformanceSignal>>; }
 
 const MINIMUM_EVIDENCE_CLICKS = 20;
 const BASELINE_CONVERSION_RATE = 0.02;
@@ -23,18 +27,20 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
     private readonly now: () => Date = () => new Date()
   ) {}
 
-  async getSignals(): Promise<Map<string, OpportunityPerformanceSignal>> {
+  async getSignals(context: AutonomousFeedbackContext = {}): Promise<Map<string, OpportunityPerformanceSignal>> {
     const current = buildSignals(await this.analytics.overview());
     if (!this.memory) return current;
     const observedAt = this.now().toISOString();
+    const observationNamespace = context.observationKey?.trim() || observedAt;
     const entries = await Promise.all([...current.entries()].map(async ([productId, signal]) => {
       const previous = await this.memory!.latestByProduct(productId);
       const trendAdjustment = previous && signal.clickCount > previous.clickCount
         ? calculateTrendAdjustment(signal, previous)
         : 0;
       const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
-      await this.memory!.save({
+      const snapshot = {
         id: crypto.randomUUID(),
+        observationKey: `${observationNamespace}:${productId}`,
         productId,
         clickCount: signal.clickCount,
         conversionCount: Math.round(signal.conversionRate * signal.clickCount),
@@ -42,7 +48,9 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         conversionRate: signal.conversionRate,
         adjustment,
         observedAt
-      });
+      };
+      if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
+      else await this.memory!.save(snapshot);
       return [productId, { ...signal, adjustment, trendAdjustment: Math.round(trendAdjustment * 100) / 100 }] as const;
     }));
     return new Map(entries);
