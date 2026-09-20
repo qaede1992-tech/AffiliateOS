@@ -31,6 +31,7 @@ const offer = (overrides: Partial<AffiliateOffer> = {}): AffiliateOffer => ({
   priceCents: 5000,
   currency: "USD",
   commissionRateBps: 1200,
+  affiliateUrl: "https://example.test/affiliate/offer-1",
   availability: "in_stock",
   availabilityMetadata: {},
   affiliateLinkStatus: "active",
@@ -56,6 +57,31 @@ describe("opportunity scoring", () => {
     assert.equal(result.breakdown.commission, 0);
     assert.equal(result.breakdown.availability, 0);
     assert.ok(result.reasons.includes("No active affiliate offer available"));
+  });
+
+  it("rejects offers belonging to another product", () => {
+    const result = scoreOpportunity({
+      product: product(),
+      offers: [offer({ productId: "different-product" })],
+      audience: ["skincare"]
+    });
+    assert.equal(result.offerId, undefined);
+    assert.equal(result.breakdown.commission, 0);
+  });
+
+  it("rejects inactive affiliate links and missing destination URLs", () => {
+    const inactive = scoreOpportunity({ product: product(), offers: [offer({ affiliateLinkStatus: "inactive" })] });
+    const missingUrl = scoreOpportunity({ product: product(), offers: [offer({ affiliateUrl: undefined })] });
+    assert.equal(inactive.offerId, undefined);
+    assert.equal(missingUrl.offerId, undefined);
+  });
+
+  it("does not mutate the candidate offer collection", () => {
+    const lower = offer({ id: "offer-b", commissionRateBps: 500 });
+    const higher = offer({ id: "offer-a", commissionRateBps: 1500 });
+    const offers = [lower, higher];
+    scoreOpportunity({ product: product(), offers });
+    assert.deepEqual(offers.map((item) => item.id), ["offer-b", "offer-a"]);
   });
 
   it("penalizes limited availability", () => {
