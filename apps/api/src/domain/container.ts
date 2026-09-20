@@ -29,7 +29,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
   const distribution = new DistributionEngine(content, repositories.socialAccounts, socialPublishers, publicationJobs);
   const executor = new PublisherExecutor(content, repositories.socialAccounts, distribution.listPublishers());
-  const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor);
+  const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers),
