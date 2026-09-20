@@ -1,6 +1,7 @@
 import type { Content, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
-import { publisherSupportsContent, type SocialPublisher } from "./distribution-engine.js";
+import { publisherSupportsContent, type PublicationCheckResult, type SocialPublisher } from "./distribution-engine.js";
+import type { PublicationOperation } from "./publication-operation.js";
 import type { SocialAccountRepository } from "./repository.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 
@@ -37,14 +38,7 @@ export class PublisherExecutor {
       const credential = await this.resolveCredential(account);
       const result = await publisher.publish({ content, account, credential, idempotencyKey });
       if (result.status === "accepted") {
-        return {
-          content,
-          account,
-          publisher,
-          provider: publisher.provider ?? content.platform,
-          providerOperationId: result.providerOperationId,
-          status: "accepted"
-        };
+        return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
       }
       const updated = await this.contentService.update(content.id, { status: "published", publishedAt: now.toISOString() });
       return { content: updated, account, publisher, provider: publisher.provider ?? content.platform, externalPostId: result.externalPostId, status: "published" };
@@ -52,6 +46,17 @@ export class PublisherExecutor {
       await this.contentService.update(content.id, { status: "failed" });
       throw error;
     }
+  }
+
+  async check(operation: PublicationOperation): Promise<{ content: Content; account: SocialAccount; result: PublicationCheckResult }> {
+    const content = await this.contentService.get(operation.contentId);
+    const account = await this.findAccount(content);
+    const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content) && (candidate.provider ?? content.platform) === operation.provider);
+    if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
+    if (!publisher.checkPublication) throw new Error(`Publisher ${operation.provider} does not support publication status checks.`);
+    const credential = await this.resolveCredential(account);
+    const result = await publisher.checkPublication({ content, account, credential, operation });
+    return { content, account, result };
   }
 
   private async resolveCredential(account: SocialAccount): Promise<unknown> {
