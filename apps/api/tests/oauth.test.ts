@@ -19,12 +19,13 @@ test("OAuth callback recovers from a concurrent social-account insert", async ()
   const registry = new InMemorySocialOAuthProviderRegistry();
   registry.register(provider);
   const existing = { id: "raced-account", platform: "instagram", accountReference: "acct-raced", status: "active" as const, connection: {}, credentialReference: "vault://old", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  let firstLookup = true;
   let firstSave = true;
   const accounts = {
     async list() { return [existing]; },
     async findById(id: string) { return id === existing.id ? existing : undefined; },
     async save(account: typeof existing) { if (firstSave) { firstSave = false; throw Object.assign(new Error("duplicate key"), { code: "23505" }); } return account; },
-    async findByPlatformAccount(platform: string, accountReference: string) { return platform === existing.platform && accountReference === existing.accountReference ? existing : undefined; }
+    async findByPlatformAccount(platform: string, accountReference: string) { if (firstLookup) { firstLookup = false; return undefined; } return platform === existing.platform && accountReference === existing.accountReference ? existing : undefined; }
   };
   const oauthService = new SocialOAuthService(registry, accounts, new InMemoryOAuthStateRepository());
   const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback");
