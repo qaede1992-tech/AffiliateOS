@@ -26,24 +26,24 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
   const products = new InMemoryProductCatalogRepository();
   await products.save(product);
   const contentService = new ContentService(contents, campaigns, products);
-  const content = await contentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt });
   const socialAccounts = new InMemorySocialAccountRepository();
   await socialAccounts.save(account);
   const jobs = new InMemoryPublicationJobRepository();
   const jobService = new PublicationJobService(jobs);
-  const executor = new PublisherExecutor(contentService, socialAccounts, []);
-  return { contentService, jobs, jobService, executor, content };
+  const content = await contentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt });
+  return { contentService, socialAccounts, jobs, jobService, content };
 };
 
 describe("PublicationWorker", () => {
   it("claims and completes a due publication job", async () => {
-    const { jobs, jobService, executor, content } = await setup();
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let publishes = 0;
     const publisher: SocialPublisher = {
       supports: (platform) => platform === "tiktok",
       publish: async () => { publishes += 1; return { externalPostId: "external-post-1" }; }
     };
-    const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor((executor as any).contentService, (executor as any).socialAccounts, [publisher]));
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    const worker = new PublicationWorker(jobs, jobService, executor);
     const job = await jobService.enqueue(content);
 
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
@@ -61,7 +61,7 @@ describe("PublicationWorker", () => {
   });
 
   it("records adapter failures and retries failed jobs", async () => {
-    const { jobs, jobService, executor, content } = await setup();
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
     const publisher: SocialPublisher = {
       supports: () => true,
@@ -71,7 +71,8 @@ describe("PublicationWorker", () => {
         return { externalPostId: "external-post-2" };
       }
     };
-    const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor((executor as any).contentService, (executor as any).socialAccounts, [publisher]));
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    const worker = new PublicationWorker(jobs, jobService, executor);
     const job = await jobService.enqueue(content);
 
     const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
@@ -86,7 +87,8 @@ describe("PublicationWorker", () => {
   });
 
   it("leaves future jobs untouched", async () => {
-    const { jobs, jobService, executor, content } = await setup("2026-09-20T12:00:00.000Z");
+    const { jobs, jobService, content } = await setup("2026-09-20T12:00:00.000Z");
+    const executor = new PublisherExecutor({ list: async () => [] } as any, { list: async () => [] } as any, []);
     const worker = new PublicationWorker(jobs, jobService, executor);
     const job = await jobService.enqueue(content);
 
