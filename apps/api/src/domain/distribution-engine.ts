@@ -18,7 +18,7 @@ export type DistributionPlan = {
 
 export interface SocialPublisher {
   supports(platform: string): boolean;
-  publish(input: { content: Content; account: SocialAccount; idempotencyKey: string }): Promise<{ externalPostId: string }>;
+  publish(input: { content: Content; account: SocialAccount; credential?: unknown; idempotencyKey: string }): Promise<{ externalPostId: string }>;
 }
 
 const platformMatches = (content: Content, account: SocialAccount) => content.platform === account.platform;
