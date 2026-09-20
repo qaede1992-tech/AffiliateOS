@@ -34,6 +34,9 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
   return { contentService, socialAccounts, jobs, jobService, content };
 };
 
+const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = []) =>
+  new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers));
+
 describe("PublicationWorker", () => {
   it("claims and completes a due publication job", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
@@ -42,8 +45,7 @@ describe("PublicationWorker", () => {
       supports: (platform) => platform === "tiktok",
       publish: async () => { publishes += 1; return { externalPostId: "external-post-1" }; }
     };
-    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
-    const worker = new PublicationWorker(jobs, jobService, executor);
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
     const job = await jobService.enqueue(content);
 
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
@@ -71,8 +73,7 @@ describe("PublicationWorker", () => {
         return { externalPostId: "external-post-2" };
       }
     };
-    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
-    const worker = new PublicationWorker(jobs, jobService, executor);
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
     const job = await jobService.enqueue(content);
 
     const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
@@ -87,9 +88,8 @@ describe("PublicationWorker", () => {
   });
 
   it("leaves future jobs untouched", async () => {
-    const { jobs, jobService, content } = await setup("2026-09-20T12:00:00.000Z");
-    const executor = new PublisherExecutor({ list: async () => [] } as any, { list: async () => [] } as any, []);
-    const worker = new PublicationWorker(jobs, jobService, executor);
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup("2026-09-20T12:00:00.000Z");
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService);
     const job = await jobService.enqueue(content);
 
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
