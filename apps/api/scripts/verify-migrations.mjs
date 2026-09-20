@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 
@@ -10,6 +11,15 @@ const journal = JSON.parse(await readFile(new URL("../drizzle/meta/_journal.json
 const trackedMigrations = journal.entries;
 if (!Array.isArray(trackedMigrations) || trackedMigrations.length === 0) {
   throw new Error("Drizzle migration journal has no tracked migrations.");
+}
+
+const migrationDirectory = new URL("../drizzle/", import.meta.url);
+const trackedMigrationHashes = [];
+for (const migration of trackedMigrations) {
+  const migrationPath = new URL(`${migration.tag}.sql`, migrationDirectory);
+  const migrationSql = await readFile(migrationPath);
+  const hash = createHash("sha256").update(migrationSql).digest("hex");
+  trackedMigrationHashes.push({ tag: migration.tag, hash });
 }
 
 const client = new Client({ connectionString });
@@ -52,14 +62,22 @@ try {
   }
   const migrationSchema = migrationTableRows[0].table_schema;
   const { rows: migrationRows } = await client.query(
-    `SELECT COUNT(*)::int AS count FROM "${migrationSchema.replaceAll('"', '""')}"."__drizzle_migrations"`
+    `SELECT hash FROM "${migrationSchema.replaceAll('"', '""')}"."__drizzle_migrations" ORDER BY created_at ASC, id ASC`
   );
-  const appliedMigrationCount = Number(migrationRows[0]?.count ?? 0);
-  if (appliedMigrationCount !== trackedMigrations.length) {
-    throw new Error(`Drizzle migration ledger contains ${appliedMigrationCount} migrations, but ${trackedMigrations.length} are tracked.`);
+  const appliedMigrationHashes = migrationRows.map((row) => row.hash);
+  if (appliedMigrationHashes.length !== trackedMigrationHashes.length) {
+    throw new Error(`Drizzle migration ledger contains ${appliedMigrationHashes.length} migrations, but ${trackedMigrationHashes.length} are tracked.`);
   }
 
-  console.log(`PostgreSQL schema and Drizzle migration ledger verified (${appliedMigrationCount} migrations).`);
+  const mismatches = trackedMigrationHashes.filter((migration, index) => appliedMigrationHashes[index] !== migration.hash);
+  if (mismatches.length > 0) {
+    const details = mismatches
+      .map((migration) => `${migration.tag} (${migration.hash})`)
+      .join(", ");
+    throw new Error(`Drizzle migration ledger hashes do not match tracked migration files: ${details}.`);
+  }
+
+  console.log(`PostgreSQL schema and Drizzle migration ledger verified (${appliedMigrationHashes.length} migrations, hashes match).`);
 } finally {
   await client.end();
 }
