@@ -1,5 +1,5 @@
 import type { Affiliate, Campaign, Commission, Content, Conversion, Offer, SocialAccount } from "@affiliateos/shared";
-import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryConversionRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryPublicationJobRepository, InMemoryRepository, InMemorySocialAccountRepository, InMemoryTrackingLinkRepository, type RepositorySet, type TransactionManager } from "./repository.js";
+import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryConversionRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryPublicationJobRepository, InMemoryPublicationOperationRepository, InMemoryRepository, InMemorySocialAccountRepository, InMemoryTrackingLinkRepository, type RepositorySet, type TransactionManager } from "./repository.js";
 import { AffiliateService, CommissionService, ConversionService, OfferService } from "./services.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
 import { MarketplaceService } from "./marketplace.js";
@@ -18,6 +18,7 @@ import { PublisherReadinessService } from "./publisher-readiness.js";
 import { PublicationWorker } from "./publication-worker.js";
 import { PublicationScheduler } from "./publication-scheduler.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
+import type { PublicationOperationRepository } from "./publication-operation.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
@@ -25,7 +26,7 @@ export interface Services {
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = new InMemoryPublicationOperationRepository()): Services {
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
@@ -35,7 +36,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
   const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver);
   const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver));
-  const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content);
+  const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers),
