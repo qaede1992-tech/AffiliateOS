@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { PublicationOperation } from "../domain/publication-operation.js";
 import type { PublicationOperationRepository } from "../domain/publication-operation.js";
 import { publicationOperations } from "./schema.js";
@@ -55,5 +55,13 @@ export class DrizzlePublicationOperationRepository implements PublicationOperati
     if (existing) await this.db.update(publicationOperations).set(values).where(eq(publicationOperations.id, operation.id));
     else await this.db.insert(publicationOperations).values(values);
     return operation;
+  }
+
+  async transition(id: string, expected: PublicationOperation["status"][], operation: PublicationOperation): Promise<PublicationOperation | undefined> {
+    const rows = await this.db.update(publicationOperations)
+      .set(toRow(operation))
+      .where(and(eq(publicationOperations.id, id), inArray(publicationOperations.status, expected)))
+      .returning();
+    return rows[0] ? toDomain(rows[0]) : undefined;
   }
 }
