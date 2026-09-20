@@ -50,19 +50,26 @@ function audienceFit(product: Product, audience: AudienceSegment[]): { score: nu
   return { score: clamp((matched.length / audience.length) * 100), matched };
 }
 
-function bestOffer(offers: AffiliateOffer[]): AffiliateOffer | undefined {
+function bestOffer(productId: string, offers: AffiliateOffer[]): AffiliateOffer | undefined {
   return offers
-    .filter((offer) => offer.status === "active" && offer.availability !== "out_of_stock")
+    .filter((offer) =>
+      offer.productId === productId &&
+      offer.status === "active" &&
+      offer.affiliateLinkStatus === "active" &&
+      Boolean(offer.affiliateUrl) &&
+      offer.availability !== "out_of_stock"
+    )
+    .slice()
     .sort((a, b) => {
       const aRate = a.commissionRateBps ?? 0;
       const bRate = b.commissionRateBps ?? 0;
-      return bRate - aRate || (b.commissionAmountCents ?? 0) - (a.commissionAmountCents ?? 0);
+      return bRate - aRate || (b.commissionAmountCents ?? 0) - (a.commissionAmountCents ?? 0) || a.id.localeCompare(b.id);
     })[0];
 }
 
 export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportunity {
   const { product } = input;
-  const offer = bestOffer(input.offers);
+  const offer = bestOffer(product.id, input.offers);
   const audience = audienceFit(product, input.audience ?? []);
   const commission = offer?.commissionRateBps !== undefined
     ? clamp((offer.commissionRateBps / 2_000) * 100)
