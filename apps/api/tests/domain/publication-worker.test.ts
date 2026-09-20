@@ -35,7 +35,7 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
 };
 
 const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = []) =>
-  new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers));
+  new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService);
 
 describe("PublicationWorker", () => {
   it("claims and completes a due publication job", async () => {
@@ -62,7 +62,7 @@ describe("PublicationWorker", () => {
     assert.equal(publishes, 1);
   });
 
-  it("records adapter failures and retries failed jobs after the backoff", async () => {
+  it("records adapter failures and restores failed content before retrying after backoff", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
     const publisher: SocialPublisher = {
@@ -77,6 +77,7 @@ describe("PublicationWorker", () => {
     const job = await jobService.enqueue(content);
 
     const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date("2026-09-20T11:00:59.999Z"));
     const second = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
     const stored = await jobs.findById(job.id);
@@ -85,6 +86,7 @@ describe("PublicationWorker", () => {
     assert.equal(first[0]?.error, "temporary provider failure");
     assert.deepEqual(blocked, []);
     assert.equal(second[0]?.status, "succeeded");
+    assert.equal((await contentService.get(content.id)).status, "published");
     assert.equal(stored?.attemptCount, 2);
     assert.equal(stored?.status, "succeeded");
   });
