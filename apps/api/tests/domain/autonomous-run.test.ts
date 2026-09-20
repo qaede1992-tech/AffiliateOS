@@ -37,6 +37,19 @@ describe("autonomous run", () => {
     assert.equal(second.run.status, "processing");
   });
 
+  it("reclaims a failed run and clears the previous error", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-retry", productId: "product-1", offerId: "offer-1" });
+    const processing = await service.transition(accepted.id, "processing");
+    const failed = await service.transition(processing.id, "failed", { campaignId: "campaign-1", error: "temporary distribution failure" });
+    const retry = await service.claimProcessing(failed.id, new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(retry.acquired, true);
+    assert.equal(retry.run.status, "processing");
+    assert.equal(retry.run.campaignId, "campaign-1");
+    assert.equal(retry.run.lastError, undefined);
+  });
+
   it("persists campaign binding and errors through lifecycle transitions", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
