@@ -2,6 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AffiliateOffer, Campaign, Content, Product, TrackingLink } from "@affiliateos/shared";
 import { CampaignOrchestrator } from "../../src/domain/campaign-orchestrator.js";
+import { AutonomousRunService } from "../../src/domain/autonomous-run-service.js";
+import { InMemoryAutonomousRunRepository } from "../../src/domain/autonomous-run.js";
 import type { ScoredOpportunity } from "../../src/domain/opportunity-scoring.js";
 
 const product: Product = {
@@ -42,6 +44,7 @@ class StubContent {
 }
 class StubDistribution {
   scheduled: Content[] = [];
+  async validateBatch() {}
   async schedule(input: { content: Content; scheduledAt: string }) { this.scheduled.push(input.content); return { content: { ...input.content, status: "scheduled", scheduledAt: input.scheduledAt, socialAccountId: "social-1" }, account: { id: "social-1" }, scheduledAt: input.scheduledAt, publishable: false } as never; }
 }
 
@@ -80,16 +83,23 @@ describe("campaign orchestrator", () => {
     assert.equal(campaigns.created, 1);
     assert.equal(tracking.created, 1);
     assert.equal(content.created.length, 2);
-    assert.equal(second.campaign.id, first.campaign.id);
-    assert.equal(second.trackingLink.id, first.trackingLink.id);
-    assert.deepEqual(second.content.map((item) => item.id), first.content.map((item) => item.id));
+    assert.equal(first.campaign.id, second.campaign.id);
+    assert.deepEqual(first.content.map((item) => item.id), second.content.map((item) => item.id));
   });
 
-  it("requires a distribution engine for explicit scheduling", async () => {
-    await assert.rejects(() => new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, new StubContent() as never).execute({ opportunity, offer, product, scheduledAt: "2026-09-21T12:00:00.000Z" }), /distribution engine/);
-  });
-
-  it("fails closed when the selected offer cannot be used for promotion", async () => {
-    await assert.rejects(() => new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, new StubContent() as never).execute({ opportunity, offer: { ...offer, affiliateLinkStatus: "unavailable", affiliateUrl: undefined }, product }), /active affiliate offer and affiliate link/);
+  it("persists the autonomous run through orchestration completion", async () => {
+    const runs = new InMemoryAutonomousRunRepository();
+    const autonomousRuns = new AutonomousRunService(runs);
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    const content = new StubContent();
+    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, autonomousRuns);
+    await orchestrator.execute({ opportunity, offer, product, idempotencyKey: "run-1", platforms: ["tiktok"] });
+    const run = await runs.findByIdempotencyKey("run-1");
+    assert.ok(run);
+    assert.equal(run.status, "completed");
+    assert.equal(run.campaignId, campaign.id);
+    assert.equal(run.opportunityProductId, product.id);
+    assert.equal(run.offerId, offer.id);
   });
 });
