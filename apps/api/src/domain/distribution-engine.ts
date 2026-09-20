@@ -1,7 +1,6 @@
 import type { Content, ContentPlatform, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
 import type { PublicationOperation } from "./publication-operation.js";
-import type { PublicationOperationService } from "./publication-operation-service.js";
 import type { SocialAccountRepository } from "./repository.js";
 
 export type DistributionRequest = { content: Content; scheduledAt: string; accountId?: string };
