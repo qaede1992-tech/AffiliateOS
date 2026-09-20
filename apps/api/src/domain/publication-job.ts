@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Content, EntityId, IsoTimestamp } from "@affiliateos/shared";
 
-export type PublicationJobStatus = "pending" | "processing" | "succeeded" | "failed";
+export type PublicationJobStatus = "pending" | "processing" | "awaiting_confirmation" | "succeeded" | "failed";
 
 export interface PublicationJob {
   id: EntityId;
@@ -41,18 +41,12 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
 
   async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
     const job = this.jobs.get(id);
-    if (!job || job.status === "succeeded") return undefined;
+    if (!job || job.status === "succeeded" || job.status === "awaiting_confirmation") return undefined;
     const scheduled = new Date(job.scheduledAt).getTime();
     const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
     const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
     if (scheduled > nowDate.getTime() || lockFresh) return undefined;
-    const claimed: PublicationJob = {
-      ...job,
-      status: "processing",
-      attemptCount: job.attemptCount + 1,
-      lockedAt: nowDate.toISOString(),
-      updatedAt: nowDate.toISOString()
-    };
+    const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() };
     this.jobs.set(id, claimed);
     return claimed;
   }
@@ -61,18 +55,7 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
 const now = () => new Date().toISOString();
 
 export function createPublicationJob(content: Content): PublicationJob {
-  if (content.status !== "scheduled" || !content.scheduledAt) {
-    throw new Error("Publication jobs require scheduled content with scheduledAt.");
-  }
+  if (content.status !== "scheduled" || !content.scheduledAt) throw new Error("Publication jobs require scheduled content with scheduledAt.");
   const createdAt = now();
-  return {
-    id: randomUUID(),
-    contentId: content.id,
-    idempotencyKey: `content:${content.id}`,
-    status: "pending",
-    attemptCount: 0,
-    scheduledAt: content.scheduledAt,
-    createdAt,
-    updatedAt: createdAt
-  };
+  return { id: randomUUID(), contentId: content.id, idempotencyKey: `content:${content.id}`, status: "pending", attemptCount: 0, scheduledAt: content.scheduledAt, createdAt, updatedAt: createdAt };
 }
