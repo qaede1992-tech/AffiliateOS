@@ -4,7 +4,7 @@ const rawBodies = new WeakMap<object, string>();
 
 type RawPayload = NodeJS.ReadableStream | Buffer | string | Uint8Array;
 
-export function captureRawBody(request: FastifyRequest, payload: RawPayload) {
+export function captureRawBody(request: FastifyRequest, _reply: unknown, payload: RawPayload) {
   if (!payload || typeof (payload as NodeJS.ReadableStream).on !== "function") {
     const body = Buffer.isBuffer(payload)
       ? payload.toString("utf8")
