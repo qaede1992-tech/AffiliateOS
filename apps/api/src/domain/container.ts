@@ -14,6 +14,7 @@ import { DistributionEngine, type SocialPublisher } from "./distribution-engine.
 import { SocialPublisherRegistry } from "./social-publisher-registry.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import { PublisherExecutor } from "./publisher-executor.js";
+import { PublisherReadinessService } from "./publisher-readiness.js";
 import { PublicationWorker } from "./publication-worker.js";
 import { PublicationScheduler } from "./publication-scheduler.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
@@ -21,7 +22,7 @@ import type { SocialCredentialResolver } from "./social-credentials.js";
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; campaignOrchestrator: CampaignOrchestrator; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
-  publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler;
+  publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService;
 }
 
 export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver): Services {
@@ -30,8 +31,10 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
   const publisherRegistry = new SocialPublisherRegistry(socialPublishers);
-  const distribution = new DistributionEngine(content, repositories.socialAccounts, publisherRegistry.list(), publicationJobs);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, publisherRegistry.list(), socialCredentialResolver);
+  const publishers = publisherRegistry.list();
+  const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver);
+  const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver));
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   return {
@@ -45,7 +48,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository),
     analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository),
     attribution: new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository),
-    publicationJobs, publicationWorker, publicationScheduler
+    publicationJobs, publicationWorker, publicationScheduler, publisherReadiness
   };
 }
 
