@@ -1,0 +1,100 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import type { Content, Product, SocialAccount } from "@affiliateos/shared";
+import { ContentService } from "../../src/domain/content.js";
+import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
+import { PublicationJobService } from "../../src/domain/publication-job-service.js";
+import { InMemoryPublicationJobRepository } from "../../src/domain/publication-job.js";
+import { PublicationWorker } from "../../src/domain/publication-worker.js";
+import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
+import { InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
+
+const product: Product = {
+  id: "product-1", marketplaceId: "marketplace-1", externalProductId: "external-1", name: "Demo Product",
+  priceCents: 10000, currency: "USD", reviewCount: 10, soldCount: 50, productUrl: "https://example.com/product", status: "active",
+  createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
+};
+
+const account: SocialAccount = {
+  id: "tiktok-account", platform: "tiktok", accountReference: "tiktok-ref", status: "active", connection: {},
+  createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
+};
+
+const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
+  const contents = new InMemoryRepository<Content>();
+  const campaigns = new InMemoryRepository<any>();
+  const products = new InMemoryProductCatalogRepository();
+  await products.save(product);
+  const contentService = new ContentService(contents, campaigns, products);
+  const content = await contentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt });
+  const socialAccounts = new InMemorySocialAccountRepository();
+  await socialAccounts.save(account);
+  const jobs = new InMemoryPublicationJobRepository();
+  const jobService = new PublicationJobService(jobs);
+  const executor = new PublisherExecutor(contentService, socialAccounts, []);
+  return { contentService, jobs, jobService, executor, content };
+};
+
+describe("PublicationWorker", () => {
+  it("claims and completes a due publication job", async () => {
+    const { jobs, jobService, executor, content } = await setup();
+    let publishes = 0;
+    const publisher: SocialPublisher = {
+      supports: (platform) => platform === "tiktok",
+      publish: async () => { publishes += 1; return { externalPostId: "external-post-1" }; }
+    };
+    const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor((executor as any).contentService, (executor as any).socialAccounts, [publisher]));
+    const job = await jobService.enqueue(content);
+
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const stored = await jobs.findById(job.id);
+
+    assert.deepEqual(results[0], {
+      jobId: job.id,
+      contentId: content.id,
+      status: "succeeded",
+      externalPostId: "external-post-1"
+    });
+    assert.equal(stored?.status, "succeeded");
+    assert.equal(stored?.attemptCount, 1);
+    assert.equal(publishes, 1);
+  });
+
+  it("records adapter failures and retries failed jobs", async () => {
+    const { jobs, jobService, executor, content } = await setup();
+    let attempts = 0;
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("temporary provider failure");
+        return { externalPostId: "external-post-2" };
+      }
+    };
+    const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor((executor as any).contentService, (executor as any).socialAccounts, [publisher]));
+    const job = await jobService.enqueue(content);
+
+    const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const second = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    const stored = await jobs.findById(job.id);
+
+    assert.equal(first[0]?.status, "failed");
+    assert.equal(first[0]?.error, "temporary provider failure");
+    assert.equal(second[0]?.status, "succeeded");
+    assert.equal(stored?.attemptCount, 2);
+    assert.equal(stored?.status, "succeeded");
+  });
+
+  it("leaves future jobs untouched", async () => {
+    const { jobs, jobService, executor, content } = await setup("2026-09-20T12:00:00.000Z");
+    const worker = new PublicationWorker(jobs, jobService, executor);
+    const job = await jobService.enqueue(content);
+
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const stored = await jobs.findById(job.id);
+
+    assert.deepEqual(results, []);
+    assert.equal(stored?.status, "pending");
+    assert.equal(stored?.attemptCount, 0);
+  });
+});
