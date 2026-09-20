@@ -33,7 +33,7 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
   async findByIdempotencyKey(key: string) { return [...this.jobs.values()].find((job) => job.idempotencyKey === key); }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
   async saveIfAbsent(job: PublicationJob) {
-    const existing = await this.findByIdempotencyKey(job.idempotencyKey);
+    const existing = [...this.jobs.values()].find((candidate) => candidate.idempotencyKey === job.idempotencyKey);
     if (existing) return existing;
     this.jobs.set(job.id, job);
     return job;
