@@ -14,7 +14,7 @@ Use this checklist for every production release of AffiliateOS.
 
 - [ ] Production PostgreSQL backups, retention, and monitoring are enabled.
 - [ ] Migration promotion/rollback procedures are defined by the deployment platform.
-- [ ] `npm run db:verify` passes against the release database before promotion.
+- [ ] `npm run db:verify:applied` passes against the release database before promotion without applying new migrations.
 
 ## Runtime
 
@@ -39,7 +39,7 @@ Use this checklist for every production release of AffiliateOS.
 
 1. Start from a clean `main` commit with all required CI checks green.
 2. Record the exact commit SHA as the release candidate.
-3. Run `npm run db:verify` against the release database before promotion.
+3. Run `npm run db:verify:applied` against the release database before promotion; this verifies migration state without applying new migrations.
 4. Promote the API and web images built from the exact release commit.
 5. Confirm API health and readiness, then confirm the web `/healthz` endpoint.
 6. Run the documented production smoke tests against the deployed origins.
