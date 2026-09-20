@@ -1,6 +1,5 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { providerEvents } from "./schema.js";
-import type { SQL } from "drizzle-orm";
 
 type DatabaseExecutor = any;
 
@@ -40,6 +39,17 @@ export class ProviderEventStore {
     const rows = await this.db.select().from(providerEvents)
       .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId))).limit(1);
     return rows[0];
+  }
+
+  async claimForProcessing(affiliateAccountId: string, externalEventId: string): Promise<boolean> {
+    const result = await this.db.update(providerEvents)
+      .set({ status: "processing", error: null })
+      .where(and(
+        eq(providerEvents.affiliateAccountId, affiliateAccountId),
+        eq(providerEvents.externalEventId, externalEventId),
+        or(eq(providerEvents.status, "received"), eq(providerEvents.status, "failed"))
+      ));
+    return Number(result.rowCount ?? 0) === 1;
   }
 
   async updateStatus(affiliateAccountId: string, externalEventId: string, status: ProviderEventStatus, error?: string): Promise<boolean> {
