@@ -17,7 +17,7 @@ export class PublisherExecutor {
     private readonly publishers: SocialPublisher[]
   ) {}
 
-  async execute(contentId: string, now = new Date()): Promise<PublishExecutionResult> {
+  async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`): Promise<PublishExecutionResult> {
     const content = await this.contentService.get(contentId);
     if (content.status !== "scheduled") {
       throw new Error("Only scheduled content can be published.");
@@ -37,7 +37,7 @@ export class PublisherExecutor {
     if (!publisher) return { content, account, status: "unsupported" };
 
     try {
-      const result = await publisher.publish({ content, account });
+      const result = await publisher.publish({ content, account, idempotencyKey });
       const publishedAt = now.toISOString();
       const updated = await this.contentService.update(content.id, {
         status: "published",
