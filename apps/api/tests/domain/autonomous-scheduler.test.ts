@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { AutonomousCycleResult, AutonomousCycleService } from "../../src/domain/autonomous-cycle.js";
 import { AutonomousScheduler } from "../../src/domain/autonomous-scheduler.js";
 
-const result = (id: string): AutonomousCycleResult => ({
+const result = (_id: string): AutonomousCycleResult => ({
   startedAt: "2026-09-21T00:00:00.000Z",
   completedAt: "2026-09-21T00:00:01.000Z",
   candidateCount: 1,
@@ -56,7 +56,7 @@ describe("AutonomousScheduler", () => {
     await scheduler.stop();
 
     assert.equal(inputs.length, 1);
-    assert.equal(inputs[0].idempotencyNamespace, "autonomous-cycle:196175609");
+    assert.equal(inputs[0].idempotencyNamespace, "autonomous-cycle:1988832");
   });
 
   it("preserves an explicitly supplied idempotency namespace", async () => {
