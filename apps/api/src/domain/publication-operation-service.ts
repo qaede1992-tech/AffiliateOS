@@ -26,6 +26,7 @@ export class PublicationOperationService {
       createdAt: timestamp,
       updatedAt: timestamp
     };
+    if (this.operations.saveIfAbsent) return this.operations.saveIfAbsent(operation);
     try {
       return await this.operations.save(operation);
     } catch (error) {
