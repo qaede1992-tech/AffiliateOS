@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
+import { InMemorySocialAccountRepository } from "../../src/domain/repository.js";
 import { SocialAccountService } from "../../src/domain/content.js";
 
 test("social credential revocation removes the opaque reference and deactivates the account", async () => {
