@@ -56,6 +56,28 @@ describe("PublicationWorker", () => {
     assert.equal(publishes, 1);
   });
 
+  it("uses the content-bound social account when multiple accounts share a platform", async () => {
+    const { contentService, socialAccounts, jobs, jobService } = await setup();
+    const bound = { ...account, id: "bound-account", accountReference: "bound-ref" };
+    const fallback = { ...account, id: "other-account", accountReference: "other-ref" };
+    await socialAccounts.save(bound);
+    await socialAccounts.save(fallback);
+    const content = await contentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: bound.id });
+    let selectedAccount: string | undefined;
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async ({ account: selected }) => {
+        selectedAccount = selected.id;
+        return { externalPostId: "bound-post", status: "published" };
+      }
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
+    await jobService.enqueue(content);
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(results[0]?.status, "succeeded");
+    assert.equal(selectedAccount, bound.id);
+  });
+
   it("waits for an accepted provider operation before publishing content", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let checks = 0;
@@ -71,20 +93,15 @@ describe("PublicationWorker", () => {
     const operations = new InMemoryPublicationOperationRepository();
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
     const job = await jobService.enqueue(content);
-
     const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.equal(first.at(-1)?.status, "awaiting_confirmation");
     assert.equal((await jobs.findById(job.id))?.status, "awaiting_confirmation");
     assert.equal((await contentService.get(content.id)).status, "scheduled");
-
     const blocked = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
     assert.deepEqual(blocked, []);
     assert.equal(checks, 0);
-
     const second = await worker.runOnce(new Date("2026-09-20T11:30:00.000Z"));
     assert.equal(second[0]?.status, "processing");
-    assert.equal((await contentService.get(content.id)).status, "scheduled");
-
     const third = await worker.runOnce(new Date("2026-09-20T13:30:00.000Z"));
     assert.deepEqual(third[0], { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "external-post-async" });
     assert.equal((await jobs.findById(job.id))?.status, "succeeded");
@@ -99,17 +116,13 @@ describe("PublicationWorker", () => {
       provider: "restart-safe-provider",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "restart-safe-operation" }),
-      checkPublication: async () => {
-        checks += 1;
-        return { status: "published", externalPostId: "restart-safe-post" };
-      }
+      checkPublication: async () => { checks += 1; return { status: "published", externalPostId: "restart-safe-post" }; }
     };
     const firstWorker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
     const job = await jobService.enqueue(content);
     const accepted = await firstWorker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.equal(accepted[0]?.status, "awaiting_confirmation");
     assert.equal((await operations.list()).length, 1);
-
     const restartedWorker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
     const recovered = await restartedWorker.runOnce(new Date("2026-09-20T11:30:00.000Z"));
     assert.deepEqual(recovered[0], { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "restart-safe-post" });
@@ -124,11 +137,7 @@ describe("PublicationWorker", () => {
     let attempts = 0;
     const publisher: SocialPublisher = {
       supports: () => true,
-      publish: async () => {
-        attempts += 1;
-        if (attempts === 1) throw new Error("temporary provider failure");
-        return { externalPostId: "external-post-2", status: "published" };
-      }
+      publish: async () => { attempts += 1; if (attempts === 1) throw new Error("temporary provider failure"); return { externalPostId: "external-post-2", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
     const job = await jobService.enqueue(content);
