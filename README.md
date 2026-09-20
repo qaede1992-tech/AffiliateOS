@@ -55,10 +55,11 @@ Drizzle schema lives at `apps/api/src/db/schema.ts`; immutable SQL history and i
 npm run db:check
 npm run db:migrate
 npm run db:verify
+npm run db:verify:applied
 npm run db:generate
 ```
 
-`db:verify` is the recommended local smoke test against a running, disposable PostgreSQL database. Do **not** edit a migration that may already have been applied; add a new, sequential migration and journal entry instead.
+`db:verify` is the recommended local smoke test against a running, disposable PostgreSQL database because it applies migrations before verification. For a release database that must not be mutated by the verification step, use `npm run db:verify:applied` after the release migration has been applied. Do **not** edit a migration that may already have been applied; add a new, sequential migration and journal entry instead.
 
 ## API
 
@@ -123,6 +124,6 @@ CI validates tests, typechecking, production builds, migration checks, and produ
 3. Build the dashboard with the deployed API origin via `VITE_API_URL`, configure `API_CORS_ORIGIN` with the dashboard origin, and use TLS at the edge.
 4. Use managed PostgreSQL with backups, retention, monitoring, and migration promotion controls.
 5. Use a shared/edge rate limiter for multi-instance deployments and add deployment-specific tracing/metrics, alerting, and log retention.
-6. Run `npm run db:verify` against the release database before enabling traffic and retain migration/audit records.
+6. Apply the release migrations under the deployment's controlled migration process, then run `npm run db:verify:applied` against the release database before enabling traffic and retain migration/audit records.
 
 The repository does not fabricate credentials or pretend that an external integration is live.
