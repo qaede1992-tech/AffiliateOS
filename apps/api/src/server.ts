@@ -6,6 +6,7 @@ import { createDatabasePersistence } from "./db/client.js";
 import { DrizzleAnalyticsReader } from "./db/analytics.js";
 import { DrizzleConversionAttributionRepository } from "./db/attribution.js";
 import { DrizzleOAuthStateRepository } from "./db/oauth-state.js";
+import { DrizzlePublicationOperationRepository } from "./db/publication-operation-repository.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const services = createServices(
@@ -15,7 +16,10 @@ const services = createServices(
   undefined,
   new DrizzleOAuthStateRepository(persistence.db),
   new DrizzleAnalyticsReader(persistence.db),
-  new DrizzleConversionAttributionRepository(persistence.db)
+  new DrizzleConversionAttributionRepository(persistence.db),
+  [],
+  undefined,
+  new DrizzlePublicationOperationRepository(persistence.db)
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
