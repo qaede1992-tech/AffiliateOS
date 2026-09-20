@@ -57,7 +57,6 @@ export class PublicationScheduler {
       })
       .catch(async (error) => {
         if (this.onError) await this.onError(error);
-        else throw error;
       })
       .finally(() => {
         this.activeRun = undefined;
