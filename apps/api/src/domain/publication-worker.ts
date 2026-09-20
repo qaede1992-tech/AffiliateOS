@@ -9,7 +9,7 @@ import type { PublicationOperationRepository } from "./publication-operation.js"
 
 const INITIAL_RETRY_DELAY_MS = 60 * 1000;
 const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
-const ACCEPTED_RECONCILIATION_DELAY_MS = 30 * 1000;
+const ACCEPTED_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 const PROCESSING_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
