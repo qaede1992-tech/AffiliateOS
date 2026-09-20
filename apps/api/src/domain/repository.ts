@@ -21,7 +21,7 @@ export class InMemoryCampaignOfferRepository implements CampaignOfferRepository 
   async remove(campaignId: EntityId, affiliateOfferId: EntityId) { this.entities.delete(`${campaignId}:${affiliateOfferId}`); }
 }
 export class InMemoryClickRepository extends InMemoryRepository<Click> implements ClickRepository {
-  async listByTrackingLink(trackingLinkId: EntityId) { return (await this.list()).filter((click) => click.trackingLinkId === trackingLinkId); }
+  async listByTrackingLink(trackingLinkId: EntityId) { return (await this.list()).filter((item) => item.trackingLinkId === trackingLinkId); }
   async findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string) { return (await this.listByTrackingLink(trackingLinkId)).find((click) => click.idempotencyKey === idempotencyKey); }
   async countByTrackingLink(trackingLinkId: EntityId) { return (await this.listByTrackingLink(trackingLinkId)).length; }
 }
@@ -36,6 +36,12 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
   async findById(id: EntityId) { return this.jobs.get(id); }
   async findByIdempotencyKey(key: string) { return [...this.jobs.values()].find((job) => job.idempotencyKey === key); }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
+  async saveIfAbsent(job: PublicationJob) {
+    const existing = await this.findByIdempotencyKey(job.idempotencyKey);
+    if (existing) return existing;
+    this.jobs.set(job.id, job);
+    return job;
+  }
   async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
     const job = this.jobs.get(id);
     if (!job || job.status === "succeeded") return undefined;
@@ -63,5 +69,5 @@ export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId):
 export interface TrackingLinkRepository extends Repository<TrackingLink> { findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
 export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
 export interface SocialAccountRepository extends Repository<SocialAccount> { findByPlatformAccount(platform: string, accountReference: string): Promise<SocialAccount | undefined>; }
-export interface PublicationJobRepository extends Repository<PublicationJob> { findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>; claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>; }
+export interface PublicationJobRepository extends Repository<PublicationJob> { findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>; saveIfAbsent?(job: PublicationJob): Promise<PublicationJob>; claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>; }
 export interface TransactionManager { run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T>; }
