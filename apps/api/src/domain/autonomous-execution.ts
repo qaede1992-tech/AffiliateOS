@@ -20,9 +20,9 @@ export class AutonomousExecutionService {
   constructor(private readonly selector: AutonomousOpportunitySelector, private readonly orchestrator: CampaignOrchestrator, private readonly feedback?: AutonomousFeedbackProvider) {}
 
   async runOnce(input: AutonomousExecutionInput): Promise<AutonomousExecutionResult> {
-    const performance = this.feedback ? await this.feedback.getSignals() : new Map();
-    const selection = this.selector.select(input.candidates, input.policy, performance);
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
+    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
+    const selection = this.selector.select(input.candidates, input.policy, performance);
     const candidatesByProduct = new Map(input.candidates.map((candidate) => [candidate.product.id, candidate]));
     const outcomes: AutonomousExecutionOutcome[] = [];
     for (const opportunity of selection.selected) {
