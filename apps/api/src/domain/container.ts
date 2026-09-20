@@ -16,6 +16,7 @@ import { PublicationJobService } from "./publication-job-service.js";
 import { PublisherExecutor } from "./publisher-executor.js";
 import { PublicationWorker } from "./publication-worker.js";
 import { PublicationScheduler } from "./publication-scheduler.js";
+import type { SocialCredentialResolver } from "./social-credentials.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
@@ -23,14 +24,14 @@ export interface Services {
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = []): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver): Services {
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
   const publisherRegistry = new SocialPublisherRegistry(socialPublishers);
   const distribution = new DistributionEngine(content, repositories.socialAccounts, publisherRegistry.list(), publicationJobs);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, publisherRegistry.list());
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publisherRegistry.list(), socialCredentialResolver);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   return {
