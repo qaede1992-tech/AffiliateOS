@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import type { AffiliateOffer, Product } from "@affiliateos/shared";
 import { rankOpportunities, scoreOpportunity } from "../../src/domain/opportunity-scoring.js";
 
@@ -42,24 +43,24 @@ const offer = (overrides: Partial<AffiliateOffer> = {}): AffiliateOffer => ({
 describe("opportunity scoring", () => {
   it("combines commission, demand, audience fit and product signals", () => {
     const result = scoreOpportunity({ product: product(), offers: [offer()], audience: ["skincare"] });
-    expect(result.score).toBeGreaterThan(70);
-    expect(result.offerId).toBe("offer-1");
-    expect(result.breakdown.commission).toBeGreaterThan(50);
-    expect(result.breakdown.audienceFit).toBe(100);
-    expect(result.reasons).toContain("Matches skincare audience intent");
+    assert.ok(result.score > 70);
+    assert.equal(result.offerId, "offer-1");
+    assert.ok(result.breakdown.commission > 50);
+    assert.equal(result.breakdown.audienceFit, 100);
+    assert.ok(result.reasons.includes("Matches skincare audience intent"));
   });
 
   it("fails closed on missing active affiliate offers", () => {
     const result = scoreOpportunity({ product: product(), offers: [], audience: ["skincare"] });
-    expect(result.offerId).toBeUndefined();
-    expect(result.breakdown.commission).toBe(0);
-    expect(result.breakdown.availability).toBe(0);
-    expect(result.reasons).toContain("No active affiliate offer available");
+    assert.equal(result.offerId, undefined);
+    assert.equal(result.breakdown.commission, 0);
+    assert.equal(result.breakdown.availability, 0);
+    assert.ok(result.reasons.includes("No active affiliate offer available"));
   });
 
   it("penalizes limited availability", () => {
     const result = scoreOpportunity({ product: product(), offers: [offer({ availability: "limited" })], audience: ["skincare"] });
-    expect(result.breakdown.availability).toBe(55);
+    assert.equal(result.breakdown.availability, 55);
   });
 
   it("ranks opportunities deterministically by score and product id", () => {
@@ -69,7 +70,7 @@ describe("opportunity scoring", () => {
       { product: second, offers: [offer({ id: "offer-b", productId: "product-b", commissionRateBps: 500 })], audience: ["skincare"] },
       { product: first, offers: [offer()], audience: ["skincare"] }
     ]);
-    expect(results.map((item) => item.product.id)).toEqual(["product-a", "product-b"]);
-    expect(results[0].score).toBeGreaterThan(results[1].score);
+    assert.deepEqual(results.map((item) => item.product.id), ["product-a", "product-b"]);
+    assert.ok(results[0].score > results[1].score);
   });
 });
