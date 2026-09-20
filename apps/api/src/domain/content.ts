@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Campaign, Content, CreateContentRequest, CreateSocialAccountRequest, Product, SocialAccount, SocialAccountView, UpdateContentRequest, UpdateSocialAccountRequest } from "@affiliateos/shared";
+import type { Campaign, Content, CreateContentRequest, CreateSocialAccountRequest, Product, SocialAccount, SocialAccountView, UpdateContentRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { Repository, SocialAccountRepository } from "./repository.js";
 
@@ -65,8 +65,8 @@ export class ContentService {
     validateContentTiming(input.status ?? "draft", input.scheduledAt, input.publishedAt);
     const createdAt = now();
     return this.contents.save({
-      id: randomUUID(), productId: input.productId, campaignId: input.campaignId, platform: input.platform,
-      contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta,
+      id: randomUUID(), productId: input.productId, campaignId: input.campaignId, socialAccountId: input.socialAccountId,
+      platform: input.platform, contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta,
       status: input.status ?? "draft", scheduledAt: input.scheduledAt, publishedAt: input.publishedAt, createdAt, updatedAt: createdAt
     });
   }
@@ -129,7 +129,7 @@ export class SocialAccountService {
     }
   }
 
-  async update(id: string, input: UpdateSocialAccountRequest) {
+  async update(id: string, input: import("@affiliateos/shared").UpdateSocialAccountRequest) {
     const current = await this.accounts.findById(id);
     if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404);
     const platform = input.platform ?? current.platform;
