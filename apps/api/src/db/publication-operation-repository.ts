@@ -57,6 +57,17 @@ export class DrizzlePublicationOperationRepository implements PublicationOperati
     return operation;
   }
 
+  async saveIfAbsent(operation: PublicationOperation): Promise<PublicationOperation> {
+    const rows = await this.db.insert(publicationOperations)
+      .values(toRow(operation))
+      .onConflictDoNothing({ target: [publicationOperations.provider, publicationOperations.providerOperationId] })
+      .returning();
+    if (rows[0]) return toDomain(rows[0]);
+    const existing = await this.findByProviderOperation(operation.provider, operation.providerOperationId);
+    if (!existing) throw new Error("Publication operation insert was skipped but no idempotent operation was found.");
+    return existing;
+  }
+
   async transition(id: string, expected: PublicationOperation["status"][], operation: PublicationOperation): Promise<PublicationOperation | undefined> {
     const rows = await this.db.update(publicationOperations)
       .set(toRow(operation))
