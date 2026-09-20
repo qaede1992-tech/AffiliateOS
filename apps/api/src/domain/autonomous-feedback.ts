@@ -1,5 +1,4 @@
-import type { AnalyticsOverview } from "@affiliateos/shared";
-import type { AnalyticsService, CampaignAnalytics } from "./analytics.js";
+import type { AnalyticsOverview, CampaignAnalytics } from "./analytics.js";
 
 export type OpportunityPerformanceSignal = {
   clickCount: number;
@@ -17,7 +16,7 @@ const BASELINE_CONVERSION_RATE = 0.02;
 const MAX_ADJUSTMENT = 8;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
-  constructor(private readonly analytics: AnalyticsService) {}
+  constructor(private readonly analytics: { overview(): Promise<AnalyticsOverview> }) {}
 
   async getSignals(): Promise<Map<string, OpportunityPerformanceSignal>> {
     return buildSignals(await this.analytics.overview());
@@ -42,7 +41,12 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
     const adjustment = clicks < MINIMUM_EVIDENCE_CLICKS
       ? 0
       : clamp(((conversionRate - BASELINE_CONVERSION_RATE) / BASELINE_CONVERSION_RATE) * MAX_ADJUSTMENT, -MAX_ADJUSTMENT, MAX_ADJUSTMENT);
-    signals.set(productId, { clickCount: clicks, conversionRate, attributedCommissionCents: commission, adjustment: Math.round(adjustment * 100) / 100 });
+    signals.set(productId, {
+      clickCount: clicks,
+      conversionRate,
+      attributedCommissionCents: commission,
+      adjustment: Math.round(adjustment * 100) / 100
+    });
   }
   return signals;
 }
