@@ -1,0 +1,57 @@
+import type { Content, ContentPlatform, SocialAccount } from "@affiliateos/shared";
+import type { ContentService } from "./content.js";
+import type { SocialAccountRepository } from "./repository.js";
+
+export type DistributionRequest = {
+  content: Content;
+  scheduledAt: string;
+  accountId?: string;
+};
+
+export type DistributionPlan = {
+  content: Content;
+  account: SocialAccount;
+  scheduledAt: string;
+  publishable: boolean;
+};
+
+export interface SocialPublisher {
+  supports(platform: string): boolean;
+  publish(input: { content: Content; account: SocialAccount }): Promise<{ externalPostId: string }>;
+}
+
+const platformMatches = (content: Content, account: SocialAccount) => content.platform === account.platform;
+
+export class DistributionEngine {
+  constructor(
+    private readonly contentService: ContentService,
+    private readonly socialAccounts: SocialAccountRepository,
+    private readonly publishers: SocialPublisher[] = []
+  ) {}
+
+  async schedule(request: DistributionRequest): Promise<DistributionPlan> {
+    const scheduledAt = new Date(request.scheduledAt);
+    if (!Number.isFinite(scheduledAt.getTime())) throw new Error("Distribution requires a valid scheduledAt timestamp.");
+    if (request.content.status !== "draft" && request.content.status !== "failed") {
+      throw new Error("Only draft or failed content can be scheduled for distribution.");
+    }
+
+    const accounts = await this.socialAccounts.list();
+    const account = request.accountId
+      ? accounts.find((candidate) => candidate.id === request.accountId)
+      : accounts.find((candidate) => candidate.status === "active" && platformMatches(request.content, candidate));
+    if (!account) throw new Error(`No active social account is available for ${request.content.platform}.`);
+    if (account.status !== "active") throw new Error("Distribution requires an active social account.");
+
+    const updated = await this.contentService.update(request.content.id, {
+      status: "scheduled",
+      scheduledAt: scheduledAt.toISOString()
+    });
+    const publishable = this.publishers.some((publisher) => publisher.supports(request.content.platform));
+    return { content: updated, account, scheduledAt: scheduledAt.toISOString(), publishable };
+  }
+
+  listPublishers(platform?: ContentPlatform): SocialPublisher[] {
+    return platform ? this.publishers.filter((publisher) => publisher.supports(platform)) : [...this.publishers];
+  }
+}
