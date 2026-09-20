@@ -1,21 +1,37 @@
 import type { Content, ContentPlatform, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
-import type { PublicationJobService } from "./publication-job-service.js";
+import type { PublicationOperation } from "./publication-operation.js";
+import type { PublicationOperationService } from "./publication-operation-service.js";
 import type { SocialAccountRepository } from "./repository.js";
 
 export type DistributionRequest = { content: Content; scheduledAt: string; accountId?: string };
 export type DistributionPlan = { content: Content; account: SocialAccount; scheduledAt: string; publishable: boolean };
+
+export type PublishOutcome =
+  | { status: "published"; externalPostId: string }
+  | { status: "accepted"; providerOperationId: string };
+
+export type PublicationCheckResult =
+  | { status: "processing" }
+  | { status: "published"; externalPostId: string }
+  | { status: "failed"; error: string };
+
 export interface SocialPublisher {
   supports(platform: string): boolean;
   supportsContent?(content: Content): boolean;
-  publish(input: { content: Content; account: SocialAccount; credential?: unknown; idempotencyKey: string }): Promise<{ externalPostId: string }>;
+  provider?: string;
+  publish(input: { content: Content; account: SocialAccount; credential?: unknown; idempotencyKey: string }): Promise<PublishOutcome>;
+  checkPublication?(input: { content: Content; account: SocialAccount; credential?: unknown; operation: PublicationOperation }): Promise<PublicationCheckResult>;
 }
+
 export const publisherSupportsContent = (publisher: SocialPublisher, content: Content): boolean =>
   publisher.supports(content.platform) && (publisher.supportsContent?.(content) ?? true);
+
 const platformMatches = (content: Content, account: SocialAccount) => content.platform === account.platform;
 
 export class DistributionEngine {
-  constructor(private readonly contentService: ContentService, private readonly socialAccounts: SocialAccountRepository, private readonly publishers: SocialPublisher[] = [], private readonly publicationJobs?: PublicationJobService) {}
+  constructor(private readonly contentService: ContentService, private readonly socialAccounts: SocialAccountRepository, private readonly publishers: SocialPublisher[] = [], private readonly publicationJobs?: import("./publication-job-service.js").PublicationJobService) {}
+
   async schedule(request: DistributionRequest): Promise<DistributionPlan> {
     const scheduledAt = new Date(request.scheduledAt);
     if (!Number.isFinite(scheduledAt.getTime())) throw new Error("Distribution requires a valid scheduledAt timestamp.");
@@ -36,5 +52,6 @@ export class DistributionEngine {
     const publishable = this.publishers.some((publisher) => publisherSupportsContent(publisher, request.content));
     return { content: updated, account, scheduledAt: scheduledAt.toISOString(), publishable };
   }
+
   listPublishers(platform?: ContentPlatform): SocialPublisher[] { return platform ? this.publishers.filter((publisher) => publisher.supports(platform)) : [...this.publishers]; }
 }
