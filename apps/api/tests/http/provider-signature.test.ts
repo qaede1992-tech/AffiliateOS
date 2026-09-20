@@ -24,7 +24,7 @@ test("rejects a wrong secret", () => {
 });
 
 test("rejects an expired timestamp", () => {
-  const expiredMs = nowMs - 5 * 60 * 1000 - 1;
+  const expiredMs = nowMs - 6 * 60 * 1000;
   const expiredTimestamp = Math.floor(expiredMs / 1000).toString();
   const expiredSignature = createHmac("sha256", secret).update(`${expiredTimestamp}.${rawBody}`).digest("hex");
 
@@ -40,7 +40,7 @@ test("rejects an expired timestamp", () => {
 });
 
 test("rejects timestamps too far in the future", () => {
-  const futureMs = nowMs + 30 * 1000 + 1;
+  const futureMs = nowMs + 31 * 1000;
   const futureTimestamp = Math.floor(futureMs / 1000).toString();
   const futureSignature = createHmac("sha256", secret).update(`${futureTimestamp}.${rawBody}`).digest("hex");
 
