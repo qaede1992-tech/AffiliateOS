@@ -52,7 +52,7 @@ export type ContentPlatform = "tiktok" | "instagram" | "facebook" | "youtube-sho
 export type ContentStatus = "draft" | "scheduled" | "published" | "failed" | "archived";
 export interface Content { id: EntityId; productId?: EntityId; campaignId?: EntityId; platform: ContentPlatform; contentType: string; title?: string; caption?: string; script?: string; cta?: string; status: ContentStatus; scheduledAt?: IsoTimestamp; publishedAt?: IsoTimestamp; socialAccountId?: EntityId; mediaAssetIds?: EntityId[]; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
 export interface CreateContentRequest { productId?: EntityId; campaignId?: EntityId; platform: ContentPlatform; contentType: string; title?: string; caption?: string; script?: string; cta?: string; status?: ContentStatus; scheduledAt?: IsoTimestamp; publishedAt?: IsoTimestamp; socialAccountId?: EntityId; mediaAssetIds?: EntityId[]; }
-export interface UpdateContentRequest { productId?: EntityId; campaignId?: EntityId; platform?: ContentPlatform; contentType?: string; title?: string; caption?: string; script?: string; cta?: string; status?: ContentStatus; scheduledAt?: IsoTimestamp; publishedAt?: IsoTimestamp; socialAccountId?: EntityId; mediaAssetIds?: EntityId[]; }
+export interface UpdateContentRequest { productId?: EntityId; campaignId?: EntityId; platform?: ContentPlatform; contentType?: string; title?: string; caption?: string; script?: string; cta?: string; status?: ContentStatus; scheduledAt?: IsoTimestamp; publishedAt?: IsoTimestamp; socialAccountId?: EntityId; mediaAssetIds?: string[]; }
 export type SocialAccountStatus = "active" | "inactive" | "pending" | "error";
 export interface SocialAccount { id: EntityId; platform: string; accountReference: string; status: SocialAccountStatus; connection: Record<string, unknown>; credentialReference?: string; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
 export interface SocialAccountView extends Omit<SocialAccount, "credentialReference"> { hasCredentialReference: boolean; }
@@ -62,7 +62,5 @@ export interface SocialOAuthStartRequest { platform: string; redirectUri: string
 export interface SocialOAuthStartResponse { authorizationUrl: string; state: string; expiresAt: IsoTimestamp; }
 
 export interface ConversionAttribution { conversionId: EntityId; trackingLinkId: EntityId; attributedAt: IsoTimestamp; }
-export interface CreateConversionAttributionRequest { trackingLinkId: EntityId; }
-
-export interface CampaignAnalytics { campaignId: EntityId; clickCount: number; trackingLinkCount: number; contentCount: number; publishedContentCount: number; scheduledContentCount: number; attributedConversionCount: number; attributedRevenueCents: MoneyCents; attributedCommissionCents: MoneyCents; conversionRate: number; }
-export interface AnalyticsOverview extends Omit<CampaignAnalytics, "campaignId"> { campaignCount: number; campaigns: CampaignAnalytics[]; }
+export interface CampaignAnalytics { campaignId: EntityId; productId?: EntityId; clickCount: number; trackingLinkCount: number; contentCount: number; publishedContentCount: number; scheduledContentCount: number; attributedConversionCount: number; attributedRevenueCents: MoneyCents; attributedCommissionCents: MoneyCents; conversionRate: number; }
+export interface AnalyticsOverview extends Omit<CampaignAnalytics, "campaignId" | "productId"> { campaignCount: number; campaigns: CampaignAnalytics[]; }
