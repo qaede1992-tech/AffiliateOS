@@ -22,6 +22,7 @@ export interface PublicationJobRepository {
   findById(id: EntityId): Promise<PublicationJob | undefined>;
   findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>;
   save(job: PublicationJob): Promise<PublicationJob>;
+  claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>;
 }
 
 export class InMemoryPublicationJobRepository implements PublicationJobRepository {
@@ -30,6 +31,24 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
   async findById(id: EntityId) { return this.jobs.get(id); }
   async findByIdempotencyKey(key: string) { return [...this.jobs.values()].find((job) => job.idempotencyKey === key); }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
+
+  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
+    const job = this.jobs.get(id);
+    if (!job || job.status === "succeeded") return undefined;
+    const scheduled = new Date(job.scheduledAt).getTime();
+    const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
+    const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
+    if (scheduled > nowDate.getTime() || lockFresh) return undefined;
+    const claimed: PublicationJob = {
+      ...job,
+      status: "processing",
+      attemptCount: job.attemptCount + 1,
+      lockedAt: nowDate.toISOString(),
+      updatedAt: nowDate.toISOString()
+    };
+    this.jobs.set(id, claimed);
+    return claimed;
+  }
 }
 
 const now = () => new Date().toISOString();
