@@ -10,65 +10,17 @@ const product: Product = {
   priceCents: 10000, currency: "USD", reviewCount: 10, soldCount: 50, productUrl: "https://example.com/product", status: "active",
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
-
-const account = (id: string, platform: string, status: SocialAccount["status"] = "active"): SocialAccount => ({
-  id, platform, accountReference: `${id}-ref`, status, connection: {}, createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
-});
-
+const account = (id: string, platform: string, status: SocialAccount["status"] = "active"): SocialAccount => ({ id, platform, accountReference: `${id}-ref`, status, connection: {}, createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z" });
 const setup = async (platform: string, accounts: SocialAccount[]) => {
-  const contents = new InMemoryRepository<Content>();
-  const campaigns = new InMemoryRepository<any>();
-  const products = new InMemoryProductCatalogRepository();
-  await products.save(product);
-  const contentService = new ContentService(contents, campaigns, products);
-  const created = await contentService.create({ productId: product.id, platform: platform as Content["platform"], contentType: "affiliate-promotion", title: "Demo", status: "draft" });
-  const socialAccounts = new InMemorySocialAccountRepository();
-  for (const target of accounts) await socialAccounts.save(target);
-  return { contentService, socialAccounts, created };
+  const contents = new InMemoryRepository<Content>(); const campaigns = new InMemoryRepository<any>(); const products = new InMemoryProductCatalogRepository(); await products.save(product);
+  const contentService = new ContentService(contents, campaigns, products); const created = await contentService.create({ productId: product.id, platform: platform as Content["platform"], contentType: "affiliate-promotion", title: "Demo", status: "draft" });
+  const socialAccounts = new InMemorySocialAccountRepository(); for (const target of accounts) await socialAccounts.save(target); return { contentService, socialAccounts, created };
 };
-
 describe("DistributionEngine", () => {
-  it("schedules draft content onto an active matching social account", async () => {
-    const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-account", "tiktok")]);
-    const engine = new DistributionEngine(contentService, socialAccounts);
-    const result = await engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" });
-    assert.equal(result.account.id, "tiktok-account");
-    assert.equal(result.content.status, "scheduled");
-    assert.equal(result.content.socialAccountId, "tiktok-account");
-    assert.equal(result.content.scheduledAt, "2026-09-21T10:00:00.000Z");
-    assert.equal(result.publishable, false);
-  });
-
-  it("binds explicitly selected account when multiple accounts share a platform", async () => {
-    const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-a", "tiktok"), account("tiktok-b", "tiktok")]);
-    const engine = new DistributionEngine(contentService, socialAccounts);
-    const result = await engine.schedule({ content: created, accountId: "tiktok-b", scheduledAt: "2026-09-21T10:00:00.000Z" });
-    assert.equal(result.account.id, "tiktok-b");
-    assert.equal(result.content.socialAccountId, "tiktok-b");
-  });
-
-  it("rejects an explicitly selected account from another platform", async () => {
-    const { contentService, socialAccounts, created } = await setup("tiktok", [account("instagram-a", "instagram")]);
-    const engine = new DistributionEngine(contentService, socialAccounts);
-    await assert.rejects(() => engine.schedule({ content: created, accountId: "instagram-a", scheduledAt: "2026-09-21T10:00:00.000Z" }), /platform does not match/);
-  });
-
-  it("fails closed when no active matching account exists", async () => {
-    const { contentService, socialAccounts, created } = await setup("instagram", [account("instagram-account", "instagram", "pending")]);
-    const engine = new DistributionEngine(contentService, socialAccounts);
-    await assert.rejects(() => engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }), /No social account is available/);
-  });
-
-  it("does not bypass the content state machine", async () => {
-    const contents = new InMemoryRepository<Content>();
-    const campaigns = new InMemoryRepository<any>();
-    const products = new InMemoryProductCatalogRepository();
-    await products.save(product);
-    const contentService = new ContentService(contents, campaigns, products);
-    const created = await contentService.create({ productId: product.id, platform: "facebook", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-21T10:00:00.000Z" });
-    const socialAccounts = new InMemorySocialAccountRepository();
-    await socialAccounts.save(account("facebook-account", "facebook"));
-    const engine = new DistributionEngine(contentService, socialAccounts);
-    await assert.rejects(() => engine.schedule({ content: created, scheduledAt: "2026-09-22T10:00:00.000Z" }), /Only draft content/);
-  });
+  it("schedules draft content onto an active matching social account", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-account", "tiktok")]); const engine = new DistributionEngine(contentService, socialAccounts); const result = await engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }); assert.equal(result.account.id, "tiktok-account"); assert.equal(result.content.status, "scheduled"); assert.equal(result.content.socialAccountId, "tiktok-account"); assert.equal(result.publishable, false); });
+  it("binds explicitly selected account when multiple accounts share a platform", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-a", "tiktok"), account("tiktok-b", "tiktok")]); const engine = new DistributionEngine(contentService, socialAccounts); const result = await engine.schedule({ content: created, accountId: "tiktok-b", scheduledAt: "2026-09-21T10:00:00.000Z" }); assert.equal(result.account.id, "tiktok-b"); assert.equal(result.content.socialAccountId, "tiktok-b"); });
+  it("rejects an explicitly selected account from another platform", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("instagram-a", "instagram")]); const engine = new DistributionEngine(contentService, socialAccounts); await assert.rejects(() => engine.schedule({ content: created, accountId: "instagram-a", scheduledAt: "2026-09-21T10:00:00.000Z" }), /platform does not match/); });
+  it("fails closed when no active matching account exists", async () => { const { contentService, socialAccounts, created } = await setup("instagram", [account("instagram-account", "instagram", "pending")]); const engine = new DistributionEngine(contentService, socialAccounts); await assert.rejects(() => engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }), /No social account is available/); });
+  it("does not bypass the content state machine", async () => { const contents = new InMemoryRepository<Content>(); const campaigns = new InMemoryRepository<any>(); const products = new InMemoryProductCatalogRepository(); await products.save(product); const contentService = new ContentService(contents, campaigns, products); const created = await contentService.create({ productId: product.id, platform: "facebook", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-21T10:00:00.000Z" }); const socialAccounts = new InMemorySocialAccountRepository(); await socialAccounts.save(account("facebook-account", "facebook")); const engine = new DistributionEngine(contentService, socialAccounts); await assert.rejects(() => engine.schedule({ content: created, scheduledAt: "2026-09-22T10:00:00.000Z" }), /Only draft content/); });
+  it("restores draft state when publication job enqueue fails", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-account", "tiktok")]); const jobs = { enqueue: async () => { throw new Error("queue unavailable"); } } as any; const engine = new DistributionEngine(contentService, socialAccounts, [], jobs); await assert.rejects(() => engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }), /queue unavailable/); const restored = await contentService.get(created.id); assert.equal(restored.status, "draft"); assert.equal(restored.scheduledAt, undefined); assert.equal(restored.socialAccountId, undefined); });
 });
