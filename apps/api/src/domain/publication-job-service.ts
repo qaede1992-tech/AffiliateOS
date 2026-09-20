@@ -8,9 +8,11 @@ export class PublicationJobService {
   constructor(private readonly jobs: PublicationJobRepository) {}
 
   async enqueue(content: Content): Promise<PublicationJob> {
-    const existing = await this.jobs.findByIdempotencyKey(`content:${content.id}`);
+    const job = createPublicationJob(content);
+    if (this.jobs.saveIfAbsent) return this.jobs.saveIfAbsent(job);
+    const existing = await this.jobs.findByIdempotencyKey(job.idempotencyKey);
     if (existing) return existing;
-    return this.jobs.save(createPublicationJob(content));
+    return this.jobs.save(job);
   }
 
   async claim(id: EntityId, now = new Date()): Promise<PublicationJob | undefined> {
