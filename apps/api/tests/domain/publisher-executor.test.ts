@@ -53,6 +53,23 @@ describe("PublisherExecutor", () => {
     assert.equal(published, 1);
   });
 
+  it("propagates a stable idempotency key to the publisher", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    let receivedKey: string | undefined;
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async ({ idempotencyKey }) => {
+        receivedKey = idempotencyKey;
+        return { externalPostId: "external-post-idempotent" };
+      }
+    };
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+
+    await executor.execute(created.id, new Date("2026-09-20T11:00:00.000Z"), "publication-job:job-1");
+
+    assert.equal(receivedKey, "publication-job:job-1");
+  });
+
   it("does not publish content before its scheduled time", async () => {
     const { contentService, socialAccounts, created } = await setup();
     let published = false;
