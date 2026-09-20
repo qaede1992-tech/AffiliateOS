@@ -19,6 +19,15 @@ describe("PublicationJobService", () => {
     assert.equal(first.idempotencyKey, "content:content-1");
   });
 
+  it("preserves one job under concurrent enqueue calls", async () => {
+    const repo = new InMemoryPublicationJobRepository();
+    const service = new PublicationJobService(repo);
+    const jobs = await Promise.all(Array.from({ length: 20 }, () => service.enqueue(content)));
+    const stored = await repo.list();
+    assert.equal(new Set(jobs.map((job) => job.id)).size, 1);
+    assert.equal(stored.length, 1);
+  });
+
   it("claims a due job exactly once while its lock is fresh", async () => {
     const repo = new InMemoryPublicationJobRepository();
     const service = new PublicationJobService(repo);
