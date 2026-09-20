@@ -27,7 +27,8 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
         for (const product of products) {
           try {
             const offers = await this.marketplace.getOffers(connection.slug, product.externalProductId);
-            candidates.push({ product, offers });
+            const executableOffers = await this.ensureAffiliateLinks(connection.slug, product.externalProductId, offers);
+            candidates.push({ product, offers: executableOffers });
           } catch {
             candidates.push({ product, offers: [] });
           }
@@ -38,6 +39,27 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     }
 
     return deduplicateCandidates(candidates);
+  }
+
+  private async ensureAffiliateLinks(connectionSlug: string, externalProductId: string, offers: AffiliateOffer[]): Promise<AffiliateOffer[]> {
+    if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl));
+
+    const executable: AffiliateOffer[] = [];
+    for (const offer of offers) {
+      if (offer.status !== "active") continue;
+      if (offer.affiliateLinkStatus === "active" && offer.affiliateUrl) {
+        executable.push(offer);
+        continue;
+      }
+      if (!offer.externalOfferId) continue;
+      try {
+        const linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
+        if (linked.status === "active" && linked.affiliateLinkStatus === "active" && linked.affiliateUrl) executable.push(linked);
+      } catch {
+        // A provider may reject link generation for an individual offer; keep the cycle running and exclude that offer from execution.
+      }
+    }
+    return executable;
   }
 }
 
