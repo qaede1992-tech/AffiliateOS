@@ -33,6 +33,7 @@ export class PublisherExecutor {
     const account = await this.findAccount(content);
     const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content));
     if (!publisher) return { content, account, status: "unsupported" };
+    if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
 
     try {
       const credential = await this.resolveCredential(account);
