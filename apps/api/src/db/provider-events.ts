@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { providerEvents } from "./schema.js";
+import type { SQL } from "drizzle-orm";
 
 type DatabaseExecutor = any;
 
@@ -13,6 +14,8 @@ export type ProviderEventRecord = {
   status?: string;
   receivedAt: string;
 };
+
+export type ProviderEventStatus = "received" | "processing" | "processed" | "failed";
 
 export class ProviderEventStore {
   constructor(private readonly db: DatabaseExecutor) {}
@@ -29,19 +32,21 @@ export class ProviderEventStore {
       receivedAt: event.receivedAt,
       processedAt: null,
       error: null,
-    }).onConflictDoNothing({
-      target: [providerEvents.affiliateAccountId, providerEvents.externalEventId],
-    });
-
+    }).onConflictDoNothing({ target: [providerEvents.affiliateAccountId, providerEvents.externalEventId] });
     return Number(result.rowCount ?? 0) === 1;
   }
 
   async findByExternalId(affiliateAccountId: string, externalEventId: string) {
-    const rows = await this.db
-      .select()
-      .from(providerEvents)
-      .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId)))
-      .limit(1);
+    const rows = await this.db.select().from(providerEvents)
+      .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId))).limit(1);
     return rows[0];
+  }
+
+  async updateStatus(affiliateAccountId: string, externalEventId: string, status: ProviderEventStatus, error?: string): Promise<boolean> {
+    const values: Record<string, unknown> = { status, error: error?.slice(0, 1000) ?? null };
+    if (status === "processed") values.processedAt = new Date().toISOString();
+    const result = await this.db.update(providerEvents).set(values)
+      .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId)));
+    return Number(result.rowCount ?? 0) === 1;
   }
 }
