@@ -23,7 +23,8 @@ import { AutonomousExecutionService } from "./autonomous-execution.js";
 import { AutonomousOpportunitySelector } from "./autonomous-opportunity.js";
 import { InMemoryAutonomousRunRepository, type AutonomousRunRepository } from "./autonomous-run.js";
 import type { PublicationOperationRepository } from "./publication-operation.js";
-import { AutonomousCycleService, type AutonomousCandidateProvider } from "./autonomous-cycle.js";
+import { AutonomousCycleService } from "./autonomous-cycle.js";
+import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace-candidates.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
@@ -46,19 +47,14 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousRuns = new AutonomousRunService(autonomousRunRepository);
   const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns);
   const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator);
-  const candidateProvider: AutonomousCandidateProvider = {
-    async listCandidates() {
-      const [products, offers] = await Promise.all([repositories.products.list(), repositories.affiliateOffers.list()]);
-      return products.map((product) => ({ product, offers }));
-    }
-  };
+  const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers);
+  const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution);
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers),
     conversions: new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager),
     commissions: new CommissionService(repositories.commissions),
-    marketplace: new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers),
-    campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousCycle, distribution,
+    marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousCycle, distribution,
     socialAccounts: new SocialAccountService(repositories.socialAccounts),
     socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository),
     analytics: new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository),
