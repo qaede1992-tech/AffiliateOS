@@ -42,12 +42,14 @@ export class DistributionEngine {
     const account = request.accountId
       ? accounts.find((candidate) => candidate.id === request.accountId)
       : accounts.find((candidate) => candidate.status === "active" && platformMatches(request.content, candidate));
-    if (!account) throw new Error(`No active social account is available for ${request.content.platform}.`);
+    if (!account) throw new Error(`No social account is available for ${request.content.platform}.`);
     if (account.status !== "active") throw new Error("Distribution requires an active social account.");
+    if (!platformMatches(request.content, account)) throw new Error("Distribution account platform does not match content platform.");
 
     const updated = await this.contentService.update(request.content.id, {
       status: "scheduled",
-      scheduledAt: scheduledAt.toISOString()
+      scheduledAt: scheduledAt.toISOString(),
+      socialAccountId: account.id
     });
     if (this.publicationJobs) await this.publicationJobs.enqueue(updated);
     const publishable = this.publishers.some((publisher) => publisher.supports(request.content.platform));
