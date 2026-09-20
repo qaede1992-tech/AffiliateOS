@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../src/app.js";
 import { MarketplaceProviderRegistry, MockMarketplaceProvider } from "../src/domain/foundations.js";
+import { MarketplaceService } from "../src/domain/marketplace.js";
 
 const connection = {
   id: "00000000-0000-4000-8000-000000000011", name: "Test catalog", slug: "test-catalog", providerSlug: "mock", connectionMode: "mock" as const, status: "active" as const, enabled: true,
@@ -34,4 +35,29 @@ test("unconfigured marketplace never impersonates a connected provider", async (
   assert.equal(response.statusCode, 404);
   assert.equal(response.json().error, "MARKETPLACE_NOT_CONFIGURED");
   await app.close();
+});
+
+test("marketplace persistence recovers from concurrent unique inserts", async () => {
+  const registry = new MarketplaceProviderRegistry();
+  registry.register(new MockMarketplaceProvider([{ externalProductId: "sku-race", name: "Raced kettle", priceCents: 4299, currency: "USD", productUrl: "https://catalog.example.test/products/sku-race", availability: "in_stock" }], { "sku-race": [{ externalOfferId: "offer-race", priceCents: 4299, currency: "USD", commissionRateBps: 1200, availability: "in_stock" }] }));
+  const racedProduct = { id: "00000000-0000-4000-8000-000000000021", marketplaceId: connection.id, externalProductId: "sku-race", name: "Raced kettle", priceCents: 4299, currency: "USD", productUrl: "https://catalog.example.test/products/sku-race", status: "active" as const, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+  const racedAccount = { id: "00000000-0000-4000-8000-000000000022", marketplaceId: connection.id, name: "Test affiliate account", status: "active" as const, configuration: {}, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+  const racedOffer = { id: "00000000-0000-4000-8000-000000000023", productId: racedProduct.id, affiliateAccountId: racedAccount.id, externalOfferId: "offer-race", priceCents: 4299, currency: "USD", commissionRateBps: 1200, availability: "in_stock" as const, availabilityMetadata: {}, affiliateLinkStatus: "not_generated" as const, status: "active" as const, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+  let productLookup = true;
+  let accountLookup = true;
+  let offerLookup = true;
+  let productSave = true;
+  let accountSave = true;
+  let offerSave = true;
+  const uniqueViolation = () => Object.assign(new Error("duplicate key"), { code: "23505" });
+  const products = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplaceProduct() { if (productLookup) { productLookup = false; return undefined; } return racedProduct; }, async save(entity: typeof racedProduct) { if (productSave) { productSave = false; throw uniqueViolation(); } return entity; } };
+  const accounts = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplace() { if (accountLookup) { accountLookup = false; return undefined; } return racedAccount; }, async save(entity: typeof racedAccount) { if (accountSave) { accountSave = false; throw uniqueViolation(); } return entity; } };
+  const offers = { async list() { return []; }, async findById() { return undefined; }, async findByAccountOffer() { if (offerLookup) { offerLookup = false; return undefined; } return racedOffer; }, async save(entity: typeof racedOffer) { if (offerSave) { offerSave = false; throw uniqueViolation(); } return entity; } };
+  const connections = { async list() { return [connection]; }, async findById() { return connection; }, async findBySlug() { return connection; }, async save(entity: typeof connection) { return entity; } };
+  const service = new MarketplaceService(registry, connections, products, accounts, offers);
+  const result = await service.getOffers(connection.slug, "sku-race");
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, racedOffer.id);
+  assert.equal(result[0].productId, racedProduct.id);
+  assert.equal(result[0].affiliateAccountId, racedAccount.id);
 });
