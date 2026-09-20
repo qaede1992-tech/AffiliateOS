@@ -4,17 +4,41 @@ import type { AffiliateOffer, Product } from "@affiliateos/shared";
 import { AutonomousOpportunitySelector } from "../../src/domain/autonomous-opportunity.js";
 
 const product = (id: string, overrides: Partial<Product> = {}): Product => ({
-  id, marketplaceId: "market-1", externalProductId: id, name: "Skincare Serum", description: "Daily skincare serum",
-  category: "skincare", priceCents: 5000, originalPriceCents: 7500, currency: "USD", ratingMilli: 4600,
-  reviewCount: 1200, soldCount: 8500, productUrl: `https://example.test/${id}`, status: "active",
-  createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z", ...overrides
+  id,
+  marketplaceId: "market-1",
+  externalProductId: id,
+  name: "Skincare Serum",
+  description: "Daily skincare serum",
+  category: "skincare",
+  priceCents: 5000,
+  originalPriceCents: 7500,
+  currency: "USD",
+  ratingMilli: 4600,
+  reviewCount: 1200,
+  soldCount: 8500,
+  productUrl: `https://example.test/${id}`,
+  status: "active",
+  createdAt: "2026-09-20T00:00:00.000Z",
+  updatedAt: "2026-09-20T00:00:00.000Z",
+  ...overrides
 });
 
 const offer = (productId: string, overrides: Partial<AffiliateOffer> = {}): AffiliateOffer => ({
-  id: `offer-${productId}`, productId, affiliateAccountId: "account-1", externalOfferId: `external-${productId}`,
-  priceCents: 5000, currency: "USD", commissionRateBps: 1200, availability: "in_stock", availabilityMetadata: {},
-  affiliateLinkStatus: "active", status: "active", createdAt: "2026-09-20T00:00:00.000Z",
-  updatedAt: "2026-09-20T00:00:00.000Z", ...overrides
+  id: `offer-${productId}`,
+  productId,
+  affiliateAccountId: "account-1",
+  externalOfferId: `external-${productId}`,
+  priceCents: 5000,
+  currency: "USD",
+  commissionRateBps: 1200,
+  affiliateUrl: `https://example.test/affiliate/${productId}`,
+  availability: "in_stock",
+  availabilityMetadata: {},
+  affiliateLinkStatus: "active",
+  status: "active",
+  createdAt: "2026-09-20T00:00:00.000Z",
+  updatedAt: "2026-09-20T00:00:00.000Z",
+  ...overrides
 });
 
 describe("autonomous opportunity selection", () => {
