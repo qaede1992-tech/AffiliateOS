@@ -21,7 +21,8 @@ const services = createServices(
   [],
   undefined,
   new DrizzlePublicationOperationRepository(persistence.db),
-  new DrizzleAutonomousRunRepository(persistence.db)
+  new DrizzleAutonomousRunRepository(persistence.db),
+  environment.AUTONOMOUS_CYCLE_INTERVAL_MS
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
@@ -33,14 +34,17 @@ const app = createApp(services, {
 try {
   await app.listen({ host: environment.API_HOST, port: environment.API_PORT });
   services.publicationScheduler.start();
+  if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
   app.log.error(error);
+  await services.autonomousScheduler.stop();
   await services.publicationScheduler.stop();
   await persistence.close();
   process.exit(1);
 }
 
 const shutdown = async () => {
+  await services.autonomousScheduler.stop();
   await services.publicationScheduler.stop();
   await app.close();
   await persistence.close();
