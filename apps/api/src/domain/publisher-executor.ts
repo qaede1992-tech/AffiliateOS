@@ -2,6 +2,7 @@ import type { Content, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
 import type { SocialAccountRepository } from "./repository.js";
 import type { SocialPublisher } from "./distribution-engine.js";
+import type { SocialCredentialResolver } from "./social-credentials.js";
 
 export type PublishExecutionResult = {
   content: Content;
@@ -14,7 +15,8 @@ export class PublisherExecutor {
   constructor(
     private readonly contentService: ContentService,
     private readonly socialAccounts: SocialAccountRepository,
-    private readonly publishers: SocialPublisher[]
+    private readonly publishers: SocialPublisher[],
+    private readonly credentialResolver?: SocialCredentialResolver
   ) {}
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`): Promise<PublishExecutionResult> {
@@ -37,7 +39,8 @@ export class PublisherExecutor {
     if (!publisher) return { content, account, status: "unsupported" };
 
     try {
-      const result = await publisher.publish({ content, account, idempotencyKey });
+      const credential = await this.resolveCredential(account);
+      const result = await publisher.publish({ content, account, credential, idempotencyKey });
       const publishedAt = now.toISOString();
       const updated = await this.contentService.update(content.id, {
         status: "published",
@@ -48,6 +51,12 @@ export class PublisherExecutor {
       await this.contentService.update(content.id, { status: "failed" });
       throw error;
     }
+  }
+
+  private async resolveCredential(account: SocialAccount): Promise<unknown> {
+    if (!account.credentialReference) return undefined;
+    if (!this.credentialResolver) throw new Error("Social credential resolution is not configured.");
+    return this.credentialResolver.resolve(account.credentialReference);
   }
 
   private async findAccount(platform: string): Promise<SocialAccount> {
