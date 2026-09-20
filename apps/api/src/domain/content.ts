@@ -33,7 +33,7 @@ function validateContentTransition(current: Content["status"], next: Content["st
 
 const sensitiveConnectionKey = /(?:password|passcode|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|private[_-]?key|signing[_-]?key)/i;
 
-function redactSensitiveConnectionValues(value: unknown): unknown {
+export function redactSensitiveConnectionValues(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => redactSensitiveConnectionValues(item));
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
@@ -44,104 +44,20 @@ function redactSensitiveConnectionValues(value: unknown): unknown {
 
 export class ContentService {
   constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>) {}
-
-  async list(campaignId?: string) {
-    const items = await this.contents.list();
-    if (campaignId) {
-      await this.getCampaign(campaignId);
-      return items.filter((item) => item.campaignId === campaignId);
-    }
-    return items;
-  }
-
-  async get(id: string) {
-    const content = await this.contents.findById(id);
-    if (!content) throw new DomainError("CONTENT_NOT_FOUND", "The content does not exist.", 404);
-    return content;
-  }
-
-  async create(input: CreateContentRequest) {
-    await this.validateReferences(input.campaignId, input.productId);
-    validateContentTiming(input.status ?? "draft", input.scheduledAt, input.publishedAt);
-    const createdAt = now();
-    return this.contents.save({
-      id: randomUUID(), productId: input.productId, campaignId: input.campaignId, socialAccountId: input.socialAccountId,
-      platform: input.platform, contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta,
-      status: input.status ?? "draft", scheduledAt: input.scheduledAt, publishedAt: input.publishedAt, createdAt, updatedAt: createdAt
-    });
-  }
-
-  async update(id: string, input: UpdateContentRequest) {
-    const current = await this.get(id);
-    await this.validateReferences(input.campaignId ?? current.campaignId, input.productId ?? current.productId);
-    const nextStatus = input.status ?? current.status;
-    validateContentTransition(current.status, input.status);
-    validateContentTiming(nextStatus, input.scheduledAt ?? current.scheduledAt, input.publishedAt ?? current.publishedAt);
-    return this.contents.save({ ...current, ...input, updatedAt: now() });
-  }
-
-  private async getCampaign(id: string) {
-    const campaign = await this.campaigns.findById(id);
-    if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
-    return campaign;
-  }
-
-  private async validateReferences(campaignId?: string, productId?: string) {
-    if (campaignId) await this.getCampaign(campaignId);
-    if (productId && !(await this.products.findById(productId))) throw new DomainError("PRODUCT_NOT_FOUND", "The product does not exist.", 404);
-  }
+  async list(campaignId?: string) { const items = await this.contents.list(); if (campaignId) { await this.getCampaign(campaignId); return items.filter((item) => item.campaignId === campaignId); } return items; }
+  async get(id: string) { const content = await this.contents.findById(id); if (!content) throw new DomainError("CONTENT_NOT_FOUND", "The content does not exist.", 404); return content; }
+  async create(input: CreateContentRequest) { await this.validateReferences(input.campaignId, input.productId); validateContentTiming(input.status ?? "draft", input.scheduledAt, input.publishedAt); const createdAt = now(); return this.contents.save({ id: randomUUID(), productId: input.productId, campaignId: input.campaignId, socialAccountId: input.socialAccountId, platform: input.platform, contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta, status: input.status ?? "draft", scheduledAt: input.scheduledAt, publishedAt: input.publishedAt, createdAt, updatedAt: createdAt }); }
+  async update(id: string, input: UpdateContentRequest) { const current = await this.get(id); await this.validateReferences(input.campaignId ?? current.campaignId, input.productId ?? current.productId); const nextStatus = input.status ?? current.status; validateContentTransition(current.status, input.status); validateContentTiming(nextStatus, input.scheduledAt ?? current.scheduledAt, input.publishedAt ?? current.publishedAt); return this.contents.save({ ...current, ...input, updatedAt: now() }); }
+  private async getCampaign(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
+  private async validateReferences(campaignId?: string, productId?: string) { if (campaignId) await this.getCampaign(campaignId); if (productId && !(await this.products.findById(productId))) throw new DomainError("PRODUCT_NOT_FOUND", "The product does not exist.", 404); }
 }
 
 export class SocialAccountService {
   constructor(private readonly accounts: SocialAccountRepository) {}
-
-  private view(account: SocialAccount): SocialAccountView {
-    const { credentialReference: _credentialReference, ...safe } = account;
-    return {
-      ...safe,
-      connection: redactSensitiveConnectionValues(account.connection) as SocialAccount["connection"],
-      hasCredentialReference: Boolean(account.credentialReference)
-    };
-  }
-
+  private view(account: SocialAccount): SocialAccountView { const { credentialReference: _credentialReference, ...safe } = account; return { ...safe, connection: redactSensitiveConnectionValues(account.connection) as SocialAccount["connection"], hasCredentialReference: Boolean(account.credentialReference) }; }
   async list() { return (await this.accounts.list()).map((account) => this.view(account)); }
-
-  async get(id: string) {
-    const account = await this.accounts.findById(id);
-    if (!account) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404);
-    return this.view(account);
-  }
-
-  async create(input: CreateSocialAccountRequest) {
-    if (await this.accounts.findByPlatformAccount(input.platform, input.accountReference)) {
-      throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
-    }
-    const createdAt = now();
-    const account: SocialAccount = {
-      id: randomUUID(), platform: input.platform, accountReference: input.accountReference, status: input.status ?? "pending",
-      connection: input.connection ?? {}, credentialReference: input.credentialReference, createdAt, updatedAt: createdAt
-    };
-    try {
-      return this.view(await this.accounts.save(account));
-    } catch (error) {
-      if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
-      throw error;
-    }
-  }
-
-  async update(id: string, input: import("@affiliateos/shared").UpdateSocialAccountRequest) {
-    const current = await this.accounts.findById(id);
-    if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404);
-    const platform = input.platform ?? current.platform;
-    const accountReference = input.accountReference ?? current.accountReference;
-    const duplicate = await this.accounts.findByPlatformAccount(platform, accountReference);
-    if (duplicate && duplicate.id !== id) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
-    const updated: SocialAccount = { ...current, ...input, platform, accountReference, updatedAt: now() };
-    try {
-      return this.view(await this.accounts.save(updated));
-    } catch (error) {
-      if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409);
-      throw error;
-    }
-  }
+  async get(id: string) { const account = await this.accounts.findById(id); if (!account) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); return this.view(account); }
+  async create(input: CreateSocialAccountRequest) { if (await this.accounts.findByPlatformAccount(input.platform, input.accountReference)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); const createdAt = now(); const account: SocialAccount = { id: randomUUID(), platform: input.platform, accountReference: input.accountReference, status: input.status ?? "pending", connection: input.connection ?? {}, credentialReference: input.credentialReference, createdAt, updatedAt: createdAt }; try { return this.view(await this.accounts.save(account)); } catch (error) { if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); throw error; } }
+  async update(id: string, input: import("@affiliateos/shared").UpdateSocialAccountRequest) { const current = await this.accounts.findById(id); if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); const platform = input.platform ?? current.platform; const accountReference = input.accountReference ?? current.accountReference; const duplicate = await this.accounts.findByPlatformAccount(platform, accountReference); if (duplicate && duplicate.id !== id) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); const updated: SocialAccount = { ...current, ...input, platform, accountReference, updatedAt: now() }; try { return this.view(await this.accounts.save(updated)); } catch (error) { if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); throw error; } }
+  async revokeCredential(id: string) { const current = await this.accounts.findById(id); if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); if (!current.credentialReference) return this.view(current); const revoked: SocialAccount = { ...current, status: "inactive", credentialReference: undefined, updatedAt: now() }; return this.view(await this.accounts.save(revoked)); }
 }
