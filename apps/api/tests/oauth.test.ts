@@ -14,3 +14,23 @@ test("OAuth callback preserves state on a mismatched platform and consumes it on
 test("OAuth callback rejects expired state", async () => { const oauthService = createService(1); const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback"); await new Promise((resolve) => setTimeout(resolve, 5)); await assert.rejects(() => oauthService.callback("instagram", "user-42", started.state), /state has expired/i); });
 test("OAuth start prunes expired states before creating a new state", async () => { const states = new InMemoryOAuthStateRepository(); await states.save({ state: "expired-state", platform: "instagram", redirectUri: "https://app.example.com/oauth/callback", expiresAt: new Date(Date.now() - 1_000).toISOString() }); const oauthService = createService(600_000, states); await oauthService.start("instagram", "https://app.example.com/oauth/callback"); await assert.rejects(() => oauthService.callback("instagram", "user-42", "expired-state"), /state is invalid/i); });
 test("OAuth start rejects platforms without a configured provider", async () => { const oauthService = createService(); await assert.rejects(() => oauthService.start("tiktok", "https://app.example.com/oauth/callback"), /OAuth is not configured/i); });
+
+test("OAuth callback recovers from a concurrent social-account insert", async () => {
+  const registry = new InMemorySocialOAuthProviderRegistry();
+  registry.register(provider);
+  const existing = { id: "raced-account", platform: "instagram", accountReference: "acct-raced", status: "active" as const, connection: {}, credentialReference: "vault://old", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  let firstLookup = true;
+  let firstSave = true;
+  const accounts = {
+    async list() { return [existing]; },
+    async findById(id: string) { return id === existing.id ? existing : undefined; },
+    async save(account: typeof existing) { if (firstSave) { firstSave = false; throw Object.assign(new Error("duplicate key"), { code: "23505" }); } return account; },
+    async findByPlatformAccount(platform: string, accountReference: string) { if (firstLookup) { firstLookup = false; return undefined; } return platform === existing.platform && accountReference === existing.accountReference ? existing : undefined; }
+  };
+  const oauthService = new SocialOAuthService(registry, accounts, new InMemoryOAuthStateRepository());
+  const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback");
+  const account = await oauthService.callback("instagram", "raced", started.state);
+  assert.equal(account.id, existing.id);
+  assert.equal(account.accountReference, existing.accountReference);
+  assert.equal(account.hasCredentialReference, true);
+});
