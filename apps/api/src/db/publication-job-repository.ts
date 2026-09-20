@@ -58,6 +58,30 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
     return job;
   }
 
+  async saveIfAbsent(job: PublicationJob): Promise<PublicationJob> {
+    const values = {
+      id: job.id,
+      contentId: job.contentId,
+      idempotencyKey: job.idempotencyKey,
+      status: job.status,
+      attemptCount: job.attemptCount,
+      scheduledAt: job.scheduledAt,
+      lockedAt: job.lockedAt ?? null,
+      externalPostId: job.externalPostId ?? null,
+      lastError: job.lastError ?? null,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt
+    };
+    const rows = await this.db.insert(publicationJobs)
+      .values(values)
+      .onConflictDoNothing({ target: publicationJobs.idempotencyKey })
+      .returning();
+    if (rows[0]) return toPublicationJob(rows[0]);
+    const existing = await this.findByIdempotencyKey(job.idempotencyKey);
+    if (!existing) throw new Error("Publication job insert was skipped but no idempotent job was found.");
+    return existing;
+  }
+
   async claimDue(id: string, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined> {
     const nowIso = now.toISOString();
     const staleCutoff = new Date(now.getTime() - lockTimeoutMs).toISOString();
