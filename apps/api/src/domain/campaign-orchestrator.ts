@@ -3,6 +3,7 @@ import type { CampaignService, TrackingService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
 import type { DistributionEngine, DistributionPlan } from "./distribution-engine.js";
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
+import type { AutonomousRunService } from "./autonomous-run-service.js";
 
 export type CampaignOrchestratorInput = {
   opportunity: ScoredOpportunity;
@@ -24,15 +25,6 @@ export type GeneratedCampaignContent = {
   cta: string;
 };
 
-export interface CampaignContentGenerator {
-  generate(input: {
-    product: Product;
-    offer: AffiliateOffer;
-    opportunity: ScoredOpportunity;
-    platform: ContentPlatform;
-  }): GeneratedCampaignContent;
-}
-
 const defaultPlatforms: ContentPlatform[] = ["tiktok", "instagram", "facebook"];
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
 
@@ -45,6 +37,15 @@ export class DeterministicCampaignContentGenerator implements CampaignContentGen
     const script = `Hook: Looking for ${productName}?\nHighlight: ${input.product.description?.trim() || "See the product details and current offer."}\nValue: Current offer price is ${price}.\nCTA: Check the offer through the link.`;
     return { platform: input.platform, title, caption, script, cta: "Check the offer" };
   }
+}
+
+export interface CampaignContentGenerator {
+  generate(input: {
+    product: Product;
+    offer: AffiliateOffer;
+    opportunity: ScoredOpportunity;
+    platform: ContentPlatform;
+  }): GeneratedCampaignContent;
 }
 
 export type CampaignOrchestrationResult = {
@@ -61,7 +62,8 @@ export class CampaignOrchestrator {
     private readonly tracking: TrackingService,
     private readonly content: ContentService,
     private readonly contentGenerator: CampaignContentGenerator = new DeterministicCampaignContentGenerator(),
-    private readonly distribution?: DistributionEngine
+    private readonly distribution?: DistributionEngine,
+    private readonly autonomousRuns?: AutonomousRunService
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
@@ -72,47 +74,63 @@ export class CampaignOrchestrator {
     if (!input.offer.affiliateUrl) throw new Error("Campaign orchestration requires an affiliate URL.");
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
-    const audience = input.audience ?? [];
-    const requestedPlatforms = [...new Set(input.platforms ?? defaultPlatforms)];
-    let campaign: Awaited<ReturnType<CampaignService["create"]>> | undefined;
-    if (input.idempotencyKey) {
-      const campaigns = await this.campaigns.list();
-      campaign = campaigns.find((candidate) => orchestrationKey(candidate) === input.idempotencyKey);
-    }
-    if (!campaign) {
-      campaign = await this.campaigns.create({
-        name: input.campaignName ?? `Autonomous: ${input.product.name}`,
-        objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
-        status: "draft",
-        audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: input.idempotencyKey }
-      });
-    }
+    const run = input.idempotencyKey && this.autonomousRuns
+      ? await this.autonomousRuns.accept({ idempotencyKey: input.idempotencyKey, productId: input.product.id, offerId: input.offer.id })
+      : undefined;
 
-    const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
-    const existingLinks = await this.tracking.list(campaign.id);
-    const trackingLink = existingLinks.find((link) => link.affiliateOfferId === input.offer.id && link.destinationUrl === input.offer.affiliateUrl) ??
-      await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl });
+    if (run && run.opportunityProductId !== input.product.id) throw new Error("Autonomous run idempotency key is already bound to a different product.");
+    if (run && run.offerId !== input.offer.id) throw new Error("Autonomous run idempotency key is already bound to a different affiliate offer.");
 
-    const existingContent = await this.content.list(campaign.id);
-    const content: Awaited<ReturnType<ContentService["create"]>>[] = [];
-    for (const platform of requestedPlatforms) {
-      const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion");
-      if (existing) content.push(existing);
-      else {
-        const generated = this.contentGenerator.generate({ product: input.product, offer: input.offer, opportunity: input.opportunity, platform });
-        content.push(await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" }));
+    try {
+      if (run) await this.autonomousRuns!.transition(run.id, "processing");
+
+      const audience = input.audience ?? [];
+      const requestedPlatforms = [...new Set(input.platforms ?? defaultPlatforms)];
+      let campaign: Awaited<ReturnType<CampaignService["create"]>> | undefined;
+      if (input.idempotencyKey) {
+        const campaigns = await this.campaigns.list();
+        campaign = campaigns.find((candidate) => orchestrationKey(candidate) === input.idempotencyKey);
       }
-    }
-
-    const distribution: DistributionPlan[] = [];
-    if (input.scheduledAt) {
-      for (const item of content) {
-        if (item.status === "scheduled" && item.scheduledAt === input.scheduledAt) continue;
-        if (item.status !== "draft") continue;
-        distribution.push(await this.distribution!.schedule({ content: item, scheduledAt: input.scheduledAt }));
+      if (!campaign) {
+        campaign = await this.campaigns.create({
+          name: input.campaignName ?? `Autonomous: ${input.product.name}`,
+          objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
+          status: "draft",
+          audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: input.idempotencyKey }
+        });
       }
-    }
+      if (run) await this.autonomousRuns!.transition(run.id, "processing", { campaignId: campaign.id });
 
-    return { campaign, offerAttachment, trackingLink, content, distribution };
+      const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
+      const existingLinks = await this.tracking.list(campaign.id);
+      const trackingLink = existingLinks.find((link) => link.affiliateOfferId === input.offer.id && link.destinationUrl === input.offer.affiliateUrl) ??
+        await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl });
+
+      const existingContent = await this.content.list(campaign.id);
+      const content: Awaited<ReturnType<ContentService["create"]>>[] = [];
+      for (const platform of requestedPlatforms) {
+        const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion");
+        if (existing) content.push(existing);
+        else {
+          const generated = this.contentGenerator.generate({ product: input.product, offer: input.offer, opportunity: input.opportunity, platform });
+          content.push(await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" }));
+        }
+      }
+
+      const distribution: DistributionPlan[] = [];
+      if (input.scheduledAt) {
+        const requests = content.filter((item) => item.status === "draft").map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
+        if (requests.length) {
+          await this.distribution!.validateBatch(requests);
+          for (const request of requests) distribution.push(await this.distribution!.schedule(request));
+        }
+      }
+
+      if (run) await this.autonomousRuns!.transition(run.id, "completed", { campaignId: campaign.id });
+      return { campaign, offerAttachment, trackingLink, content, distribution };
+    } catch (error) {
+      if (run) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: run.campaignId, error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
   }
 }
