@@ -18,7 +18,7 @@ export class PublicationJobService {
   async claim(id: EntityId, now = new Date()): Promise<PublicationJob | undefined> {
     if (this.jobs.claimDue) return this.jobs.claimDue(id, now, LOCK_TIMEOUT_MS);
     const job = await this.jobs.findById(id);
-    if (!job || job.status === "succeeded") return job;
+    if (!job || job.status === "succeeded" || job.status === "awaiting_confirmation") return undefined;
     if (job.status === "processing" && job.lockedAt) {
       const lockAge = now.getTime() - new Date(job.lockedAt).getTime();
       if (Number.isFinite(lockAge) && lockAge < LOCK_TIMEOUT_MS) return undefined;
@@ -31,6 +31,11 @@ export class PublicationJobService {
       lockedAt: now.toISOString(),
       updatedAt: now.toISOString()
     });
+  }
+
+  async awaitConfirmation(id: EntityId, now = new Date()): Promise<PublicationJob> {
+    const job = await this.require(id);
+    return this.jobs.save({ ...job, status: "awaiting_confirmation", lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() });
   }
 
   async succeed(id: EntityId, externalPostId: string, now = new Date()): Promise<PublicationJob> {
