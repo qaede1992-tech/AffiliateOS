@@ -6,7 +6,7 @@ import type { SocialCredentialResolver } from "./social-credentials.js";
 
 export type PublishExecutionResult = {
   content: Content;
-  account: SocialAccount;
+  account?: SocialAccount;
   externalPostId?: string;
   status: "published" | "not_due" | "unsupported" | "failed";
 };
@@ -30,8 +30,7 @@ export class PublisherExecutor {
       throw new Error("Scheduled content requires a valid scheduledAt timestamp.");
     }
     if (scheduledAt.getTime() > now.getTime()) {
-      const account = await this.findAccount(content.platform);
-      return { content, account, status: "not_due" };
+      return { content, status: "not_due" };
     }
 
     const account = await this.findAccount(content.platform);
