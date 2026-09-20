@@ -52,6 +52,76 @@ describe("PublisherExecutor", () => {
     assert.equal(published, 1);
   });
 
+  it("publishes through the explicitly bound account when multiple accounts share a platform", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    const secondary: SocialAccount = {
+      ...account,
+      id: "tiktok-account-secondary",
+      accountReference: "tiktok-secondary-ref"
+    };
+    await socialAccounts.save(secondary);
+    const bound = await contentService.update(created.id, { socialAccountId: secondary.id });
+    let publishedAccountId: string | undefined;
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async ({ account: target }) => {
+        publishedAccountId = target.id;
+        return { externalPostId: "external-post-bound" };
+      }
+    };
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    const result = await executor.execute(bound.id, new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(result.status, "published");
+    assert.equal(result.account?.id, secondary.id);
+    assert.equal(publishedAccountId, secondary.id);
+  });
+
+  it("rejects a bound account that is inactive instead of falling back to another account", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    const secondary: SocialAccount = {
+      ...account,
+      id: "tiktok-account-secondary",
+      accountReference: "tiktok-secondary-ref",
+      status: "inactive"
+    };
+    await socialAccounts.save(secondary);
+    const bound = await contentService.update(created.id, { socialAccountId: secondary.id });
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => ({ externalPostId: "should-not-publish" })
+    };
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    await assert.rejects(() => executor.execute(bound.id, new Date("2026-09-20T11:00:00.000Z")), /social account is not active/);
+    assert.equal((await contentService.get(bound.id)).status, "scheduled");
+  });
+
+  it("rejects a bound account whose platform does not match the content", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    const instagram: SocialAccount = {
+      ...account,
+      id: "instagram-account",
+      platform: "instagram",
+      accountReference: "instagram-ref"
+    };
+    await socialAccounts.save(instagram);
+    const bound = await contentService.update(created.id, { socialAccountId: instagram.id });
+    const executor = new PublisherExecutor(contentService, socialAccounts, []);
+    await assert.rejects(() => executor.execute(bound.id, new Date("2026-09-20T11:00:00.000Z")), /platform does not match content platform/);
+    assert.equal((await contentService.get(bound.id)).status, "scheduled");
+  });
+
+  it("rejects a missing bound account instead of silently selecting another account", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    const bound = await contentService.update(created.id, { socialAccountId: "missing-account" });
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => ({ externalPostId: "should-not-publish" })
+    };
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    await assert.rejects(() => executor.execute(bound.id, new Date("2026-09-20T11:00:00.000Z")), /social account does not exist/);
+    assert.equal((await contentService.get(bound.id)).status, "scheduled");
+  });
+
   it("resolves credentials by opaque reference and does not store the secret on the account", async () => {
     const { contentService, socialAccounts, created } = await setup("secret-ref-1");
     const resolver = new InMemorySocialCredentialResolver();
