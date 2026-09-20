@@ -34,3 +34,16 @@ Use this checklist for every production release of AffiliateOS.
 - [ ] CI test, typecheck, build, migration verification, container build, and runtime smoke tests are green for the exact release commit.
 - [ ] Production deployment has been smoke-tested after promotion.
 - [ ] The deployed commit SHA is recorded with the release.
+
+## Release procedure
+
+1. Start from a clean `main` commit with all required CI checks green.
+2. Record the exact commit SHA as the release candidate.
+3. Run `npm run db:verify` against the release database before promotion.
+4. Promote the API and web images built from the exact release commit.
+5. Confirm API health and readiness, then confirm the web `/healthz` endpoint.
+6. Run the documented production smoke tests against the deployed origins.
+7. Record the deployed commit SHA and migration state in the release record.
+8. Create the GitHub Release only after the deployment evidence is complete.
+
+The checklist is evidence-driven: a repository CI pass validates the application and images, while deployment-specific items must be verified in the production environment before a release is declared complete.
