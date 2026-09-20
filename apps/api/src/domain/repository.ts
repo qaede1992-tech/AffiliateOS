@@ -2,6 +2,7 @@ import type { EntityId } from "@affiliateos/shared";
 import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, Offer, Product, TrackingLink, SocialAccount } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
+import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
@@ -35,7 +36,7 @@ export class InMemoryMediaAssetRepository implements MediaAssetRepository {
   async findById(id: EntityId) { return this.assets.get(id); }
   async save(asset: MediaAsset) { this.assets.set(asset.id, asset); return asset; }
 }
-export class InMemoryPublicationJobRepository implements PublicationJobRepository {
+export class InMemoryPublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
   async findById(id: EntityId) { return this.jobs.get(id); }
@@ -43,13 +44,20 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
   async saveIfAbsent(job: PublicationJob) { const existing = this.findByIdempotencyKeySync(job.idempotencyKey); if (existing) return existing; this.jobs.set(job.id, job); return job; }
   private findByIdempotencyKeySync(key: string) { for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job; return undefined; }
-  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) { const job = this.jobs.get(id); if (!job || job.status === "succeeded") return undefined; const scheduled = new Date(job.scheduledAt).getTime(); const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined; const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs; if (scheduled > nowDate.getTime() || lockFresh) return undefined; const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() }; this.jobs.set(id, claimed); return claimed; }
+  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) { const job = this.jobs.get(id); if (!job || job.status === "succeeded" || job.status === "awaiting_confirmation") return undefined; const scheduled = new Date(job.scheduledAt).getTime(); const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined; const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs; if (scheduled > nowDate.getTime() || lockFresh) return undefined; const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() }; this.jobs.set(id, claimed); return claimed; }
+}
+export class InMemoryPublicationOperationRepository implements PublicationOperationRepository {
+  private readonly operations = new Map<EntityId, PublicationOperation>();
+  async list() { return [...this.operations.values()]; }
+  async findById(id: EntityId) { return this.operations.get(id); }
+  async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
+  async save(operation: PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
 }
 export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: Repository<Commission>;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository;
+  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
