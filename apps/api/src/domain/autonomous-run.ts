@@ -47,7 +47,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   }
 
   async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) {
-    const current = await this.findById(id);
+    const current = [...this.runs.values()].find((candidate) => candidate.id === id);
     if (!current || !expected.includes(current.status)) return undefined;
     this.runs.set(run.idempotencyKey, run);
     return run;
