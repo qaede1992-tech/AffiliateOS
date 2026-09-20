@@ -10,7 +10,7 @@ import type { AnalyticsReader } from "./analytics-db.js";
 import { ConversionAttributionService, InMemoryConversionAttributionRepository, type ConversionAttributionRepository } from "./attribution.js";
 import { InMemoryOAuthStateRepository, InMemorySocialOAuthProviderRegistry, SocialOAuthService, type OAuthStateRepository } from "./oauth.js";
 import { CampaignOrchestrator } from "./campaign-orchestrator.js";
-import { DistributionEngine } from "./distribution-engine.js";
+import { DistributionEngine, type SocialPublisher } from "./distribution-engine.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import { PublisherExecutor } from "./publisher-executor.js";
 import { PublicationWorker } from "./publication-worker.js";
@@ -22,12 +22,12 @@ export interface Services {
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository()): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = []): Services {
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
-  const distribution = new DistributionEngine(content, repositories.socialAccounts, [], publicationJobs);
+  const distribution = new DistributionEngine(content, repositories.socialAccounts, socialPublishers, publicationJobs);
   const executor = new PublisherExecutor(content, repositories.socialAccounts, distribution.listPublishers());
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
