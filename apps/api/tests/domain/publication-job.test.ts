@@ -24,11 +24,14 @@ describe("PublicationJobService", () => {
     const service = new PublicationJobService(repo);
     const job = await service.enqueue(content);
     const now = new Date("2026-09-20T11:00:00.000Z");
-    const claimed = await service.claim(job.id, now);
-    const duplicateClaim = await service.claim(job.id, new Date("2026-09-20T11:05:00.000Z"));
-    assert.equal(claimed?.status, "processing");
-    assert.equal(claimed?.attemptCount, 1);
-    assert.equal(duplicateClaim, undefined);
+    const [firstClaim, secondClaim] = await Promise.all([
+      service.claim(job.id, now),
+      service.claim(job.id, now)
+    ]);
+    const claims = [firstClaim, secondClaim].filter(Boolean);
+    assert.equal(claims.length, 1);
+    assert.equal(claims[0]?.status, "processing");
+    assert.equal(claims[0]?.attemptCount, 1);
   });
 
   it("does not claim a future job", async () => {
