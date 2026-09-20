@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import type { AffiliateOffer, Product } from "@affiliateos/shared";
 import { AutonomousOpportunitySelector } from "../../src/domain/autonomous-opportunity.js";
 
@@ -23,22 +24,22 @@ describe("autonomous opportunity selection", () => {
       { product: product("inactive", { status: "inactive" }), offers: [offer("inactive")] },
       { product: product("no-offer"), offers: [] }
     ], { minimumScore: 60, maximumResults: 5, requiredAudience: ["skincare"] });
-    expect(result.selected.map((item) => item.product.id)).toEqual(["good"]);
-    expect(result.rejected.map((item) => item.productId)).toContain("inactive");
-    expect(result.rejected.map((item) => item.productId)).toContain("no-offer");
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["good"]);
+    assert.ok(result.rejected.map((item) => item.productId).includes("inactive"));
+    assert.ok(result.rejected.map((item) => item.productId).includes("no-offer"));
   });
 
   it("honors maximum results deterministically", () => {
     const candidates = ["a", "b", "c"].map((id) => ({ product: product(id), offers: [offer(id)] }));
     const result = new AutonomousOpportunitySelector().select(candidates, { minimumScore: 0, maximumResults: 2 });
-    expect(result.selected).toHaveLength(2);
-    expect(result.selected.map((item) => item.product.id)).toEqual(["a", "b"]);
+    assert.equal(result.selected.length, 2);
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["a", "b"]);
   });
 
   it("does not select a product that misses a required audience", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }
     ], { minimumScore: 0, requiredAudience: ["skincare"] });
-    expect(result.selected).toHaveLength(0);
+    assert.equal(result.selected.length, 0);
   });
 });
