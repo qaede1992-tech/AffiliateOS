@@ -54,6 +54,19 @@ export class InMemoryPublicationOperationRepository implements PublicationOperat
   async findById(id: EntityId) { return this.operations.get(id); }
   async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
   async save(operation: PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
+  async transition(id: EntityId, expected: PublicationOperation["status"][], operation: PublicationOperation) {
+    const current = this.operations.get(id);
+    if (!current || !expected.includes(current.status)) return undefined;
+    const next: PublicationOperation = {
+      ...current,
+      status: operation.status,
+      externalPostId: operation.externalPostId,
+      lastError: operation.lastError,
+      updatedAt: operation.updatedAt
+    };
+    this.operations.set(id, next);
+    return next;
+  }
 }
 export class InMemoryAutonomousRunRepository implements AutonomousRunRepository {
   private readonly runs = new Map<EntityId, AutonomousRun>();
@@ -61,7 +74,21 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   async findById(id: EntityId) { return this.runs.get(id); }
   async save(run: AutonomousRun) { this.runs.set(run.id, run); return run; }
   async saveIfAbsent(run: AutonomousRun) { const existing = await this.findByIdempotencyKey(run.idempotencyKey); if (existing) return existing; this.runs.set(run.id, run); return run; }
-  async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) { const current = this.runs.get(id); if (!current || !expected.includes(current.status)) return undefined; this.runs.set(id, run); return run; }
+  async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) {
+    const current = this.runs.get(id);
+    if (!current || !expected.includes(current.status)) return undefined;
+    const next: AutonomousRun = {
+      ...current,
+      status: run.status,
+      campaignId: run.campaignId,
+      attemptCount: run.attemptCount,
+      nextAttemptAt: run.nextAttemptAt,
+      lastError: run.lastError,
+      updatedAt: run.updatedAt
+    };
+    this.runs.set(id, next);
+    return next;
+  }
 }
 export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
