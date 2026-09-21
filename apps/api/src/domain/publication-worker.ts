@@ -132,7 +132,18 @@ export class PublicationWorker {
         const checked = await this.executor.check(operation);
         if (checked.result.status === "processing") {
           const transitioned = await this.operations.transition(operation.id, "processing", {}, now);
-          results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: transitioned.status === "published" ? "succeeded" : transitioned.status === "failed" ? "failed" : "processing", externalPostId: transitioned.externalPostId, error: transitioned.lastError });
+          if (transitioned.status === "published" && transitioned.externalPostId) {
+            await this.contentService?.update(transitioned.contentId, { status: "published", publishedAt: now.toISOString() });
+            await this.jobService.succeed(transitioned.jobId, transitioned.externalPostId, now);
+            results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: "succeeded", externalPostId: transitioned.externalPostId });
+          } else if (transitioned.status === "failed") {
+            const error = transitioned.lastError ?? "Publication operation failed.";
+            await this.contentService?.update(transitioned.contentId, { status: "failed" });
+            await this.jobService.fail(transitioned.jobId, error, now);
+            results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: "failed", error });
+          } else {
+            results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: "processing", error: transitioned.lastError });
+          }
           continue;
         }
         if (checked.result.status === "published") {
