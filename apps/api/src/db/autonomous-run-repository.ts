@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "../domain/autonomous-run.js";
 import { autonomousRuns } from "./schema.js";
 
@@ -64,6 +64,18 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
     const rows = await this.db.update(autonomousRuns)
       .set(toRow(run))
       .where(and(eq(autonomousRuns.id, id), inArray(autonomousRuns.status, expected)))
+      .returning();
+    return rows[0] ? toDomain(rows[0]) : undefined;
+  }
+
+  async claimStaleProcessing(id: string, staleBefore: string, run: AutonomousRun): Promise<AutonomousRun | undefined> {
+    const rows = await this.db.update(autonomousRuns)
+      .set(toRow(run))
+      .where(and(
+        eq(autonomousRuns.id, id),
+        eq(autonomousRuns.status, "processing"),
+        lte(autonomousRuns.updatedAt, staleBefore)
+      ))
       .returning();
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
