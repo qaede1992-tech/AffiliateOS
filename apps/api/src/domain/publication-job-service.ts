@@ -1,6 +1,7 @@
 import type { Content, EntityId } from "@affiliateos/shared";
 import type { PublicationJob, PublicationJobRepository } from "./publication-job.js";
 import { createPublicationJob } from "./publication-job.js";
+import { DomainError } from "./errors.js";
 
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -35,21 +36,33 @@ export class PublicationJobService {
 
   async awaitConfirmation(id: EntityId, now = new Date(), error?: string): Promise<PublicationJob> {
     const job = await this.require(id);
+    if (job.status === "awaiting_confirmation") return job;
+    if (job.status === "succeeded") {
+      throw new DomainError("PUBLICATION_JOB_CONFLICT", "A succeeded publication job cannot await confirmation.", 409);
+    }
     return this.jobs.save({ ...job, status: "awaiting_confirmation", lockedAt: undefined, lastError: error, updatedAt: now.toISOString() });
   }
 
   async succeed(id: EntityId, externalPostId: string, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
+    if (job.status === "succeeded") {
+      if (job.externalPostId === externalPostId) return job;
+      throw new DomainError("PUBLICATION_JOB_CONFLICT", "The publication job already succeeded with a different external post.", 409);
+    }
     return this.jobs.save({ ...job, status: "succeeded", externalPostId, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() });
   }
 
   async fail(id: EntityId, error: unknown, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
     const message = error instanceof Error ? error.message : String(error);
+    if (job.status === "succeeded") {
+      throw new DomainError("PUBLICATION_JOB_CONFLICT", "A succeeded publication job cannot be failed.", 409);
+    }
+    if (job.status === "failed" && job.lastError === message) return job;
     return this.jobs.save({ ...job, status: "failed", lockedAt: undefined, lastError: message, updatedAt: now.toISOString() });
   }
 
-  private async require(id: EntityId) {
+  private async require(id: EntityId): Promise<PublicationJob> {
     const job = await this.jobs.findById(id);
     if (!job) throw new Error("Publication job does not exist.");
     return job;
