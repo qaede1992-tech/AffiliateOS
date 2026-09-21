@@ -187,6 +187,21 @@ describe("campaign orchestrator", () => {
     assert.equal(run.opportunityProductId, product.id);
     assert.equal(run.offerId, offer.id);
   });
+  it("rejects an affiliate offer with an invalid expiry timestamp", async () => {
+    const campaigns = new StubCampaigns();
+    const invalidOffer = { ...offer, affiliateLinkExpiresAt: "not-a-timestamp" };
+    campaigns.validateOfferForExecution = async () => invalidOffer;
+    const content = new StubContent();
+    await assert.rejects(
+      () => new CampaignOrchestrator(campaigns as never, new StubTracking() as never, content as never).execute({
+        opportunity, offer: invalidOffer, product, platforms: ["tiktok"]
+      }),
+      /non-expired affiliate link/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
   it("does not mark an unavailable autonomous run failed", async () => {
     const runs = new InMemoryAutonomousRunRepository();
     const autonomousRuns = new AutonomousRunService(runs);
