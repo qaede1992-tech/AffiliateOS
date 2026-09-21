@@ -53,6 +53,22 @@ describe("autonomous cycle", () => {
     assert.equal(result?.optimization.length, 2);
   });
 
+  it("creates one idempotent content revision for revise-content recommendations", async () => {
+    let created = 0;
+    const analytics = { overview: async () => ({ campaigns: [{ campaignId: "revise-me", clickCount: 40, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0.025 }] }) };
+    const campaigns = { update: async () => ({}) };
+    const source = { id: "content-1", status: "published", campaignId: "revise-me", productId: "product-1", platform: "tiktok", contentType: "affiliate-promotion", title: "Original", caption: "Original caption", script: "Original script", cta: "Check" } as never;
+    const content = {
+      list: async () => [source],
+      createRevision: async (_campaignId: string, _source: unknown) => { created += 1; return { ...source, id: "revision-1", status: "draft", title: "[Revision] Original" }; }
+    };
+    const execution = { runOnce: async () => ({ selected: [], rejected: [], outcomes: [] }) } as never;
+    const service = new AutonomousCycleService({ listCandidates: async () => [] }, execution, analytics, undefined, campaigns, content);
+    await service.runOnce();
+    await service.runOnce();
+    assert.equal(created, 2);
+  });
+
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     let release!: () => void;
     const candidates: AutonomousCandidateProvider = {
