@@ -3,6 +3,7 @@ import type { AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-m
 
 export type OpportunityPerformanceSignal = {
   clickCount: number;
+  conversionCount: number;
   conversionRate: number;
   attributedCommissionCents: number;
   adjustment: number;
@@ -43,7 +44,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         observationKey: `${observationNamespace}:${productId}`,
         productId,
         clickCount: signal.clickCount,
-        conversionCount: Math.round(signal.conversionRate * signal.clickCount),
+        conversionCount: signal.conversionCount,
         attributedCommissionCents: signal.attributedCommissionCents,
         conversionRate: signal.conversionRate,
         adjustment,
@@ -74,16 +75,15 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
     const adjustment = clicks < MINIMUM_EVIDENCE_CLICKS
       ? 0
       : clamp(((conversionRate - BASELINE_CONVERSION_RATE) / BASELINE_CONVERSION_RATE) * MAX_ADJUSTMENT, -MAX_ADJUSTMENT, MAX_ADJUSTMENT);
-    signals.set(productId, { clickCount: clicks, conversionRate, attributedCommissionCents: commission, adjustment: Math.round(adjustment * 100) / 100, trendAdjustment: 0 });
+    signals.set(productId, { clickCount: clicks, conversionCount: conversions, conversionRate, attributedCommissionCents: commission, adjustment: Math.round(adjustment * 100) / 100, trendAdjustment: 0 });
   }
   return signals;
 }
 
-function calculateTrendAdjustment(current: OpportunityPerformanceSignal, previous: { clickCount: number; conversionRate: number }): number {
+function calculateTrendAdjustment(current: OpportunityPerformanceSignal, previous: { clickCount: number; conversionCount: number; conversionRate: number }): number {
   const incrementalClicks = current.clickCount - previous.clickCount;
   if (incrementalClicks <= 0) return 0;
-  const previousConversions = previous.conversionRate * previous.clickCount;
-  const incrementalConversions = Math.max(0, current.conversionRate * current.clickCount - previousConversions);
+  const incrementalConversions = Math.max(0, current.conversionCount - previous.conversionCount);
   const incrementalRate = incrementalConversions / incrementalClicks;
   return clamp(((incrementalRate - previous.conversionRate) / Math.max(previous.conversionRate, BASELINE_CONVERSION_RATE)) * MAX_TREND_ADJUSTMENT, -MAX_TREND_ADJUSTMENT, MAX_TREND_ADJUSTMENT);
 }
