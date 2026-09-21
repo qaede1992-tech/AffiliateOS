@@ -51,6 +51,10 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
     if (!occurredAt) throw new Error("Provider conversion is missing a valid occurred-at timestamp.");
 
     const status = this.status(payload.status);
+    const hasExplicitStatus = text(payload.status) !== undefined;
+    if (hasExplicitStatus && !["approved", "rejected", "cancelled", "canceled", "pending"].includes(text(payload.status)!.toLowerCase())) {
+      throw new Error("Provider conversion status is invalid.");
+    }
     if (status === "rejected" && (payload.commission_cents !== undefined || payload.commissionCents !== undefined || payload.commission !== undefined)) {
       throw new Error("Rejected provider conversions cannot include a commission amount.");
     }
