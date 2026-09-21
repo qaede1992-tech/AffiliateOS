@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
 import type { CampaignService, TrackingService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
@@ -27,6 +28,7 @@ export type GeneratedCampaignContent = {
 
 const defaultPlatforms: ContentPlatform[] = ["tiktok", "instagram", "facebook"];
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
+const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string): string => `auto-${createHash("sha256").update(`${idempotencyKey ?? campaignId}:${offerId}`).digest("hex").slice(0, 32)}`;
 
 export class DeterministicCampaignContentGenerator implements CampaignContentGenerator {
   generate(input: { product: Product; offer: AffiliateOffer; opportunity: ScoredOpportunity; platform: ContentPlatform }): GeneratedCampaignContent {
@@ -109,7 +111,7 @@ export class CampaignOrchestrator {
       const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
       const existingLinks = await this.tracking.list(campaign.id);
       const trackingLink = existingLinks.find((link) => link.affiliateOfferId === input.offer.id && link.destinationUrl === input.offer.affiliateUrl) ??
-        await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl });
+        await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl, code: trackingCodeFor(input.idempotencyKey, campaign.id, input.offer.id) });
 
       const existingContent = await this.content.list(campaign.id);
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
