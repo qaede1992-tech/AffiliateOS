@@ -3,8 +3,6 @@ import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOff
 import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, autonomousOptimizationStates } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
-import type { AutonomousOptimizationStateRepository } from "../domain/autonomous-optimization-state.js";
-import type { OptimizationState } from "../domain/optimization-engine.js";
 import { DrizzleAutonomousCycleLockRepository } from "./autonomous-cycle-lock-repository.js";
 
 type DatabaseExecutor = any;
