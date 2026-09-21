@@ -33,7 +33,19 @@ describe("opportunity scoring", () => {
     assert.equal(result.breakdown.commission, 0);
   });
   it("does not mutate the candidate offer collection", () => { const lower = offer({ id: "offer-b", commissionRateBps: 500 }); const higher = offer({ id: "offer-a", commissionRateBps: 1500 }); const offers = [lower, higher]; scoreOpportunity({ product: product(), offers }); assert.deepEqual(offers.map((item) => item.id), ["offer-b", "offer-a"]); });
-  it("penalizes limited availability", () => { const result = scoreOpportunity({ product: product(), offers: [offer({ availability: "limited" })], audience: ["skincare"] }); assert.equal(result.breakdown.availability, 55); });
+  it("prefers an in-stock offer when commission utility is otherwise comparable", () => {
+    const result = scoreOpportunity({
+      product: product(),
+      offers: [
+        offer({ id: "limited-high", commissionRateBps: 1400, availability: "limited" }),
+        offer({ id: "stock-balanced", commissionRateBps: 1200, availability: "in_stock" })
+      ],
+      audience: ["skincare"]
+    });
+    assert.equal(result.offerId, "stock-balanced");
+    assert.equal(result.breakdown.availability, 100);
+  });
+    it("penalizes limited availability", () => { const result = scoreOpportunity({ product: product(), offers: [offer({ availability: "limited" })], audience: ["skincare"] }); assert.equal(result.breakdown.availability, 55); });
   it("ranks opportunities deterministically by score and product id", () => {
     const first = product({ id: "product-a" });
     const second = product({ id: "product-b", soldCount: 10, reviewCount: 2, ratingMilli: 3000 });
