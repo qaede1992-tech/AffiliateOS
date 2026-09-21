@@ -20,9 +20,33 @@ export interface MarketplaceProvider {
   generateAffiliateLink?(externalOfferId: string, context: MarketplaceProviderContext): Promise<{ url: string; expiresAt?: string }>;
   syncConversions?(since: string, context: MarketplaceProviderContext): Promise<{ synced: number }>;
 }
+
+const marketplaceCapabilityMethods: Record<MarketplaceCapability, keyof MarketplaceProvider> = {
+  discoverProducts: "discoverProducts",
+  searchProducts: "searchProducts",
+  getProduct: "getProduct",
+  getOffers: "getOffers",
+  generateAffiliateLink: "generateAffiliateLink",
+  syncConversions: "syncConversions"
+};
+
+export function validateMarketplaceProviderContract(provider: MarketplaceProvider): void {
+  if (!provider.slug.trim()) throw new Error("Marketplace provider slug must not be empty.");
+  if (!provider.displayName.trim()) throw new Error("Marketplace provider display name must not be empty.");
+  const capabilities = new Set<MarketplaceCapability>();
+  for (const capability of provider.capabilities) {
+    if (capabilities.has(capability)) throw new Error(`Marketplace provider declares duplicate capability: ${capability}`);
+    capabilities.add(capability);
+    const method = marketplaceCapabilityMethods[capability];
+    if (typeof provider[method] !== "function") {
+      throw new Error(`Marketplace provider declares unsupported capability: ${capability}`);
+    }
+  }
+}
+
 export class MarketplaceProviderRegistry {
   private readonly providers = new Map<string, MarketplaceProvider>();
-  register(provider: MarketplaceProvider): void { if (this.providers.has(provider.slug)) throw new Error(`Marketplace provider already registered: ${provider.slug}`); this.providers.set(provider.slug, provider); }
+  register(provider: MarketplaceProvider): void { validateMarketplaceProviderContract(provider); if (this.providers.has(provider.slug)) throw new Error(`Marketplace provider already registered: ${provider.slug}`); this.providers.set(provider.slug, provider); }
   get(slug: string): MarketplaceProvider { const provider = this.providers.get(slug); if (!provider) throw new Error(`Marketplace provider is not configured: ${slug}`); return provider; }
   list(): MarketplaceProvider[] { return [...this.providers.values()]; }
 }
