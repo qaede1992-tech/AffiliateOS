@@ -28,6 +28,7 @@ import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace
 import { AutonomousScheduler } from "./autonomous-scheduler.js";
 import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
 import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
+import { ProviderConversionProcessor } from "./provider-conversion-processor.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
@@ -36,6 +37,7 @@ export interface Services {
 }
 
 export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository()): Services {
+  const conversions = new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager);
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
@@ -63,7 +65,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, {}, { intervalMs: autonomousSchedulerIntervalMs });
   return {
-    affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions: new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager), commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, distribution,
+    affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, distribution,
     socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository), analytics, attribution, publicationJobs, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
 }
