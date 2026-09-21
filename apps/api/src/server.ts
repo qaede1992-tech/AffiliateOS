@@ -9,6 +9,7 @@ import { DrizzleOAuthStateRepository } from "./db/oauth-state.js";
 import { DrizzlePublicationOperationRepository } from "./db/publication-operation-repository.js";
 import { DrizzleAutonomousRunRepository } from "./db/autonomous-run-repository.js";
 import { DrizzleAutonomousFeedbackMemoryRepository } from "./db/autonomous-feedback-memory-repository.js";
+import { DrizzleAutonomousOptimizationStateRepository } from "./db/autonomous-optimization-state-repository.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const services = createServices(
@@ -25,6 +26,7 @@ const services = createServices(
   new DrizzleAutonomousRunRepository(persistence.db),
   environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
   new DrizzleAutonomousFeedbackMemoryRepository(persistence.db),
+  new DrizzleAutonomousOptimizationStateRepository(persistence.db),
   { publicationDelayMs: environment.AUTONOMOUS_PUBLICATION_DELAY_MS }
 );
 const app = createApp(services, {
