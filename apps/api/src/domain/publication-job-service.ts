@@ -18,12 +18,16 @@ export class PublicationJobService {
   async claim(id: EntityId, now = new Date()): Promise<PublicationJob | undefined> {
     if (this.jobs.claimDue) return this.jobs.claimDue(id, now, LOCK_TIMEOUT_MS);
     const job = await this.jobs.findById(id);
-    if (!job || job.status === "succeeded" || job.status === "awaiting_confirmation") return undefined;
-    if (job.status === "processing" && job.lockedAt) {
+    if (!job) return undefined;
+    const scheduledAt = new Date(job.scheduledAt).getTime();
+    if (!Number.isFinite(scheduledAt) || scheduledAt > now.getTime()) return undefined;
+    if (job.status === "processing") {
+      if (!job.lockedAt) return undefined;
       const lockAge = now.getTime() - new Date(job.lockedAt).getTime();
-      if (Number.isFinite(lockAge) && lockAge < LOCK_TIMEOUT_MS) return undefined;
+      if (!Number.isFinite(lockAge) || lockAge < LOCK_TIMEOUT_MS) return undefined;
+    } else if (job.status !== "pending" && job.status !== "failed") {
+      return undefined;
     }
-    if (new Date(job.scheduledAt).getTime() > now.getTime()) return undefined;
     return this.jobs.save({
       ...job,
       status: "processing",
