@@ -17,6 +17,10 @@ export class PublicationOperationService {
     return this.operations.list();
   }
 
+  async findById(id: EntityId): Promise<PublicationOperation | undefined> {
+    return this.operations.findById(id);
+  }
+
   async create(input: { contentId: EntityId; jobId: EntityId; provider: string; providerOperationId: string; status?: PublicationOperationStatus }, now = new Date()): Promise<PublicationOperation> {
     const existing = await this.operations.findByProviderOperation(input.provider, input.providerOperationId);
     if (existing) return existing;
