@@ -21,6 +21,7 @@ export interface AutonomousRunRepository {
   save(run: AutonomousRun): Promise<AutonomousRun>;
   saveIfAbsent?(run: AutonomousRun): Promise<AutonomousRun>;
   transition?(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun): Promise<AutonomousRun | undefined>;
+  claimProcessing?(id: EntityId, now: Date, staleAfterMs: number): Promise<AutonomousRun | undefined>;
 }
 
 export class InMemoryAutonomousRunRepository implements AutonomousRunRepository {
@@ -51,6 +52,22 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     if (!current || !expected.includes(current.status)) return undefined;
     this.runs.set(run.idempotencyKey, run);
     return run;
+  }
+
+  async claimProcessing(id: EntityId, now: Date, staleAfterMs: number) {
+    const current = [...this.runs.values()].find((candidate) => candidate.id === id);
+    if (!current) return undefined;
+    const staleCutoff = now.getTime() - staleAfterMs;
+    const staleProcessing = current.status === "processing" && new Date(current.updatedAt).getTime() <= staleCutoff;
+    if (current.status !== "accepted" && current.status !== "failed" && !staleProcessing) return undefined;
+    const claimed: AutonomousRun = {
+      ...current,
+      status: "processing",
+      lastError: undefined,
+      updatedAt: now.toISOString()
+    };
+    this.runs.set(current.idempotencyKey, claimed);
+    return claimed;
   }
 }
 
