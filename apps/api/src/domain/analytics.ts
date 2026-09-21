@@ -97,7 +97,7 @@ export class AnalyticsService {
     const productId = typeof campaign.audience.productId === "string" ? campaign.audience.productId : undefined;
     return {
       campaignId: campaign.id,
-      productId,
+      ...(productId === undefined ? {} : { productId }),
       clickCount,
       trackingLinkCount: trackingLinks.length,
       contentCount: contents.length,
