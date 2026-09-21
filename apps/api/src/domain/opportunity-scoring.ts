@@ -30,7 +30,18 @@ function isAffiliateLinkUsable(offer: AffiliateOffer, now = new Date()): boolean
 function bestOffer(productId: string, offers: AffiliateOffer[]): AffiliateOffer | undefined { return offers.filter((offer) => offer.productId === productId && offer.status === "active" && isAffiliateLinkUsable(offer) && offer.availability !== "out_of_stock").slice().sort((a, b) => (b.commissionRateBps ?? 0) - (a.commissionRateBps ?? 0) || (b.commissionAmountCents ?? 0) - (a.commissionAmountCents ?? 0) || a.id.localeCompare(b.id))[0]; }
 
 export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportunity {
-  const { product } = input; const offer = bestOffer(product.id, input.offers); const audience = audienceFit(product, input.audience ?? []);
+  const { product } = input;
+  if (product.status !== "active") {
+    return {
+      product,
+      offerId: undefined,
+      score: 0,
+      reasons: ["Product is inactive"],
+      disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.",
+      breakdown: { commission: 0, demand: 0, audienceFit: 0, socialProof: 0, priceAppeal: 0, availability: 0, confidencePenalty: 0, total: 0 }
+    };
+  }
+  const offer = bestOffer(product.id, input.offers); const audience = audienceFit(product, input.audience ?? []);
   const commission = offer?.commissionRateBps !== undefined ? clamp((offer.commissionRateBps / 2_000) * 100) : 0;
   const demand = clamp(logScore(product.soldCount, 5) * 0.7 + logScore(product.reviewCount, 5) * 0.3);
   const socialProof = clamp((product.ratingMilli ?? 0) / 50 * 0.7 + logScore(product.reviewCount, 6) * 0.3);
