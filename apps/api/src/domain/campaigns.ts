@@ -54,7 +54,10 @@ export class CampaignService {
     if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
     if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Campaign execution requires an active affiliate offer.");
     if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Campaign execution requires an active affiliate link.");
-    if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) throw new DomainError("AFFILIATE_LINK_EXPIRED", "Campaign execution requires a non-expired affiliate link.");
+    if (offer.affiliateLinkExpiresAt) {
+      const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new DomainError("AFFILIATE_LINK_EXPIRED", "Campaign execution requires a non-expired affiliate link.");
+    }
     return offer;
   }
 
