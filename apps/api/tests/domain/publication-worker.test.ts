@@ -78,6 +78,26 @@ describe("PublicationWorker", () => {
     assert.equal(selectedAccount, bound.id);
   });
 
+  it("fails closed when an accepted operation cannot be reconciled", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const publisher: SocialPublisher = {
+      provider: "no-check-provider",
+      supports: () => true,
+      publish: async () => ({ status: "accepted", providerOperationId: "operation-no-check" })
+    };
+    const operations = new InMemoryPublicationOperationRepository();
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const job = await jobService.enqueue(content);
+    const accepted = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(accepted[0]?.status, "awaiting_confirmation");
+    const recovered = await worker.runOnce(new Date("2026-09-20T11:03:00.000Z"));
+    assert.equal(recovered[0]?.status, "failed");
+    assert.match(recovered[0]?.error ?? "", /does not support publication status checks/);
+    assert.equal((await jobs.findById(job.id))?.status, "failed");
+    assert.equal((await operations.findByProviderOperation("no-check-provider", "operation-no-check"))?.status, "failed");
+    assert.equal((await contentService.get(content.id)).status, "failed");
+  });
+
   it("waits for an accepted provider operation before publishing content", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let checks = 0;
