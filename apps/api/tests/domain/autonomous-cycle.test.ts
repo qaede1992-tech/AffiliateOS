@@ -58,9 +58,10 @@ describe("autonomous cycle", () => {
     const analytics = { overview: async () => ({ campaigns: [{ campaignId: "revise-me", clickCount: 40, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0.025 }] }) };
     const campaigns = { update: async () => ({}) };
     const source = { id: "content-1", status: "published", campaignId: "revise-me", productId: "product-1", platform: "tiktok", contentType: "affiliate-promotion", title: "Original", caption: "Original caption", script: "Original script", cta: "Check" } as never;
+    const revised: unknown[] = [];
     const content = {
-      list: async () => [source],
-      createRevision: async (_campaignId: string, _source: unknown) => { created += 1; return { ...source, id: "revision-1", status: "draft", title: "[Revision] Original" }; }
+      list: async () => [source, ...revised],
+      createRevision: async (_campaignId: string, _source: unknown) => { created += 1; const item = { ...source, id: "revision-1", status: "draft", title: "[Revision] Original" }; revised.push(item); return item; }
     };
     const execution = { runOnce: async () => ({ selected: [], rejected: [], outcomes: [] }) } as never;
     const service = new AutonomousCycleService({ listCandidates: async () => [] }, execution, analytics, undefined, campaigns, content);
