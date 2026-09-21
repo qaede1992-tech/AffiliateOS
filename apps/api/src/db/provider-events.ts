@@ -1,4 +1,4 @@
-import { and, eq, lte, or } from "drizzle-orm";
+import { and, asc, eq, lte, or } from "drizzle-orm";
 import { providerEvents } from "./schema.js";
 
 export const PROVIDER_EVENT_PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
@@ -45,8 +45,27 @@ export class ProviderEventStore {
   }
 
   async listProcessable(limit = 100): Promise<ProviderEventRecord[]> {
-    const rows = await this.db.select().from(providerEvents).where(or(eq(providerEvents.status, "received"), eq(providerEvents.status, "failed"), and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())))).limit(Math.min(Math.max(limit, 1), 500));
-    return rows as ProviderEventRecord[];
+    const rows = await this.db.select().from(providerEvents)
+      .where(or(
+        eq(providerEvents.status, "received"),
+        eq(providerEvents.status, "failed"),
+        and(
+          eq(providerEvents.status, "processing"),
+          lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())
+        )
+      ))
+      .orderBy(asc(providerEvents.receivedAt))
+      .limit(Math.min(Math.max(limit, 1), 500));
+    return rows.map((row) => ({
+      id: row.id,
+      affiliateAccountId: row.affiliateAccountId,
+      externalEventId: row.externalEventId,
+      eventType: row.eventType,
+      payload: row.payload as Record<string, unknown>,
+      signatureVersion: row.signatureVersion ?? undefined,
+      status: row.status ?? undefined,
+      receivedAt: row.receivedAt
+    }));
   }
 
   async claimForProcessing(affiliateAccountId: string, externalEventId: string): Promise<boolean> {
