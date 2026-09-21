@@ -27,7 +27,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
         for (const product of products) {
           try {
             const offers = await this.marketplace.getOffers(connection.slug, product.externalProductId);
-            const executableOffers = await this.ensureAffiliateLinks(connection.slug, product.externalProductId, offers);
+            const executableOffers = await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers);
             candidates.push({ product, offers: executableOffers });
           } catch {
             candidates.push({ product, offers: [] });
@@ -41,13 +41,13 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     return deduplicateCandidates(candidates);
   }
 
-  private async ensureAffiliateLinks(connectionSlug: string, externalProductId: string, offers: AffiliateOffer[]): Promise<AffiliateOffer[]> {
-    if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > Date.now()));
+  private async ensureAffiliateLinks(productId: string, connectionSlug: string, externalProductId: string, offers: AffiliateOffer[]): Promise<AffiliateOffer[]> {
+    if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.productId === productId && offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > Date.now()));
 
     const executable: AffiliateOffer[] = [];
     const now = Date.now();
     for (const offer of offers) {
-      if (offer.status !== "active") continue;
+      if (offer.productId !== productId || offer.status !== "active") continue;
       const linkUsable = offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now);
       if (linkUsable) {
         executable.push(offer);
@@ -56,7 +56,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
       if (!offer.externalOfferId) continue;
       try {
         const linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
-        if (linked.status === "active" && linked.affiliateLinkStatus === "active" && linked.affiliateUrl) executable.push(linked);
+        if (linked.productId === productId && linked.status === "active" && linked.affiliateLinkStatus === "active" && linked.affiliateUrl) executable.push(linked);
       } catch {
         // A provider may reject link generation for an individual offer; keep the cycle running and exclude that offer from execution.
       }
