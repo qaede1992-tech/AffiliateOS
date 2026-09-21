@@ -132,6 +132,54 @@ describe("PublicationWorker", () => {
     assert.equal((await operations.findByProviderOperation("restart-safe-provider", "restart-safe-operation"))?.status, "published");
   });
 
+  it("repairs downstream content and job state after terminal operation recovery", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const operations = new InMemoryPublicationOperationRepository();
+    let checks = 0;
+    const publisher: SocialPublisher = {
+      provider: "repair-provider",
+      supports: () => true,
+      publish: async () => ({ status: "accepted", providerOperationId: "repair-operation" }),
+      checkPublication: async () => {
+        checks += 1;
+        return { status: "published", externalPostId: "repair-post" };
+      }
+    };
+    const originalUpdate = contentService.update.bind(contentService);
+    let failNextUpdate = true;
+    contentService.update = async (...args: Parameters<ContentService["update"]>) => {
+      if (failNextUpdate) {
+        failNextUpdate = false;
+        throw new Error("simulated downstream content failure");
+      }
+      return originalUpdate(...args);
+    };
+
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const job = await jobService.enqueue(content);
+    const accepted = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(accepted[0]?.status, "awaiting_confirmation");
+
+    await assert.rejects(
+      worker.runOnce(new Date("2026-09-20T11:30:00.000Z")),
+      /simulated downstream content failure/
+    );
+    assert.equal((await operations.findByProviderOperation("repair-provider", "repair-operation"))?.status, "published");
+    assert.equal((await jobs.findById(job.id))?.status, "processing");
+    assert.equal((await contentService.get(content.id)).status, "scheduled");
+
+    const repaired = await worker.runOnce(new Date("2026-09-20T11:31:00.000Z"));
+    assert.deepEqual(repaired[0], {
+      jobId: job.id,
+      contentId: content.id,
+      status: "succeeded",
+      externalPostId: "repair-post"
+    });
+    assert.equal(checks, 1);
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+    assert.equal((await contentService.get(content.id)).status, "published");
+  });
+
   it("reuses the same publisher idempotency key after a crash-like retry", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const keys: string[] = [];
