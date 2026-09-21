@@ -2,6 +2,7 @@ import type { AudienceSegment, ContentPlatform } from "@affiliateos/shared";
 import type { AutonomousExecutionCandidate, AutonomousExecutionInput, AutonomousExecutionResult, AutonomousExecutionService } from "./autonomous-execution.js";
 import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
 import type { CampaignAnalytics } from "./analytics.js";
+import type { CampaignService } from "./campaigns.js";
 import { OptimizationEngine, type OptimizationRecommendation } from "./optimization-engine.js";
 
 export interface AutonomousCandidateProvider {
@@ -32,7 +33,8 @@ export class AutonomousCycleService {
     private readonly candidates: AutonomousCandidateProvider,
     private readonly execution: AutonomousExecutionService,
     private readonly analytics?: { overview(): Promise<{ campaigns: CampaignAnalytics[] }> },
-    private readonly optimizer: OptimizationEngine = new OptimizationEngine()
+    private readonly optimizer: OptimizationEngine = new OptimizationEngine(),
+    private readonly campaigns?: Pick<CampaignService, "update">
   ) {}
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
@@ -52,6 +54,15 @@ export class AutonomousCycleService {
       };
       const result = await this.execution.runOnce(executionInput);
       const optimization = this.analytics ? this.optimizer.recommend((await this.analytics.overview()).campaigns) : [];
+      if (this.campaigns) {
+        for (const recommendation of optimization) {
+          if (recommendation.action === "pause") {
+            await this.campaigns.update(recommendation.campaignId, { status: "paused" });
+          } else if (recommendation.action === "scale") {
+            await this.campaigns.update(recommendation.campaignId, { status: "active" });
+          }
+        }
+      }
       return {
         startedAt,
         completedAt: new Date().toISOString(),
