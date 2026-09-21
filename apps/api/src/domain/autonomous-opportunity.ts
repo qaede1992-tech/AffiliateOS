@@ -48,7 +48,9 @@ export class AutonomousOpportunitySelector {
       offers: candidate.offers,
       audience: requiredAudience,
       targetPriceMaxCents: policy.targetPriceMaxCents
-    }))).map((item) => applyPerformance(item, performance.get(item.product.id)));
+    })))
+      .map((item) => applyPerformance(item, performance.get(item.product.id)))
+      .sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
 
     const eligible = scored.filter((item) => item.score >= minimumScore && Boolean(item.offerId) &&
       (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) && item.product.status === "active");
