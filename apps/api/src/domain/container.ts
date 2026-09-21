@@ -23,7 +23,7 @@ import { AutonomousExecutionService } from "./autonomous-execution.js";
 import { AutonomousOpportunitySelector } from "./autonomous-opportunity.js";
 import { InMemoryAutonomousRunRepository, type AutonomousRunRepository } from "./autonomous-run.js";
 import type { PublicationOperationRepository } from "./publication-operation.js";
-import { AutonomousCycleService } from "./autonomous-cycle.js";
+import { AutonomousCycleService, type AutonomousCycleInput } from "./autonomous-cycle.js";
 import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace-candidates.js";
 import { AutonomousScheduler } from "./autonomous-scheduler.js";
 import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
@@ -35,7 +35,7 @@ export interface Services {
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository()): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleInput: AutonomousCycleInput = {}): Services {
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
@@ -55,7 +55,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers);
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution);
-  const autonomousScheduler = new AutonomousScheduler(autonomousCycle, {}, { intervalMs: autonomousSchedulerIntervalMs });
+  const autonomousScheduler = new AutonomousScheduler(autonomousCycle, autonomousCycleInput, { intervalMs: autonomousSchedulerIntervalMs });
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions: new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager), commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousCycle, autonomousScheduler, distribution,
     socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository), analytics, attribution: new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository), publicationJobs, publicationWorker, publicationScheduler, publisherReadiness
