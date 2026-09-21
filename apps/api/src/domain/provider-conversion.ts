@@ -45,6 +45,7 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
 
     const amountCents = integer(payload.amount_cents) ?? integer(payload.amountCents) ?? this.moneyToCents(payload.amount, "amount");
     if (amountCents === undefined || amountCents < 0) throw new Error("Provider conversion is missing a valid non-negative amount.");
+    if (amountCents > Number.MAX_SAFE_INTEGER) throw new Error("Provider conversion amount is outside the supported money range.");
 
     const occurredAt = iso(payload.occurred_at) ?? iso(payload.occurredAt) ?? iso(payload.created_at) ?? iso(payload.createdAt);
     if (!occurredAt) throw new Error("Provider conversion is missing a valid occurred-at timestamp.");
@@ -52,6 +53,7 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
     const status = this.status(payload.status);
     const commissionCents = integer(payload.commission_cents) ?? integer(payload.commissionCents) ?? (payload.commission !== undefined ? this.moneyToCents(payload.commission, "commission") : undefined);
     if (commissionCents !== undefined && commissionCents < 0) throw new Error("Provider conversion commission must be non-negative.");
+    if (commissionCents !== undefined && commissionCents > Number.MAX_SAFE_INTEGER) throw new Error("Provider conversion commission is outside the supported money range.");
 
     const currency = text(payload.currency)?.toUpperCase();
     if (currency && !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider conversion currency must be a three-letter ISO code.");
