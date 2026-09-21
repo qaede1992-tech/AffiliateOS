@@ -32,6 +32,12 @@ describe("autonomous cycle", () => {
     assert.ok(new Date(result.completedAt).getTime() >= new Date(result.startedAt).getTime());
   });
 
+  it("derives a future publication time when a delay is configured", async () => {
+    const execution = { async runOnce(input: { scheduledAt?: string }) { assert.ok(input.scheduledAt); assert.ok(new Date(input.scheduledAt).getTime() > Date.now()); return { selected: [], rejected: [], outcomes: [] }; } } as unknown as AutonomousExecutionService;
+    const service = new AutonomousCycleService({ listCandidates: async () => [] }, execution);
+    await service.runOnce({ publicationDelayMs: 60_000 });
+  });
+
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     let release!: () => void;
     const candidates: AutonomousCandidateProvider = {
