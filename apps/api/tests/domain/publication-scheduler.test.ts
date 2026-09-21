@@ -24,8 +24,11 @@ describe("PublicationScheduler", () => {
 
     const firstRun = scheduler.runNow(new Date("2026-09-20T11:00:00.000Z"));
     const secondRun = scheduler.runNow(new Date("2026-09-20T11:00:01.000Z"));
-    await Promise.resolve();
+    let secondSettled = false;
+    void secondRun.finally(() => { secondSettled = true; });
+    await new Promise<void>((resolve) => setImmediate(resolve));
 
+    assert.equal(secondSettled, false);
     assert.equal(calls, 1);
     first.resolve();
     await Promise.all([firstRun, secondRun]);
