@@ -38,6 +38,8 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
     const payload = input.payload;
     const eventType = text(input.eventType);
     if (!eventType || eventType.length > 255) throw new Error("Provider conversion event type is missing or invalid.");
+    const payloadType = text(payload.type);
+    if (!eventType.startsWith("conversion.") && !payloadType?.startsWith("conversion.")) throw new Error("Provider conversion event type is unsupported.");
     const eventId = text(input.eventId);
     if (!eventId || eventId.length > 255) throw new Error("Provider conversion source event ID is missing or invalid.");
     const externalConversionId = text(payload.conversion_id) ?? text(payload.conversionId) ?? text(payload.id);
