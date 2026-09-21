@@ -132,6 +132,27 @@ describe("PublicationWorker", () => {
     assert.equal((await operations.findByProviderOperation("restart-safe-provider", "restart-safe-operation"))?.status, "published");
   });
 
+  it("keeps terminal publication job reconciliation idempotent and rejects conflicting outcomes", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => ({ status: "published", externalPostId: "stable-post" })
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
+    const job = await jobService.enqueue(content);
+    await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+    assert.deepEqual(await jobService.succeed(job.id, "stable-post", new Date("2026-09-20T11:01:00.000Z")), await jobs.findById(job.id));
+    await assert.rejects(
+      jobService.succeed(job.id, "different-post", new Date("2026-09-20T11:02:00.000Z")),
+      (error: unknown) => error instanceof Error && "code" in error && (error as { code?: unknown }).code === "PUBLICATION_JOB_CONFLICT"
+    );
+    await assert.rejects(
+      jobService.fail(job.id, "late failure", new Date("2026-09-20T11:03:00.000Z")),
+      (error: unknown) => error instanceof Error && "code" in error && (error as { code?: unknown }).code === "PUBLICATION_JOB_CONFLICT"
+    );
+  });
+
   it("repairs downstream content and job state after terminal operation recovery", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const operations = new InMemoryPublicationOperationRepository();
