@@ -43,6 +43,17 @@ export class DistributionEngine {
     return account;
   }
 
+
+  async scheduleIfReady(request: DistributionRequest): Promise<DistributionPlan | undefined> {
+    const scheduledAt = new Date(request.scheduledAt);
+    if (!Number.isFinite(scheduledAt.getTime())) throw new Error("Distribution requires a valid scheduledAt timestamp.");
+    if (request.content.status !== "draft") throw new Error("Only draft content can be scheduled for distribution.");
+    const account = await this.findActiveAccount(request);
+    if (!account) return undefined;
+    if (!this.publishers.some((publisher) => publisherSupportsContent(publisher, request.content))) return undefined;
+    return this.schedule({ ...request, accountId: account.id });
+  }
+
   async schedule(request: DistributionRequest): Promise<DistributionPlan> {
     const scheduledAt = new Date(request.scheduledAt);
     const account = await this.validate(request);
@@ -56,6 +67,13 @@ export class DistributionEngine {
     }
     const publishable = this.publishers.some((publisher) => publisherSupportsContent(publisher, request.content));
     return { content: updated, account, scheduledAt: scheduledAt.toISOString(), publishable };
+  }
+
+  private async findActiveAccount(request: DistributionRequest): Promise<SocialAccount | undefined> {
+    const accounts = await this.socialAccounts.list();
+    return request.accountId
+      ? accounts.find((candidate) => candidate.id === request.accountId && candidate.status === "active" && platformMatches(request.content, candidate))
+      : accounts.find((candidate) => candidate.status === "active" && platformMatches(request.content, candidate));
   }
 
   async validateBatch(requests: DistributionRequest[]): Promise<SocialAccount[]> {
