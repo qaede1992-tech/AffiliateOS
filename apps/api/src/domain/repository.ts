@@ -5,6 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
 import type { AutonomousOptimizationStateRepository } from "./autonomous-optimization-state.js";
+import type { AutonomousCycleLockRepository } from "./autonomous-cycle-lock.js";
 
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
