@@ -31,6 +31,10 @@ function validateMarketplaceOfferInput(input: MarketplaceOfferInput): void {
   }
   if (input.commissionRateBps !== undefined && (!Number.isInteger(input.commissionRateBps) || input.commissionRateBps < 0 || input.commissionRateBps > 10000)) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace commission rate must be between 0 and 10000 basis points.", 400);
   if (input.commissionAmountCents !== undefined && input.priceCents !== undefined && input.commissionAmountCents > input.priceCents) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace commission amount cannot exceed offer price.", 400);
+  if (input.commissionRateBps !== undefined && input.commissionAmountCents !== undefined && input.priceCents !== undefined) {
+    const impliedCommissionCents = Math.floor(input.priceCents * input.commissionRateBps / 10000);
+    if (input.commissionAmountCents > impliedCommissionCents + 1 || input.commissionAmountCents + 1 < impliedCommissionCents) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace commission amount and rate are inconsistent.", 400);
+  }
   if (input.currency !== undefined && !/^[A-Za-z]{3}$/.test(input.currency.trim())) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace offer currency must be a three-letter code.", 400);
   if (!["in_stock", "out_of_stock", "limited", "unknown"].includes(input.availability)) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace offer availability is invalid.", 400);
   if (input.affiliateLinkExpiresAt !== undefined && !Number.isFinite(Date.parse(input.affiliateLinkExpiresAt))) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace affiliate link expiry must be a valid timestamp.", 400);
