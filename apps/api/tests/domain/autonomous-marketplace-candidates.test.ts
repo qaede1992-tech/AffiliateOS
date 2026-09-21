@@ -80,6 +80,21 @@ describe("autonomous marketplace candidate provider", () => {
     assert.equal(result[0].offers.length, 0);
   });
 
+  it("skips inactive products before requesting offers", async () => {
+    let offerCalls = 0;
+    const inactive = product("product-inactive");
+    inactive.status = "inactive";
+    const marketplace = {
+      listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      discoverProducts: async () => [inactive],
+      getOffers: async () => { offerCalls += 1; return []; }
+    } as any;
+
+    const result = await new AutonomousMarketplaceCandidateProvider(marketplace).listCandidates();
+    assert.equal(result.length, 0);
+    assert.equal(offerCalls, 0);
+  });
+
   it("skips inactive connections and isolates discovery failures", async () => {
     const marketplace = {
       listConnections: async () => [
