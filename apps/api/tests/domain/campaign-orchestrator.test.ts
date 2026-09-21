@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AffiliateOffer, Campaign, Content, Product, TrackingLink } from "@affiliateos/shared";
@@ -134,6 +135,20 @@ describe("campaign orchestrator", () => {
     });
     assert.equal(tracking.created, 1);
     assert.equal(result.trackingLink.status, "active");
+  });
+
+  it("avoids reusing a deterministic code occupied by an inactive link", async () => {
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    const baseCode = `auto-${createHash("sha256").update("occupied-code-run:offer-1:0").digest("hex").slice(0, 32)}`;
+    tracking.list = async () => [{ ...link, status: "inactive", code: baseCode }];
+    const content = new StubContent();
+    await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+      opportunity, offer, product, idempotencyKey: "occupied-code-run", platforms: ["tiktok"]
+    });
+    assert.equal(tracking.created, 1);
+    assert.notEqual(tracking.codes[0], baseCode);
+    assert.match(tracking.codes[0]!, /^auto-[a-f0-9]{32}$/);
   });
 
   it("restores failed affiliate content to draft for retry", async () => {
