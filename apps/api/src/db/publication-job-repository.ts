@@ -82,6 +82,22 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
     return existing;
   }
 
+  async transition(id: string, expected: PublicationJob["status"][], job: PublicationJob): Promise<PublicationJob | undefined> {
+    const rows = await this.db.update(publicationJobs)
+      .set({
+        status: job.status,
+        attemptCount: job.attemptCount,
+        scheduledAt: job.scheduledAt,
+        lockedAt: job.lockedAt ?? null,
+        externalPostId: job.externalPostId ?? null,
+        lastError: job.lastError ?? null,
+        updatedAt: job.updatedAt
+      })
+      .where(and(eq(publicationJobs.id, id), or(...expected.map((status) => eq(publicationJobs.status, status)))))
+      .returning();
+    return rows[0] ? toPublicationJob(rows[0]) : undefined;
+  }
+
   async claimDue(id: string, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined> {
     const nowIso = now.toISOString();
     const staleCutoff = new Date(now.getTime() - lockTimeoutMs).toISOString();
