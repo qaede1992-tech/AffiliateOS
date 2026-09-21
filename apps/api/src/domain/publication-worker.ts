@@ -102,6 +102,13 @@ export class PublicationWorker {
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("does not support publication status checks")) {
+          await this.operations.transition(operation.id, "failed", { error: message }, now);
+          await this.contentService?.update(operation.contentId, { status: "failed" });
+          await this.jobService.fail(operation.jobId, message, now);
+          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: message });
+          continue;
+        }
         await this.operations.transition(operation.id, "processing", { error: message }, now);
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing", error: message });
       }
