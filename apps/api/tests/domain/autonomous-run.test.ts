@@ -26,7 +26,7 @@ describe("autonomous run", () => {
     assert.equal((await repository.findById(accepted.id))?.status, "processing");
   });
 
-  it("does not reclaim a run already in progress", async () => {
+  it("does not reclaim a fresh run already in progress", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
     const accepted = await service.accept({ idempotencyKey: "run-busy", productId: "product-1", offerId: "offer-1" });
@@ -35,6 +35,32 @@ describe("autonomous run", () => {
     assert.equal(first.acquired, true);
     assert.equal(second.acquired, false);
     assert.equal(second.run.status, "processing");
+  });
+
+  it("reclaims a stale processing run", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-stale", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
+    const processing = await service.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z"));
+    const freshAttempt = await service.claimProcessing(processing.run.id, new Date("2026-09-20T10:05:00.000Z"));
+    assert.equal(freshAttempt.acquired, false);
+    const staleAttempt = await service.claimProcessing(processing.run.id, new Date("2026-09-20T10:11:00.000Z"));
+    assert.equal(staleAttempt.acquired, true);
+    assert.equal(staleAttempt.run.status, "processing");
+    assert.equal(staleAttempt.run.lastError, undefined);
+  });
+
+  it("reclaims a stale run exactly once under concurrency", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-race", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
+    const processing = await service.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z"));
+    const [first, second] = await Promise.all([
+      service.claimProcessing(processing.run.id, new Date("2026-09-20T10:11:00.000Z")),
+      service.claimProcessing(processing.run.id, new Date("2026-09-20T10:11:01.000Z"))
+    ]);
+    assert.equal([first.acquired, second.acquired].filter(Boolean).length, 1);
+    assert.equal((await repository.findById(processing.run.id))?.status, "processing");
   });
 
   it("reclaims a failed run and clears the previous error", async () => {
