@@ -34,7 +34,11 @@ export class MarketplaceService {
   private validate(provider: import("./foundations.js").MarketplaceProvider, configuration: Record<string, unknown>, credentialReference?: string): void { assertSafeConfiguration(configuration); if (credentialReference && !isOpaqueReference(credentialReference)) throw new DomainError("INVALID_CREDENTIAL_REFERENCE", "Credential references must be opaque secret-manager references.", 400); provider.validateConfiguration(configuration); }
   private requireCapability<T extends (...args: any[]) => any>(provider: import("./foundations.js").MarketplaceProvider, capability: keyof Pick<import("./foundations.js").MarketplaceProvider, "discoverProducts" | "searchProducts" | "getProduct" | "getOffers" | "generateAffiliateLink">): T { const method = provider[capability]; if (!method) throw new DomainError("MARKETPLACE_CAPABILITY_UNSUPPORTED", `This marketplace provider does not support ${capability}.`, 409); return method.bind(provider) as T; }
   private toView(connection: MarketplaceConnection): MarketplaceConnectionView { const { credentialReference: _secret, ...view } = connection; return { ...view, hasCredentialReference: Boolean(_secret) }; }
-  private async persistProduct(connection: MarketplaceConnection, input: MarketplaceProductInput): Promise<Product> { const existing = await this.products.findByMarketplaceProduct(connection.id, input.externalProductId); const timestamp = now(); const product: Product = { id: existing?.id ?? randomUUID(), marketplaceId: connection.id, externalProductId: input.externalProductId, name: input.name, description: input.description, category: input.category, priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp }; try { return await this.products.save(product); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.products.findByMarketplaceProduct(connection.id, input.externalProductId); if (raced) return this.products.save({ ...raced, name: input.name, description: input.description, category: input.category, priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", updatedAt: timestamp }); } throw error; } }
+  private async persistProduct(connection: MarketplaceConnection, input: MarketplaceProductInput): Promise<Product> {
+    validateMarketplaceProductInput(input);
+    const existing = await this.products.findByMarketplaceProduct(connection.id, input.externalProductId);
+    const timestamp = now();
+    const product: Product = { id: existing?.id ?? randomUUID(), marketplaceId: connection.id, externalProductId: input.externalProductId, name: input.name.trim(), description: input.description?.trim(), category: input.category?.trim(), priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp }; try { return await this.products.save(product); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.products.findByMarketplaceProduct(connection.id, input.externalProductId); if (raced) return this.products.save({ ...raced, name: input.name, description: input.description, category: input.category, priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", updatedAt: timestamp }); } throw error; } }
   private async accountFor(connection: MarketplaceConnection): Promise<AffiliateAccount> { const existing = await this.accounts.findByMarketplace(connection.id); if (existing) return existing; const timestamp = now(); const account: AffiliateAccount = { id: randomUUID(), marketplaceId: connection.id, name: `${connection.name} affiliate account`, status: "active", credentialReference: connection.credentialReference, configuration: {}, createdAt: timestamp, updatedAt: timestamp }; try { return await this.accounts.save(account); } catch (error) { if (isUniqueViolation(error)) { const raced = await this.accounts.findByMarketplace(connection.id); if (raced) return raced; } throw error; } }
 }
 const secretKey = /(secret|token|password|api[_-]?key|client[_-]?secret|authorization)/i;
@@ -48,5 +52,26 @@ function validateAffiliateUrl(value: string): void {
     if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported protocol");
   } catch {
     throw new DomainError("INVALID_AFFILIATE_URL", "Generated affiliate links must use an HTTP or HTTPS URL.", 400);
+  }
+}
+
+
+function validateMarketplaceProductInput(input: MarketplaceProductInput): void {
+  if (!input.externalProductId.trim() || !input.name.trim()) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace products require an external product id and name.", 400);
+  if (!Number.isInteger(input.priceCents) || input.priceCents < 0) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace product price must be a non-negative integer.", 400);
+  if (input.originalPriceCents !== undefined && (!Number.isInteger(input.originalPriceCents) || input.originalPriceCents < 0)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace original price must be a non-negative integer.", 400);
+  if (!/^[A-Za-z]{3}$/.test(input.currency.trim())) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace product currency must be a three-letter code.", 400);
+  if (!Number.isFinite(input.reviewCount ?? 0) || (input.reviewCount ?? 0) < 0 || !Number.isInteger(input.reviewCount ?? 0)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace review count must be a non-negative integer.", 400);
+  if (!Number.isFinite(input.soldCount ?? 0) || (input.soldCount ?? 0) < 0 || !Number.isInteger(input.soldCount ?? 0)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace sold count must be a non-negative integer.", 400);
+  if (input.ratingMilli !== undefined && (!Number.isInteger(input.ratingMilli) || input.ratingMilli < 0 || input.ratingMilli > 5000)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace rating must be between 0 and 5000 milli-points.", 400);
+  validateMarketplaceUrl(input.productUrl, "product");
+  if (input.imageUrl) validateMarketplaceUrl(input.imageUrl, "image");
+}
+function validateMarketplaceUrl(value: string, label: string): void {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported protocol");
+  } catch {
+    throw new DomainError("INVALID_MARKETPLACE_PRODUCT", `Marketplace ${label} URL must use HTTP or HTTPS.`, 400);
   }
 }
