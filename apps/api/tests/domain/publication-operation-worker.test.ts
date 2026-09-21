@@ -61,6 +61,31 @@ describe("Publication operation lifecycle", () => {
     assert.equal(storedOperations[0]?.providerOperationId, "publish-123");
   });
 
+  it("fails an in-flight operation when its affiliate product becomes inactive", async () => {
+    const { contentService, socialAccounts, jobs, operations, jobService, content } = await setup();
+    const products = new InMemoryProductCatalogRepository();
+    await products.save({ ...product, status: "inactive" });
+    const isolatedContents = new InMemoryRepository<Content>();
+    const isolatedContentService = new ContentService(isolatedContents, new InMemoryRepository<any>(), products);
+    const scheduled = await isolatedContentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: account.id });
+    await jobs.save({ id: "job-terminal", contentId: scheduled.id, idempotencyKey: "content:terminal", attemptCount: 1, scheduledAt: "2026-09-20T10:00:00.000Z", status: "awaiting_confirmation", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
+    await operations.save({ id: "operation-terminal", contentId: scheduled.id, jobId: "job-terminal", provider: "tiktok", providerOperationId: "publish-terminal", status: "accepted", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
+    const publisher: SocialPublisher = {
+      provider: "tiktok",
+      supports: () => true,
+      publish: async () => ({ status: "accepted", providerOperationId: "unused" }),
+      checkPublication: async () => ({ status: "processing" })
+    };
+    const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor(isolatedContentService, socialAccounts, [publisher]), isolatedContentService, operations);
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(results[0]?.status, "failed");
+    assert.match(results[0]?.error ?? "", /active product/);
+    assert.equal((await operations.findById("operation-terminal"))?.status, "failed");
+    assert.equal((await jobs.findById("job-terminal"))?.status, "failed");
+    assert.equal((await isolatedContentService.get(scheduled.id)).status, "failed");
+    void content;
+  });
+
   it("confirms a published provider operation and closes the job", async () => {
     const { contentService, socialAccounts, jobs, operations, jobService, content } = await setup();
     let checks = 0;
