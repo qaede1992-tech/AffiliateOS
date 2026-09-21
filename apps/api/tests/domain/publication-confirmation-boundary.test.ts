@@ -67,5 +67,12 @@ describe("Publication confirmation boundary", () => {
     const later = await worker.runOnce(new Date("2026-09-20T13:00:00.000Z"));
     assert.deepEqual(later, []);
     assert.equal(publishes, 1);
+
+    const operation = (await operations.list())[0];
+    const resolved = await worker.resolveConfirmation(operation.id, { status: "published", externalPostId: "manually-confirmed-post" }, new Date("2026-09-20T14:00:00.000Z"));
+    assert.deepEqual(resolved, { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "manually-confirmed-post" });
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+    assert.equal((await contentService.get(content.id)).status, "published");
+    assert.equal((await operations.findByProviderOperation("no-status-check-provider", "unknown-operation-1"))?.status, "published");
   });
 });
