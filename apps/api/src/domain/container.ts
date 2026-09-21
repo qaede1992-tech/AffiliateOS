@@ -54,7 +54,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback);
   const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers);
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
-  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, analytics, undefined, campaigns);
+  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, analytics, undefined, campaigns, content);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, autonomousCycleInput, { intervalMs: autonomousSchedulerIntervalMs });
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions: new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager), commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousCycle, autonomousScheduler, distribution,
