@@ -67,8 +67,18 @@ export class AutonomousCycleService {
           const campaign = await this.campaigns.get(recommendation.campaignId);
           if (recommendation.action !== "maintain") {
             const state = { action: recommendation.action, appliedAt: new Date().toISOString() };
+            const previous = this.optimizationState.get(recommendation.campaignId);
+            if (this.optimizationStateRepository?.compareAndSet) {
+              const applied = await this.optimizationStateRepository.compareAndSet(recommendation.campaignId, previous?.appliedAt, state);
+              if (!applied) {
+                const current = await this.optimizationStateRepository.get(recommendation.campaignId);
+                if (current) this.optimizationState.set(recommendation.campaignId, current);
+                continue;
+              }
+            } else if (this.optimizationStateRepository) {
+              await this.optimizationStateRepository.save(recommendation.campaignId, state);
+            }
             this.optimizationState.set(recommendation.campaignId, state);
-            if (this.optimizationStateRepository) await this.optimizationStateRepository.save(recommendation.campaignId, state);
           }
           if (recommendation.action === "pause") {
             if (campaign.status !== "paused" && campaign.status !== "archived" && campaign.status !== "completed") {
