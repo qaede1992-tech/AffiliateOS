@@ -48,6 +48,16 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 
+  async list(options: { status?: AutonomousRunStatus; limit?: number } = {}): Promise<AutonomousRun[]> {
+    const limit = Math.min(Math.max(1, options.limit ?? 50), 100);
+    const whereClause = options.status ? eq(autonomousRuns.status, options.status) : undefined;
+    const rows = await this.db.select().from(autonomousRuns)
+      .where(whereClause)
+      .orderBy(autonomousRuns.updatedAt)
+      .limit(limit);
+    return rows.map(toDomain);
+  }
+
   async save(run: AutonomousRun): Promise<AutonomousRun> {
     const existing = await this.findById(run.id);
     if (existing) await this.db.update(autonomousRuns).set(toRow(run)).where(eq(autonomousRuns.id, run.id));
