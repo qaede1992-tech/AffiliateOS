@@ -68,6 +68,14 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 
+  async listRecoverable(staleBefore: Date, limit = 100): Promise<AutonomousRun[]> {
+    const rows = await this.db.select().from(autonomousRuns).where(or(
+      inArray(autonomousRuns.status, ["accepted", "failed"]),
+      and(eq(autonomousRuns.status, "processing"), lte(autonomousRuns.updatedAt, staleBefore.toISOString()))
+    )).orderBy(autonomousRuns.updatedAt).limit(Math.max(1, limit));
+    return rows.map(toDomain);
+  }
+
   async claimProcessing(id: string, now: Date, staleAfterMs: number): Promise<AutonomousRun | undefined> {
     const staleCutoff = new Date(now.getTime() - staleAfterMs).toISOString();
     const rows = await this.db.update(autonomousRuns)
