@@ -18,6 +18,20 @@ const setup = async (platform: string, accounts: SocialAccount[]) => {
 };
 describe("DistributionEngine", () => {
   it("schedules draft content onto an active matching social account", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-account", "tiktok")]); const engine = new DistributionEngine(contentService, socialAccounts); const result = await engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }); assert.equal(result.account.id, "tiktok-account"); assert.equal(result.content.status, "scheduled"); assert.equal(result.content.socialAccountId, "tiktok-account"); assert.equal(result.publishable, false); });
+  it("rejects affiliate promotion scheduling when the product is inactive", async () => {
+    const contents = new InMemoryRepository<Content>();
+    const campaigns = new InMemoryRepository<any>();
+    const products = new InMemoryProductCatalogRepository();
+    await products.save({ ...product, status: "inactive" });
+    const contentService = new ContentService(contents, campaigns, products);
+    const created = await contentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", title: "Inactive", status: "draft" });
+    const socialAccounts = new InMemorySocialAccountRepository();
+    await socialAccounts.save(account("tiktok-account", "tiktok"));
+    const engine = new DistributionEngine(contentService, socialAccounts);
+    await assert.rejects(() => engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }), /active product/);
+    assert.equal((await contentService.get(created.id)).status, "draft");
+  });
+
   it("reports publishable only when the publisher supports the content capability", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-account", "tiktok")]); const publisher: SocialPublisher = { supports: (platform) => platform === "tiktok", supportsContent: (content) => content.contentType === "video", publish: async () => ({ externalPostId: "unused" }) }; const engine = new DistributionEngine(contentService, socialAccounts, [publisher]); const result = await engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }); assert.equal(result.publishable, false); });
   it("keeps publishers without an explicit content capability method compatible", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-account", "tiktok")]); const publisher: SocialPublisher = { supports: (platform) => platform === "tiktok", publish: async () => ({ externalPostId: "unused" }) }; const engine = new DistributionEngine(contentService, socialAccounts, [publisher]); const result = await engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" }); assert.equal(result.publishable, true); });
   it("binds explicitly selected account when multiple accounts share a platform", async () => { const { contentService, socialAccounts, created } = await setup("tiktok", [account("tiktok-a", "tiktok"), account("tiktok-b", "tiktok")]); const engine = new DistributionEngine(contentService, socialAccounts); const result = await engine.schedule({ content: created, accountId: "tiktok-b", scheduledAt: "2026-09-21T10:00:00.000Z" }); assert.equal(result.account.id, "tiktok-b"); assert.equal(result.content.socialAccountId, "tiktok-b"); });
