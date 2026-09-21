@@ -27,6 +27,7 @@ export type GeneratedCampaignContent = {
 
 const defaultPlatforms: ContentPlatform[] = ["tiktok", "instagram", "facebook"];
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
+const stableCampaignKey = (productId: string, offerId: string) => "autonomous-campaign:" + productId + ":" + offerId;
 
 export class DeterministicCampaignContentGenerator implements CampaignContentGenerator {
   generate(input: { product: Product; offer: AffiliateOffer; opportunity: ScoredOpportunity; platform: ContentPlatform }): GeneratedCampaignContent {
@@ -93,14 +94,14 @@ export class CampaignOrchestrator {
       let campaign: Awaited<ReturnType<CampaignService["create"]>> | undefined;
       if (input.idempotencyKey) {
         const campaigns = await this.campaigns.list();
-        campaign = campaigns.find((candidate) => orchestrationKey(candidate) === input.idempotencyKey);
+        campaign = campaigns.find((candidate) => orchestrationKey(candidate) === input.idempotencyKey || orchestrationKey(candidate) === stableCampaignKey(input.product.id, input.offer.id));
       }
       if (!campaign) {
         campaign = await this.campaigns.create({
           name: input.campaignName ?? `Autonomous: ${input.product.name}`,
           objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
           status: "draft",
-          audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: input.idempotencyKey }
+          audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: stableCampaignKey(input.product.id, input.offer.id) }
         });
       }
       currentCampaignId = campaign.id;
