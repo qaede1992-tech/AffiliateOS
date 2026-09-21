@@ -34,6 +34,8 @@ export class AutonomousCycleService {
   private running = false;
   private readonly optimizationState = new Map<string, OptimizationState>();
   private readonly lockOwnerId = randomUUID();
+  private static readonly LOCK_LEASE_MS = 10 * 60_000;
+  private static readonly LOCK_RENEW_MS = 2 * 60_000;
 
   constructor(
     private readonly candidates: AutonomousCandidateProvider,
@@ -51,14 +53,20 @@ export class AutonomousCycleService {
     if (this.running) return undefined;
     this.running = true;
     const startedAt = new Date().toISOString();
-    const lockNow = startedAt;
-    const leaseUntil = new Date(Date.parse(startedAt) + 10 * 60_000).toISOString();
-    if (this.cycleLock && !(await this.cycleLock.tryAcquire(this.cycleLockKey, this.lockOwnerId, lockNow, leaseUntil))) {
-      this.running = false;
-      return undefined;
-    }
-
+    let lockAcquired = false;
+    let renewalTimer: ReturnType<typeof setInterval> | undefined;
     try {
+      if (this.cycleLock) {
+        const lockNow = startedAt;
+        const leaseUntil = new Date(Date.parse(startedAt) + AutonomousCycleService.LOCK_LEASE_MS).toISOString();
+        lockAcquired = await this.cycleLock.tryAcquire(this.cycleLockKey, this.lockOwnerId, lockNow, leaseUntil);
+        if (!lockAcquired) return undefined;
+        renewalTimer = setInterval(() => {
+          const now = new Date();
+          const nextLease = new Date(now.getTime() + AutonomousCycleService.LOCK_LEASE_MS).toISOString();
+          void this.cycleLock!.renew(this.cycleLockKey, this.lockOwnerId, now.toISOString(), nextLease);
+        }, AutonomousCycleService.LOCK_RENEW_MS);
+      }
       const candidateList = await this.candidates.listCandidates();
       const scheduledAt = input.scheduledAt ?? (input.publicationDelayMs !== undefined
         ? new Date(Date.now() + input.publicationDelayMs).toISOString()
@@ -113,7 +121,8 @@ export class AutonomousCycleService {
         optimization
       };
     } finally {
-      if (this.cycleLock) await this.cycleLock.release(this.cycleLockKey, this.lockOwnerId);
+      if (renewalTimer) clearInterval(renewalTimer);
+      if (lockAcquired && this.cycleLock) await this.cycleLock.release(this.cycleLockKey, this.lockOwnerId);
       this.running = false;
     }
   }
