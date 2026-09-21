@@ -5,6 +5,7 @@ import { DrizzlePublicationJobRepository } from "./publication-job-repository.js
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
 import type { AutonomousOptimizationStateRepository } from "../domain/autonomous-optimization-state.js";
 import type { OptimizationState } from "../domain/optimization-engine.js";
+import { DrizzleAutonomousCycleLockRepository } from "./autonomous-cycle-lock-repository.js";
 
 type DatabaseExecutor = any;
 const toAffiliate = (row: typeof affiliates.$inferSelect): Affiliate => ({ id: row.id, name: row.name, email: row.email, status: row.status as Affiliate["status"], createdAt: row.createdAt });
@@ -61,7 +62,7 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
   commissions: new DrizzleRepository(db, commissions, toCommission, (entity: Commission) => ({ id: entity.id, conversionId: entity.conversionId, affiliateId: entity.affiliateId, amountCents: entity.amountCents, status: entity.status, createdAt: entity.createdAt })),
   marketplaceConnections: new DrizzleMarketplaceConnectionRepository(db), affiliateAccounts: new DrizzleAffiliateAccountRepository(db), products: new DrizzleProductCatalogRepository(db), affiliateOffers: new DrizzleAffiliateOfferRepository(db),
   campaigns: new DrizzleCampaignRepository(db), campaignOffers: new DrizzleCampaignOfferRepository(db), trackingLinks: new DrizzleTrackingLinkRepository(db), clicks: new DrizzleClickRepository(db),
-  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), autonomousOptimizationStates: new DrizzleAutonomousOptimizationStateRepository(db)
+  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), autonomousOptimizationStates: new DrizzleAutonomousOptimizationStateRepository(db), autonomousCycleLock: new DrizzleAutonomousCycleLockRepository(db)
 });
 export class DrizzleTransactionManager implements TransactionManager { constructor(private readonly db: DatabaseExecutor) {} run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T> { return this.db.transaction(async (transaction: DatabaseExecutor) => { const repositories = createRepositories(transaction); return work({ conversions: repositories.conversions, commissions: repositories.commissions }); }); }
 }
