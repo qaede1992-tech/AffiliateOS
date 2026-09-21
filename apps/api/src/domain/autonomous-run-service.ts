@@ -2,6 +2,7 @@ import { createAutonomousRun, type AutonomousRun, type AutonomousRunRepository, 
 import type { EntityId } from "@affiliateos/shared";
 
 const AUTONOMOUS_RUN_PROCESSING_STALE_AFTER_MS = 10 * 60 * 1000;
+const AUTONOMOUS_RUN_RECOVERY_LIMIT = 100;
 
 const allowedTransitions: Record<AutonomousRunStatus, AutonomousRunStatus[]> = {
   accepted: ["accepted", "processing", "failed"],
@@ -30,6 +31,12 @@ export class AutonomousRunService {
       if (concurrent) return concurrent;
       throw error;
     }
+  }
+
+  async listRecoverable(now = new Date(), limit = AUTONOMOUS_RUN_RECOVERY_LIMIT): Promise<AutonomousRun[]> {
+    if (!this.runs.listRecoverable) return [];
+    const staleBefore = new Date(now.getTime() - AUTONOMOUS_RUN_PROCESSING_STALE_AFTER_MS);
+    return this.runs.listRecoverable(staleBefore, limit);
   }
 
   async claimProcessing(id: EntityId, now = new Date()): Promise<AutonomousRunClaim> {
