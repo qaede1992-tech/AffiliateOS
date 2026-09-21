@@ -32,7 +32,10 @@ export class AutonomousExecutionService {
         if (!candidate || !offer) continue;
         if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active") continue;
         const context = run.executionContext;
-        const scored = scoreOpportunity({ product: candidate.product, offers: candidate.offers, audience: context?.audience ?? input.audience });
+        // Recovery must honor the offer originally bound to the run. Re-ranking all
+        // current offers could silently abandon a valid in-flight execution when a
+        // different offer becomes the current best.
+        const scored = scoreOpportunity({ product: candidate.product, offers: [offer], audience: context?.audience ?? input.audience });
         if (scored.offerId !== run.offerId) continue;
         const opportunity: ScoredOpportunity = scored;
         try {
