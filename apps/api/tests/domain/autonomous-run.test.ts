@@ -119,6 +119,37 @@ describe("autonomous run", () => {
   });
 });
 
+  it("allows an exhausted failed run to be manually reset without changing its idempotency identity", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-manual-retry", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
+    let current = await service.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z"));
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      current = await service.transition(current.id, "failed", { error: `failure-${attempt}` }, new Date("2026-09-20T10:00:00.000Z"));
+      if (attempt < 8) current = (await service.claimProcessing(current.id, new Date(current.nextAttemptAt!))).run;
+    }
+    const reset = await service.retry(current.id, new Date("2026-09-21T10:00:00.000Z"));
+    assert.equal(reset.status, "failed");
+    assert.equal(reset.attemptCount, 0);
+    assert.equal(reset.nextAttemptAt, undefined);
+    assert.equal(reset.lastError, undefined);
+    assert.equal(reset.id, accepted.id);
+    assert.equal(reset.idempotencyKey, "run-manual-retry");
+    const claimed = await service.claimProcessing(reset.id, new Date("2026-09-21T10:00:01.000Z"));
+    assert.equal(claimed.acquired, true);
+    assert.equal(claimed.run.attemptCount, 1);
+  });
+
+  it("rejects manual retry for a completed run", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-completed-retry", productId: "product-1", offerId: "offer-1" });
+    const processing = await service.claimProcessing(accepted.id);
+    const completed = await service.transition(processing.run.id, "completed");
+    const retry = await service.retry(completed.id);
+    assert.equal(retry.status, "completed");
+    assert.equal(retry.attemptCount, completed.attemptCount);
+  });
 
   it("backs off failed runs and stops recovery after the maximum attempts", async () => {
     const repository = new InMemoryAutonomousRunRepository();
