@@ -1,6 +1,8 @@
 import { createAutonomousRun, type AutonomousRun, type AutonomousRunRepository, type AutonomousRunStatus } from "./autonomous-run.js";
 import type { EntityId } from "@affiliateos/shared";
 
+const AUTONOMOUS_RUN_PROCESSING_STALE_AFTER_MS = 10 * 60 * 1000;
+
 const allowedTransitions: Record<AutonomousRunStatus, AutonomousRunStatus[]> = {
   accepted: ["accepted", "processing", "failed"],
   processing: ["processing", "completed", "failed"],
@@ -33,6 +35,12 @@ export class AutonomousRunService {
   async claimProcessing(id: EntityId, now = new Date()): Promise<AutonomousRunClaim> {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
     if (!run) throw new Error("Autonomous run does not exist.");
+    if (run.status === "processing" && this.runs.claimProcessing) {
+      const reclaimed = await this.runs.claimProcessing(id, now, AUTONOMOUS_RUN_PROCESSING_STALE_AFTER_MS);
+      if (reclaimed) return { run: reclaimed, acquired: true };
+      const current = this.runs.findById ? await this.runs.findById(id) : undefined;
+      return { run: current ?? run, acquired: false };
+    }
     if (run.status !== "accepted" && run.status !== "failed") return { run, acquired: false };
 
     const next: AutonomousRun = {
