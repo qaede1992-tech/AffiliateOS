@@ -51,6 +51,9 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
     if (!occurredAt) throw new Error("Provider conversion is missing a valid occurred-at timestamp.");
 
     const status = this.status(payload.status);
+    if (status === "rejected" && (payload.commission_cents !== undefined || payload.commissionCents !== undefined || payload.commission !== undefined)) {
+      throw new Error("Rejected provider conversions cannot include a commission amount.");
+    }
     const commissionCents = integer(payload.commission_cents) ?? integer(payload.commissionCents) ?? (payload.commission !== undefined ? this.moneyToCents(payload.commission, "commission") : undefined);
     if (commissionCents !== undefined && commissionCents < 0) throw new Error("Provider conversion commission must be non-negative.");
     if (commissionCents !== undefined && commissionCents > Number.MAX_SAFE_INTEGER) throw new Error("Provider conversion commission is outside the supported money range.");
