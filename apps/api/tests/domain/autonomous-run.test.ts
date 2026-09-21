@@ -170,6 +170,19 @@ describe("autonomous run", () => {
     assert.equal(retry.attemptCount, completed.attemptCount);
   });
 
+  it("increments attempts when processing is started through a transition", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-transition-attempt", productId: "product-1", offerId: "offer-1" });
+    const processing = await service.transition(accepted.id, "processing");
+    assert.equal(processing.attemptCount, 1);
+    const failed = await service.transition(processing.id, "failed", { error: "temporary failure" });
+    assert.equal(failed.attemptCount, 1);
+    const retry = await service.claimProcessing(failed.id, new Date(failed.nextAttemptAt!));
+    assert.equal(retry.acquired, true);
+    assert.equal(retry.run.attemptCount, 2);
+  });
+
   it("backs off failed runs and stops recovery after the maximum attempts", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
