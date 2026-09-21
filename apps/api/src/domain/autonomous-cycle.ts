@@ -58,9 +58,10 @@ export class AutonomousCycleService {
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
-      const stateEntries = this.optimizationStateRepository ? await Promise.all((await this.analytics?.overview()).campaigns.map(async (campaign) => [campaign.campaignId, await this.optimizationStateRepository!.get(campaign.campaignId)] as const)) : [];
+      const analyticsOverview = this.analytics ? await this.analytics.overview() : undefined;
+      const stateEntries = this.optimizationStateRepository && analyticsOverview ? await Promise.all(analyticsOverview.campaigns.map(async (campaign) => [campaign.campaignId, await this.optimizationStateRepository!.get(campaign.campaignId)] as const)) : [];
       for (const [campaignId, state] of stateEntries) if (state) this.optimizationState.set(campaignId, state);
-      const optimization = this.analytics ? this.optimizer.recommend((await this.analytics.overview()).campaigns, this.optimizationState) : [];
+      const optimization = analyticsOverview ? this.optimizer.recommend(analyticsOverview.campaigns, this.optimizationState) : [];
       if (this.campaigns) {
         for (const recommendation of optimization) {
           const campaign = await this.campaigns.get(recommendation.campaignId);
