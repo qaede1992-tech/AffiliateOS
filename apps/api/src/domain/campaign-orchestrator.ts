@@ -126,11 +126,18 @@ export class CampaignOrchestrator {
       if (input.scheduledAt) {
         const requests = content.filter((item) => item.status === "draft").map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
         if (requests.length) {
-          await this.distribution!.validateBatch(requests);
-          const scheduled = [] as Awaited<ReturnType<DistributionEngine["schedule"]>>[];
-          for (const request of requests) scheduled.push(await this.distribution!.schedule(request));
-          distribution.push(...scheduled);
-          const scheduledById = new Map(scheduled.map((plan) => [plan.content.id, plan.content]));
+          if (run) {
+            for (const request of requests) {
+              const scheduled = await this.distribution!.scheduleIfReady(request);
+              if (scheduled) distribution.push(scheduled);
+            }
+          } else {
+            await this.distribution!.validateBatch(requests);
+            const scheduled = [] as Awaited<ReturnType<DistributionEngine["schedule"]>>[];
+            for (const request of requests) scheduled.push(await this.distribution!.schedule(request));
+            distribution.push(...scheduled);
+          }
+          const scheduledById = new Map(distribution.map((plan) => [plan.content.id, plan.content]));
           content = content.map((item) => scheduledById.get(item.id) ?? item);
         }
       }
