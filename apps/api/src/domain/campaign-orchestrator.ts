@@ -84,10 +84,12 @@ export class CampaignOrchestrator {
     if (run && run.offerId !== input.offer.id) throw new Error("Autonomous run idempotency key is already bound to a different affiliate offer.");
 
     let currentCampaignId = run?.campaignId;
+    let ownsRunAttempt = false;
     try {
       if (run) {
         const claim = await this.autonomousRuns!.claimProcessing(run.id);
-        if (!claim.acquired && claim.run.status === "processing") throw new Error("Autonomous run is already being processed.");
+        if (claim.acquired) ownsRunAttempt = true;
+        else if (claim.run.status !== "completed") throw new Error("Autonomous run is not currently available for execution.");
       }
 
       const audience = input.audience ?? [];
@@ -106,7 +108,7 @@ export class CampaignOrchestrator {
         });
       }
       currentCampaignId = campaign.id;
-      if (run) await this.autonomousRuns!.transition(run.id, "processing", { campaignId: campaign.id });
+      if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "processing", { campaignId: campaign.id });
 
       const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
       const existingLinks = await this.tracking.list(campaign.id);
@@ -137,10 +139,10 @@ export class CampaignOrchestrator {
         }
       }
 
-      if (run) await this.autonomousRuns!.transition(run.id, "completed", { campaignId: campaign.id });
+      if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "completed", { campaignId: campaign.id });
       return { campaign, offerAttachment, trackingLink, content, distribution };
     } catch (error) {
-      if (run) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: currentCampaignId, error: error instanceof Error ? error.message : String(error) });
+      if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: currentCampaignId, error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
