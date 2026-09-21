@@ -74,5 +74,9 @@ describe("Publication confirmation boundary", () => {
     assert.equal((await jobs.findById(job.id))?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
     assert.equal((await operations.findByProviderOperation("no-status-check-provider", "unknown-operation-1"))?.status, "published");
+    await assert.rejects(
+      worker.resolveConfirmation(operation.id, { status: "failed", error: "late conflicting confirmation" }, new Date("2026-09-20T15:00:00.000Z")),
+      /Only publications awaiting confirmation can be resolved/
+    );
   });
 });
