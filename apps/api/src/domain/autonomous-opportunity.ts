@@ -43,18 +43,21 @@ export class AutonomousOpportunitySelector {
     const minimumScore = policy.minimumScore ?? 60;
     const maximumResults = policy.maximumResults ?? 10;
     const requiredAudience = unique(policy.requiredAudience ?? []);
-    const scored = rankOpportunities(candidates.map((candidate) => ({
+    const scored = candidates.map((candidate) => ({
       product: candidate.product,
       offers: candidate.offers,
       audience: requiredAudience,
       targetPriceMaxCents: policy.targetPriceMaxCents
-    }))).map((item) => applyPerformance(item, performance.get(item.product.id)));
+    }));
 
-    const eligible = scored.filter((item) => item.score >= minimumScore && Boolean(item.offerId) &&
+    const adjusted = rankOpportunities(scored).map((item) => applyPerformance(item, performance.get(item.product.id)));
+    const ranked = adjusted.sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
+
+    const eligible = ranked.filter((item) => item.score >= minimumScore && Boolean(item.offerId) &&
       (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) && item.product.status === "active");
     const selected = eligible.slice(0, Math.max(0, maximumResults));
     const selectedIds = new Set(selected.map((item) => item.product.id));
-    const rejected = scored.filter((item) => !selectedIds.has(item.product.id)).map((item) => ({
+    const rejected = ranked.filter((item) => !selectedIds.has(item.product.id)).map((item) => ({
       productId: item.product.id,
       score: item.score,
       reasons: selected.length < eligible.length && eligible.some((candidate) => candidate.product.id === item.product.id)
