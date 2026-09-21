@@ -1,6 +1,8 @@
 import type { AudienceSegment, ContentPlatform } from "@affiliateos/shared";
 import type { AutonomousExecutionCandidate, AutonomousExecutionInput, AutonomousExecutionResult, AutonomousExecutionService } from "./autonomous-execution.js";
 import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
+import type { CampaignAnalytics } from "./analytics.js";
+import { OptimizationEngine, type OptimizationRecommendation } from "./optimization-engine.js";
 
 export interface AutonomousCandidateProvider {
   listCandidates(): Promise<AutonomousExecutionCandidate[]>;
@@ -20,6 +22,7 @@ export type AutonomousCycleResult = {
   completedAt: string;
   candidateCount: number;
   execution: AutonomousExecutionResult;
+  optimization: OptimizationRecommendation[];
 };
 
 export class AutonomousCycleService {
@@ -27,7 +30,9 @@ export class AutonomousCycleService {
 
   constructor(
     private readonly candidates: AutonomousCandidateProvider,
-    private readonly execution: AutonomousExecutionService
+    private readonly execution: AutonomousExecutionService,
+    private readonly analytics?: { overview(): Promise<{ campaigns: CampaignAnalytics[] }> },
+    private readonly optimizer: OptimizationEngine = new OptimizationEngine()
   ) {}
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
@@ -46,11 +51,13 @@ export class AutonomousCycleService {
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
+      const optimization = this.analytics ? this.optimizer.recommend((await this.analytics.overview()).campaigns) : [];
       return {
         startedAt,
         completedAt: new Date().toISOString(),
         candidateCount: candidateList.length,
-        execution: result
+        execution: result,
+        optimization
       };
     } finally {
       this.running = false;
