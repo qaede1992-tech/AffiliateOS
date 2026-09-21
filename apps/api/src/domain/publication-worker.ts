@@ -66,7 +66,7 @@ export class PublicationWorker {
   }
 
   async resolveConfirmation(id: EntityId, outcome: { status: "published"; externalPostId: string } | { status: "failed"; error: string }, now = new Date()): Promise<PublicationWorkerResult> {
-    const operation = (await this.operations.list()).find((candidate) => candidate.id === id);
+    const operation = await this.operations.findById(id);
     if (!operation) throw new Error("Publication operation does not exist.");
     if (operation.status !== "awaiting_confirmation") throw new Error("Only publications awaiting confirmation can be resolved.");
     if (outcome.status === "published") {
