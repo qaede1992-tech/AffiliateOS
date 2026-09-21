@@ -43,7 +43,21 @@ export class AutonomousOpportunitySelector {
     const minimumScore = policy.minimumScore ?? 60;
     const maximumResults = policy.maximumResults ?? 10;
     const requiredAudience = unique(policy.requiredAudience ?? []);
-    const scored = candidates.map((candidate) => ({
+    const mergedCandidates = new Map<string, OpportunityCandidateSource>();
+    for (const candidate of candidates) {
+      const existing = mergedCandidates.get(candidate.product.id);
+      if (!existing) {
+        mergedCandidates.set(candidate.product.id, {
+          product: candidate.product,
+          offers: [...candidate.offers]
+        });
+      } else {
+        const offers = new Map(existing.offers.map((offer) => [offer.id, offer]));
+        for (const offer of candidate.offers) offers.set(offer.id, offer);
+        existing.offers = [...offers.values()];
+      }
+    }
+    const scored = [...mergedCandidates.values()].map((candidate) => ({
       product: candidate.product,
       offers: candidate.offers,
       audience: requiredAudience,
