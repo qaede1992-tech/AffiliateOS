@@ -56,7 +56,13 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
       if (!offer.externalOfferId) continue;
       try {
         const linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
-        if (linked.productId === productId && linked.status === "active" && linked.affiliateLinkStatus === "active" && linked.affiliateUrl) executable.push(linked);
+        const linkedExpiry = linked.affiliateLinkExpiresAt ? new Date(linked.affiliateLinkExpiresAt).getTime() : undefined;
+        const linkedUsable = linked.productId === productId &&
+          linked.status === "active" &&
+          linked.affiliateLinkStatus === "active" &&
+          Boolean(linked.affiliateUrl) &&
+          (linkedExpiry === undefined || (Number.isFinite(linkedExpiry) && linkedExpiry > Date.now()));
+        if (linkedUsable) executable.push(linked);
       } catch {
         // A provider may reject link generation for an individual offer; keep the cycle running and exclude that offer from execution.
       }
