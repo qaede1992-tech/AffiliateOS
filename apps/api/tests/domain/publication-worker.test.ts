@@ -132,6 +132,30 @@ describe("PublicationWorker", () => {
     assert.equal((await operations.findByProviderOperation("restart-safe-provider", "restart-safe-operation"))?.status, "published");
   });
 
+  it("reuses the same publisher idempotency key after a crash-like retry", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const keys: string[] = [];
+    let attempts = 0;
+    const publisher: SocialPublisher = {
+      provider: "idempotent-provider",
+      supports: () => true,
+      publish: async ({ idempotencyKey }) => {
+        keys.push(idempotencyKey);
+        attempts += 1;
+        if (attempts === 1) throw new Error("simulated interruption");
+        return { status: "published", externalPostId: "idempotent-post" };
+      }
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
+    const job = await jobService.enqueue(content);
+    await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    assert.equal(keys.length, 2);
+    assert.equal(keys[0], job.idempotencyKey);
+    assert.equal(keys[1], job.idempotencyKey);
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+  });
+
   it("records adapter failures and restores failed content before retrying after backoff", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
