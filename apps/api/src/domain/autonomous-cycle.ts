@@ -12,6 +12,8 @@ export type AutonomousCycleInput = Omit<AutonomousExecutionInput, "candidates"> 
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyNamespace?: string;
+  /** Delay, in milliseconds, used to derive scheduledAt when it is not supplied explicitly. */
+  publicationDelayMs?: number;
 };
 
 export type AutonomousCycleResult = {
@@ -36,8 +38,10 @@ export class AutonomousCycleService {
 
     try {
       const candidateList = await this.candidates.listCandidates();
+      const scheduledAt = input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs);
       const executionInput: AutonomousExecutionInput = {
         ...input,
+        scheduledAt,
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
@@ -50,5 +54,13 @@ export class AutonomousCycleService {
     } finally {
       this.running = false;
     }
+  }
+
+  private deriveScheduledAt(publicationDelayMs: number | undefined): string | undefined {
+    if (publicationDelayMs === undefined) return undefined;
+    if (!Number.isFinite(publicationDelayMs) || publicationDelayMs < 0) {
+      throw new Error("publicationDelayMs must be a finite non-negative number");
+    }
+    return new Date(Date.now() + publicationDelayMs).toISOString();
   }
 }
