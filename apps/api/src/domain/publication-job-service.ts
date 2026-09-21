@@ -35,18 +35,21 @@ export class PublicationJobService {
 
   async awaitConfirmation(id: EntityId, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
-    const next = { ...job, status: "awaiting_confirmation" as const, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() };\n    return this.jobs.transition ? (await this.jobs.transition(id, ["processing"], next)) ?? job : this.jobs.save(next);
+    const next = { ...job, status: "awaiting_confirmation" as const, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() };
+    return this.jobs.transition ? (await this.jobs.transition(id, ["processing"], next)) ?? job : this.jobs.save(next);
   }
 
   async succeed(id: EntityId, externalPostId: string, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
-    const next = { ...job, status: "succeeded" as const, externalPostId, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() };\n    return this.jobs.transition ? (await this.jobs.transition(id, ["processing", "awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
+    const next = { ...job, status: "succeeded" as const, externalPostId, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() };
+    return this.jobs.transition ? (await this.jobs.transition(id, ["processing", "awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
   }
 
   async fail(id: EntityId, error: unknown, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
     const message = error instanceof Error ? error.message : String(error);
-    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, updatedAt: now.toISOString() };\n    return this.jobs.transition ? (await this.jobs.transition(id, ["processing", "awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
+    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, updatedAt: now.toISOString() };
+    return this.jobs.transition ? (await this.jobs.transition(id, ["processing", "awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
   }
 
   private async require(id: EntityId) {
