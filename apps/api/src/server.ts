@@ -66,6 +66,7 @@ try {
 const shutdown = async () => {
   await services.autonomousScheduler.stop();
   await services.publicationScheduler.stop();
+  await providerEventScheduler.stop();
   await app.close();
   await persistence.close();
 };
