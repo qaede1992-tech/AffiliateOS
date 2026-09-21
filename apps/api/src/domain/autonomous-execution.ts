@@ -30,9 +30,9 @@ export class AutonomousExecutionService {
         const candidate = input.candidates.find((item) => item.product.id === run.opportunityProductId);
         const offer = candidate?.offers.find((item) => item.id === run.offerId);
         if (!candidate || !offer) continue;
+        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active") continue;
         const context = run.executionContext;
         const scored = scoreOpportunity({ product: candidate.product, offers: candidate.offers, audience: context?.audience ?? input.audience });
-        if (!candidate.product || candidate.product.id !== run.opportunityProductId || !candidate.product.status || candidate.product.status !== "active") continue;
         const opportunity: ScoredOpportunity = { ...scored, offerId: run.offerId };
         try {
           await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: run.idempotencyKey });
