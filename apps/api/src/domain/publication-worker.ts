@@ -80,6 +80,19 @@ export class PublicationWorker {
   private async reconcile(now: Date): Promise<PublicationWorkerResult[]> {
     const results: PublicationWorkerResult[] = [];
     for (const operation of await this.operations.list()) {
+      if (operation.status === "published" && operation.externalPostId) {
+        await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
+        await this.jobService.succeed(operation.jobId, operation.externalPostId, now);
+        results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "succeeded", externalPostId: operation.externalPostId });
+        continue;
+      }
+      if (operation.status === "failed") {
+        const error = operation.lastError ?? "Publication operation failed.";
+        await this.contentService?.update(operation.contentId, { status: "failed" });
+        await this.jobService.fail(operation.jobId, error, now);
+        results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error });
+        continue;
+      }
       if (operation.status !== "accepted" && operation.status !== "processing") continue;
       if (reconciliationEligibleAt(operation) > now.getTime()) continue;
       try {
