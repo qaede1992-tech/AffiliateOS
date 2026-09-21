@@ -59,11 +59,13 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
 
   async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
     const job = this.jobs.get(id);
-    if (!job || job.status === "succeeded" || job.status === "awaiting_confirmation") return undefined;
+    if (!job) return undefined;
     const scheduled = new Date(job.scheduledAt).getTime();
     const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
     const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
-    if (scheduled > nowDate.getTime() || lockFresh) return undefined;
+    const claimableStatus = job.status === "pending" || job.status === "failed" ||
+      (job.status === "processing" && !lockFresh);
+    if (!claimableStatus || scheduled > nowDate.getTime() || lockFresh) return undefined;
     const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() };
     this.jobs.set(id, claimed);
     return claimed;
