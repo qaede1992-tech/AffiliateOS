@@ -1,5 +1,7 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, lte, or } from "drizzle-orm";
 import { providerEvents } from "./schema.js";
+
+export const PROVIDER_EVENT_PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
 
 type DatabaseExecutor = any;
 
@@ -30,6 +32,7 @@ export class ProviderEventStore {
       status: event.status ?? "received",
       receivedAt: event.receivedAt,
       processedAt: null,
+      processingStartedAt: null,
       error: null,
     }).onConflictDoNothing({ target: [providerEvents.affiliateAccountId, providerEvents.externalEventId] });
     return Number(result.rowCount ?? 0) === 1;
@@ -43,11 +46,15 @@ export class ProviderEventStore {
 
   async claimForProcessing(affiliateAccountId: string, externalEventId: string): Promise<boolean> {
     const result = await this.db.update(providerEvents)
-      .set({ status: "processing", error: null })
+      .set({ status: "processing", processingStartedAt: new Date().toISOString(), error: null })
       .where(and(
         eq(providerEvents.affiliateAccountId, affiliateAccountId),
         eq(providerEvents.externalEventId, externalEventId),
-        or(eq(providerEvents.status, "received"), eq(providerEvents.status, "failed"))
+        or(
+          eq(providerEvents.status, "received"),
+          eq(providerEvents.status, "failed"),
+          and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString()))
+        )
       ));
     return Number(result.rowCount ?? 0) === 1;
   }
@@ -55,6 +62,7 @@ export class ProviderEventStore {
   async updateStatus(affiliateAccountId: string, externalEventId: string, status: ProviderEventStatus, error?: string): Promise<boolean> {
     const values: Record<string, unknown> = { status, error: error?.slice(0, 1000) ?? null };
     if (status === "processed") values.processedAt = new Date().toISOString();
+    if (status !== "processing") values.processingStartedAt = null;
     const result = await this.db.update(providerEvents).set(values)
       .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId)));
     return Number(result.rowCount ?? 0) === 1;
