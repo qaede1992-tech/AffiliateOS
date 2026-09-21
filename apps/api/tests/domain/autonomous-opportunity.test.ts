@@ -63,6 +63,18 @@ describe("autonomous opportunity selection", () => {
     assert.deepEqual(result.rejected, [{ productId: "c", score: result.rejected[0].score, reasons: ["Selection limit reached"] }]);
   });
 
+  it("reranks selected opportunities after historical performance feedback", () => {
+    const candidates = [
+      { product: product("a"), offers: [offer("a")] },
+      { product: product("b"), offers: [offer("b")] }
+    ];
+    const result = new AutonomousOpportunitySelector().select(candidates, { minimumScore: 0, maximumResults: 1 }, new Map([
+      ["b", { productId: "b", clicks: 50, conversionRate: 0.06, attributedCommissionCents: 500, adjustment: 8 }]
+    ]));
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["b"]);
+    assert.equal(result.selected[0]?.breakdown.performanceAdjustment, 8);
+  });
+
   it("does not select a product that misses a required audience", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }
