@@ -44,7 +44,12 @@ export class ProviderEventStore {
     return rows[0];
   }
 
-  async listProcessable(limit = 100): Promise<ProviderEventRecord[]> {\n    const rows = await this.db.select().from(providerEvents).where(or(eq(providerEvents.status, "received"), eq(providerEvents.status, "failed"), and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())))).limit(Math.min(Math.max(limit, 1), 500));\n    return rows as ProviderEventRecord[];\n  }\n\n  async claimForProcessing(affiliateAccountId: string, externalEventId: string): Promise<boolean> {
+  async listProcessable(limit = 100): Promise<ProviderEventRecord[]> {
+    const rows = await this.db.select().from(providerEvents).where(or(eq(providerEvents.status, "received"), eq(providerEvents.status, "failed"), and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())))).limit(Math.min(Math.max(limit, 1), 500));
+    return rows as ProviderEventRecord[];
+  }
+
+  async claimForProcessing(affiliateAccountId: string, externalEventId: string): Promise<boolean> {
     const result = await this.db.update(providerEvents)
       .set({ status: "processing", processingStartedAt: new Date().toISOString(), error: null })
       .where(and(
