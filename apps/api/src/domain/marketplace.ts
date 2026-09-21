@@ -77,6 +77,7 @@ function validateMarketplaceProductInput(input: MarketplaceProductInput): void {
   if (input.ratingMilli !== undefined && (!Number.isInteger(input.ratingMilli) || input.ratingMilli < 0 || input.ratingMilli > 5000)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace rating must be between 0 and 5000 milli-points.", 400);
   if (!["in_stock", "out_of_stock", "limited", "unknown"].includes(input.availability)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace product availability is invalid.", 400);
   if (input.originalPriceCents !== undefined && input.originalPriceCents < input.priceCents) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace original price cannot be below the current price.", 400);
+  if (input.affiliateLinkExpiresAt !== undefined && !Number.isFinite(Date.parse(input.affiliateLinkExpiresAt))) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace affiliate link expiry must be a valid timestamp.", 400);
   validateMarketplaceUrl(input.productUrl, "product");
   if (input.imageUrl) validateMarketplaceUrl(input.imageUrl, "image");
 }
