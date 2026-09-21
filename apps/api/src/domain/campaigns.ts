@@ -49,6 +49,15 @@ export class CampaignService {
     validateCampaignStatus(current.status, input.status);
     return this.campaigns.save({ ...current, ...input, updatedAt: now() });
   }
+  async validateOfferForExecution(affiliateOfferId: string) {
+    const offer = await this.affiliateOffers.findById(affiliateOfferId);
+    if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
+    if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Campaign execution requires an active affiliate offer.");
+    if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Campaign execution requires an active affiliate link.");
+    if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) throw new DomainError("AFFILIATE_LINK_EXPIRED", "Campaign execution requires a non-expired affiliate link.");
+    return offer;
+  }
+
   async attachOffer(campaignId: string, affiliateOfferId: string) {
     await this.get(campaignId);
     if (!(await this.affiliateOffers.findById(affiliateOfferId))) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
