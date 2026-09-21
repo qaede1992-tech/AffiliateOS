@@ -113,6 +113,35 @@ describe("campaign orchestrator", () => {
     assert.equal(run.opportunityProductId, product.id);
     assert.equal(run.offerId, offer.id);
   });
+  it("does not mark an unavailable autonomous run failed", async () => {
+    const runs = new InMemoryAutonomousRunRepository();
+    const autonomousRuns = new AutonomousRunService(runs);
+    const accepted = await autonomousRuns.accept({
+      idempotencyKey: "busy-run",
+      productId: product.id,
+      offerId: offer.id,
+      now: new Date("2026-09-21T01:00:00.000Z")
+    });
+    await autonomousRuns.claimProcessing(accepted.id, new Date("2026-09-21T01:00:00.000Z"));
+
+    const orchestrator = new CampaignOrchestrator(
+      new StubCampaigns() as never,
+      new StubTracking() as never,
+      new StubContent() as never,
+      undefined,
+      undefined,
+      autonomousRuns
+    );
+
+    await assert.rejects(
+      orchestrator.execute({ opportunity, offer, product, idempotencyKey: "busy-run", platforms: ["tiktok"] }),
+      /not currently available for execution/
+    );
+    const run = await runs.findById(accepted.id);
+    assert.equal(run?.status, "processing");
+    assert.equal(run?.attemptCount, 1);
+  });
+
   it("recovers a stale autonomous run without duplicating campaign, tracking, or content", async () => {
     const runs = new InMemoryAutonomousRunRepository();
     const autonomousRuns = new AutonomousRunService(runs);
