@@ -79,7 +79,7 @@ describe("autonomous run", () => {
     await service.transition(completed.id, "completed");
 
     const recoverable = await service.listRecoverable(new Date("2026-09-20T10:11:00.000Z"));
-    assert.deepEqual(recoverable.map((run) => run.idempotencyKey).sort(), [accepted.idempotencyKey, processing.idempotencyKey].sort());
+    assert.deepEqual(recoverable.map((run) => run.idempotencyKey).sort(), [accepted.idempotencyKey, failed.idempotencyKey, processing.idempotencyKey].sort());
   });
 
   it("reclaims a failed run and clears the previous error", async () => {
@@ -128,7 +128,8 @@ describe("autonomous run", () => {
     for (let attempt = 1; attempt <= 8; attempt += 1) {
       const failed = await service.transition(current.run.id, "failed", { error: `failure-${attempt}` }, new Date("2026-09-20T10:00:00.000Z"));
       if (attempt < 8) {
-        assert.equal(failed.nextAttemptAt, new Date("2026-09-20T10:0" + String(Math.min(60, 2 ** (attempt - 1))).padStart(2, "0") + ":00.000Z").toISOString());
+        const expectedDelay = Math.min(60 * 60_000, 60_000 * 2 ** (attempt - 1));
+        assert.equal(new Date(failed.nextAttemptAt!).getTime(), new Date("2026-09-20T10:00:00.000Z").getTime() + expectedDelay);
         current = await service.claimProcessing(failed.id, new Date(failed.nextAttemptAt!));
         assert.equal(current.acquired, true);
       } else {
@@ -137,3 +138,4 @@ describe("autonomous run", () => {
       }
     }
   });
+});
