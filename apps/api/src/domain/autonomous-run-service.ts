@@ -1,4 +1,5 @@
 import { createAutonomousRun, type AutonomousRun, type AutonomousRunRepository, type AutonomousRunStatus } from "./autonomous-run.js";
+import { DomainError } from "./errors.js";
 import type { EntityId } from "@affiliateos/shared";
 
 const AUTONOMOUS_RUN_PROCESSING_STALE_AFTER_MS = 10 * 60 * 1000;
@@ -22,6 +23,15 @@ export class AutonomousRunService {
       const concurrent = await this.runs.findByIdempotencyKey(input.idempotencyKey); if (concurrent) return concurrent; throw error;
     }
   }
+  async findById(id: EntityId): Promise<AutonomousRun> {
+    const run = this.runs.findById ? await this.runs.findById(id) : undefined;
+    if (!run) throw new DomainError("AUTONOMOUS_RUN_NOT_FOUND", "The autonomous run does not exist.", 404);
+    return run;
+  }
+  async list(options: { status?: AutonomousRunStatus; limit?: number } = {}): Promise<AutonomousRun[]> {
+    if (!this.runs.list) return [];
+    return this.runs.list(options);
+  }
   async listRecoverable(now = new Date(), limit = AUTONOMOUS_RUN_RECOVERY_LIMIT) {
     if (!this.runs.listRecoverable) return [];
     const staleBefore = new Date(now.getTime() - AUTONOMOUS_RUN_PROCESSING_STALE_AFTER_MS);
@@ -29,7 +39,7 @@ export class AutonomousRunService {
   }
   async claimProcessing(id: EntityId, now = new Date()): Promise<{ run: AutonomousRun; acquired: boolean }> {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
-    if (!run) throw new Error("Autonomous run does not exist.");
+    if (!run) throw new DomainError("AUTONOMOUS_RUN_NOT_FOUND", "The autonomous run does not exist.", 404);
     if (run.attemptCount >= AUTONOMOUS_RUN_MAX_ATTEMPTS) return { run, acquired: false };
     if (run.status === "processing" && this.runs.claimProcessing) {
       const reclaimed = await this.runs.claimProcessing(id, now, AUTONOMOUS_RUN_PROCESSING_STALE_AFTER_MS, AUTONOMOUS_RUN_MAX_ATTEMPTS);
