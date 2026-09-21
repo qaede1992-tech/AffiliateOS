@@ -131,27 +131,36 @@ export class PublicationWorker {
       try {
         const checked = await this.executor.check(operation);
         if (checked.result.status === "processing") {
-          await this.operations.transition(operation.id, "processing", {}, now);
-          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing" });
+          const transitioned = await this.operations.transition(operation.id, "processing", {}, now);
+          results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: transitioned.status === "published" ? "succeeded" : transitioned.status === "failed" ? "failed" : "processing", externalPostId: transitioned.externalPostId, error: transitioned.lastError });
           continue;
         }
         if (checked.result.status === "published") {
-          await this.operations.transition(operation.id, "published", { externalPostId: checked.result.externalPostId }, now);
-          await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
-          await this.jobService.succeed(operation.jobId, checked.result.externalPostId, now);
-          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "succeeded", externalPostId: checked.result.externalPostId });
+          const transitioned = await this.operations.transition(operation.id, "published", { externalPostId: checked.result.externalPostId }, now);
+          if (transitioned.status !== "published" || !transitioned.externalPostId) {
+            throw new DomainError("PUBLICATION_OPERATION_CONFLICT", "Publication operation changed before completion could be reconciled.", 409);
+          }
+          await this.contentService?.update(transitioned.contentId, { status: "published", publishedAt: now.toISOString() });
+          await this.jobService.succeed(transitioned.jobId, transitioned.externalPostId, now);
+          results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: "succeeded", externalPostId: transitioned.externalPostId });
           continue;
         }
-        await this.operations.transition(operation.id, "failed", { error: checked.result.error }, now);
-        await this.contentService?.update(operation.contentId, { status: "failed" });
-        await this.jobService.fail(operation.jobId, checked.result.error, now);
-        results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error });
+        const transitioned = await this.operations.transition(operation.id, "failed", { error: checked.result.error }, now);
+        if (transitioned.status !== "failed") {
+          throw new DomainError("PUBLICATION_OPERATION_CONFLICT", "Publication operation changed before failure could be reconciled.", 409);
+        }
+        await this.contentService?.update(transitioned.contentId, { status: "failed" });
+        await this.jobService.fail(transitioned.jobId, checked.result.error, now);
+        results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: "failed", error: checked.result.error });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (isStatusCheckUnavailable(message)) {
-          await this.operations.transition(operation.id, "awaiting_confirmation", { error: message }, now);
-          await this.jobService.awaitConfirmation(operation.jobId, now, message);
-          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "awaiting_confirmation", error: message });
+          const transitioned = await this.operations.transition(operation.id, "awaiting_confirmation", { error: message }, now);
+          if (transitioned.status !== "awaiting_confirmation") {
+            continue;
+          }
+          await this.jobService.awaitConfirmation(transitioned.jobId, now, message);
+          results.push({ jobId: transitioned.jobId, contentId: transitioned.contentId, status: "awaiting_confirmation", error: message });
           continue;
         }
         await this.operations.transition(operation.id, "processing", { error: message }, now);
