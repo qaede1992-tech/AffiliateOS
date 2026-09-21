@@ -35,7 +35,7 @@ export class AutonomousCycleService {
     private readonly execution: AutonomousExecutionService,
     private readonly analytics?: { overview(): Promise<{ campaigns: CampaignAnalytics[] }> },
     private readonly optimizer: OptimizationEngine = new OptimizationEngine(),
-    private readonly campaigns?: Pick<CampaignService, "update">,
+    private readonly campaigns?: Pick<CampaignService, "update" | "get">,
     private readonly content?: Pick<ContentService, "list" | "createRevision">
   ) {}
 
@@ -58,10 +58,13 @@ export class AutonomousCycleService {
       const optimization = this.analytics ? this.optimizer.recommend((await this.analytics.overview()).campaigns) : [];
       if (this.campaigns) {
         for (const recommendation of optimization) {
+          const campaign = await this.campaigns.get(recommendation.campaignId);
           if (recommendation.action === "pause") {
-            await this.campaigns.update(recommendation.campaignId, { status: "paused" });
+            if (campaign.status !== "paused" && campaign.status !== "archived" && campaign.status !== "completed") {
+              await this.campaigns.update(recommendation.campaignId, { status: "paused" });
+            }
           } else if (recommendation.action === "scale") {
-            await this.campaigns.update(recommendation.campaignId, { status: "active" });
+            if (campaign.status !== "active") await this.campaigns.update(recommendation.campaignId, { status: "active" });
           } else if (recommendation.action === "revise-content" && this.content) {
             const existing = await this.content.list(recommendation.campaignId);
             const source = existing.find((item) => item.status === "published" || item.status === "scheduled");
