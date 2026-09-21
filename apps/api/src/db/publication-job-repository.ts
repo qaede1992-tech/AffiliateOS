@@ -1,4 +1,4 @@
-import { and, eq, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { PublicationJob } from "../domain/publication-job.js";
 import type { PublicationJobRepository } from "../domain/repository.js";
 import { publicationJobs } from "./schema.js";
@@ -82,7 +82,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
     return existing;
   }
 
-  async claimDue(id: string, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined> {
+  async transition(id: string, expected: PublicationJob["status"][], job: PublicationJob): Promise<PublicationJob | undefined> {\n    const values = {\n      id: job.id, contentId: job.contentId, idempotencyKey: job.idempotencyKey, status: job.status,\n      attemptCount: job.attemptCount, scheduledAt: job.scheduledAt, lockedAt: job.lockedAt ?? null,\n      externalPostId: job.externalPostId ?? null, lastError: job.lastError ?? null,\n      createdAt: job.createdAt, updatedAt: job.updatedAt\n    };\n    const rows = await this.db.update(publicationJobs)\n      .set(values)\n      .where(and(eq(publicationJobs.id, id), inArray(publicationJobs.status, expected)))\n      .returning();\n    return rows[0] ? toPublicationJob(rows[0]) : undefined;\n  }\n\n  async claimDue(id: string, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined> {
     const nowIso = now.toISOString();
     const staleCutoff = new Date(now.getTime() - lockTimeoutMs).toISOString();
     const rows = await this.db.update(publicationJobs)
