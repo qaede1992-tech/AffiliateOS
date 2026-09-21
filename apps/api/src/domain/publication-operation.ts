@@ -1,6 +1,6 @@
 import type { EntityId, IsoTimestamp } from "@affiliateos/shared";
 
-export type PublicationOperationStatus = "accepted" | "processing" | "published" | "failed";
+export type PublicationOperationStatus = "accepted" | "processing" | "awaiting_confirmation" | "published" | "failed";
 
 export interface PublicationOperation {
   id: EntityId;
