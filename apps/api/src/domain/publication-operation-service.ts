@@ -3,8 +3,9 @@ import type { EntityId } from "@affiliateos/shared";
 import type { PublicationOperation, PublicationOperationRepository, PublicationOperationStatus } from "./publication-operation.js";
 
 const allowedTransitions: Record<PublicationOperationStatus, PublicationOperationStatus[]> = {
-  accepted: ["accepted", "processing", "published", "failed"],
-  processing: ["processing", "published", "failed"],
+  accepted: ["accepted", "processing", "awaiting_confirmation", "published", "failed"],
+  processing: ["processing", "awaiting_confirmation", "published", "failed"],
+  awaiting_confirmation: ["awaiting_confirmation", "processing", "published", "failed"],
   published: ["published"],
   failed: ["failed"]
 };
