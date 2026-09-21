@@ -77,7 +77,7 @@ export class CampaignOrchestrator {
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const run = input.idempotencyKey && this.autonomousRuns
-      ? await this.autonomousRuns.accept({ idempotencyKey: input.idempotencyKey, productId: input.product.id, offerId: input.offer.id })
+      ? await this.autonomousRuns.accept({ idempotencyKey: input.idempotencyKey, productId: input.product.id, offerId: input.offer.id, executionContext: { audience: input.audience ?? [], platforms: [...new Set(input.platforms ?? defaultPlatforms)], scheduledAt: input.scheduledAt } })
       : undefined;
 
     if (run && run.opportunityProductId !== input.product.id) throw new Error("Autonomous run idempotency key is already bound to a different product.");
