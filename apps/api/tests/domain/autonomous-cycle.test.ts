@@ -191,6 +191,50 @@ describe("autonomous cycle", () => {
     assert.equal(executed, 0);
   });
 
+  it("aborts before optimization when distributed lock renewal is lost", async () => {
+    let renewCalls = 0;
+    let analyticsCalls = 0;
+    const lock = {
+      tryAcquire: async () => true,
+      renew: async () => {
+        renewCalls += 1;
+        return false;
+      },
+      release: async () => {}
+    };
+    const execution = {
+      runOnce: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { selected: [], rejected: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const analytics = {
+      overview: async () => {
+        analyticsCalls += 1;
+        return { campaigns: [] };
+      }
+    };
+
+    const service = new AutonomousCycleService(
+      { listCandidates: async () => [] },
+      execution,
+      analytics,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lock,
+      "autonomous-cycle-test",
+      { leaseMs: 100, renewMs: 5 }
+    );
+
+    await assert.rejects(() => service.runOnce(), (error: unknown) => {
+      return error instanceof Error && error.name === "AutonomousCycleLockLostError";
+    });
+    assert.ok(renewCalls > 0);
+    assert.equal(analyticsCalls, 0);
+  });
+
   it("releases the guard when candidate loading fails", async () => {
     let attempts = 0;
     const candidates: AutonomousCandidateProvider = {
