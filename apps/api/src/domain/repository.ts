@@ -46,6 +46,22 @@ export class InMemoryPublicationJobRepository {
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
   async saveIfAbsent(job: PublicationJob) { const existing = this.findByIdempotencyKeySync(job.idempotencyKey); if (existing) return existing; this.jobs.set(job.id, job); return job; }
   private findByIdempotencyKeySync(key: string) { for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job; return undefined; }
+  async transition(id: EntityId, expected: PublicationJob["status"][], job: PublicationJob) {
+    const current = this.jobs.get(id);
+    if (!current || !expected.includes(current.status)) return undefined;
+    const next: PublicationJob = {
+      ...current,
+      status: job.status,
+      attemptCount: job.attemptCount,
+      scheduledAt: job.scheduledAt,
+      lockedAt: job.lockedAt,
+      externalPostId: job.externalPostId,
+      lastError: job.lastError,
+      updatedAt: job.updatedAt
+    };
+    this.jobs.set(id, next);
+    return next;
+  }
   async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) { const job = this.jobs.get(id); if (!job || job.status === "succeeded" || job.status === "awaiting_confirmation") return undefined; const scheduled = new Date(job.scheduledAt).getTime(); const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined; const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs; if (scheduled > nowDate.getTime() || lockFresh) return undefined; const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() }; this.jobs.set(id, claimed); return claimed; }
 }
 export class InMemoryPublicationOperationRepository implements PublicationOperationRepository {
