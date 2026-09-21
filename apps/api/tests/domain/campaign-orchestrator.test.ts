@@ -51,6 +51,18 @@ class StubDistribution {
 }
 
 describe("campaign orchestrator", () => {
+  it("revalidates the live product before creating campaign artifacts", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent() as StubContent & { validateProductForPublication: () => Promise<never> };
+    content.validateProductForPublication = async () => { throw new Error("PRODUCT_NOT_ACTIVE"); };
+    await assert.rejects(
+      () => new CampaignOrchestrator(campaigns as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, platforms: ["tiktok"] }),
+      /PRODUCT_NOT_ACTIVE/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
   it("revalidates the live affiliate offer before creating campaign artifacts", async () => {
     const campaigns = new StubCampaigns();
     campaigns.validateOfferForExecution = async () => { throw new Error("AFFILIATE_LINK_EXPIRED"); };
