@@ -70,7 +70,12 @@ export class DrizzlePublicationOperationRepository implements PublicationOperati
 
   async transition(id: string, expected: PublicationOperation["status"][], operation: PublicationOperation): Promise<PublicationOperation | undefined> {
     const rows = await this.db.update(publicationOperations)
-      .set(toRow(operation))
+      .set({
+        status: operation.status,
+        externalPostId: operation.externalPostId ?? null,
+        lastError: operation.lastError ?? null,
+        updatedAt: operation.updatedAt
+      })
       .where(and(eq(publicationOperations.id, id), inArray(publicationOperations.status, expected)))
       .returning();
     return rows[0] ? toDomain(rows[0]) : undefined;
