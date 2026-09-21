@@ -33,9 +33,9 @@ export class PublicationJobService {
     });
   }
 
-  async awaitConfirmation(id: EntityId, now = new Date()): Promise<PublicationJob> {
+  async awaitConfirmation(id: EntityId, now = new Date(), error?: string): Promise<PublicationJob> {
     const job = await this.require(id);
-    return this.jobs.save({ ...job, status: "awaiting_confirmation", lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() });
+    return this.jobs.save({ ...job, status: "awaiting_confirmation", lockedAt: undefined, lastError: error, updatedAt: now.toISOString() });
   }
 
   async succeed(id: EntityId, externalPostId: string, now = new Date()): Promise<PublicationJob> {
