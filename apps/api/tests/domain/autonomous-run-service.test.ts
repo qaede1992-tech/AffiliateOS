@@ -25,6 +25,29 @@ describe("AutonomousRunService", () => {
     assert.equal(stored?.attemptCount, 1);
   });
 
+  it("does not claim a failed run with an invalid retry timestamp", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const run = createAutonomousRun({
+      idempotencyKey: "autonomous:test:invalid-retry-time",
+      productId: "product-1",
+      offerId: "offer-1",
+      now: new Date("2026-09-20T10:00:00.000Z")
+    });
+    await repository.save({
+      ...run,
+      status: "failed",
+      attemptCount: 1,
+      nextAttemptAt: "not-a-timestamp",
+      updatedAt: "2026-09-20T10:01:00.000Z"
+    });
+
+    const claim = await service.claimProcessing(run.id, new Date("2026-09-20T11:00:00.000Z"));
+
+    assert.equal(claim.acquired, false);
+    assert.equal(claim.run.status, "failed");
+  });
+
   it("does not reclaim a fresh processing run", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
