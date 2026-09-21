@@ -20,6 +20,8 @@ export class ProviderConversionProcessor {
 
   async process(accountScope: string, event: NormalizedProviderConversion): Promise<Conversion> {
     if (!accountScope.trim()) throw new DomainError("PROVIDER_CONVERSION_ACCOUNT_MISSING", "Provider conversion account scope is required.", 422);
+    if (!event.externalConversionId.trim()) throw new DomainError("PROVIDER_CONVERSION_ID_MISSING", "Provider conversion external ID is required.", 422);
+    if (event.externalConversionId.length > 255) throw new DomainError("PROVIDER_CONVERSION_ID_INVALID", "Provider conversion external ID is too long.", 422);
     if (!event.affiliateReference) throw new DomainError("PROVIDER_CONVERSION_AFFILIATE_MISSING", "Provider conversion is missing an affiliate reference.", 422);
     if (!event.offerReference) throw new DomainError("PROVIDER_CONVERSION_OFFER_MISSING", "Provider conversion is missing an offer reference.", 422);
 
@@ -28,12 +30,13 @@ export class ProviderConversionProcessor {
     const offerId = await this.resolver.resolveOffer(event.offerReference);
     if (!offerId) throw new DomainError("PROVIDER_CONVERSION_OFFER_UNKNOWN", "The provider offer reference could not be resolved.", 422);
 
+    const normalizedScope = accountScope.trim();
     const conversion = await this.conversions.create({
       affiliateId,
       offerId,
       amountCents: event.amountCents,
       occurredAt: event.occurredAt,
-      idempotencyKey: `provider:${accountScope}:${event.externalConversionId}`
+      idempotencyKey: `provider:${normalizedScope}:${event.externalConversionId}`
     });
 
     if (event.status !== "pending" || event.commissionCents !== undefined) {
