@@ -31,6 +31,20 @@ const setup = async (credentialReference?: string) => {
 };
 
 describe("PublisherExecutor", () => {
+  it("fails closed when a publisher does not declare a stable provider", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => ({ externalPostId: "should-not-publish" })
+    };
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    await assert.rejects(
+      () => executor.execute(created.id, new Date("2026-09-20T11:00:00.000Z")),
+      /stable provider identifier/
+    );
+    assert.equal((await contentService.get(created.id)).status, "scheduled");
+  });
+
   it("publishes due scheduled content through a matching publisher", async () => {
     const { contentService, socialAccounts, created } = await setup();
     let published = 0;
