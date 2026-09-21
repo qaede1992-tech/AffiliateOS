@@ -71,12 +71,20 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
     if (currency && !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider conversion currency must be a three-letter ISO code.");
     if (currency && currency === "XXX") throw new Error("Provider conversion currency cannot be the no-currency code.");
 
+    const affiliateReference = text(payload.affiliate_reference) ?? text(payload.affiliateReference) ?? text(payload.affiliate_id) ?? text(payload.affiliateId);
+    const offerReference = text(payload.offer_reference) ?? text(payload.offerReference) ?? text(payload.offer_id) ?? text(payload.offerId);
+    const trackingReference = text(payload.tracking_reference) ?? text(payload.trackingReference) ?? text(payload.tracking_link) ?? text(payload.trackingLink);
+    const orderReference = text(payload.order_reference) ?? text(payload.orderReference) ?? text(payload.order_id) ?? text(payload.orderId);
+    for (const [name, value] of [["affiliate", affiliateReference], ["offer", offerReference], ["tracking", trackingReference], ["order", orderReference]] as const) {
+      if (value && value.length > 255) throw new Error("Provider conversion " + name + " reference is too long.");
+    }
+
     return {
       externalConversionId,
-      affiliateReference: text(payload.affiliate_reference) ?? text(payload.affiliateReference) ?? text(payload.affiliate_id) ?? text(payload.affiliateId),
-      offerReference: text(payload.offer_reference) ?? text(payload.offerReference) ?? text(payload.offer_id) ?? text(payload.offerId),
-      trackingReference: text(payload.tracking_reference) ?? text(payload.trackingReference) ?? text(payload.tracking_link) ?? text(payload.trackingLink),
-      orderReference: text(payload.order_reference) ?? text(payload.orderReference) ?? text(payload.order_id) ?? text(payload.orderId),
+      affiliateReference,
+      offerReference,
+      trackingReference,
+      orderReference,
       amountCents,
       currency,
       commissionCents,
