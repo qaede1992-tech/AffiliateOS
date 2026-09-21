@@ -12,6 +12,7 @@ export type AutonomousCycleInput = Omit<AutonomousExecutionInput, "candidates"> 
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyNamespace?: string;
+  publicationDelayMs?: number;
 };
 
 export type AutonomousCycleResult = {
@@ -36,8 +37,12 @@ export class AutonomousCycleService {
 
     try {
       const candidateList = await this.candidates.listCandidates();
+      const scheduledAt = input.scheduledAt ?? (input.publicationDelayMs !== undefined
+        ? new Date(Date.now() + input.publicationDelayMs).toISOString()
+        : undefined);
       const executionInput: AutonomousExecutionInput = {
         ...input,
+        scheduledAt,
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
