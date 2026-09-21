@@ -1,8 +1,10 @@
 import { and, count, eq } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
-import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks } from "./schema.js";
+import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, autonomousOptimizationStates } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
+import type { AutonomousOptimizationStateRepository } from "../domain/autonomous-optimization-state.js";
+import type { OptimizationState } from "../domain/optimization-engine.js";
 
 type DatabaseExecutor = any;
 const toAffiliate = (row: typeof affiliates.$inferSelect): Affiliate => ({ id: row.id, name: row.name, email: row.email, status: row.status as Affiliate["status"], createdAt: row.createdAt });
@@ -35,6 +37,21 @@ class DrizzleTrackingLinkRepository extends DrizzleRepository<TrackingLink, type
 class DrizzleClickRepository extends DrizzleRepository<Click, typeof clicks.$inferSelect> implements ClickRepository { constructor(db: DatabaseExecutor) { super(db, clicks, toClick, (entity) => ({ ...entity, idempotencyKey: entity.idempotencyKey ?? null } as any)); } async listByTrackingLink(trackingLinkId: string) { return (await this.db.select().from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId))).map(toClick); } async findByIdempotencyKey(trackingLinkId: string, idempotencyKey: string) { const rows = await this.db.select().from(clicks).where(and(eq(clicks.trackingLinkId, trackingLinkId), eq(clicks.idempotencyKey, idempotencyKey))).limit(1); return rows[0] ? toClick(rows[0]) : undefined; } async countByTrackingLink(trackingLinkId: string) { const rows = await this.db.select({ count: count() }).from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId)); return Number(rows[0]?.count ?? 0); } }
 class DrizzleConversionRepository extends DrizzleRepository<Conversion, typeof conversions.$inferSelect> implements ConversionRepository { constructor(db: DatabaseExecutor) { super(db, conversions, toConversion, (entity) => ({ ...entity, idempotencyKey: entity.idempotencyKey ?? null } as any)); } async findByIdempotencyKey(idempotencyKey: string) { const rows = await this.db.select().from(conversions).where(eq(conversions.idempotencyKey, idempotencyKey)).limit(1); return rows[0] ? toConversion(rows[0]) : undefined; } }
 class DrizzleContentRepository extends DrizzleRepository<Content, typeof contentTable.$inferSelect> { constructor(db: DatabaseExecutor) { super(db, contentTable, toContent, (entity) => ({ ...entity, productId: entity.productId ?? null, campaignId: entity.campaignId ?? null, socialAccountId: entity.socialAccountId ?? null, title: entity.title ?? null, caption: entity.caption ?? null, script: entity.script ?? null, cta: entity.cta ?? null, scheduledAt: entity.scheduledAt ?? null, publishedAt: entity.publishedAt ?? null } as any)); } override async save(entity: Content) { if (await this.findById(entity.id)) await this.db.update(contentTable).set(this.toRow(entity)).where(eq(contentTable.id, entity.id)); else await super.save(entity); return entity; } }
+class DrizzleAutonomousOptimizationStateRepository implements AutonomousOptimizationStateRepository {
+  constructor(private readonly db: DatabaseExecutor) {}
+  async get(campaignId: string): Promise<OptimizationState | undefined> {
+    const rows = await this.db.select().from(autonomousOptimizationStates).where(eq(autonomousOptimizationStates.campaignId, campaignId)).limit(1);
+    return rows[0] ? { action: rows[0].action as OptimizationState["action"], appliedAt: rows[0].appliedAt } : undefined;
+  }
+  async save(campaignId: string, state: OptimizationState): Promise<OptimizationState> {
+    const values = { campaignId, action: state.action, appliedAt: state.appliedAt, createdAt: state.appliedAt, updatedAt: state.appliedAt };
+    const existing = await this.db.select().from(autonomousOptimizationStates).where(eq(autonomousOptimizationStates.campaignId, campaignId)).limit(1);
+    if (existing[0]) await this.db.update(autonomousOptimizationStates).set({ action: values.action, appliedAt: values.appliedAt, updatedAt: values.updatedAt }).where(eq(autonomousOptimizationStates.campaignId, campaignId));
+    else await this.db.insert(autonomousOptimizationStates).values(values);
+    return state;
+  }
+}
+
 class DrizzleSocialAccountRepository extends DrizzleRepository<SocialAccount, typeof socialAccounts.$inferSelect> { constructor(db: DatabaseExecutor) { super(db, socialAccounts, toSocialAccount, (entity) => ({ ...entity, credentialReference: entity.credentialReference ?? null } as any)); } async findByPlatformAccount(platform: string, accountReference: string) { const rows = await this.db.select().from(socialAccounts).where(and(eq(socialAccounts.platform, platform), eq(socialAccounts.accountReference, accountReference))).limit(1); return rows[0] ? toSocialAccount(rows[0]) : undefined; } override async save(entity: SocialAccount) { if (await this.findById(entity.id)) await this.db.update(socialAccounts).set(this.toRow(entity)).where(eq(socialAccounts.id, entity.id)); else await super.save(entity); return entity; } }
 
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
@@ -44,7 +61,7 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
   commissions: new DrizzleRepository(db, commissions, toCommission, (entity: Commission) => ({ id: entity.id, conversionId: entity.conversionId, affiliateId: entity.affiliateId, amountCents: entity.amountCents, status: entity.status, createdAt: entity.createdAt })),
   marketplaceConnections: new DrizzleMarketplaceConnectionRepository(db), affiliateAccounts: new DrizzleAffiliateAccountRepository(db), products: new DrizzleProductCatalogRepository(db), affiliateOffers: new DrizzleAffiliateOfferRepository(db),
   campaigns: new DrizzleCampaignRepository(db), campaignOffers: new DrizzleCampaignOfferRepository(db), trackingLinks: new DrizzleTrackingLinkRepository(db), clicks: new DrizzleClickRepository(db),
-  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db)
+  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), autonomousOptimizationStates: new DrizzleAutonomousOptimizationStateRepository(db)
 });
 export class DrizzleTransactionManager implements TransactionManager { constructor(private readonly db: DatabaseExecutor) {} run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T> { return this.db.transaction(async (transaction: DatabaseExecutor) => { const repositories = createRepositories(transaction); return work({ conversions: repositories.conversions, commissions: repositories.commissions }); }); }
 }
