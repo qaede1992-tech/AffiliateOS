@@ -12,7 +12,7 @@ const toDomain = (row: AutonomousRunRow): AutonomousRun => ({
   offerId: row.offerId,
   campaignId: row.campaignId ?? undefined,
   status: row.status as AutonomousRunStatus,
-  lastError: row.lastError ?? undefined,
+  lastError: row.lastError ?? undefined,\n  executionContext: row.executionContext as AutonomousRun["executionContext"],
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 });
@@ -24,7 +24,7 @@ const toRow = (run: AutonomousRun) => ({
   offerId: run.offerId,
   campaignId: run.campaignId ?? null,
   status: run.status,
-  lastError: run.lastError ?? null,
+  lastError: run.lastError ?? null,\n  executionContext: run.executionContext ?? {},
   createdAt: run.createdAt,
   updatedAt: run.updatedAt
 });
