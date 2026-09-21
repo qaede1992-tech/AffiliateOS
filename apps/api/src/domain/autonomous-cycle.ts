@@ -66,6 +66,7 @@ export class AutonomousCycleService {
           } else if (recommendation.action === "scale") {
             if (campaign.status !== "active") await this.campaigns.update(recommendation.campaignId, { status: "active" });
           } else if (recommendation.action === "revise-content" && this.content) {
+            if (campaign.status === "paused" || campaign.status === "archived" || campaign.status === "completed") continue;
             const existing = await this.content.list(recommendation.campaignId);
             const source = existing.find((item) => item.status === "published" || item.status === "scheduled");
             if (source) await this.content.createRevision(recommendation.campaignId, source);
