@@ -46,6 +46,25 @@ export class AutonomousRunService {
     }
     return { run: await this.runs.save(next), acquired: true };
   }
+  async retry(id: EntityId, now = new Date()): Promise<AutonomousRun> {
+    const run = this.runs.findById ? await this.runs.findById(id) : undefined;
+    if (!run) throw new Error("Autonomous run does not exist.");
+    if (run.status !== "failed") return run;
+    const reset: AutonomousRun = {
+      ...run,
+      status: "failed",
+      attemptCount: 0,
+      nextAttemptAt: undefined,
+      lastError: undefined,
+      updatedAt: now.toISOString()
+    };
+    if (this.runs.transition) {
+      const transitioned = await this.runs.transition(id, ["failed"], reset);
+      return transitioned ?? (this.runs.findById ? (await this.runs.findById(id)) ?? run : run);
+    }
+    return this.runs.save(reset);
+  }
+
   async transition(id: EntityId, status: AutonomousRunStatus, details: { campaignId?: EntityId; error?: string } = {}, now = new Date()) {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
     if (!run) throw new Error("Autonomous run does not exist.");
