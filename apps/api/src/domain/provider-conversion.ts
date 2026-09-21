@@ -65,6 +65,7 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
 
     const currency = text(payload.currency)?.toUpperCase();
     if (currency && !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider conversion currency must be a three-letter ISO code.");
+    if (currency && currency === "XXX") throw new Error("Provider conversion currency cannot be the no-currency code.");
 
     return {
       externalConversionId,
