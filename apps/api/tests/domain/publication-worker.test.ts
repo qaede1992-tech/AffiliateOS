@@ -132,6 +132,25 @@ describe("PublicationWorker", () => {
     assert.equal((await operations.findByProviderOperation("restart-safe-provider", "restart-safe-operation"))?.status, "published");
   });
 
+  it("resolves a concurrent publication job transition through compare-and-set", async () => {
+    const { jobs, jobService, content } = await setup();
+    const job = await jobService.enqueue(content);
+    const originalTransition = jobs.transition.bind(jobs);
+    let raced = false;
+    jobs.transition = async (id, expected, next) => {
+      if (!raced) {
+        raced = true;
+        await originalTransition(id, expected, { ...next, externalPostId: "race-post" });
+        return undefined;
+      }
+      return originalTransition(id, expected, next);
+    };
+    const resolved = await jobService.succeed(job.id, "race-post", new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(resolved.externalPostId, "race-post");
+    assert.equal(resolved.status, "succeeded");
+    assert.equal((await jobs.findById(job.id))?.externalPostId, "race-post");
+  });
+
   it("keeps terminal publication job reconciliation idempotent and rejects conflicting outcomes", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const publisher: SocialPublisher = {
