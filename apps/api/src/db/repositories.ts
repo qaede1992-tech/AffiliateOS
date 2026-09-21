@@ -45,7 +45,7 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
   commissions: new DrizzleRepository(db, commissions, toCommission, (entity: Commission) => ({ id: entity.id, conversionId: entity.conversionId, affiliateId: entity.affiliateId, amountCents: entity.amountCents, status: entity.status, createdAt: entity.createdAt })),
   marketplaceConnections: new DrizzleMarketplaceConnectionRepository(db), affiliateAccounts: new DrizzleAffiliateAccountRepository(db), products: new DrizzleProductCatalogRepository(db), affiliateOffers: new DrizzleAffiliateOfferRepository(db),
   campaigns: new DrizzleCampaignRepository(db), campaignOffers: new DrizzleCampaignOfferRepository(db), trackingLinks: new DrizzleTrackingLinkRepository(db), clicks: new DrizzleClickRepository(db),
-  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), publicationOperations: new DrizzlePublicationOperationRepository(db)
+  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), publicationOperations: new DrizzlePublicationOperationRepository(db), publicationOperations: new DrizzlePublicationOperationRepository(db)
 });
 export class DrizzleTransactionManager implements TransactionManager { constructor(private readonly db: DatabaseExecutor) {} run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T> { return this.db.transaction(async (transaction: DatabaseExecutor) => { const repositories = createRepositories(transaction); return work({ conversions: repositories.conversions, commissions: repositories.commissions }); }); }
 }
