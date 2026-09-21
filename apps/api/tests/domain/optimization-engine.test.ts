@@ -26,6 +26,13 @@ describe("OptimizationEngine", () => {
     assert.equal(result[0].action, "pause");
   });
 
+  it("suppresses repeated decisions during cooldown", () => {
+    const now = new Date("2026-09-21T12:00:00.000Z");
+    const result = new OptimizationEngine({ cooldownMs: 60 * 60_000 }).recommend([analytics("c1", 120, 0)], new Map([["c1", { action: "pause", appliedAt: "2026-09-21T11:30:00.000Z" }]]), now);
+    assert.equal(result[0].action, "maintain");
+    assert.match(result[0].reasons[0], /cooldown/i);
+  });
+
   it("recommends creative revision for intermediate performance", () => {
     const result = new OptimizationEngine().recommend([analytics("c1", 80, 0.025)]);
     assert.equal(result[0].action, "revise-content");
