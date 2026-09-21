@@ -76,7 +76,55 @@ describe("Publication confirmation boundary", () => {
     assert.equal((await operations.findByProviderOperation("no-status-check-provider", "unknown-operation-1"))?.status, "published");
     await assert.rejects(
       worker.resolveConfirmation(operation.id, { status: "failed", error: "late conflicting confirmation" }, new Date("2026-09-20T15:00:00.000Z")),
-      /Only publications awaiting confirmation can be resolved/
+      (error: unknown) => error instanceof Error && error.message === "Only publications awaiting confirmation can be resolved." && (error as { statusCode?: number }).statusCode === 409 && (error as { code?: string }).code === "PUBLICATION_CONFIRMATION_CONFLICT"
     );
+  });
+
+  it("returns a conflict when concurrent confirmation attempts race", async () => {
+    const contents = new InMemoryRepository<Content>();
+    const campaigns = new InMemoryRepository<any>();
+    const products = new InMemoryProductCatalogRepository();
+    await products.save(product);
+    const contentService = new ContentService(contents, campaigns, products);
+    const socialAccounts = new InMemorySocialAccountRepository();
+    await socialAccounts.save(account);
+    const jobs = new InMemoryPublicationJobRepository();
+    const jobService = new PublicationJobService(jobs);
+    const operations = new InMemoryPublicationOperationRepository();
+    const content = await contentService.create({
+      productId: product.id, platform: "tiktok", contentType: "affiliate-promotion",
+      status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z"
+    });
+    const publisher: SocialPublisher = {
+      provider: "race-provider",
+      supports: () => true,
+      publish: async () => ({ status: "accepted", providerOperationId: "race-operation-1" })
+    };
+    const worker = new PublicationWorker(
+      jobs,
+      jobService,
+      new PublisherExecutor(contentService, socialAccounts, [publisher]),
+      contentService,
+      operations
+    );
+    const job = await jobService.enqueue(content);
+    await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const operation = (await operations.list())[0];
+
+    const outcomes = await Promise.allSettled([
+      worker.resolveConfirmation(operation.id, { status: "published", externalPostId: "race-post-1" }, new Date("2026-09-20T12:00:00.000Z")),
+      worker.resolveConfirmation(operation.id, { status: "published", externalPostId: "race-post-2" }, new Date("2026-09-20T12:00:01.000Z"))
+    ]);
+    const fulfilled = outcomes.filter((result) => result.status === "fulfilled");
+    const rejected = outcomes.filter((result) => result.status === "rejected");
+    assert.equal(fulfilled.length, 1);
+    assert.equal(rejected.length, 1);
+    const rejection = rejected[0];
+    assert.equal(rejection.status, "rejected");
+    assert.equal((rejection.reason as { statusCode?: number }).statusCode, 409);
+    assert.equal((rejection.reason as { code?: string }).code, "PUBLICATION_CONFIRMATION_CONFLICT");
+    assert.equal((await operations.findById(operation.id))?.externalPostId, "race-post-1");
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+  });
   });
 });
