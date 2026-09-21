@@ -1,20 +1,24 @@
 import type { AudienceSegment, GeneratedContent, MarketplaceCapability, MarketplaceOfferInput, MarketplaceProductInput, Product, ProductOpportunity } from "@affiliateos/shared";
 
 export type ProviderEventSignatureHeaders = { signature?: string; timestamp?: string };
+export interface MarketplaceProviderContext {
+  credentialReference?: string;
+  configuration: Record<string, unknown>;
+}
 export interface MarketplaceProvider {
   readonly slug: string;
   readonly displayName: string;
   readonly connectionMode: "mock" | "official_api";
   readonly capabilities: readonly MarketplaceCapability[];
   validateConfiguration(configuration: Record<string, unknown>): void;
-  testConnection?(input: { credentialReference?: string; configuration: Record<string, unknown> }): Promise<{ metadata?: Record<string, unknown> }>;
-  verifyEventSignature?(input: { rawBody: string; headers: ProviderEventSignatureHeaders; credentialReference?: string; configuration: Record<string, unknown> }): Promise<{ valid: boolean; version?: string }>;
-  discoverProducts?(): Promise<MarketplaceProductInput[]>;
-  getProduct?(externalProductId: string): Promise<MarketplaceProductInput | undefined>;
-  searchProducts?(query: string): Promise<MarketplaceProductInput[]>;
-  getOffers?(externalProductId: string): Promise<MarketplaceOfferInput[]>;
-  generateAffiliateLink?(externalOfferId: string): Promise<{ url: string; expiresAt?: string }>;
-  syncConversions?(since: string): Promise<{ synced: number }>;
+  testConnection?(input: MarketplaceProviderContext): Promise<{ metadata?: Record<string, unknown> }>;
+  verifyEventSignature?(input: { rawBody: string; headers: ProviderEventSignatureHeaders } & MarketplaceProviderContext): Promise<{ valid: boolean; version?: string }>;
+  discoverProducts?(context: MarketplaceProviderContext): Promise<MarketplaceProductInput[]>;
+  getProduct?(externalProductId: string, context: MarketplaceProviderContext): Promise<MarketplaceProductInput | undefined>;
+  searchProducts?(query: string, context: MarketplaceProviderContext): Promise<MarketplaceProductInput[]>;
+  getOffers?(externalProductId: string, context: MarketplaceProviderContext): Promise<MarketplaceOfferInput[]>;
+  generateAffiliateLink?(externalOfferId: string, context: MarketplaceProviderContext): Promise<{ url: string; expiresAt?: string }>;
+  syncConversions?(since: string, context: MarketplaceProviderContext): Promise<{ synced: number }>;
 }
 export class MarketplaceProviderRegistry {
   private readonly providers = new Map<string, MarketplaceProvider>();
