@@ -2,20 +2,117 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
-    { "idx": 0, "version": "7", "when": 1789464000000, "tag": "0000_initial", "breakpoints": true },
-    { "idx": 1, "version": "7", "when": 1789550400000, "tag": "0001_affiliateos_foundation", "breakpoints": true },
-    { "idx": 2, "version": "7", "when": 1789636800000, "tag": "0002_tracking_links_campaign_index", "breakpoints": true },
-    { "idx": 3, "version": "7", "when": 1789723200000, "tag": "0003_marketplace_engine", "breakpoints": true },
-    { "idx": 4, "version": "7", "when": 1789809600000, "tag": "0004_marketplace_integration_readiness", "breakpoints": true },
-    { "idx": 5, "version": "7", "when": 1789896000000, "tag": "0005_click_idempotency", "breakpoints": true },
-    { "idx": 6, "version": "7", "when": 1789982400000, "tag": "0006_oauth_states", "breakpoints": true },
-    { "idx": 7, "version": "7", "when": 1790068800000, "tag": "0007_conversion_attributions", "breakpoints": true },
-    { "idx": 8, "version": "7", "when": 1790155200000, "tag": "0008_conversion_idempotency", "breakpoints": true },
-    { "idx": 9, "version": "7", "when": 1790241600000, "tag": "0009_provider_events", "breakpoints": true },
-    { "idx": 10, "version": "7", "when": 1790335200000, "tag": "0017_autonomous_runs", "breakpoints": true },
-    { "idx": 11, "version": "7", "when": 1790421600000, "tag": "0018_autonomous_feedback_snapshots", "breakpoints": true },
-    { "idx": 12, "version": "7", "when": 1790508000000, "tag": "0019_autonomous_feedback_observation_key", "breakpoints": true },
-    { "idx": 13, "version": "7", "when": 1790594400000, "tag": "0020_autonomous_optimization_states", "breakpoints": true },
-    { "idx": 14, "version": "7", "when": 1790680800000, "tag": "0021_autonomous_cycle_locks", "breakpoints": true }
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789464000000,
+      "tag": "0000_initial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789550400000,
+      "tag": "0001_affiliateos_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789636800000,
+      "tag": "0002_tracking_links_campaign_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789723200000,
+      "tag": "0003_marketplace_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789809600000,
+      "tag": "0004_marketplace_integration_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789896000000,
+      "tag": "0005_click_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789982400000,
+      "tag": "0006_oauth_states",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790068800000,
+      "tag": "0007_conversion_attributions",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790155200000,
+      "tag": "0008_conversion_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790241600000,
+      "tag": "0009_provider_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790335200000,
+      "tag": "0017_autonomous_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790421600000,
+      "tag": "0018_autonomous_feedback_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790508000000,
+      "tag": "0019_autonomous_feedback_observation_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790594400000,
+      "tag": "0020_autonomous_optimization_states",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790680800000,
+      "tag": "0021_autonomous_cycle_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790767200000,
+      "tag": "0022_affiliate_link_metadata",
+      "breakpoints": true
+    }
   ]
 }
