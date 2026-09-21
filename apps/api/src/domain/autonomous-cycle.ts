@@ -5,6 +5,8 @@ import type { CampaignAnalytics } from "./analytics.js";
 import type { CampaignService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
 import type { AutonomousOptimizationStateRepository } from "./autonomous-optimization-state.js";
+import type { AutonomousCycleLockRepository } from "./autonomous-cycle-lock.js";
+import { randomUUID } from "node:crypto";
 import { OptimizationEngine, type OptimizationRecommendation, type OptimizationState } from "./optimization-engine.js";
 
 export interface AutonomousCandidateProvider {
@@ -31,6 +33,7 @@ export type AutonomousCycleResult = {
 export class AutonomousCycleService {
   private running = false;
   private readonly optimizationState = new Map<string, OptimizationState>();
+  private readonly lockOwnerId = randomUUID();
 
   constructor(
     private readonly candidates: AutonomousCandidateProvider,
@@ -39,13 +42,21 @@ export class AutonomousCycleService {
     private readonly optimizer: OptimizationEngine = new OptimizationEngine(),
     private readonly campaigns?: Pick<CampaignService, "update" | "get">,
     private readonly content?: Pick<ContentService, "list" | "createRevision">,
-    private readonly optimizationStateRepository?: AutonomousOptimizationStateRepository
+    private readonly optimizationStateRepository?: AutonomousOptimizationStateRepository,
+    private readonly cycleLock?: AutonomousCycleLockRepository,
+    private readonly cycleLockKey = "autonomous-cycle"
   ) {}
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
     if (this.running) return undefined;
     this.running = true;
     const startedAt = new Date().toISOString();
+    const lockNow = startedAt;
+    const leaseUntil = new Date(Date.parse(startedAt) + 10 * 60_000).toISOString();
+    if (this.cycleLock && !(await this.cycleLock.tryAcquire(this.cycleLockKey, this.lockOwnerId, lockNow, leaseUntil))) {
+      this.running = false;
+      return undefined;
+    }
 
     try {
       const candidateList = await this.candidates.listCandidates();
@@ -102,6 +113,7 @@ export class AutonomousCycleService {
         optimization
       };
     } finally {
+      if (this.cycleLock) await this.cycleLock.release(this.cycleLockKey, this.lockOwnerId);
       this.running = false;
     }
   }
