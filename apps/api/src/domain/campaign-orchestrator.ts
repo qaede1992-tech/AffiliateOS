@@ -123,6 +123,10 @@ export class CampaignOrchestrator {
       }
 
       const distribution: DistributionPlan[] = [];
+      if (campaign.status === "paused") {
+        if (run) await this.autonomousRuns!.transition(run.id, "completed", { campaignId: campaign.id });
+        return { campaign, offerAttachment, trackingLink, content, distribution };
+      }
       if (input.scheduledAt) {
         const requests = content.filter((item) => item.status === "draft").map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
         if (requests.length) {
