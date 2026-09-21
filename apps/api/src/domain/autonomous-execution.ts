@@ -59,7 +59,7 @@ export class AutonomousExecutionService {
       const idempotencyKey = executionKey(namespace, opportunity);
       if (recoveredKeys.has(idempotencyKey)) continue;
       const resolved = opportunity.offerId
-        ? candidatesByOpportunity.get(`\${opportunity.product.id}:\${opportunity.offerId}`)
+        ? candidatesByOpportunity.get(`${opportunity.product.id}:${opportunity.offerId}`)
         : undefined;
       const candidate = resolved?.candidate;
       const offer = resolved?.offer;
