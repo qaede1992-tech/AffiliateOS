@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
@@ -11,6 +12,24 @@ import { requireOperator } from "./auth.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
+  app.get("/api/v1/publication-operations", async () => list(await services.publicationWorker.listOperations()));
+  app.post("/api/v1/publication-operations/:operationId/resolve", writeGuard, async (request, reply) => {
+    const operationId = z.string().uuid().parse((request.params as { operationId: string }).operationId);
+    const input = z.object({
+      status: z.enum(["published", "failed"]),
+      externalPostId: z.string().trim().min(1).max(500).optional(),
+      error: z.string().trim().min(1).max(2000).optional()
+    }).superRefine((value, context) => {
+      if (value.status === "published" && !value.externalPostId) context.addIssue({ code: z.ZodIssueCode.custom, message: "externalPostId is required when resolving as published." });
+      if (value.status === "failed" && !value.error) context.addIssue({ code: z.ZodIssueCode.custom, message: "error is required when resolving as failed." });
+    }).parse(request.body);
+    const result = await services.publicationWorker.resolveConfirmation(
+      operationId,
+      input.status === "published" ? { status: "published", externalPostId: input.externalPostId! } : { status: "failed", error: input.error! }
+    );
+    auditSecurityEvent(request.log, request, "publication_confirmation_resolved", { operationId, status: input.status });
+    return reply.send(result);
+  });
   app.get("/api/v1/publishers/readiness", async () => list(services.publisherReadiness.list()));
   app.get("/api/v1/autonomous/status", async () => services.autonomousScheduler.status);
   app.post("/api/v1/autonomous/cycles/run", writeGuard, async (request, reply) => {
