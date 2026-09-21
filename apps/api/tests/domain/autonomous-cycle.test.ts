@@ -27,6 +27,7 @@ describe("autonomous cycle", () => {
     assert.ok(result);
     assert.equal(result.candidateCount, 2);
     assert.equal(result.execution.outcomes.length, 0);
+    assert.deepEqual(result.optimization, []);
     assert.equal(calls.length, 1);
     assert.equal((calls[0] as { candidates: unknown[] }).candidates.length, 2);
     assert.ok(new Date(result.completedAt).getTime() >= new Date(result.startedAt).getTime());
