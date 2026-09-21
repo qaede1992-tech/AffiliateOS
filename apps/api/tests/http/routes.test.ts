@@ -407,6 +407,75 @@ test("POST /api/v1/affiliates rejects an invalid payload", async () => {
   await app.close();
 });
 
+
+test("POST /api/v1/publication-operations/:operationId/resolve returns 404 for an unknown operation", async () => {
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+  const app = createApp(services);
+  const operationId = "11111111-1111-4111-8111-111111111111";
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/v1/publication-operations/${operationId}/resolve`,
+    payload: { status: "published", externalPostId: "post-404" },
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(response.json(), {
+    error: "PUBLICATION_OPERATION_NOT_FOUND",
+    message: "Publication operation does not exist.",
+  });
+
+  await app.close();
+});
+
+test("POST /api/v1/publication-operations/:operationId/resolve requires an operator", async () => {
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+  const app = createApp(services, {
+    auth: { enabled: true, token: "viewer-token", operatorId: "viewer-1", role: "viewer" },
+  });
+  const operationId = "11111111-1111-4111-8111-111111111111";
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/v1/publication-operations/${operationId}/resolve`,
+    headers: { authorization: "Bearer viewer-token" },
+    payload: { status: "published", externalPostId: "post-forbidden" },
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(response.json(), {
+    error: "FORBIDDEN",
+    message: "An authorized operator is required.",
+  });
+
+  await app.close();
+});
+
+test("POST /api/v1/publication-operations/:operationId/resolve returns 409 for an already-resolved operation", async () => {
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+  const operationId = "11111111-1111-4111-8111-111111111111";
+  const worker = services.publicationWorker as any;
+  worker.resolveConfirmation = async () => {
+    const { DomainError } = await import("../../src/domain/errors.js");
+    throw new DomainError("PUBLICATION_CONFIRMATION_CONFLICT", "Publication confirmation was already resolved.", 409);
+  };
+  const app = createApp(services);
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/v1/publication-operations/${operationId}/resolve`,
+    payload: { status: "published", externalPostId: "post-conflict" },
+  });
+
+  assert.equal(response.statusCode, 409);
+  assert.deepEqual(response.json(), {
+    error: "PUBLICATION_CONFIRMATION_CONFLICT",
+    message: "Publication confirmation was already resolved.",
+  });
+
+  await app.close();
+});
+
 test("OAuth callback is reachable without a bearer token so external providers can complete the redirect", async () => {
   const app = createApp();
 
