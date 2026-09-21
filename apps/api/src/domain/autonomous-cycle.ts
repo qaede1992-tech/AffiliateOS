@@ -4,7 +4,7 @@ import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
 import type { CampaignAnalytics } from "./analytics.js";
 import type { CampaignService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
-import { OptimizationEngine, type OptimizationRecommendation } from "./optimization-engine.js";
+import { OptimizationEngine, type OptimizationRecommendation, type OptimizationState } from "./optimization-engine.js";
 
 export interface AutonomousCandidateProvider {
   listCandidates(): Promise<AutonomousExecutionCandidate[]>;
@@ -29,6 +29,7 @@ export type AutonomousCycleResult = {
 
 export class AutonomousCycleService {
   private running = false;
+  private readonly optimizationState = new Map<string, OptimizationState>();
 
   constructor(
     private readonly candidates: AutonomousCandidateProvider,
@@ -55,10 +56,11 @@ export class AutonomousCycleService {
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
-      const optimization = this.analytics ? this.optimizer.recommend((await this.analytics.overview()).campaigns) : [];
+      const optimization = this.analytics ? this.optimizer.recommend((await this.analytics.overview()).campaigns, this.optimizationState) : [];
       if (this.campaigns) {
         for (const recommendation of optimization) {
           const campaign = await this.campaigns.get(recommendation.campaignId);
+          if (recommendation.action !== "maintain") this.optimizationState.set(recommendation.campaignId, { action: recommendation.action, appliedAt: new Date().toISOString() });
           if (recommendation.action === "pause") {
             if (campaign.status !== "paused" && campaign.status !== "archived" && campaign.status !== "completed") {
               await this.campaigns.update(recommendation.campaignId, { status: "paused" });
