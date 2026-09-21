@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { AutonomousCycleService, type AutonomousCandidateProvider } from "../../src/domain/autonomous-cycle.js";
 import type { AutonomousExecutionService } from "../../src/domain/autonomous-execution.js";
 import { InMemoryAutonomousOptimizationStateRepository } from "../../src/domain/autonomous-optimization-state.js";
+import { InMemoryAutonomousCycleLockRepository } from "../../src/domain/autonomous-cycle-lock.js";
 
 describe("autonomous cycle", () => {
   it("loads candidates and delegates one execution pass", async () => {
@@ -164,6 +165,30 @@ describe("autonomous cycle", () => {
     assert.equal(updates, 0);
     assert.equal(result?.optimization.length, 1);
     assert.equal(result?.optimization[0]?.action, "scale");
+  });
+
+  it("skips a cycle when the distributed lock is held by another instance", async () => {
+    const lock = new InMemoryAutonomousCycleLockRepository();
+    const now = new Date().toISOString();
+    const leaseUntil = new Date(Date.now() + 60_000).toISOString();
+    assert.equal(await lock.tryAcquire("autonomous-cycle", "other-instance", now, leaseUntil), true);
+
+    let executed = 0;
+    const execution = { runOnce: async () => { executed += 1; return { selected: [], rejected: [], outcomes: [] }; } } as never;
+    const service = new AutonomousCycleService(
+      { listCandidates: async () => [] },
+      execution,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lock
+    );
+
+    const result = await service.runOnce();
+    assert.equal(result, undefined);
+    assert.equal(executed, 0);
   });
 
   it("releases the guard when candidate loading fails", async () => {
