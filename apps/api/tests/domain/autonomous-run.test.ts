@@ -63,6 +63,24 @@ describe("autonomous run", () => {
     assert.equal((await repository.findById(processing.run.id))?.status, "processing");
   });
 
+  it("lists accepted, failed, and stale processing runs but excludes fresh or completed runs", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-accepted", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
+    const processing = await service.accept({ idempotencyKey: "run-processing", productId: "product-2", offerId: "offer-2", now: new Date("2026-09-20T09:00:00.000Z") });
+    await service.claimProcessing(processing.id, new Date("2026-09-20T10:00:00.000Z"));
+    const failed = await service.accept({ idempotencyKey: "run-failed", productId: "product-3", offerId: "offer-3", now: new Date("2026-09-20T10:00:00.000Z") });
+    await service.transition(failed.id, "failed", { error: "temporary failure" });
+    const fresh = await service.accept({ idempotencyKey: "run-fresh", productId: "product-4", offerId: "offer-4", now: new Date("2026-09-20T10:00:00.000Z") });
+    await service.claimProcessing(fresh.id, new Date("2026-09-20T10:05:00.000Z"));
+    const completed = await service.accept({ idempotencyKey: "run-completed", productId: "product-5", offerId: "offer-5" });
+    await service.transition(completed.id, "processing");
+    await service.transition(completed.id, "completed");
+
+    const recoverable = await service.listRecoverable(new Date("2026-09-20T10:11:00.000Z"));
+    assert.deepEqual(recoverable.map((run) => run.idempotencyKey).sort(), [accepted.idempotencyKey, failed.idempotencyKey, processing.idempotencyKey].sort());
+  });
+
   it("reclaims a failed run and clears the previous error", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
