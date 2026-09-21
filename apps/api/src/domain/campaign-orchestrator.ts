@@ -28,7 +28,18 @@ export type GeneratedCampaignContent = {
 
 const defaultPlatforms: ContentPlatform[] = ["tiktok", "instagram", "facebook"];
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
-const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string): string => `auto-${createHash("sha256").update(`${idempotencyKey ?? campaignId}:${offerId}`).digest("hex").slice(0, 32)}`;
+const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string, attempt = 0): string => {
+  const seed = `${idempotencyKey ?? campaignId}:${offerId}:${attempt}`;
+  return `auto-${createHash("sha256").update(seed).digest("hex").slice(0, 32)}`;
+};
+
+const trackingCodeCandidate = (existing: Awaited<ReturnType<TrackingService["list"]>>, idempotencyKey: string | undefined, campaignId: string, offerId: string): string => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = trackingCodeFor(idempotencyKey, campaignId, offerId, attempt);
+    if (!existing.some((link) => link.code === candidate)) return candidate;
+  }
+  throw new Error("Unable to allocate a deterministic tracking code.");
+};
 
 export class DeterministicCampaignContentGenerator implements CampaignContentGenerator {
   generate(input: { product: Product; offer: AffiliateOffer; opportunity: ScoredOpportunity; platform: ContentPlatform }): GeneratedCampaignContent {
@@ -123,7 +134,7 @@ export class CampaignOrchestrator {
         link.destinationUrl === executionOffer.affiliateUrl &&
         link.status === "active"
       ) ??
-        await this.tracking.create({ affiliateOfferId: executionOffer.id, campaignId: campaign.id, destinationUrl: executionOffer.affiliateUrl, code: trackingCodeFor(input.idempotencyKey, campaign.id, executionOffer.id) });
+        await this.tracking.create({ affiliateOfferId: executionOffer.id, campaignId: campaign.id, destinationUrl: executionOffer.affiliateUrl, code: trackingCodeCandidate(existingLinks, input.idempotencyKey, campaign.id, executionOffer.id) });
 
       const existingContent = await this.content.list(campaign.id);
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
