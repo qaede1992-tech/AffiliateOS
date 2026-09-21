@@ -27,7 +27,7 @@ import { AutonomousCycleService } from "./autonomous-cycle.js";
 import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace-candidates.js";
 import { AutonomousScheduler } from "./autonomous-scheduler.js";
 import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
-import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";\nimport { ProviderConversionProcessor } from "./provider-conversion-processor.js";
+import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";\nimport { ProviderConversionProcessor } from "./provider-conversion-processor.js";\nimport { GenericProviderConversionNormalizer } from "./provider-conversion.js";\nimport { ProviderEventProcessor } from "./provider-event-processor.js";\nimport { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./provider-event-conversion-processor.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
