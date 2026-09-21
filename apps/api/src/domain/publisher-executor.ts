@@ -26,6 +26,7 @@ export class PublisherExecutor {
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`): Promise<PublishExecutionResult> {
     const content = await this.contentService.get(contentId);
     if (content.status !== "scheduled") throw new Error("Only scheduled content can be published.");
+    await this.contentService.validatePublicationEligibility(content);
     const scheduledAt = content.scheduledAt ? new Date(content.scheduledAt) : null;
     if (!scheduledAt || !Number.isFinite(scheduledAt.getTime())) throw new Error("Scheduled content requires a valid scheduledAt timestamp.");
     if (scheduledAt.getTime() > now.getTime()) return { content, status: "not_due" };
