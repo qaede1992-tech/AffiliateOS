@@ -63,12 +63,12 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) { const current = this.runs.get(id); if (!current || !expected.includes(current.status)) return undefined; this.runs.set(id, run); return run; }
 }
 export interface RepositorySet {
-  affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: Repository<Commission>;
+  affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
   contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
 }
-export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
+export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }\nexport interface CommissionRepository extends Repository<Commission> { findByConversionId(conversionId: EntityId): Promise<Commission | undefined>; }
 export interface MarketplaceConnectionRepository extends Repository<import("@affiliateos/shared").MarketplaceConnection> { findBySlug(slug: string): Promise<import("@affiliateos/shared").MarketplaceConnection | undefined>; }
 export interface ProductCatalogRepository extends Repository<import("@affiliateos/shared").Product> { findByMarketplaceProduct(marketplaceId: string, externalProductId: string): Promise<import("@affiliateos/shared").Product | undefined>; }
 export interface AffiliateAccountRepository extends Repository<import("@affiliateos/shared").AffiliateAccount> { findByMarketplace(marketplaceId: string): Promise<import("@affiliateos/shared").AffiliateAccount | undefined>; }
