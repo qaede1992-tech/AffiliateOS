@@ -47,7 +47,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     this.runs.set(current.idempotencyKey, claimed); return claimed;
   }
 }
-export function createAutonomousRun(input: { idempotencyKey: string; productId: EntityId; offerId: EntityId; now?: Date }): AutonomousRun {
+export function createAutonomousRun(input: { idempotencyKey: string; productId: EntityId; offerId: EntityId; executionContext?: AutonomousRunExecutionContext; now?: Date }): AutonomousRun {
   const timestamp = (input.now ?? new Date()).toISOString();
-  return { id: randomUUID(), idempotencyKey: input.idempotencyKey, opportunityProductId: input.productId, offerId: input.offerId, status: "accepted", attemptCount: 0, createdAt: timestamp, updatedAt: timestamp };
+  return { id: randomUUID(), idempotencyKey: input.idempotencyKey, opportunityProductId: input.productId, offerId: input.offerId, status: "accepted", attemptCount: 0, executionContext: input.executionContext, createdAt: timestamp, updatedAt: timestamp };
 }
