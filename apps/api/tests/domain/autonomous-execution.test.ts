@@ -168,6 +168,24 @@ describe("AutonomousExecutionService", () => {
     assert.deepEqual(calls, ["offer-2"]);
   });
 
+  it("resolves multiple selected products to their own offers", async () => {
+    const product2 = { ...product, id: "product-2", externalProductId: "external-2" };
+    const offer2 = { ...offer, id: "offer-2", productId: product2.id, externalOfferId: "external-offer-2" };
+    const opportunity2 = { ...opportunity, product: product2, offerId: offer2.id } as ScoredOpportunity;
+    const calls: string[] = [];
+    const selector = { select: () => ({ selected: [opportunity, opportunity2], rejected: [] }) } as unknown as AutonomousOpportunitySelector;
+    const orchestrator = {
+      execute: async (input: { product: Product; offer: AffiliateOffer }) => { calls.push(input.product.id + ":" + input.offer.id); return orchestrationResult; }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(selector, orchestrator);
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [offer] }, { product: product2, offers: [offer2] }],
+      idempotencyNamespace: "cycle-2"
+    });
+    assert.equal(result.outcomes.every((item) => item.status === "completed"), true);
+    assert.deepEqual(calls, ["product-1:offer-1", "product-2:offer-2"]);
+  });
+
   it("fails a selected opportunity when its offer cannot be resolved", async () => {
     const selector = {
       select: () => ({ selected: [opportunity], rejected: [] })
