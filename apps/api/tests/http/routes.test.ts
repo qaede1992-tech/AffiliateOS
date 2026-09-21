@@ -422,6 +422,28 @@ test("OAuth callback is reachable without a bearer token so external providers c
 });
 
 
+test("GET /api/v1/autonomous/runs exposes operator recovery state", async () => {
+  const { createInMemoryServices } = await import("../../src/domain/container.js");
+  const services = createInMemoryServices();
+  const app = createApp(services);
+  const run = await services.autonomousRuns.accept({ idempotencyKey: "operator-list-accepted", productId: "11111111-1111-4111-8111-111111111111", offerId: "22222222-2222-4222-8222-222222222222" });
+  await services.autonomousRuns.transition(run.id, "processing");
+  await services.autonomousRuns.transition(run.id, "failed", { error: "temporary failure" });
+  const response = await app.inject({ method: "GET", url: "/api/v1/autonomous/runs?status=failed&limit=10" });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().data.length, 1);
+  assert.equal(response.json().data[0].id, run.id);
+  await app.close();
+});
+
+test("GET /api/v1/autonomous/runs/:runId returns 404 for an unknown run", async () => {
+  const app = createApp();
+  const response = await app.inject({ method: "GET", url: "/api/v1/autonomous/runs/33333333-3333-4333-8333-333333333333" });
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.json().error, "AUTONOMOUS_RUN_NOT_FOUND");
+  await app.close();
+});
+
 test("POST /api/v1/autonomous/runs/:runId/retry resets a failed run for operator recovery", async () => {
   const { createInMemoryServices } = await import("../../src/domain/container.js");
   const services = createInMemoryServices();
@@ -454,7 +476,7 @@ test("POST /api/v1/autonomous/runs/:runId/retry resets a failed run for operator
 test("POST /api/v1/autonomous/runs/:runId/retry rejects an unknown run", async () => {
   const app = createApp();
   const response = await app.inject({ method: "POST", url: "/api/v1/autonomous/runs/33333333-3333-4333-8333-333333333333/retry" });
-  assert.equal(response.statusCode, 500);
-  assert.equal(response.json().error, "INTERNAL_SERVER_ERROR");
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.json().error, "AUTONOMOUS_RUN_NOT_FOUND");
   await app.close();
 });
