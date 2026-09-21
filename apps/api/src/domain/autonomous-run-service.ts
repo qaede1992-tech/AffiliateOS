@@ -58,7 +58,7 @@ export class AutonomousRunService {
   }
   async retry(id: EntityId, now = new Date()): Promise<AutonomousRun> {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
-    if (!run) throw new Error("Autonomous run does not exist.");
+    if (!run) throw new DomainError("AUTONOMOUS_RUN_NOT_FOUND", "The autonomous run does not exist.", 404);
     if (run.status !== "failed") return run;
     const reset: AutonomousRun = {
       ...run,
@@ -77,7 +77,7 @@ export class AutonomousRunService {
 
   async transition(id: EntityId, status: AutonomousRunStatus, details: { campaignId?: EntityId; error?: string } = {}, now = new Date()) {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
-    if (!run) throw new Error("Autonomous run does not exist.");
+    if (!run) throw new DomainError("AUTONOMOUS_RUN_NOT_FOUND", "The autonomous run does not exist.", 404);
     if (!allowedTransitions[run.status].includes(status)) return run;
     const failed = status === "failed";
     const startingAttempt = status === "processing" && run.status !== "processing";
