@@ -75,8 +75,14 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
   }
 
   async transition(id: string, expected: AutonomousRunStatus[], run: AutonomousRun): Promise<AutonomousRun | undefined> {
-    const rows = await this.db.update(autonomousRuns).set(toRow(run))
-      .where(and(eq(autonomousRuns.id, id), inArray(autonomousRuns.status, expected))).returning();
+    const rows = await this.db.update(autonomousRuns).set({
+      status: run.status,
+      campaignId: run.campaignId ?? null,
+      attemptCount: run.attemptCount,
+      nextAttemptAt: run.nextAttemptAt ?? null,
+      lastError: run.lastError ?? null,
+      updatedAt: run.updatedAt
+    }).where(and(eq(autonomousRuns.id, id), inArray(autonomousRuns.status, expected))).returning();
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 
