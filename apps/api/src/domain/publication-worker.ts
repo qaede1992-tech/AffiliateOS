@@ -70,12 +70,18 @@ export class PublicationWorker {
     if (!operation) throw new Error("Publication operation does not exist.");
     if (operation.status !== "awaiting_confirmation") throw new Error("Only publications awaiting confirmation can be resolved.");
     if (outcome.status === "published") {
-      await this.operations.transition(id, "published", { externalPostId: outcome.externalPostId }, now);
+      const transitioned = await this.operations.transition(id, "published", { externalPostId: outcome.externalPostId }, now);
+      if (transitioned.status !== "published" || transitioned.externalPostId !== outcome.externalPostId) {
+        throw new Error("Publication confirmation was already resolved.");
+      }
       await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
       await this.jobService.succeed(operation.jobId, outcome.externalPostId, now);
       return { jobId: operation.jobId, contentId: operation.contentId, status: "succeeded", externalPostId: outcome.externalPostId };
     }
-    await this.operations.transition(id, "failed", { error: outcome.error }, now);
+    const transitioned = await this.operations.transition(id, "failed", { error: outcome.error }, now);
+    if (transitioned.status !== "failed" || transitioned.lastError !== outcome.error) {
+      throw new Error("Publication confirmation was already resolved.");
+    }
     await this.contentService?.update(operation.contentId, { status: "failed" });
     await this.jobService.fail(operation.jobId, outcome.error, now);
     return { jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: outcome.error };
