@@ -51,6 +51,7 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
 
     const occurredAt = iso(payload.occurred_at) ?? iso(payload.occurredAt) ?? iso(payload.created_at) ?? iso(payload.createdAt);
     if (!occurredAt) throw new Error("Provider conversion is missing a valid occurred-at timestamp.");
+    if (Date.parse(occurredAt) > Date.now() + 5 * 60 * 1000) throw new Error("Provider conversion occurred-at timestamp cannot be materially in the future.");
 
     const status = this.status(payload.status);
     const hasExplicitStatus = text(payload.status) !== undefined;
