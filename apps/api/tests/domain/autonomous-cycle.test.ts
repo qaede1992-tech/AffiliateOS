@@ -119,6 +119,53 @@ describe("autonomous cycle", () => {
     assert.ok(await service.runOnce());
   });
 
+  it("does not apply a stale optimization when compare-and-set loses a race", async () => {
+    let updates = 0;
+    let casCalls = 0;
+    const newerState = { action: "pause" as const, appliedAt: "2026-09-21T10:00:00.000Z" };
+    const stateRepository = {
+      get: async () => newerState,
+      save: async (_id: string, state: typeof newerState) => state,
+      compareAndSet: async () => {
+        casCalls += 1;
+        return false;
+      }
+    };
+    const analytics = { overview: async () => ({ campaigns: [{
+      campaignId: "race-me",
+      clickCount: 100,
+      trackingLinkCount: 1,
+      contentCount: 1,
+      publishedContentCount: 1,
+      scheduledContentCount: 0,
+      attributedConversionCount: 10,
+      attributedRevenueCents: 0,
+      attributedCommissionCents: 0,
+      conversionRate: 0.1
+    }] }) };
+    const campaigns = {
+      get: async (id: string) => ({ id, status: "paused" }) as never,
+      update: async () => { updates += 1; return {} as never; }
+    };
+    const execution = { runOnce: async () => ({ selected: [], rejected: [], outcomes: [] }) } as never;
+
+    const service = new AutonomousCycleService(
+      { listCandidates: async () => [] },
+      execution,
+      analytics,
+      undefined,
+      campaigns,
+      undefined,
+      stateRepository
+    );
+    const result = await service.runOnce();
+
+    assert.equal(casCalls, 1);
+    assert.equal(updates, 0);
+    assert.equal(result?.optimization.length, 1);
+    assert.equal(result?.optimization[0]?.action, "scale");
+  });
+
   it("releases the guard when candidate loading fails", async () => {
     let attempts = 0;
     const candidates: AutonomousCandidateProvider = {
