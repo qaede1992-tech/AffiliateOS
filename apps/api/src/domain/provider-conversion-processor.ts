@@ -1,15 +1,15 @@
 import type { Conversion } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { ConversionService } from "./services.js";
-import type { NormalizedProviderConversion } from "./provider-conversion.js";
+import type { Conversion } from "@affiliateos/shared";\nimport type { NormalizedProviderConversion } from "./provider-conversion.js";
 
-export interface ProviderConversionResolver {
+export interface ProviderConversionLifecycle {\n  reconcileProviderState(conversionId: string, status: NormalizedProviderConversion["status"], commissionCents?: number): Promise<Conversion>;\n}\n\nexport interface ProviderConversionResolver {
   resolveAffiliate(reference: string): Promise<string | undefined>;
   resolveOffer(reference: string): Promise<string | undefined>;
 }
 
 export class ProviderConversionProcessor {
-  constructor(private readonly conversions: ConversionService, private readonly resolver: ProviderConversionResolver) {}
+  constructor(private readonly conversions: ConversionService & ProviderConversionLifecycle, private readonly resolver: ProviderConversionResolver) {}
 
   async process(accountScope: string, event: NormalizedProviderConversion): Promise<Conversion> {
     if (!accountScope.trim()) throw new DomainError("PROVIDER_CONVERSION_ACCOUNT_MISSING", "Provider conversion account scope is required.", 422);
