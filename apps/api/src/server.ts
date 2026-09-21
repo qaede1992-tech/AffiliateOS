@@ -24,7 +24,8 @@ const services = createServices(
   new DrizzlePublicationOperationRepository(persistence.db),
   new DrizzleAutonomousRunRepository(persistence.db),
   environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
-  new DrizzleAutonomousFeedbackMemoryRepository(persistence.db)
+  new DrizzleAutonomousFeedbackMemoryRepository(persistence.db),
+  { publicationDelayMs: environment.AUTONOMOUS_PUBLICATION_DELAY_MS }
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
