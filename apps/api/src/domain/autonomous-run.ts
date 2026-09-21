@@ -22,6 +22,7 @@ export interface AutonomousRunRepository {
   saveIfAbsent?(run: AutonomousRun): Promise<AutonomousRun>;
   transition?(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun): Promise<AutonomousRun | undefined>;
   claimProcessing?(id: EntityId, now: Date, staleAfterMs: number): Promise<AutonomousRun | undefined>;
+  listRecoverable?(staleBefore: Date, limit?: number): Promise<AutonomousRun[]>;
 }
 
 export class InMemoryAutonomousRunRepository implements AutonomousRunRepository {
@@ -52,6 +53,13 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     if (!current || !expected.includes(current.status)) return undefined;
     this.runs.set(run.idempotencyKey, run);
     return run;
+  }
+
+  async listRecoverable(staleBefore: Date, limit = 100) {
+    return [...this.runs.values()]
+      .filter((run) => run.status === "accepted" || run.status === "failed" || (run.status === "processing" && new Date(run.updatedAt).getTime() <= staleBefore.getTime()))
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(0, Math.max(1, limit));
   }
 
   async claimProcessing(id: EntityId, now: Date, staleAfterMs: number) {
