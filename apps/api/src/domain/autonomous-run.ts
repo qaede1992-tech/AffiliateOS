@@ -27,7 +27,17 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) {
     const current = [...this.runs.values()].find((candidate) => candidate.id === id);
     if (!current || !expected.includes(current.status)) return undefined;
-    this.runs.set(run.idempotencyKey, run); return run;
+    const next: AutonomousRun = {
+      ...current,
+      status: run.status,
+      campaignId: run.campaignId,
+      attemptCount: run.attemptCount,
+      nextAttemptAt: run.nextAttemptAt,
+      lastError: run.lastError,
+      updatedAt: run.updatedAt
+    };
+    this.runs.set(current.idempotencyKey, next);
+    return next;
   }
   async list(options: { status?: AutonomousRunStatus; limit?: number } = {}) {
     const limit = Math.min(Math.max(1, options.limit ?? 50), 100);
