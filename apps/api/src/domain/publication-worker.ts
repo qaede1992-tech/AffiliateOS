@@ -1,4 +1,5 @@
 import type { EntityId } from "@affiliateos/shared";
+import { DomainError } from "./errors.js";
 import { ContentService } from "./content.js";
 import { PublisherExecutor } from "./publisher-executor.js";
 import type { PublicationJob } from "./publication-job.js";
@@ -67,12 +68,12 @@ export class PublicationWorker {
 
   async resolveConfirmation(id: EntityId, outcome: { status: "published"; externalPostId: string } | { status: "failed"; error: string }, now = new Date()): Promise<PublicationWorkerResult> {
     const operation = await this.operations.findById(id);
-    if (!operation) throw new Error("Publication operation does not exist.");
-    if (operation.status !== "awaiting_confirmation") throw new Error("Only publications awaiting confirmation can be resolved.");
+    if (!operation) throw new DomainError("PUBLICATION_OPERATION_NOT_FOUND", "Publication operation does not exist.", 404);
+    if (operation.status !== "awaiting_confirmation") throw new DomainError("PUBLICATION_CONFIRMATION_CONFLICT", "Only publications awaiting confirmation can be resolved.", 409);
     if (outcome.status === "published") {
       const transitioned = await this.operations.transition(id, "published", { externalPostId: outcome.externalPostId }, now);
       if (transitioned.status !== "published" || transitioned.externalPostId !== outcome.externalPostId) {
-        throw new Error("Publication confirmation was already resolved.");
+        throw new DomainError("PUBLICATION_CONFIRMATION_CONFLICT", "Publication confirmation was already resolved.", 409);
       }
       await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
       await this.jobService.succeed(operation.jobId, outcome.externalPostId, now);
