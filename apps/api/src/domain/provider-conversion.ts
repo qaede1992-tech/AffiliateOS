@@ -36,6 +36,8 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
 
   normalize(input: { eventId: string; eventType: string; payload: Record<string, unknown> }): NormalizedProviderConversion {
     const payload = input.payload;
+    const eventType = text(input.eventType);
+    if (!eventType || eventType.length > 255) throw new Error("Provider conversion event type is missing or invalid.");
     const eventId = text(input.eventId);
     if (!eventId || eventId.length > 255) throw new Error("Provider conversion source event ID is missing or invalid.");
     const externalConversionId = text(payload.conversion_id) ?? text(payload.conversionId) ?? text(payload.id);
@@ -66,7 +68,7 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
       occurredAt,
       status,
       sourceEventId: eventId,
-      rawEventType: input.eventType
+      rawEventType: eventType
     };
   }
 
