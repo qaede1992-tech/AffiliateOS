@@ -14,7 +14,7 @@ const retryDelayMs = (attemptCount: number) => Math.min(AUTONOMOUS_RUN_RETRY_MAX
 
 export class AutonomousRunService {
   constructor(private readonly runs: AutonomousRunRepository) {}
-  async accept(input: { idempotencyKey: string; productId: EntityId; offerId: EntityId; now?: Date }): Promise<AutonomousRun> {
+  async accept(input: { idempotencyKey: string; productId: EntityId; offerId: EntityId; executionContext?: AutonomousRun["executionContext"]; now?: Date }): Promise<AutonomousRun> {
     const existing = await this.runs.findByIdempotencyKey(input.idempotencyKey); if (existing) return existing;
     const run = createAutonomousRun(input);
     if (this.runs.saveIfAbsent) return this.runs.saveIfAbsent(run);
