@@ -117,7 +117,26 @@ describe("autonomous run", () => {
     assert.equal(stale, undefined);
     assert.equal((await repository.findById(processing.id))?.status, "processing");
   });
-});
+
+  it("lists runs for operator visibility with optional status filtering", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    await service.accept({ idempotencyKey: "run-list-accepted", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
+    const failed = await service.accept({ idempotencyKey: "run-list-failed", productId: "product-2", offerId: "offer-2", now: new Date("2026-09-20T10:01:00.000Z") });
+    await service.transition(failed.id, "processing");
+    await service.transition(failed.id, "failed", { error: "temporary failure" });
+    const runs = await service.list({ status: "failed", limit: 10 });
+    assert.deepEqual(runs.map((run) => run.idempotencyKey), ["run-list-failed"]);
+  });
+
+  it("returns a domain not-found error for an unknown run", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    await assert.rejects(() => service.findById("33333333-3333-4333-8333-333333333333"), {
+      code: "AUTONOMOUS_RUN_NOT_FOUND",
+      statusCode: 404,
+    });
+  });
 
   it("allows an exhausted failed run to be manually reset without changing its idempotency identity", async () => {
     const repository = new InMemoryAutonomousRunRepository();
