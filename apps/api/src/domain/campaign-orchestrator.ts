@@ -77,6 +77,7 @@ export class CampaignOrchestrator {
     if (input.offer.affiliateLinkExpiresAt && new Date(input.offer.affiliateLinkExpiresAt).getTime() <= Date.now()) throw new Error("Campaign orchestration requires a non-expired affiliate link.");
     const liveOffer = await this.campaigns.validateOfferForExecution(input.offer.id);
     if (liveOffer.productId !== input.product.id) throw new Error("Live affiliate offer must belong to the selected product.");
+    const executionOffer = liveOffer;
     const liveProduct = await this.content.validateProductForPublication(input.product.id);
     if (liveProduct.id !== input.offer.productId) throw new Error("Live product and affiliate offer are inconsistent.");
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
@@ -115,10 +116,10 @@ export class CampaignOrchestrator {
       currentCampaignId = campaign.id;
       if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "processing", { campaignId: campaign.id });
 
-      const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
+      const offerAttachment = await this.campaigns.attachOffer(campaign.id, executionOffer.id);
       const existingLinks = await this.tracking.list(campaign.id);
-      const trackingLink = existingLinks.find((link) => link.affiliateOfferId === input.offer.id && link.destinationUrl === input.offer.affiliateUrl) ??
-        await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl, code: trackingCodeFor(input.idempotencyKey, campaign.id, input.offer.id) });
+      const trackingLink = existingLinks.find((link) => link.affiliateOfferId === executionOffer.id && link.destinationUrl === executionOffer.affiliateUrl) ??
+        await this.tracking.create({ affiliateOfferId: executionOffer.id, campaignId: campaign.id, destinationUrl: executionOffer.affiliateUrl, code: trackingCodeFor(input.idempotencyKey, campaign.id, executionOffer.id) });
 
       const existingContent = await this.content.list(campaign.id);
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
@@ -126,7 +127,7 @@ export class CampaignOrchestrator {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion");
         if (existing) content.push(existing);
         else {
-          const generated = this.contentGenerator.generate({ product: input.product, offer: input.offer, opportunity: input.opportunity, platform });
+          const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
           content.push(await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" }));
         }
       }
