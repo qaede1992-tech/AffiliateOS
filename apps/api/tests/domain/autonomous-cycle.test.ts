@@ -45,7 +45,8 @@ describe("autonomous cycle", () => {
       { campaignId: "pause-me", clickCount: 120, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 0, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0 },
       { campaignId: "scale-me", clickCount: 100, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 10, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0.1 }
     ] }) };
-    const campaigns = { update: async (id: string, input: { status?: string }) => { updates.push({ id, status: input.status! }); return {} as never; } };
+    const states: Record<string, string> = { "pause-me": "active", "scale-me": "paused" };
+    const campaigns = { get: async (id: string) => ({ id, status: states[id] } as never), update: async (id: string, input: { status?: string }) => { updates.push({ id, status: input.status! }); states[id] = input.status!; return {} as never; } };
     const execution = { runOnce: async () => ({ selected: [], rejected: [], outcomes: [] }) } as never;
     const service = new AutonomousCycleService({ listCandidates: async () => [] }, execution, analytics, undefined, campaigns);
     const result = await service.runOnce();
