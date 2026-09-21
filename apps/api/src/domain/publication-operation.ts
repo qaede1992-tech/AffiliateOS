@@ -42,7 +42,14 @@ export class InMemoryPublicationOperationRepository implements PublicationOperat
   async transition(id: EntityId, expected: PublicationOperationStatus[], operation: PublicationOperation) {
     const current = this.operations.get(id);
     if (!current || !expected.includes(current.status)) return undefined;
-    this.operations.set(id, operation);
-    return operation;
+    const next: PublicationOperation = {
+      ...current,
+      status: operation.status,
+      externalPostId: operation.externalPostId,
+      lastError: operation.lastError,
+      updatedAt: operation.updatedAt
+    };
+    this.operations.set(id, next);
+    return next;
   }
 }
