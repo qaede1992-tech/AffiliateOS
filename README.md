@@ -17,6 +17,12 @@ The implemented application path is:
 
 **Marketplace connection → Product → Affiliate Offer → Campaign → Tracking Link → Click → Conversion Attribution → Revenue/Commission Analytics**
 
+Autonomous execution is available as an operational layer:
+
+**Enabled Marketplace Connections → Product Discovery → Executable Affiliate Offers → Opportunity Scoring → Autonomous Campaign/Content Creation → Scheduled Publication → Attribution/Analytics → Performance Feedback → Retry/Recovery**
+
+Autonomous runs are idempotent and durable. Failed work uses bounded exponential backoff, stale processing is recoverable, and exhausted runs can be manually reset by an authorized operator. Operator endpoints expose run status without exposing credentials.
+
 Content and social workflow is available alongside the campaign flow:
 
 **Campaign → Content → Social Account → OAuth state/callback foundation**
@@ -65,7 +71,7 @@ npm run db:generate
 
 All application endpoints are under `/api/v1`. The API includes affiliate, offer, conversion, commission, marketplace, campaign, tracking, attribution, analytics, content, social-account, and OAuth workflows plus liveness/readiness endpoints.
 
-`GET /api/v1/health` and `GET /api/v1/ready` are intentionally unauthenticated operational endpoints. Application endpoints require authentication when the production runtime is enabled. `GET /api/v1/auth/me` returns the authenticated operator context without returning the bearer credential.
+`GET /api/v1/health` and `GET /api/v1/ready` are intentionally unauthenticated operational endpoints. `GET /api/v1/autonomous/status`, `GET /api/v1/autonomous/runs`, and `GET /api/v1/autonomous/runs/:runId` provide authenticated operational visibility; autonomous run recovery and manual retry require an `admin` or `operator` role. Application endpoints require authentication when the production runtime is enabled. `GET /api/v1/auth/me` returns the authenticated operator context without returning the bearer credential.
 
 ### Authentication and authorization
 
@@ -97,6 +103,8 @@ Connection `configuration` rejects secret-like fields. Failed health checks pers
 | `AFFILIATEOS_MARKETPLACE_*_CREDENTIAL_REF` | Deployment-level reference to a secret-manager entry. |
 | `AFFILIATEOS_SOCIAL_*_CREDENTIAL_REF` | Optional OAuth/API credential reference for an approved social adapter. |
 | `AFFILIATEOS_AI_*_CREDENTIAL_REF` | Optional credential reference for a production content-generator adapter. |
+| `AUTONOMOUS_CYCLE_ENABLED` | Enables the autonomous discovery/selection/execution scheduler; keep disabled until approved provider connections are configured. |
+| `AUTONOMOUS_CYCLE_INTERVAL_MS` | Autonomous cycle interval; minimum 5 minutes, default 15 minutes. |
 
 Do not put API keys, OAuth tokens, marketplace credentials, or bearer credentials in `.env.example`, source code, migrations, or database metadata JSON. Production adapters must use official OAuth/API scopes and consent flows.
 

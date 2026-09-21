@@ -7,6 +7,7 @@ import type { ConversionAttributionRepository } from "./attribution.js";
 
 export interface CampaignAnalytics {
   campaignId: string;
+  productId?: string;
   clickCount: number;
   trackingLinkCount: number;
   contentCount: number;
@@ -59,15 +60,14 @@ export class AnalyticsService {
       this.campaigns.list(), this.trackingLinks.listByCampaign(campaignId), this.clicks.list(), this.contents.list(),
       this.conversions?.list() ?? Promise.resolve([]), this.commissions?.list() ?? Promise.resolve([]), this.attributions?.list() ?? Promise.resolve([])
     ]);
-    if (!campaigns.some((item) => item.id === campaignId)) {
-      throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
-    }
-    return this.buildCampaign(campaignId, trackingLinks, clicks, contents.filter((item) => item.campaignId === campaignId), conversions, commissions, attributions);
+    const campaign = campaigns.find((item) => item.id === campaignId);
+    if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
+    return this.buildCampaign(campaign, trackingLinks, clicks, contents.filter((item) => item.campaignId === campaignId), conversions, commissions, attributions);
   }
 
   private buildOverview(campaigns: Campaign[], trackingLinks: TrackingLink[], clicks: Click[], contents: Content[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]): AnalyticsOverview {
     const campaignStats = campaigns.map((campaign) => this.buildCampaign(
-      campaign.id,
+      campaign,
       trackingLinks.filter((link) => link.campaignId === campaign.id),
       clicks,
       contents.filter((item) => item.campaignId === campaign.id),
@@ -91,11 +91,13 @@ export class AnalyticsService {
     };
   }
 
-  private buildCampaign(campaignId: string, trackingLinks: TrackingLink[], allClicks: Click[], contents: Content[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]): CampaignAnalytics {
+  private buildCampaign(campaign: Campaign, trackingLinks: TrackingLink[], allClicks: Click[], contents: Content[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]): CampaignAnalytics {
     const attributed = this.attribute(allClicks, trackingLinks, conversions, commissions, attributions);
     const clickCount = allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length;
+    const productId = typeof campaign.audience.productId === "string" ? campaign.audience.productId : undefined;
     return {
-      campaignId,
+      campaignId: campaign.id,
+      productId,
       clickCount,
       trackingLinkCount: trackingLinks.length,
       contentCount: contents.length,

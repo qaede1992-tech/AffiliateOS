@@ -58,7 +58,7 @@ export class OfferService {
 export class ConversionService {
   constructor(
     private readonly conversions: ConversionRepository,
-    private readonly commissions: Repository<Commission>,
+    private readonly commissions: import("./repository.js").CommissionRepository,
     private readonly affiliates: Repository<Affiliate>,
     private readonly offers: Repository<Offer>,
     private readonly transactionManager: TransactionManager

@@ -55,6 +55,7 @@ function activeOffer(id: string) {
     affiliateAccountId: "00000000-0000-0000-0000-000000000012",
     availability: "in_stock" as const,
     availabilityMetadata: {},
+    affiliateUrl: "https://example.com/affiliate",
     affiliateLinkStatus: "active" as const,
     status: "active" as const,
     createdAt: "2026-09-18T00:00:00.000Z",
@@ -71,11 +72,22 @@ function trackingFixture() {
   return { links, clicks, campaigns, affiliateOffers, campaignOffers, tracking: new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers) };
 }
 
+test("tracking links reject non-web redirect destinations", async () => {\n  const { affiliateOffers, tracking } = trackingFixture();\n  const offerId = "00000000-0000-0000-0000-000000000081";\n  await affiliateOffers.save({ ...activeOffer(offerId), affiliateUrl: "javascript:alert(1)" });\n  await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, destinationUrl: "javascript:alert(1)" }), /HTTP or HTTPS destination/i);\n});\n\ntest("tracking links reject expired affiliate links and destination mismatches", async () => {
+  const { affiliateOffers, tracking } = trackingFixture();
+  const expiredId = "00000000-0000-0000-0000-000000000070";
+  await affiliateOffers.save({ ...activeOffer(expiredId), affiliateUrl: "https://example.com/affiliate", affiliateLinkExpiresAt: "2000-01-01T00:00:00.000Z" });
+  await assert.rejects(() => tracking.create({ affiliateOfferId: expiredId, destinationUrl: "https://example.com/affiliate" }), /expired affiliate link/i);
+
+  const activeId = "00000000-0000-0000-0000-000000000071";
+  await affiliateOffers.save({ ...activeOffer(activeId), affiliateUrl: "https://example.com/affiliate" });
+  await assert.rejects(() => tracking.create({ affiliateOfferId: activeId, destinationUrl: "https://example.com/other" }), /active affiliate URL/i);
+});
+
 test("click recording is idempotent for the same tracking link and key", async () => {
   const { links, clicks, affiliateOffers, tracking } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000010";
   await affiliateOffers.save(activeOffer(offerId));
-  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com/affiliate" });
   const first = await tracking.recordClick(link.id, { idempotencyKey: "click-key-1234", metadata: { source: "test" } });
   const second = await tracking.recordClick(link.id, { idempotencyKey: "click-key-1234", metadata: { source: "retry" } });
   assert.equal(second.id, first.id);
@@ -89,19 +101,19 @@ test("the same idempotency key can be reused on different tracking links", async
   const { clicks, affiliateOffers, tracking } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000015";
   await affiliateOffers.save(activeOffer(offerId));
-  const firstLink = await tracking.create({ affiliateOfferId: offerId, code: "link-one", destinationUrl: "https://example.com/one" });
-  const secondLink = await tracking.create({ affiliateOfferId: offerId, code: "link-two", destinationUrl: "https://example.com/two" });
+  const firstLink = await tracking.create({ affiliateOfferId: offerId, code: "link-one", destinationUrl: "https://example.com/affiliate" });
+  const secondLink = await tracking.create({ affiliateOfferId: offerId, code: "link-two", destinationUrl: "https://example.com/affiliate" });
   await tracking.recordClick(firstLink.id, { idempotencyKey: "shared-key" });
   await tracking.recordClick(secondLink.id, { idempotencyKey: "shared-key" });
   assert.equal((await clicks.listByTrackingLink(firstLink.id)).length, 1);
   assert.equal((await clicks.listByTrackingLink(secondLink.id)).length, 1);
 });
 
-test("clicks reject inactive tracking links", async () => {
+test("tracking redirects record a click and return the bound destination", async () => {\n  const { clicks, affiliateOffers, tracking } = trackingFixture();\n  const offerId = "00000000-0000-0000-0000-000000000080";\n  await affiliateOffers.save(activeOffer(offerId));\n  const link = await tracking.create({ affiliateOfferId: offerId, code: "redirect-code", destinationUrl: "https://example.com/affiliate" });\n  const destination = await tracking.redirect(link.code, { source: "public-redirect", userAgent: "test-agent" });\n  assert.equal(destination, "https://example.com/affiliate");\n  const recorded = await clicks.listByTrackingLink(link.id);\n  assert.equal(recorded.length, 1);\n  assert.deepEqual(recorded[0].metadata, { source: "public-redirect", userAgent: "test-agent" });\n});\n\ntest("clicks reject inactive tracking links", async () => {
   const { links, affiliateOffers, tracking } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000030";
   await affiliateOffers.save(activeOffer(offerId));
-  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com/affiliate" });
   await links.save({ ...link, status: "inactive" });
   await assert.rejects(() => tracking.recordClick(link.id, {}), /active tracking link/i);
 });
@@ -110,7 +122,7 @@ test("tracking link stats use the repository count", async () => {
   const { tracking, affiliateOffers } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000020";
   await affiliateOffers.save(activeOffer(offerId));
-  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com/affiliate" });
   await tracking.recordClick(link.id, {});
   await tracking.recordClick(link.id, {});
   assert.deepEqual(await tracking.stats(link.id), { linkId: link.id, clickCount: 2 });
@@ -161,7 +173,7 @@ test("tracking link creation converts a unique-constraint race into a conflict",
   const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
   const offerId = "00000000-0000-0000-0000-000000000050";
   await affiliateOffers.save(activeOffer(offerId));
-  await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, code: "race-code", destinationUrl: "https://example.com" }), /already in use/i);
+  await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, code: "race-code", destinationUrl: "https://example.com/affiliate" }), /already in use/i);
 });
 
 class RaceClickRepository extends InMemoryClickRepository {
@@ -185,7 +197,7 @@ test("click idempotency converts a unique-constraint race into the original clic
   const tracking = new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers);
   const offerId = "00000000-0000-0000-0000-000000000060";
   await affiliateOffers.save(activeOffer(offerId));
-  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com" });
+  const link = await tracking.create({ affiliateOfferId: offerId, destinationUrl: "https://example.com/affiliate" });
   const click = await tracking.recordClick(link.id, { idempotencyKey: "race-click-key" });
   assert.equal(click.idempotencyKey, "race-click-key");
   assert.equal((await clicks.listByTrackingLink(link.id)).length, 1);

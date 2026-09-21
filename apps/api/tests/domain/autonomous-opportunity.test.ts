@@ -1,0 +1,94 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import type { AffiliateOffer, Product } from "@affiliateos/shared";
+import { AutonomousOpportunitySelector } from "../../src/domain/autonomous-opportunity.js";
+
+const product = (id: string, overrides: Partial<Product> = {}): Product => ({
+  id,
+  marketplaceId: "market-1",
+  externalProductId: id,
+  name: "Skincare Serum",
+  description: "Daily skincare serum",
+  category: "skincare",
+  priceCents: 5000,
+  originalPriceCents: 7500,
+  currency: "USD",
+  ratingMilli: 4600,
+  reviewCount: 1200,
+  soldCount: 8500,
+  productUrl: `https://example.test/${id}`,
+  status: "active",
+  createdAt: "2026-09-20T00:00:00.000Z",
+  updatedAt: "2026-09-20T00:00:00.000Z",
+  ...overrides
+});
+
+const offer = (productId: string, overrides: Partial<AffiliateOffer> = {}): AffiliateOffer => ({
+  id: `offer-${productId}`,
+  productId,
+  affiliateAccountId: "account-1",
+  externalOfferId: `external-${productId}`,
+  priceCents: 5000,
+  currency: "USD",
+  commissionRateBps: 1200,
+  affiliateUrl: `https://example.test/affiliate/${productId}`,
+  availability: "in_stock",
+  availabilityMetadata: {},
+  affiliateLinkStatus: "active",
+  status: "active",
+  createdAt: "2026-09-20T00:00:00.000Z",
+  updatedAt: "2026-09-20T00:00:00.000Z",
+  ...overrides
+});
+
+describe("autonomous opportunity selection", () => {
+  it("selects only active, offer-backed opportunities above the policy threshold", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("good"), offers: [offer("good")] },
+      { product: product("inactive", { status: "inactive" }), offers: [offer("inactive")] },
+      { product: product("no-offer"), offers: [] }
+    ], { minimumScore: 60, maximumResults: 5, requiredAudience: ["skincare"] });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["good"]);
+    assert.ok(result.rejected.map((item) => item.productId).includes("inactive"));
+    assert.ok(result.rejected.map((item) => item.productId).includes("no-offer"));
+    assert.ok(result.rejected.find((item) => item.productId === "inactive")?.reasons.includes("Product is not active"));
+    assert.ok(result.rejected.find((item) => item.productId === "no-offer")?.reasons.includes("No eligible affiliate offer"));
+  });
+
+  it("honors maximum results deterministically and explains capped candidates", () => {
+    const candidates = ["a", "b", "c"].map((id) => ({ product: product(id), offers: [offer(id)] }));
+    const result = new AutonomousOpportunitySelector().select(candidates, { minimumScore: 0, maximumResults: 2 });
+    assert.equal(result.selected.length, 2);
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["a", "b"]);
+    assert.deepEqual(result.rejected, [{ productId: "c", score: result.rejected[0].score, reasons: ["Selection limit reached"] }]);
+  });
+
+  it("applies performance feedback before enforcing the selection limit", () => {
+    const candidates = ["a", "b"].map((id) => ({ product: product(id), offers: [offer(id)] }));
+    const result = new AutonomousOpportunitySelector().select(candidates, { minimumScore: 0, maximumResults: 1 }, new Map([
+      ["b", { clickCount: 100, conversionRate: 0.1, attributedCommissionCents: 1000, adjustment: 8, trendAdjustment: 0 }]
+    ]));
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["b"]);
+    assert.equal(result.rejected[0]?.productId, "a");
+    assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("Historical conversion feedback applied")));
+  });
+
+  it("deduplicates repeated products and merges their offers before selection", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("duplicate"), offers: [offer("duplicate", { id: "offer-low", commissionRateBps: 500 })] },
+      { product: product("duplicate"), offers: [offer("duplicate", { id: "offer-high", commissionRateBps: 1800 })] },
+      { product: product("other"), offers: [offer("other")] }
+    ], { minimumScore: 0, maximumResults: 2 });
+    assert.equal(result.selected.length, 2);
+    assert.equal(result.selected.filter((item) => item.product.id === "duplicate").length, 1);
+    assert.equal(result.selected.find((item) => item.product.id === "duplicate")?.offerId, "offer-high");
+  });
+
+  it("does not select a product that misses a required audience", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }
+    ], { minimumScore: 0, requiredAudience: ["skincare"] });
+    assert.equal(result.selected.length, 0);
+    assert.ok(result.rejected[0]?.reasons.includes("Does not match the required audience"));
+  });
+});

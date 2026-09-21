@@ -26,10 +26,11 @@ const client = new Client({ connectionString });
 const expectedTables = [
   "affiliates", "offers", "conversions", "commissions", "marketplaces", "affiliate_accounts",
   "products", "affiliate_offers", "campaigns", "campaign_offers", "tracking_links", "clicks",
-  "social_accounts", "content"
+  "social_accounts", "content", "oauth_states", "conversion_attributions", "provider_events", "publication_jobs", "media_assets", "publication_operations"
 ];
 const expectedIndexes = [
-  "tracking_links_campaign_idx", "products_marketplace_external_unique", "commissions_conversion_unique"
+  "tracking_links_campaign_idx", "products_marketplace_external_unique", "commissions_conversion_unique",
+  "provider_events_account_external_unique", "provider_events_status_received_idx", "publication_jobs_idempotency_unique", "publication_jobs_due_idx", "publication_operations_provider_operation_unique", "media_assets_content_idx"
 ];
 
 await client.connect();
@@ -71,9 +72,7 @@ try {
 
   const mismatches = trackedMigrationHashes.filter((migration, index) => appliedMigrationHashes[index] !== migration.hash);
   if (mismatches.length > 0) {
-    const details = mismatches
-      .map((migration) => `${migration.tag} (${migration.hash})`)
-      .join(", ");
+    const details = mismatches.map((migration) => `${migration.tag} (${migration.hash})`).join(", ");
     throw new Error(`Drizzle migration ledger hashes do not match tracked migration files: ${details}.`);
   }
 

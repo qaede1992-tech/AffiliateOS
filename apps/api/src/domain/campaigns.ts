@@ -49,6 +49,18 @@ export class CampaignService {
     validateCampaignStatus(current.status, input.status);
     return this.campaigns.save({ ...current, ...input, updatedAt: now() });
   }
+  async validateOfferForExecution(affiliateOfferId: string) {
+    const offer = await this.affiliateOffers.findById(affiliateOfferId);
+    if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
+    if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Campaign execution requires an active affiliate offer.");
+    if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Campaign execution requires an active affiliate link.");
+    if (offer.affiliateLinkExpiresAt) {
+      const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new DomainError("AFFILIATE_LINK_EXPIRED", "Campaign execution requires a non-expired affiliate link.");
+    }
+    return offer;
+  }
+
   async attachOffer(campaignId: string, affiliateOfferId: string) {
     await this.get(campaignId);
     if (!(await this.affiliateOffers.findById(affiliateOfferId))) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
@@ -79,6 +91,13 @@ export class TrackingService {
     const offer = await this.affiliateOffers.findById(input.affiliateOfferId);
     if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
     if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Tracking links require an active affiliate offer.");
+    if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Tracking links require an active affiliate link.");
+    if (offer.affiliateLinkExpiresAt) {
+      const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new DomainError("AFFILIATE_LINK_EXPIRED", "Tracking links cannot target an expired affiliate link.");
+    }
+    validateRedirectDestination(input.destinationUrl);
+    if (input.destinationUrl !== offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_DESTINATION_MISMATCH", "Tracking links must target the active affiliate URL for the offer.");
     if (input.campaignId) {
       await this.getCampaign(input.campaignId);
       if (!(await this.campaignOffers.find(input.campaignId, input.affiliateOfferId))) throw new DomainError("OFFER_NOT_ATTACHED", "The affiliate offer must be attached to the campaign first.");
@@ -89,7 +108,11 @@ export class TrackingService {
     try {
       return await this.links.save(link);
     } catch (error) {
-      if (isUniqueViolation(error)) throw new DomainError("TRACKING_CODE_EXISTS", "The tracking code is already in use.", 409);
+      if (isUniqueViolation(error)) {
+        const raced = await this.links.findByCode(link.code);
+        if (raced && raced.affiliateOfferId === link.affiliateOfferId && raced.campaignId === link.campaignId && raced.destinationUrl === link.destinationUrl) return raced;
+        throw new DomainError("TRACKING_CODE_EXISTS", "The tracking code is already in use.", 409);
+      }
       throw error;
     }
   }
@@ -114,4 +137,13 @@ export class TrackingService {
     }
   }
   async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
+}
+
+function validateRedirectDestination(value: string): void {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported protocol");
+  } catch {
+    throw new DomainError("INVALID_REDIRECT_DESTINATION", "Tracking links require an HTTP or HTTPS destination URL.", 400);
+  }
 }

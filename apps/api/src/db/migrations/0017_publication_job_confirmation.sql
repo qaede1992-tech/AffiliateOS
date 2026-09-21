@@ -1,0 +1,4 @@
+-- publication_jobs.status is intentionally varchar so the domain can add
+-- awaiting_confirmation without a database enum migration.
+-- This migration is retained as an explicit schema-version marker for the
+-- asynchronous publication lifecycle.
