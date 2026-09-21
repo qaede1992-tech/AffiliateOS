@@ -34,8 +34,9 @@ class StubCampaigns {
 }
 class StubTracking {
   created = 0;
+  codes: string[] = [];
   async list() { return this.created ? [link] : []; }
-  async create() { this.created += 1; return link; }
+  async create(input: { code?: string }) { this.created += 1; if (input.code) this.codes.push(input.code); return link; }
 }
 class StubContent {
   created: Content[] = [];
@@ -70,6 +71,16 @@ describe("campaign orchestrator", () => {
     assert.equal(result.distribution.length, 2);
     assert.ok(result.content.every((item) => item.status === "scheduled"));
     assert.ok(result.content.every((item) => item.scheduledAt === scheduledAt));
+  });
+
+  it("uses a deterministic tracking code for an orchestration key", async () => {
+    const tracking = new StubTracking();
+    const content = new StubContent();
+    await new CampaignOrchestrator(new StubCampaigns() as never, tracking as never, content as never).execute({
+      opportunity, offer, product, idempotencyKey: "stable-run", platforms: ["tiktok"]
+    });
+    assert.equal(tracking.codes.length, 1);
+    assert.match(tracking.codes[0]!, /^auto-[a-f0-9]{32}$/);
   });
 
   it("is idempotent for a supplied orchestration key", async () => {
