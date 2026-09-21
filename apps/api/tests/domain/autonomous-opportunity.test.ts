@@ -73,6 +73,17 @@ describe("autonomous opportunity selection", () => {
     assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("Historical conversion feedback applied")));
   });
 
+  it("deduplicates repeated products and merges their offers before selection", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("duplicate"), offers: [offer("duplicate", { id: "offer-low", commissionRateBps: 500 })] },
+      { product: product("duplicate"), offers: [offer("duplicate", { id: "offer-high", commissionRateBps: 1800 })] },
+      { product: product("other"), offers: [offer("other")] }
+    ], { minimumScore: 0, maximumResults: 2 });
+    assert.equal(result.selected.length, 2);
+    assert.equal(result.selected.filter((item) => item.product.id === "duplicate").length, 1);
+    assert.equal(result.selected.find((item) => item.product.id === "duplicate")?.offerId, "offer-high");
+  });
+
   it("does not select a product that misses a required audience", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }
