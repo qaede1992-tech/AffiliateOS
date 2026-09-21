@@ -118,15 +118,22 @@ export class CampaignOrchestrator {
 
       const offerAttachment = await this.campaigns.attachOffer(campaign.id, executionOffer.id);
       const existingLinks = await this.tracking.list(campaign.id);
-      const trackingLink = existingLinks.find((link) => link.affiliateOfferId === executionOffer.id && link.destinationUrl === executionOffer.affiliateUrl) ??
+      const trackingLink = existingLinks.find((link) =>
+        link.affiliateOfferId === executionOffer.id &&
+        link.destinationUrl === executionOffer.affiliateUrl &&
+        link.status === "active"
+      ) ??
         await this.tracking.create({ affiliateOfferId: executionOffer.id, campaignId: campaign.id, destinationUrl: executionOffer.affiliateUrl, code: trackingCodeFor(input.idempotencyKey, campaign.id, executionOffer.id) });
 
       const existingContent = await this.content.list(campaign.id);
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
       for (const platform of requestedPlatforms) {
-        const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion");
-        if (existing) content.push(existing);
-        else {
+        const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion" && item.status !== "archived");
+        if (existing?.status === "failed") {
+          content.push(await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined }));
+        } else if (existing) {
+          content.push(existing);
+        } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
           content.push(await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" }));
         }
