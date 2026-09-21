@@ -18,6 +18,7 @@ describe("Autonomous analytics feedback", () => {
   it("boosts products with materially strong conversion performance", () => {
     const signals = buildSignals({ clickCount: 100, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 10, attributedRevenueCents: 100000, attributedCommissionCents: 5000, conversionRate: 0.1, campaigns: [campaign("p1", 100, 10, 5000)] });
     assert.equal(signals.get("p1")?.adjustment, 8);
+    assert.equal(signals.get("p1")?.conversionCount, 10);
   });
 
   it("penalizes products with weak conversion performance", () => {
@@ -38,8 +39,11 @@ describe("Autonomous analytics feedback", () => {
     current = { clickCount: 120, conversions: 4 };
     const signal = (await provider.getSignals()).get("p1");
     assert.ok(signal);
+    assert.equal(signal.conversionCount, 4);
     assert.equal(signal.trendAdjustment, 2);
     assert.equal(signal.adjustment, 7.33);
-    assert.ok(await memory.latestByProduct("p1"));
+    const snapshot = await memory.latestByProduct("p1");
+    assert.ok(snapshot);
+    assert.equal(snapshot.conversionCount, 4);
   });
 });
