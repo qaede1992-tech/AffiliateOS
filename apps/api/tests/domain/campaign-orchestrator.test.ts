@@ -124,6 +124,39 @@ describe("campaign orchestrator", () => {
     assert.deepEqual(first.content.map((item) => item.id), second.content.map((item) => item.id));
   });
 
+  it("does not reuse an inactive tracking link", async () => {
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    tracking.list = async () => [{ ...link, status: "inactive" }];
+    const content = new StubContent();
+    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+      opportunity, offer, product, idempotencyKey: "inactive-link-run", platforms: ["tiktok"]
+    });
+    assert.equal(tracking.created, 1);
+    assert.equal(result.trackingLink.status, "active");
+  });
+
+  it("restores failed affiliate content to draft for retry", async () => {
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    const content = new StubContent();
+    await content.create({
+      id: "content-failed",
+      productId: product.id,
+      campaignId: campaign.id,
+      platform: "tiktok",
+      contentType: "affiliate-promotion",
+      status: "failed",
+      publishedAt: undefined
+    });
+    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+      opportunity, offer, product, platforms: ["tiktok"]
+    });
+    assert.equal(content.created.length, 1);
+    assert.equal(result.content[0]?.id, "content-failed");
+    assert.equal(result.content[0]?.status, "draft");
+  });
+
   it("persists the autonomous run through orchestration completion", async () => {
     const runs = new InMemoryAutonomousRunRepository();
     const autonomousRuns = new AutonomousRunService(runs);
