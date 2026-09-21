@@ -51,7 +51,7 @@ export class AutonomousExecutionService {
     const selection = this.selector.select(input.candidates, input.policy, performance);
     const candidatesByOpportunity = new Map(
       input.candidates.flatMap((candidate) =>
-        candidate.offers.map((offer) => [`\${candidate.product.id}:\${offer.id}`, { candidate, offer }] as const)
+        candidate.offers.map((offer) => [`${candidate.product.id}:${offer.id}`, { candidate, offer }] as const)
       )
     );
     const outcomes: AutonomousExecutionOutcome[] = [];
