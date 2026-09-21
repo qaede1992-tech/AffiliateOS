@@ -79,7 +79,10 @@ function validateMarketplaceProductInput(input: MarketplaceProductInput): void {
   if (!["in_stock", "out_of_stock", "limited", "unknown"].includes(input.availability)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace product availability is invalid.", 400);
   if (input.originalPriceCents !== undefined && input.originalPriceCents < input.priceCents) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace original price cannot be below the current price.", 400);
   if (input.priceCents === 0 && input.originalPriceCents !== undefined && input.originalPriceCents > 0) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "A free marketplace product cannot have a positive original price.", 400);
-  if (input.affiliateLinkExpiresAt !== undefined && !Number.isFinite(Date.parse(input.affiliateLinkExpiresAt))) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace affiliate link expiry must be a valid timestamp.", 400);
+  if (input.affiliateLinkExpiresAt !== undefined) {
+    const expiry = Date.parse(input.affiliateLinkExpiresAt);
+    if (!Number.isFinite(expiry)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace affiliate link expiry must be a valid timestamp.", 400);
+  }
   validateMarketplaceUrl(input.productUrl, "product");
   if (input.imageUrl) validateMarketplaceUrl(input.imageUrl, "image");
 }
