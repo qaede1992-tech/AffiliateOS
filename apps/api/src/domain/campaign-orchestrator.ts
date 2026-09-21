@@ -77,6 +77,8 @@ export class CampaignOrchestrator {
     if (input.offer.affiliateLinkExpiresAt && new Date(input.offer.affiliateLinkExpiresAt).getTime() <= Date.now()) throw new Error("Campaign orchestration requires a non-expired affiliate link.");
     const liveOffer = await this.campaigns.validateOfferForExecution(input.offer.id);
     if (liveOffer.productId !== input.product.id) throw new Error("Live affiliate offer must belong to the selected product.");
+    const liveProduct = await this.content.validateProductForPublication(input.product.id);
+    if (liveProduct.id !== input.offer.productId) throw new Error("Live product and affiliate offer are inconsistent.");
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const run = input.idempotencyKey && this.autonomousRuns
