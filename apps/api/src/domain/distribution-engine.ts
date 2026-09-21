@@ -35,6 +35,7 @@ export class DistributionEngine {
     const scheduledAt = new Date(request.scheduledAt);
     if (!Number.isFinite(scheduledAt.getTime())) throw new Error("Distribution requires a valid scheduledAt timestamp.");
     if (request.content.status !== "draft") throw new Error("Only draft content can be scheduled for distribution.");
+    await this.contentService.validatePublicationEligibility(request.content);
     const accounts = await this.socialAccounts.list();
     const account = request.accountId ? accounts.find((candidate) => candidate.id === request.accountId) : accounts.find((candidate) => candidate.status === "active" && platformMatches(request.content, candidate));
     if (!account) throw new Error(`No social account is available for ${request.content.platform}.`);
