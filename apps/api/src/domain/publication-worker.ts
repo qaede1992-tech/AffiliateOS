@@ -102,9 +102,17 @@ export class PublicationWorker {
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("does not support publication status checks")) {
+        const terminalPublicationErrors = new Set([
+          "PRODUCT_NOT_ACTIVE",
+          "PRODUCT_NOT_FOUND",
+          "CONTENT_NOT_FOUND",
+          "SOCIAL_ACCOUNT_NOT_FOUND"
+        ]);
+        const isTerminal = (error: unknown): boolean =>
+          Boolean(error && typeof error === "object" && "code" in error && terminalPublicationErrors.has((error as { code?: unknown }).code ?? ""));
+        if (message.includes("does not support publication status checks") || isTerminal(error)) {
           await this.operations.transition(operation.id, "failed", { error: message }, now);
-          await this.contentService?.update(operation.contentId, { status: "failed" });
+          await this.contentService?.update(operation.contentId, { status: "failed" }).catch(() => undefined);
           await this.jobService.fail(operation.jobId, message, now);
           results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: message });
           continue;
