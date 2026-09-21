@@ -15,6 +15,7 @@ export interface AutonomousRunRepository {
   saveIfAbsent?(run: AutonomousRun): Promise<AutonomousRun>;
   transition?(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun): Promise<AutonomousRun | undefined>;
   claimProcessing?(id: EntityId, now: Date, staleAfterMs: number, maxAttempts: number): Promise<AutonomousRun | undefined>;
+  list?(options?: { status?: AutonomousRunStatus; limit?: number }): Promise<AutonomousRun[]>;
   listRecoverable?(staleBefore: Date, now?: Date, limit?: number, maxAttempts?: number): Promise<AutonomousRun[]>;
 }
 export class InMemoryAutonomousRunRepository implements AutonomousRunRepository {
@@ -27,6 +28,13 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     const current = [...this.runs.values()].find((candidate) => candidate.id === id);
     if (!current || !expected.includes(current.status)) return undefined;
     this.runs.set(run.idempotencyKey, run); return run;
+  }
+  async list(options: { status?: AutonomousRunStatus; limit?: number } = {}) {
+    const limit = Math.min(Math.max(1, options.limit ?? 50), 100);
+    return [...this.runs.values()]
+      .filter((run) => !options.status || run.status === options.status)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, limit);
   }
   async listRecoverable(staleBefore: Date, now = new Date(), limit = 100, maxAttempts = 8) {
     return [...this.runs.values()].filter((run) => {
