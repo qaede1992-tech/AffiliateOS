@@ -21,6 +21,14 @@ export class DrizzleAutonomousCycleLockRepository implements AutonomousCycleLock
     return inserted.length > 0;
   }
 
+  async renew(lockKey: string, ownerId: string, now: string, leaseUntil: string): Promise<boolean> {
+    const rows = await this.db.update(autonomousCycleLocks)
+      .set({ leaseUntil, updatedAt: now })
+      .where(and(eq(autonomousCycleLocks.lockKey, lockKey), eq(autonomousCycleLocks.ownerId, ownerId)))
+      .returning({ lockKey: autonomousCycleLocks.lockKey });
+    return rows.length > 0;
+  }
+
   async release(lockKey: string, ownerId: string): Promise<void> {
     await this.db.delete(autonomousCycleLocks)
       .where(and(eq(autonomousCycleLocks.lockKey, lockKey), eq(autonomousCycleLocks.ownerId, ownerId)));
