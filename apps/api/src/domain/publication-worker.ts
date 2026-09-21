@@ -37,6 +37,9 @@ const reconciliationEligibleAt = (operation: import("./publication-operation.js"
   return updatedAt + delay;
 };
 
+const isStatusCheckUnavailable = (message: string): boolean =>
+  message.includes("does not support publication status checks");
+
 export type PublicationWorkerResult = {
   jobId: EntityId;
   contentId: EntityId;
@@ -93,6 +96,9 @@ export class PublicationWorker {
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error });
         continue;
       }
+      if (operation.status === "awaiting_confirmation") {
+        continue;
+      }
       if (operation.status !== "accepted" && operation.status !== "processing") continue;
       if (reconciliationEligibleAt(operation) > now.getTime()) continue;
       try {
@@ -115,6 +121,12 @@ export class PublicationWorker {
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (isStatusCheckUnavailable(message)) {
+          await this.operations.transition(operation.id, "awaiting_confirmation", { error: message }, now);
+          await this.jobService.awaitConfirmation(operation.jobId, now, message);
+          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "awaiting_confirmation", error: message });
+          continue;
+        }
         await this.operations.transition(operation.id, "processing", { error: message }, now);
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing", error: message });
       }
