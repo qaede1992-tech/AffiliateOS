@@ -89,7 +89,11 @@ export class TrackingService {
     try {
       return await this.links.save(link);
     } catch (error) {
-      if (isUniqueViolation(error)) throw new DomainError("TRACKING_CODE_EXISTS", "The tracking code is already in use.", 409);
+      if (isUniqueViolation(error)) {
+        const raced = await this.links.findByCode(link.code);
+        if (raced && raced.affiliateOfferId === link.affiliateOfferId && raced.campaignId === link.campaignId && raced.destinationUrl === link.destinationUrl) return raced;
+        throw new DomainError("TRACKING_CODE_EXISTS", "The tracking code is already in use.", 409);
+      }
       throw error;
     }
   }
