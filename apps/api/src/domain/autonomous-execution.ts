@@ -49,13 +49,20 @@ export class AutonomousExecutionService {
     }
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const selection = this.selector.select(input.candidates, input.policy, performance);
-    const candidatesByProduct = new Map(input.candidates.map((candidate) => [candidate.product.id, candidate]));
+    const candidatesByOpportunity = new Map(
+      input.candidates.flatMap((candidate) =>
+        candidate.offers.map((offer) => [`\${candidate.product.id}:\${offer.id}`, { candidate, offer }] as const)
+      )
+    );
     const outcomes: AutonomousExecutionOutcome[] = [];
     for (const opportunity of selection.selected) {
       const idempotencyKey = executionKey(namespace, opportunity);
       if (recoveredKeys.has(idempotencyKey)) continue;
-      const candidate = candidatesByProduct.get(opportunity.product.id);
-      const offer = candidate?.offers.find((item) => item.id === opportunity.offerId);
+      const resolved = opportunity.offerId
+        ? candidatesByOpportunity.get(`\${opportunity.product.id}:\${opportunity.offerId}`)
+        : undefined;
+      const candidate = resolved?.candidate;
+      const offer = resolved?.offer;
       if (!offer) { outcomes.push({ productId: opportunity.product.id, offerId: opportunity.offerId, score: opportunity.score, status: "failed", idempotencyKey, error: "Selected opportunity has no matching affiliate offer." }); continue; }
       try {
         const result = await this.orchestrator.execute({ opportunity, offer, product: opportunity.product, audience: input.audience, platforms: input.platforms, scheduledAt: input.scheduledAt, idempotencyKey });
