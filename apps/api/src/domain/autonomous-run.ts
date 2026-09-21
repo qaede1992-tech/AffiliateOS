@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
-import type { EntityId, IsoTimestamp } from "@affiliateos/shared";
+import type { AudienceSegment, ContentPlatform, EntityId, IsoTimestamp } from "@affiliateos/shared";
 
 export type AutonomousRunStatus = "accepted" | "processing" | "completed" | "failed";
 
-export interface AutonomousRun {
+export interface AutonomousRunExecutionContext { audience: AudienceSegment[]; platforms: ContentPlatform[]; scheduledAt?: IsoTimestamp; }\n\nexport interface AutonomousRun {
   id: EntityId;
   idempotencyKey: string;
   opportunityProductId: EntityId;
   offerId: EntityId;
   campaignId?: EntityId;
   status: AutonomousRunStatus;
-  lastError?: string;
+  lastError?: string;\n  executionContext?: AutonomousRunExecutionContext;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 }
