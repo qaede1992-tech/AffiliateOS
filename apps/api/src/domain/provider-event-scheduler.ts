@@ -1,4 +1,3 @@
-import type { ProviderEventStore } from "../db/provider-events.js";
 import type { ProviderEventWorker, ProviderEventWorkerResult } from "./provider-event-worker.js";
 
 export type ProviderEventSchedulerOptions = {
