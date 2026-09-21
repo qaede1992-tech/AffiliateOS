@@ -16,6 +16,13 @@ describe("opportunity scoring", () => {
     const result = scoreOpportunity({ product: product(), offers: [offer()], audience: ["skincare"] });
     assert.ok(result.score > 70); assert.equal(result.offerId, "offer-1"); assert.ok(result.breakdown.commission > 50); assert.equal(result.breakdown.audienceFit, 100); assert.ok(result.reasons.includes("Matches skincare audience intent"));
   });
+  it("excludes inactive products from scoring", () => {
+    const result = scoreOpportunity({ product: product({ status: "inactive" }), offers: [offer()], audience: ["skincare"] });
+    assert.equal(result.score, 0);
+    assert.equal(result.offerId, undefined);
+    assert.equal(result.breakdown.total, 0);
+    assert.ok(result.reasons.includes("Product is inactive"));
+  });
   it("fails closed on missing active affiliate offers", () => { const result = scoreOpportunity({ product: product(), offers: [], audience: ["skincare"] }); assert.equal(result.offerId, undefined); assert.equal(result.breakdown.commission, 0); assert.equal(result.breakdown.availability, 0); assert.ok(result.reasons.includes("No active affiliate offer available")); });
   it("rejects offers belonging to another product", () => { const result = scoreOpportunity({ product: product(), offers: [offer({ productId: "different-product" })], audience: ["skincare"] }); assert.equal(result.offerId, undefined); assert.equal(result.breakdown.commission, 0); });
   it("rejects inactive affiliate links and missing destination URLs", () => { const inactive = scoreOpportunity({ product: product(), offers: [offer({ affiliateLinkStatus: "inactive" })] }); const missingUrl = scoreOpportunity({ product: product(), offers: [offer({ affiliateUrl: undefined })] }); assert.equal(inactive.offerId, undefined); assert.equal(missingUrl.offerId, undefined); });
