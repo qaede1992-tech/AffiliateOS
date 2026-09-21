@@ -4,6 +4,7 @@ import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
 import type { CampaignAnalytics } from "./analytics.js";
 import type { CampaignService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
+import type { AutonomousOptimizationStateRepository } from "./autonomous-optimization-state.js";
 import { OptimizationEngine, type OptimizationRecommendation, type OptimizationState } from "./optimization-engine.js";
 
 export interface AutonomousCandidateProvider {
@@ -37,7 +38,8 @@ export class AutonomousCycleService {
     private readonly analytics?: { overview(): Promise<{ campaigns: CampaignAnalytics[] }> },
     private readonly optimizer: OptimizationEngine = new OptimizationEngine(),
     private readonly campaigns?: Pick<CampaignService, "update" | "get">,
-    private readonly content?: Pick<ContentService, "list" | "createRevision">
+    private readonly content?: Pick<ContentService, "list" | "createRevision">,
+    private readonly optimizationStateRepository?: AutonomousOptimizationStateRepository
   ) {}
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
@@ -56,11 +58,17 @@ export class AutonomousCycleService {
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
+      const stateEntries = this.optimizationStateRepository ? await Promise.all((await this.analytics?.overview()).campaigns.map(async (campaign) => [campaign.campaignId, await this.optimizationStateRepository!.get(campaign.campaignId)] as const)) : [];
+      for (const [campaignId, state] of stateEntries) if (state) this.optimizationState.set(campaignId, state);
       const optimization = this.analytics ? this.optimizer.recommend((await this.analytics.overview()).campaigns, this.optimizationState) : [];
       if (this.campaigns) {
         for (const recommendation of optimization) {
           const campaign = await this.campaigns.get(recommendation.campaignId);
-          if (recommendation.action !== "maintain") this.optimizationState.set(recommendation.campaignId, { action: recommendation.action, appliedAt: new Date().toISOString() });
+          if (recommendation.action !== "maintain") {
+            const state = { action: recommendation.action, appliedAt: new Date().toISOString() };
+            this.optimizationState.set(recommendation.campaignId, state);
+            if (this.optimizationStateRepository) await this.optimizationStateRepository.save(recommendation.campaignId, state);
+          }
           if (recommendation.action === "pause") {
             if (campaign.status !== "paused" && campaign.status !== "archived" && campaign.status !== "completed") {
               await this.campaigns.update(recommendation.campaignId, { status: "paused" });
