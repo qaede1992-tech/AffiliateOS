@@ -30,6 +30,7 @@ class StubCampaigns {
   created = 0;
   async list() { return this.created ? [{ ...campaign, audience: { autonomousOrchestrationKey: "run-1" } }] : []; }
   async create() { this.created += 1; return campaign; }
+  async validateOfferForExecution() { return offer; }
   async attachOffer() { return attachment; }
 }
 class StubTracking {
@@ -50,6 +51,18 @@ class StubDistribution {
 }
 
 describe("campaign orchestrator", () => {
+  it("revalidates the live affiliate offer before creating campaign artifacts", async () => {
+    const campaigns = new StubCampaigns();
+    campaigns.validateOfferForExecution = async () => { throw new Error("AFFILIATE_LINK_EXPIRED"); };
+    const content = new StubContent();
+    await assert.rejects(
+      () => new CampaignOrchestrator(campaigns as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, platforms: ["tiktok"] }),
+      /AFFILIATE_LINK_EXPIRED/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
   it("connects a selected opportunity to campaign, tracking, and platform-specific content", async () => {
     const content = new StubContent();
     const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"] });
