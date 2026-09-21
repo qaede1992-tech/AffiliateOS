@@ -19,6 +19,24 @@ export class ContentService {
   async list(campaignId?: string) { const items = await this.contents.list(); if (campaignId) { await this.getCampaign(campaignId); return items.filter((item) => item.campaignId === campaignId); } return items; }
   async get(id: string) { const content = await this.contents.findById(id); if (!content) throw new DomainError("CONTENT_NOT_FOUND", "The content does not exist.", 404); return content; }
   async create(input: CreateContentRequest) { await this.validateReferences(input.campaignId, input.productId); validateContentTiming(input.status ?? "draft", input.scheduledAt, input.publishedAt); const createdAt = now(); return this.contents.save({ id: randomUUID(), productId: input.productId, campaignId: input.campaignId, socialAccountId: input.socialAccountId, mediaAssetIds: input.mediaAssetIds ? [...input.mediaAssetIds] : undefined, platform: input.platform, contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta, status: input.status ?? "draft", scheduledAt: input.scheduledAt, publishedAt: input.publishedAt, createdAt, updatedAt: createdAt }); }
+  async createRevision(campaignId: string, source: Content) {
+    const existing = (await this.list(campaignId)).find((item) => item.status === "draft" && item.title.startsWith("[Revision] "));
+    if (existing) return existing;
+    return this.create({
+      productId: source.productId,
+      campaignId: source.campaignId,
+      socialAccountId: undefined,
+      mediaAssetIds: source.mediaAssetIds,
+      platform: source.platform,
+      contentType: source.contentType,
+      title: "[Revision] " + source.title.replace(/^\[Revision\] /, ""),
+      caption: source.caption ? source.caption + " Test a revised angle based on campaign performance." : "Test a revised angle based on campaign performance.",
+      script: source.script ? source.script + "\nRevision: test a different hook and value framing." : "Revision: test a different hook and value framing.",
+      cta: source.cta,
+      status: "draft"
+    });
+  }
+
   async update(id: string, input: UpdateContentRequest) { const current = await this.get(id); await this.validateReferences(input.campaignId ?? current.campaignId, input.productId ?? current.productId); const nextStatus = input.status ?? current.status; validateContentTransition(current.status, input.status); validateContentTiming(nextStatus, input.scheduledAt ?? current.scheduledAt, input.publishedAt ?? current.publishedAt); return this.contents.save({ ...current, ...input, mediaAssetIds: input.mediaAssetIds ? [...input.mediaAssetIds] : current.mediaAssetIds, updatedAt: now() }); }
   private async getCampaign(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
   private async validateReferences(campaignId?: string, productId?: string) { if (campaignId) await this.getCampaign(campaignId); if (productId && !(await this.products.findById(productId))) throw new DomainError("PRODUCT_NOT_FOUND", "The product does not exist.", 404); }
