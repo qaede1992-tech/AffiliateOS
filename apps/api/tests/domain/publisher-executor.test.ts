@@ -45,6 +45,26 @@ describe("PublisherExecutor", () => {
     assert.equal((await contentService.get(created.id)).status, "scheduled");
   });
 
+  it("fails closed when an affiliate promotion product becomes inactive before publication", async () => {
+    const { contentService, socialAccounts, created } = await setup();
+    const products = new InMemoryProductCatalogRepository();
+    await products.save({ ...product, status: "inactive" });
+    const contents = new InMemoryRepository<Content>();
+    const campaigns = new InMemoryRepository<any>();
+    const isolatedContentService = new ContentService(contents, campaigns, products);
+    const scheduled = await isolatedContentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z" });
+    let published = false;
+    const publisher: SocialPublisher = {
+      supports: () => true,
+      publish: async () => { published = true; return { externalPostId: "should-not-publish" }; }
+    };
+    const executor = new PublisherExecutor(isolatedContentService, socialAccounts, [publisher]);
+    await assert.rejects(() => executor.execute(scheduled.id, new Date("2026-09-20T11:00:00.000Z")), /active product/);
+    assert.equal(published, false);
+    assert.equal((await isolatedContentService.get(scheduled.id)).status, "scheduled");
+    void created;
+  });
+
   it("publishes due scheduled content through a matching publisher", async () => {
     const { contentService, socialAccounts, created } = await setup();
     let published = 0;
