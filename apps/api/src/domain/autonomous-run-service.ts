@@ -81,10 +81,11 @@ export class AutonomousRunService {
     if (!allowedTransitions[run.status].includes(status)) return run;
     const failed = status === "failed";
     const startingAttempt = status === "processing" && run.status !== "processing";
+    if (startingAttempt && run.attemptCount >= AUTONOMOUS_RUN_MAX_ATTEMPTS) return run;
     const nextAttemptCount = startingAttempt ? run.attemptCount + 1 : run.attemptCount;
     const exhausted = nextAttemptCount >= AUTONOMOUS_RUN_MAX_ATTEMPTS;
     const nextAttemptAt = failed && !exhausted ? new Date(now.getTime() + retryDelayMs(Math.max(1, nextAttemptCount))).toISOString() : undefined;
-    const next: AutonomousRun = { ...run, status, campaignId: details.campaignId ?? run.campaignId, lastError: details.error, nextAttemptAt, updatedAt: now.toISOString() };
+    const next: AutonomousRun = { ...run, status, attemptCount: nextAttemptCount, campaignId: details.campaignId ?? run.campaignId, lastError: details.error, nextAttemptAt, updatedAt: now.toISOString() };
     if (this.runs.transition) {
       const transitioned = await this.runs.transition(id, [run.status], next);
       return transitioned ?? (this.runs.findById ? (await this.runs.findById(id)) ?? run : run);
