@@ -48,7 +48,7 @@ export class PublicationOperationService {
       ...operation,
       status,
       externalPostId: details.externalPostId ?? operation.externalPostId,
-      lastError: details.error,
+      lastError: details.error ?? operation.lastError,
       updatedAt: now.toISOString()
     };
     if (this.operations.transition) {
