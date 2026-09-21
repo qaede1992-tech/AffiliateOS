@@ -1,5 +1,5 @@
 import type { EntityId } from "@affiliateos/shared";
-import type { OptimizationAction, OptimizationState } from "./optimization-engine.js";
+import type { OptimizationState } from "./optimization-engine.js";
 
 export interface AutonomousOptimizationStateRepository {
   get(campaignId: EntityId): Promise<OptimizationState | undefined>;
