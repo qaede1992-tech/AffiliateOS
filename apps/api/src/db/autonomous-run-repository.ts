@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "../domain/autonomous-run.js";
 import { autonomousRuns } from "./schema.js";
 
@@ -53,7 +53,7 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
     const whereClause = options.status ? eq(autonomousRuns.status, options.status) : undefined;
     const rows = await this.db.select().from(autonomousRuns)
       .where(whereClause)
-      .orderBy(autonomousRuns.updatedAt)
+      .orderBy(desc(autonomousRuns.updatedAt))
       .limit(limit);
     return rows.map(toDomain);
   }
