@@ -47,7 +47,10 @@ export class AutonomousRunService {
       const current = this.runs.findById ? await this.runs.findById(id) : undefined; return { run: current ?? run, acquired: false };
     }
     if (run.status !== "accepted" && run.status !== "failed") return { run, acquired: false };
-    if (run.status === "failed" && run.nextAttemptAt && new Date(run.nextAttemptAt).getTime() > now.getTime()) return { run, acquired: false };
+    if (run.status === "failed" && run.nextAttemptAt) {
+      const nextAttemptAt = new Date(run.nextAttemptAt).getTime();
+      if (!Number.isFinite(nextAttemptAt) || nextAttemptAt > now.getTime()) return { run, acquired: false };
+    }
     const next: AutonomousRun = { ...run, status: "processing", attemptCount: run.attemptCount + 1, nextAttemptAt: undefined, lastError: undefined, updatedAt: now.toISOString() };
     if (this.runs.transition) {
       const transitioned = await this.runs.transition(id, [run.status], next);
