@@ -61,7 +61,7 @@ function safeErrorMessage(error: unknown): string { const message = error instan
 function validateAffiliateUrl(value: string): void {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported protocol");
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname || url.username || url.password) throw new Error("unsupported or unsafe URL");
   } catch {
     throw new DomainError("INVALID_AFFILIATE_URL", "Generated affiliate links must use an HTTP or HTTPS URL.", 400);
   }
