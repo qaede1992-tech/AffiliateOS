@@ -31,6 +31,13 @@ const services = createServices(
   environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
   new DrizzleAutonomousFeedbackMemoryRepository(persistence.db)
 );
+const app = createApp(services, {
+  providerEvents: persistence.providerEvents,
+  readinessCheck: async () => {
+    await persistence.db.execute(sql`SELECT 1`);
+  }
+});
+
 const providerEventProcessor = new ProviderEventConversionProcessor(
   new ProviderEventProcessor(persistence.providerEvents),
   new StaticProviderEventConversionNormalizerRegistry([new GenericProviderConversionNormalizer()]),
@@ -40,13 +47,6 @@ const providerEventWorker = new ProviderEventWorker(persistence.providerEvents, 
 const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   intervalMs: environment.PROVIDER_EVENT_WORKER_INTERVAL_MS,
   onError: (error) => app.log.error(error, "Provider event worker cycle failed")
-});
-
-const app = createApp(services, {
-  providerEvents: persistence.providerEvents,
-  readinessCheck: async () => {
-    await persistence.db.execute(sql`SELECT 1`);
-  }
 });
 
 try {
