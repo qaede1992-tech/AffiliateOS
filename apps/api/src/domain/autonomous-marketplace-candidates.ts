@@ -42,7 +42,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
   }
 
   private async ensureAffiliateLinks(connectionSlug: string, externalProductId: string, offers: AffiliateOffer[]): Promise<AffiliateOffer[]> {
-    if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl));
+    if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > Date.now()));
 
     const executable: AffiliateOffer[] = [];
     const now = Date.now();
