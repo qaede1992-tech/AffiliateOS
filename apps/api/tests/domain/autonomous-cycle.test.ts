@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { AutonomousCycleService, type AutonomousCandidateProvider } from "../../src/domain/autonomous-cycle.js";
 import type { AutonomousExecutionService } from "../../src/domain/autonomous-execution.js";
+import { InMemoryAutonomousOptimizationStateRepository } from "../../src/domain/autonomous-optimization-state.js";
 
 describe("autonomous cycle", () => {
   it("loads candidates and delegates one execution pass", async () => {
@@ -62,13 +63,36 @@ describe("autonomous cycle", () => {
     const revised: unknown[] = [];
     const content = {
       list: async () => [source, ...revised],
-      createRevision: async (_campaignId: string, _source: unknown) => { created += 1; const item = { ...source, id: "revision-1", status: "draft", title: "[Revision] Original" }; revised.push(item); return item; }
+      createRevision: async (_campaignId: string, _source: unknown) => {
+        const existing = revised.find((item) => (item as { title?: string }).title?.startsWith("[Revision] "));
+        if (existing) return existing;
+        created += 1;
+        const item = { ...source, id: "revision-1", status: "draft", title: "[Revision] Original" };
+        revised.push(item);
+        return item;
+      }
     };
     const execution = { runOnce: async () => ({ selected: [], rejected: [], outcomes: [] }) } as never;
     const service = new AutonomousCycleService({ listCandidates: async () => [] }, execution, analytics, undefined, campaigns, content);
     await service.runOnce();
     await service.runOnce();
-    assert.equal(created, 2);
+    assert.equal(created, 1);
+  });
+
+  it("persists optimization cooldown across cycle service instances", async () => {
+    const stateRepository = new InMemoryAutonomousOptimizationStateRepository();
+    const analytics = { overview: async () => ({ campaigns: [{ campaignId: "scale-me", clickCount: 100, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 10, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0.1 }] }) };
+    const campaigns = { get: async (id: string) => ({ id, status: "paused" }) as never, update: async () => ({}) as never };
+    const execution = { runOnce: async () => ({ selected: [], rejected: [], outcomes: [] }) } as never;
+
+    const first = new AutonomousCycleService({ listCandidates: async () => [] }, execution, analytics, undefined, campaigns, undefined, stateRepository);
+    const firstResult = await first.runOnce();
+    assert.equal(firstResult?.optimization[0]?.action, "scale");
+
+    const second = new AutonomousCycleService({ listCandidates: async () => [] }, execution, analytics, undefined, campaigns, undefined, stateRepository);
+    const secondResult = await second.runOnce();
+    assert.equal(secondResult?.optimization[0]?.action, "maintain");
+    assert.match(secondResult?.optimization[0]?.reasons[0] ?? "", /cooldown active/i);
   });
 
   it("prevents overlapping cycles and releases the guard after completion", async () => {
