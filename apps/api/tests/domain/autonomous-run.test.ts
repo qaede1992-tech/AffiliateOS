@@ -70,7 +70,8 @@ describe("autonomous run", () => {
     const processing = await service.accept({ idempotencyKey: "run-processing", productId: "product-2", offerId: "offer-2", now: new Date("2026-09-20T09:00:00.000Z") });
     await service.claimProcessing(processing.id, new Date("2026-09-20T10:00:00.000Z"));
     const failed = await service.accept({ idempotencyKey: "run-failed", productId: "product-3", offerId: "offer-3", now: new Date("2026-09-20T10:00:00.000Z") });
-    await service.transition(failed.id, "failed", { error: "temporary failure" });
+    const failedProcessing = await service.claimProcessing(failed.id, new Date("2026-09-20T10:00:00.000Z"));
+    await service.transition(failedProcessing.run.id, "failed", { error: "temporary failure" }, new Date("2026-09-20T10:00:01.000Z"));
     const fresh = await service.accept({ idempotencyKey: "run-fresh", productId: "product-4", offerId: "offer-4", now: new Date("2026-09-20T10:00:00.000Z") });
     await service.claimProcessing(fresh.id, new Date("2026-09-20T10:05:00.000Z"));
     const completed = await service.accept({ idempotencyKey: "run-completed", productId: "product-5", offerId: "offer-5" });
@@ -78,7 +79,7 @@ describe("autonomous run", () => {
     await service.transition(completed.id, "completed");
 
     const recoverable = await service.listRecoverable(new Date("2026-09-20T10:11:00.000Z"));
-    assert.deepEqual(recoverable.map((run) => run.idempotencyKey).sort(), [accepted.idempotencyKey, failed.idempotencyKey, processing.idempotencyKey].sort());
+    assert.deepEqual(recoverable.map((run) => run.idempotencyKey).sort(), [accepted.idempotencyKey, processing.idempotencyKey].sort());
   });
 
   it("reclaims a failed run and clears the previous error", async () => {
@@ -92,6 +93,7 @@ describe("autonomous run", () => {
     assert.equal(retry.run.status, "processing");
     assert.equal(retry.run.campaignId, "campaign-1");
     assert.equal(retry.run.lastError, undefined);
+    assert.equal(retry.run.attemptCount, 2);
   });
 
   it("persists campaign binding and errors through lifecycle transitions", async () => {
@@ -116,3 +118,22 @@ describe("autonomous run", () => {
     assert.equal((await repository.findById(processing.id))?.status, "processing");
   });
 });
+
+
+  it("backs off failed runs and stops recovery after the maximum attempts", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const accepted = await service.accept({ idempotencyKey: "run-exhausted", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
+    let current = await service.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z"));
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const failed = await service.transition(current.run.id, "failed", { error: `failure-${attempt}` }, new Date("2026-09-20T10:00:00.000Z"));
+      if (attempt < 8) {
+        assert.equal(failed.nextAttemptAt, new Date("2026-09-20T10:0" + String(Math.min(60, 2 ** (attempt - 1))).padStart(2, "0") + ":00.000Z").toISOString());
+        current = await service.claimProcessing(failed.id, new Date(failed.nextAttemptAt!));
+        assert.equal(current.acquired, true);
+      } else {
+        assert.equal(failed.nextAttemptAt, undefined);
+        assert.equal((await service.listRecoverable(new Date("2026-09-20T12:00:00.000Z"))).some((run) => run.id === failed.id), false);
+      }
+    }
+  });
