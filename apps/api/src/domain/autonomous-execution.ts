@@ -32,6 +32,7 @@ export class AutonomousExecutionService {
         if (!candidate || !offer) continue;
         const context = run.executionContext;
         const scored = scoreOpportunity({ product: candidate.product, offers: candidate.offers, audience: context?.audience ?? input.audience });
+        if (!candidate.product || candidate.product.id !== run.opportunityProductId || !candidate.product.status || candidate.product.status !== "active") continue;
         const opportunity: ScoredOpportunity = { ...scored, offerId: run.offerId };
         try {
           await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: run.idempotencyKey });
