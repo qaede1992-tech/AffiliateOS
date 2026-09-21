@@ -1,4 +1,4 @@
-import type { Affiliate, Campaign, Commission, Content, Conversion, Offer, SocialAccount } from "@affiliateos/shared";
+import type { Affiliate, Campaign, Content, Conversion, Offer, SocialAccount } from "@affiliateos/shared";
 import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryPublicationJobRepository, InMemoryPublicationOperationRepository, InMemoryRepository, InMemorySocialAccountRepository, InMemoryTrackingLinkRepository, type RepositorySet, type TransactionManager } from "./repository.js";
 import { AffiliateService, CommissionService, ConversionService, OfferService } from "./services.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
@@ -28,10 +28,6 @@ import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace
 import { AutonomousScheduler } from "./autonomous-scheduler.js";
 import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
 import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
-import { ProviderConversionProcessor } from "./provider-conversion-processor.js";
-import { GenericProviderConversionNormalizer } from "./provider-conversion.js";
-import { ProviderEventProcessor } from "./provider-event-processor.js";
-import { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./provider-event-conversion-processor.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
