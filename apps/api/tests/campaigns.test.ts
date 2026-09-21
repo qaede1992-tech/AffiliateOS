@@ -72,7 +72,7 @@ function trackingFixture() {
   return { links, clicks, campaigns, affiliateOffers, campaignOffers, tracking: new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers) };
 }
 
-test("tracking links reject expired affiliate links and destination mismatches", async () => {
+test("tracking links reject non-web redirect destinations", async () => {\n  const { affiliateOffers, tracking } = trackingFixture();\n  const offerId = "00000000-0000-0000-0000-000000000081";\n  await affiliateOffers.save({ ...activeOffer(offerId), affiliateUrl: "javascript:alert(1)" });\n  await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, destinationUrl: "javascript:alert(1)" }), /HTTP or HTTPS destination/i);\n});\n\ntest("tracking links reject expired affiliate links and destination mismatches", async () => {
   const { affiliateOffers, tracking } = trackingFixture();
   const expiredId = "00000000-0000-0000-0000-000000000070";
   await affiliateOffers.save({ ...activeOffer(expiredId), affiliateUrl: "https://example.com/affiliate", affiliateLinkExpiresAt: "2000-01-01T00:00:00.000Z" });
