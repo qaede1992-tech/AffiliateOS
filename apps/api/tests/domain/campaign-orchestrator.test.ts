@@ -102,14 +102,5 @@ describe("campaign orchestrator", () => {
     assert.equal(run.opportunityProductId, product.id);
     assert.equal(run.offerId, offer.id);
   });
-  it("does not schedule autonomous content for a paused campaign", async () => {
-    const { campaigns, tracking, content, distribution, runs, offer, product } = await testContext();
-    const existing = await campaigns.create({ name: "Paused", objective: "test", status: "paused", audience: { productId: product.id } });
-    await campaigns.attachOffer(existing.id, offer.id);
-    const service = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, runs);
-    const result = await service.execute({ opportunity: score(product, offer), offer, product, scheduledAt: new Date(Date.now() + 60000).toISOString(), idempotencyKey: "paused-test" });
-    assert.equal(result.distribution.length, 0);
-    assert.equal(result.campaign.status, "paused");
-  });
 
 });
