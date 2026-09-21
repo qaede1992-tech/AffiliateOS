@@ -40,7 +40,14 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
     return job;
   }
 
-  async transition(id: EntityId, expected: PublicationJobStatus[], job: PublicationJob) {\n    const current = this.jobs.get(id);\n    if (!current || !expected.includes(current.status)) return undefined;\n    this.jobs.set(id, job);\n    return job;\n  }\n\n  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
+  async transition(id: EntityId, expected: PublicationJobStatus[], job: PublicationJob) {
+    const current = this.jobs.get(id);
+    if (!current || !expected.includes(current.status)) return undefined;
+    this.jobs.set(id, job);
+    return job;
+  }
+
+  async claimDue(id: EntityId, nowDate: Date, lockTimeoutMs: number) {
     const job = this.jobs.get(id);
     if (!job || job.status === "succeeded" || job.status === "awaiting_confirmation") return undefined;
     const scheduled = new Date(job.scheduledAt).getTime();
