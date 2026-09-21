@@ -141,6 +141,13 @@
       "when": 1790680800000,
       "tag": "0021_autonomous_run_retry_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790767200000,
+      "tag": "0022_affiliate_link_expiry",
+      "breakpoints": true
     }
   ]
 }
