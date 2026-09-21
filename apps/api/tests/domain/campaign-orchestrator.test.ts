@@ -87,6 +87,22 @@ describe("campaign orchestrator", () => {
     assert.deepEqual(first.content.map((item) => item.id), second.content.map((item) => item.id));
   });
 
+  it("replays a completed autonomous run without duplicating side effects", async () => {
+    const runs = new InMemoryAutonomousRunRepository();
+    const autonomousRuns = new AutonomousRunService(runs);
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    const content = new StubContent();
+    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, autonomousRuns);
+    const input = { opportunity, offer, product, idempotencyKey: "completed-replay", platforms: ["tiktok"] as const };
+    await orchestrator.execute(input);
+    const second = await orchestrator.execute(input);
+    assert.equal(campaigns.created, 1);
+    assert.equal(tracking.created, 1);
+    assert.equal(content.created.length, 1);
+    assert.equal(second.campaign.id, campaign.id);
+  });
+
   it("persists the autonomous run through orchestration completion", async () => {
     const runs = new InMemoryAutonomousRunRepository();
     const autonomousRuns = new AutonomousRunService(runs);
