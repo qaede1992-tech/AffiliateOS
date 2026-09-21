@@ -25,6 +25,27 @@ describe("Autonomous analytics feedback", () => {
     assert.equal(signals.get("p1")?.adjustment, -8);
   });
 
+  it("persists the exact attributed conversion count instead of reconstructing it from the rate", async () => {
+    const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+    const provider = new AutonomousAnalyticsFeedbackProvider(
+      {
+        overview: async () => ({
+          clickCount: 3, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1,
+          scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 10000,
+          attributedCommissionCents: 5000, conversionRate: 0.5,
+          campaigns: [{ ...campaign("p1", 3, 1, 5000), conversionRate: 0.5 }]
+        })
+      },
+      memory,
+      () => new Date("2026-09-21T01:00:00.000Z")
+    );
+
+    await provider.getSignals();
+    const snapshot = await memory.latestByProduct("p1");
+    assert.ok(snapshot);
+    assert.equal(snapshot.conversionCount, 1);
+  });
+
   it("persists snapshots and applies a bounded incremental trend adjustment", async () => {
     const memory = new InMemoryAutonomousFeedbackMemoryRepository();
     let current = { clickCount: 100, conversions: 2 };
