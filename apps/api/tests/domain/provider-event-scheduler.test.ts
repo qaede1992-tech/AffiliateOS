@@ -21,7 +21,10 @@ test("provider event scheduler prevents overlapping runs", async () => {
   await started;
   const second = scheduler.runNow();
 
-  assert.equal(await Promise.race([second.then(() => "resolved"), Promise.resolve("pending")]), "pending");
+  let secondSettled = false;
+  void second.finally(() => { secondSettled = true; });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(secondSettled, false);
   assert.equal(calls, 1);
 
   release();
