@@ -68,7 +68,7 @@ export class ConversionService {
     return this.conversions.list();
   }
 
-  async create(input: CreateConversionRequest): Promise<Conversion> {
+  async updateProviderStatus(conversionId: string, status: Conversion["status"], commissionCents?: number): Promise<Conversion> {\n    const conversion = await this.conversions.findById(conversionId);\n    if (!conversion) throw new DomainError("CONVERSION_NOT_FOUND", "The conversion does not exist.", 404);\n    if (status === "pending" && conversion.status !== "pending") return conversion;\n    if (conversion.status === "approved" && status === "rejected") throw new DomainError("INVALID_CONVERSION_TRANSITION", "An approved conversion cannot be rejected without an explicit reversal workflow.", 409);\n    const next = { ...conversion, status };\n    await this.transactionManager.run(async ({ conversions, commissions }) => {\n      await conversions.save(next);\n      const commission = await commissions.findByConversion?.(conversion.id);\n      if (commission) {\n        const nextAmount = commissionCents ?? commission.amountCents;\n        await commissions.save({ ...commission, amountCents: nextAmount, status: status === "approved" ? "approved" : status === "rejected" ? "pending" : commission.status });\n      }\n    });\n    return next;\n  }\n\n  async create(input: CreateConversionRequest): Promise<Conversion> {
     const idempotencyKey = input.idempotencyKey?.trim();
     if (idempotencyKey) {
       const existing = await this.conversions.findByIdempotencyKey(idempotencyKey);
