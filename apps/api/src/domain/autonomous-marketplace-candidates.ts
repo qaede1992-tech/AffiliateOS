@@ -45,9 +45,11 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl));
 
     const executable: AffiliateOffer[] = [];
+    const now = Date.now();
     for (const offer of offers) {
       if (offer.status !== "active") continue;
-      if (offer.affiliateLinkStatus === "active" && offer.affiliateUrl) {
+      const linkUsable = offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now);
+      if (linkUsable) {
         executable.push(offer);
         continue;
       }
