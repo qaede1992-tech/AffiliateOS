@@ -39,6 +39,20 @@ describe("autonomous cycle", () => {
     await service.runOnce({ publicationDelayMs: 60_000 });
   });
 
+  it("applies pause and scale recommendations to campaign state", async () => {
+    const updates: Array<{ id: string; status: string }> = [];
+    const analytics = { overview: async () => ({ campaigns: [
+      { campaignId: "pause-me", clickCount: 120, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 0, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0 },
+      { campaignId: "scale-me", clickCount: 100, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 10, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0.1 }
+    ] }) };
+    const campaigns = { update: async (id: string, input: { status?: string }) => { updates.push({ id, status: input.status! }); return {} as never; } };
+    const execution = { runOnce: async () => ({ selected: [], rejected: [], outcomes: [] }) } as never;
+    const service = new AutonomousCycleService({ listCandidates: async () => [] }, execution, analytics, undefined, campaigns);
+    const result = await service.runOnce();
+    assert.deepEqual(updates, [{ id: "pause-me", status: "paused" }, { id: "scale-me", status: "active" }]);
+    assert.equal(result?.optimization.length, 2);
+  });
+
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     let release!: () => void;
     const candidates: AutonomousCandidateProvider = {
