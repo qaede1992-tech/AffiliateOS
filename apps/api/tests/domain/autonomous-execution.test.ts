@@ -143,6 +143,31 @@ describe("AutonomousExecutionService", () => {
     assert.equal(result.recoveredRunCount, 0);
   });
 
+  it("resolves the selected offer from duplicate product candidates without mixing offers", async () => {
+    const alternateOffer = { ...offer, id: "offer-2", externalOfferId: "external-offer-2", commissionBasisPoints: 1800 };
+    const calls: string[] = [];
+    const selector = {
+      select: () => ({ selected: [{ ...opportunity, offerId: alternateOffer.id }], rejected: [] })
+    } as unknown as AutonomousOpportunitySelector;
+    const orchestrator = {
+      execute: async (input: { offer: AffiliateOffer }) => {
+        calls.push(input.offer.id);
+        return orchestrationResult;
+      }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(selector, orchestrator);
+
+    const result = await service.runOnce({
+      candidates: [
+        { product, offers: [offer] },
+        { product, offers: [alternateOffer] }
+      ]
+    });
+
+    assert.equal(result.outcomes[0]?.status, "completed");
+    assert.deepEqual(calls, ["offer-2"]);
+  });
+
   it("fails a selected opportunity when its offer cannot be resolved", async () => {
     const selector = {
       select: () => ({ selected: [opportunity], rejected: [] })
