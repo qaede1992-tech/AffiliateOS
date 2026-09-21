@@ -79,6 +79,44 @@ describe("AutonomousExecutionService", () => {
     assert.equal(result.outcomes[1]?.status, "completed");
   });
 
+  it("recovers a persisted run using its original execution context", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { audience: ["electronics"], platforms: ["instagram"], scheduledAt: "2026-09-21T12:00:00.000Z" },
+      now: new Date("2026-09-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "worker interrupted" }, new Date("2026-09-20T09:01:00.000Z"));
+
+    const calls: Array<{ audience?: string[]; platforms?: string[]; scheduledAt?: string; idempotencyKey?: string }> = [];
+    const orchestrator = {
+      execute: async (input: { audience?: string[]; platforms?: string[]; scheduledAt?: string; idempotencyKey?: string }) => {
+        calls.push(input);
+        return orchestrationResult;
+      }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [offer] }],
+      audience: ["beauty"],
+      platforms: ["tiktok"],
+      scheduledAt: "2026-09-22T12:00:00.000Z",
+      idempotencyNamespace: "new-cycle"
+    });
+
+    assert.equal(result.recoveredRunCount, 1);
+    assert.deepEqual(calls, [{
+      audience: ["electronics"],
+      platforms: ["instagram"],
+      scheduledAt: "2026-09-21T12:00:00.000Z",
+      idempotencyKey: "previous-cycle:product-1:offer-1"
+    }]);
+  });
+
   it("fails a selected opportunity when its offer cannot be resolved", async () => {
     const selector = {
       select: () => ({ selected: [opportunity], rejected: [] })
