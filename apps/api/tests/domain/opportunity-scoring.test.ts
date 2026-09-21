@@ -19,6 +19,12 @@ describe("opportunity scoring", () => {
   it("fails closed on missing active affiliate offers", () => { const result = scoreOpportunity({ product: product(), offers: [], audience: ["skincare"] }); assert.equal(result.offerId, undefined); assert.equal(result.breakdown.commission, 0); assert.equal(result.breakdown.availability, 0); assert.ok(result.reasons.includes("No active affiliate offer available")); });
   it("rejects offers belonging to another product", () => { const result = scoreOpportunity({ product: product(), offers: [offer({ productId: "different-product" })], audience: ["skincare"] }); assert.equal(result.offerId, undefined); assert.equal(result.breakdown.commission, 0); });
   it("rejects inactive affiliate links and missing destination URLs", () => { const inactive = scoreOpportunity({ product: product(), offers: [offer({ affiliateLinkStatus: "inactive" })] }); const missingUrl = scoreOpportunity({ product: product(), offers: [offer({ affiliateUrl: undefined })] }); assert.equal(inactive.offerId, undefined); assert.equal(missingUrl.offerId, undefined); });
+  it("fails closed on expired affiliate links", () => {
+    const expired = offer({ affiliateLinkExpiresAt: "2026-09-20T00:00:00.000Z" });
+    const result = scoreOpportunity({ product: product(), offers: [expired], audience: ["skincare"] });
+    assert.equal(result.offerId, undefined);
+    assert.equal(result.breakdown.commission, 0);
+  });
   it("does not mutate the candidate offer collection", () => { const lower = offer({ id: "offer-b", commissionRateBps: 500 }); const higher = offer({ id: "offer-a", commissionRateBps: 1500 }); const offers = [lower, higher]; scoreOpportunity({ product: product(), offers }); assert.deepEqual(offers.map((item) => item.id), ["offer-b", "offer-a"]); });
   it("penalizes limited availability", () => { const result = scoreOpportunity({ product: product(), offers: [offer({ availability: "limited" })], audience: ["skincare"] }); assert.equal(result.breakdown.availability, 55); });
   it("ranks opportunities deterministically by score and product id", () => {
