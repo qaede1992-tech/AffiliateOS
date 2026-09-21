@@ -127,13 +127,19 @@
       "when": 1790508000000,
       "tag": "0019_autonomous_feedback_observation_key",
       "breakpoints": true
-    }
-    ,
+    },
     {
       "idx": 18,
       "version": "7",
       "when": 1790594400000,
       "tag": "0020_autonomous_run_execution_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790680800000,
+      "tag": "0021_autonomous_run_retry_policy",
       "breakpoints": true
     }
   ]
