@@ -90,7 +90,7 @@ export class TrackingService {
     if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Tracking links require an active affiliate offer.");
     if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Tracking links require an active affiliate link.");
     if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) throw new DomainError("AFFILIATE_LINK_EXPIRED", "Tracking links cannot target an expired affiliate link.");
-    if (input.destinationUrl !== offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_DESTINATION_MISMATCH", "Tracking links must target the active affiliate URL for the offer.");
+    validateRedirectDestination(input.destinationUrl);\n    if (input.destinationUrl !== offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_DESTINATION_MISMATCH", "Tracking links must target the active affiliate URL for the offer.");
     if (input.campaignId) {
       await this.getCampaign(input.campaignId);
       if (!(await this.campaignOffers.find(input.campaignId, input.affiliateOfferId))) throw new DomainError("OFFER_NOT_ATTACHED", "The affiliate offer must be attached to the campaign first.");
@@ -131,3 +131,4 @@ export class TrackingService {
   }
   async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
 }
+\nfunction validateRedirectDestination(value: string): void {\n  try {\n    const url = new URL(value);\n    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("unsupported protocol");\n  } catch {\n    throw new DomainError("INVALID_REDIRECT_DESTINATION", "Tracking links require an HTTP or HTTPS destination URL.", 400);\n  }\n}\n
