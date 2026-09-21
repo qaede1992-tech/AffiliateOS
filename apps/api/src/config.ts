@@ -19,7 +19,8 @@ const environmentSchema = z.object({
   API_AUTH_OPERATOR_ID: z.string().trim().min(1).default("development-operator"),
   API_AUTH_OPERATOR_ROLE: z.enum(["admin", "operator", "viewer"]).default("admin"),
   AUTONOMOUS_CYCLE_ENABLED: booleanEnvironment,
-  AUTONOMOUS_CYCLE_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000)
+  AUTONOMOUS_CYCLE_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000),
+  AUTONOMOUS_PUBLICATION_DELAY_MS: z.coerce.number().int().min(60_000).default(300_000)
 });
 
 export const environment = environmentSchema.parse(process.env);
