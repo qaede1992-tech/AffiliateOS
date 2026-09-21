@@ -36,6 +36,9 @@ export class PublisherExecutor {
 
     try {
       const credential = await this.resolveCredential(account);
+      // The idempotency key must remain stable across worker retries. Providers that
+      // support idempotent publication can use it to reconcile a publish accepted
+      // externally immediately before a local process crash.
       const result = await publisher.publish({ content, account, credential, idempotencyKey });
       if (result.status === "accepted") {
         return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
