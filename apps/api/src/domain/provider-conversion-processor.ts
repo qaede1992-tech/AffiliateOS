@@ -1,15 +1,22 @@
 import type { Conversion } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { ConversionService } from "./services.js";
-import type { Conversion } from "@affiliateos/shared";\nimport type { NormalizedProviderConversion } from "./provider-conversion.js";
+import type { NormalizedProviderConversion } from "./provider-conversion.js";
 
-export interface ProviderConversionLifecycle {\n  reconcileProviderState(conversionId: string, status: NormalizedProviderConversion["status"], commissionCents?: number): Promise<Conversion>;\n}\n\nexport interface ProviderConversionResolver {
+export interface ProviderConversionLifecycle {
+  reconcileProviderState(conversionId: string, status: NormalizedProviderConversion["status"], commissionCents?: number): Promise<Conversion>;
+}
+
+export interface ProviderConversionResolver {
   resolveAffiliate(reference: string): Promise<string | undefined>;
   resolveOffer(reference: string): Promise<string | undefined>;
 }
 
 export class ProviderConversionProcessor {
-  constructor(private readonly conversions: ConversionService & ProviderConversionLifecycle, private readonly resolver: ProviderConversionResolver) {}
+  constructor(
+    private readonly conversions: ConversionService & ProviderConversionLifecycle,
+    private readonly resolver: ProviderConversionResolver
+  ) {}
 
   async process(accountScope: string, event: NormalizedProviderConversion): Promise<Conversion> {
     if (!accountScope.trim()) throw new DomainError("PROVIDER_CONVERSION_ACCOUNT_MISSING", "Provider conversion account scope is required.", 422);
@@ -21,12 +28,18 @@ export class ProviderConversionProcessor {
     const offerId = await this.resolver.resolveOffer(event.offerReference);
     if (!offerId) throw new DomainError("PROVIDER_CONVERSION_OFFER_UNKNOWN", "The provider offer reference could not be resolved.", 422);
 
-    return this.conversions.create({
+    const conversion = await this.conversions.create({
       affiliateId,
       offerId,
       amountCents: event.amountCents,
       occurredAt: event.occurredAt,
       idempotencyKey: `provider:${accountScope}:${event.externalConversionId}`
     });
+
+    if (event.status !== "pending" || event.commissionCents !== undefined) {
+      return this.conversions.reconcileProviderState(conversion.id, event.status, event.commissionCents);
+    }
+
+    return conversion;
   }
 }
