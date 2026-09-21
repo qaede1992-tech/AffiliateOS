@@ -42,6 +42,7 @@ class StubTracking {
 class StubContent {
   created: Content[] = [];
   async list() { return this.created; }
+  async validateProductForPublication() { return product; }
   async create(input: Record<string, unknown>) { const item = { id: `content-${this.created.length + 1}`, ...input } as unknown as Content; this.created.push(item); return item; }
 }
 class StubDistribution {
