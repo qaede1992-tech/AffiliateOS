@@ -113,4 +113,51 @@ describe("campaign orchestrator", () => {
     assert.equal(run.opportunityProductId, product.id);
     assert.equal(run.offerId, offer.id);
   });
+  it("recovers a stale autonomous run without duplicating campaign, tracking, or content", async () => {
+    const runs = new InMemoryAutonomousRunRepository();
+    const autonomousRuns = new AutonomousRunService(runs);
+    const campaigns = new StubCampaigns();
+    campaigns.created = 1;
+    const tracking = new StubTracking();
+    tracking.created = 1;
+    const content = new StubContent();
+    await content.create({ productId: product.id, campaignId: campaign.id, platform: "tiktok", contentType: "affiliate-promotion", status: "draft" });
+    await content.create({ productId: product.id, campaignId: campaign.id, platform: "instagram", contentType: "affiliate-promotion", status: "draft" });
+
+    const accepted = await autonomousRuns.accept({
+      idempotencyKey: "run-1",
+      productId: product.id,
+      offerId: offer.id,
+      now: new Date("2026-09-20T10:00:00.000Z")
+    });
+    const processing = await autonomousRuns.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z"));
+    await runs.save({
+      ...processing.run,
+      campaignId: campaign.id,
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+
+    const orchestrator = new CampaignOrchestrator(
+      campaigns as never,
+      tracking as never,
+      content as never,
+      undefined,
+      undefined,
+      autonomousRuns
+    );
+    const result = await orchestrator.execute({
+      opportunity,
+      offer,
+      product,
+      idempotencyKey: "run-1",
+      platforms: ["tiktok", "instagram"]
+    });
+
+    assert.equal(result.campaign.id, campaign.id);
+    assert.equal(campaigns.created, 1);
+    assert.equal(tracking.created, 1);
+    assert.equal(content.created.length, 2);
+    assert.equal((await runs.findById(accepted.id))?.status, "completed");
+  });
+
 });
