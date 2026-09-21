@@ -3,6 +3,7 @@ import type { AutonomousExecutionCandidate, AutonomousExecutionInput, Autonomous
 import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
 import type { CampaignAnalytics } from "./analytics.js";
 import type { CampaignService } from "./campaigns.js";
+import type { ContentService } from "./content.js";
 import { OptimizationEngine, type OptimizationRecommendation } from "./optimization-engine.js";
 
 export interface AutonomousCandidateProvider {
@@ -34,7 +35,8 @@ export class AutonomousCycleService {
     private readonly execution: AutonomousExecutionService,
     private readonly analytics?: { overview(): Promise<{ campaigns: CampaignAnalytics[] }> },
     private readonly optimizer: OptimizationEngine = new OptimizationEngine(),
-    private readonly campaigns?: Pick<CampaignService, "update">
+    private readonly campaigns?: Pick<CampaignService, "update">,
+    private readonly content?: Pick<ContentService, "list" | "createRevision">
   ) {}
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
@@ -60,6 +62,10 @@ export class AutonomousCycleService {
             await this.campaigns.update(recommendation.campaignId, { status: "paused" });
           } else if (recommendation.action === "scale") {
             await this.campaigns.update(recommendation.campaignId, { status: "active" });
+          } else if (recommendation.action === "revise-content" && this.content) {
+            const existing = await this.content.list(recommendation.campaignId);
+            const source = existing.find((item) => item.status === "published" || item.status === "scheduled");
+            if (source) await this.content.createRevision(recommendation.campaignId, source);
           }
         }
       }
