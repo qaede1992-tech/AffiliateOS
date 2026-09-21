@@ -1,7 +1,8 @@
 import { and, count, eq } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
-import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks } from "./schema.js";
+import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, publicationOperations } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
+import { DrizzlePublicationOperationRepository } from "./publication-operation-repository.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
 
 type DatabaseExecutor = any;
@@ -44,7 +45,7 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
   commissions: new DrizzleRepository(db, commissions, toCommission, (entity: Commission) => ({ id: entity.id, conversionId: entity.conversionId, affiliateId: entity.affiliateId, amountCents: entity.amountCents, status: entity.status, createdAt: entity.createdAt })),
   marketplaceConnections: new DrizzleMarketplaceConnectionRepository(db), affiliateAccounts: new DrizzleAffiliateAccountRepository(db), products: new DrizzleProductCatalogRepository(db), affiliateOffers: new DrizzleAffiliateOfferRepository(db),
   campaigns: new DrizzleCampaignRepository(db), campaignOffers: new DrizzleCampaignOfferRepository(db), trackingLinks: new DrizzleTrackingLinkRepository(db), clicks: new DrizzleClickRepository(db),
-  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db)
+  contents: new DrizzleContentRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), publicationOperations: new DrizzlePublicationOperationRepository(db)
 });
 export class DrizzleTransactionManager implements TransactionManager { constructor(private readonly db: DatabaseExecutor) {} run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T> { return this.db.transaction(async (transaction: DatabaseExecutor) => { const repositories = createRepositories(transaction); return work({ conversions: repositories.conversions, commissions: repositories.commissions }); }); }
 }
