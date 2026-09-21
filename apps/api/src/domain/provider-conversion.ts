@@ -54,6 +54,7 @@ export class GenericProviderConversionNormalizer implements ProviderConversionNo
     const commissionCents = integer(payload.commission_cents) ?? integer(payload.commissionCents) ?? (payload.commission !== undefined ? this.moneyToCents(payload.commission, "commission") : undefined);
     if (commissionCents !== undefined && commissionCents < 0) throw new Error("Provider conversion commission must be non-negative.");
     if (commissionCents !== undefined && commissionCents > Number.MAX_SAFE_INTEGER) throw new Error("Provider conversion commission is outside the supported money range.");
+    if (commissionCents !== undefined && commissionCents > amountCents) throw new Error("Provider conversion commission cannot exceed conversion amount.");
 
     const currency = text(payload.currency)?.toUpperCase();
     if (currency && !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider conversion currency must be a three-letter ISO code.");
