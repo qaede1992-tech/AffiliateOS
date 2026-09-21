@@ -117,6 +117,32 @@ describe("AutonomousExecutionService", () => {
     }]);
   });
 
+  it("skips recovery when the persisted product is no longer active", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { audience: ["electronics"] },
+      now: new Date("2026-09-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "worker interrupted" }, new Date("2026-09-20T09:01:00.000Z"));
+
+    const orchestrator = {
+      execute: async () => orchestrationResult
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+    const inactiveProduct = { ...product, status: "inactive" as const };
+
+    const result = await service.runOnce({
+      candidates: [{ product: inactiveProduct, offers: [offer] }],
+      idempotencyNamespace: "new-cycle"
+    });
+
+    assert.equal(result.recoveredRunCount, 0);
+  });
+
   it("fails a selected opportunity when its offer cannot be resolved", async () => {
     const selector = {
       select: () => ({ selected: [opportunity], rejected: [] })
