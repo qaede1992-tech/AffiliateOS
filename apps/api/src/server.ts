@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { environment } from "./config.js";
 import { createServices } from "./domain/container.js";
 import { createDatabasePersistence } from "./db/client.js";
+import { PostgresAutonomousCycleLock } from "./db/autonomous-cycle-lock.js";
 import { DrizzleAnalyticsReader } from "./db/analytics.js";
 import { DrizzleConversionAttributionRepository } from "./db/attribution.js";
 import { DrizzleOAuthStateRepository } from "./db/oauth-state.js";
@@ -16,6 +17,7 @@ import { ProviderEventConversionProcessor, StaticProviderEventConversionNormaliz
 import { GenericProviderConversionNormalizer } from "./domain/provider-conversion.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
+const autonomousCycleLock = new PostgresAutonomousCycleLock(persistence.pool);
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
@@ -29,7 +31,8 @@ const services = createServices(
   new DrizzlePublicationOperationRepository(persistence.db),
   new DrizzleAutonomousRunRepository(persistence.db),
   environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
-  new DrizzleAutonomousFeedbackMemoryRepository(persistence.db)
+  new DrizzleAutonomousFeedbackMemoryRepository(persistence.db),
+  autonomousCycleLock
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
