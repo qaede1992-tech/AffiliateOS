@@ -41,6 +41,9 @@ export interface Services {
 }
 
 export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock, optimizationStateReader?: OptimizationStateReader, optimizationStateWriter?: OptimizationStateWriter): Services {
+  if (Boolean(optimizationStateReader) !== Boolean(optimizationStateWriter)) {
+    throw new Error("Optimization state reader and writer must be supplied together.");
+  }
   const conversions = new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager);
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
@@ -66,10 +69,10 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     async resolveTrackingLink(reference) { return (await repositories.trackingLinks.findByCode(reference))?.id; }
   }, attribution);
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
-  const optimizationState = optimizationStateReader ?? optimizationStateWriter ?? new InMemoryOptimizationStateStore();
-  const optimizationWriter = optimizationStateWriter ?? (optimizationState instanceof InMemoryOptimizationStateStore ? optimizationState : undefined);
-  if (!optimizationWriter) throw new Error("An optimization state writer is required when a custom optimization state reader is supplied.");
-  const autonomousOptimization = new AutonomousOptimizationRunner(analytics, optimizationState, optimizationWriter, new AutonomousCampaignActionExecutor(campaigns));
+  const defaultOptimizationState = new InMemoryOptimizationStateStore();
+  const stateReader = optimizationStateReader ?? defaultOptimizationState;
+  const stateWriter = optimizationStateWriter ?? defaultOptimizationState;
+  const autonomousOptimization = new AutonomousOptimizationRunner(analytics, stateReader, stateWriter, new AutonomousCampaignActionExecutor(campaigns));
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, {}, { intervalMs: autonomousSchedulerIntervalMs });
   return {
