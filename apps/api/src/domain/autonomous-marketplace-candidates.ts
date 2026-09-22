@@ -70,6 +70,8 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
         let linked: AffiliateOffer;
         try {
           linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
+        } catch (error) {
+          throw error;
         } finally {
           release();
         }
