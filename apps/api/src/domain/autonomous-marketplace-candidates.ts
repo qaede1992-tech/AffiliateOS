@@ -6,11 +6,14 @@ export type AutonomousMarketplaceCandidateProviderOptions = {
   maxProductsPerConnection?: number;
   /** Maximum number of product offer lookups processed concurrently per connection. */
   maxConcurrentProductsPerConnection?: number;
+  /** Maximum number of affiliate-link refreshes processed concurrently per product. */
+  maxConcurrentOffersPerProduct?: number;
 };
 
 export class AutonomousMarketplaceCandidateProvider implements AutonomousCandidateProvider {
   private readonly maxProductsPerConnection: number;
   private readonly maxConcurrentProductsPerConnection: number;
+  private readonly maxConcurrentOffersPerProduct: number;
 
   constructor(
     private readonly marketplace: MarketplaceService,
@@ -18,6 +21,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
   ) {
     this.maxProductsPerConnection = Math.max(1, options.maxProductsPerConnection ?? 100);
     this.maxConcurrentProductsPerConnection = Math.max(1, options.maxConcurrentProductsPerConnection ?? 4);
+    this.maxConcurrentOffersPerProduct = Math.max(1, options.maxConcurrentOffersPerProduct ?? 4);
   }
 
   async listCandidates(): Promise<AutonomousExecutionCandidate[]> {
@@ -50,30 +54,22 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
   private async ensureAffiliateLinks(productId: string, connectionSlug: string, externalProductId: string, offers: AffiliateOffer[]): Promise<AffiliateOffer[]> {
     if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.productId === productId && offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > Date.now()));
 
-    const executable: AffiliateOffer[] = [];
     const now = Date.now();
-    for (const offer of offers) {
-      if (offer.productId !== productId || offer.status !== "active") continue;
+    const usable = offers.filter((offer) => offer.productId === productId && offer.status === "active");
+    const refreshed = await mapWithConcurrency(usable, this.maxConcurrentOffersPerProduct, async (offer) => {
       const linkUsable = offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now);
-      if (linkUsable) {
-        executable.push(offer);
-        continue;
-      }
-      if (!offer.externalOfferId) continue;
+      if (linkUsable) return offer;
+      if (!offer.externalOfferId) return undefined;
       try {
         const linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
         const linkedExpiry = linked.affiliateLinkExpiresAt ? new Date(linked.affiliateLinkExpiresAt).getTime() : undefined;
-        const linkedUsable = linked.productId === productId &&
-          linked.status === "active" &&
-          linked.affiliateLinkStatus === "active" &&
-          Boolean(linked.affiliateUrl) &&
-          (linkedExpiry === undefined || (Number.isFinite(linkedExpiry) && linkedExpiry > Date.now()));
-        if (linkedUsable) executable.push(linked);
+        const linkedUsable = linked.productId === productId && linked.status === "active" && linked.affiliateLinkStatus === "active" && Boolean(linked.affiliateUrl) && (linkedExpiry === undefined || (Number.isFinite(linkedExpiry) && linkedExpiry > Date.now()));
+        return linkedUsable ? linked : undefined;
       } catch {
-        // A provider may reject link generation for an individual offer; keep the cycle running and exclude that offer from execution.
+        return undefined;
       }
-    }
-    return executable;
+    });
+    return refreshed.filter((offer): offer is AffiliateOffer => offer !== undefined);
   }
 }
 
