@@ -188,6 +188,48 @@ describe("autonomous marketplace candidate provider", () => {
     assert.equal(maxInFlight, 2);
   });
 
+  it("releases the connection refresh slot after a provider failure", async () => {
+    const p = product("refresh-failure");
+    const offers = Array.from({ length: 3 }, (_, index) => ({
+      id: `failure-offer-${index + 1}`,
+      productId: p.id,
+      affiliateAccountId: "account-1",
+      externalOfferId: `failure-external-offer-${index + 1}`,
+      priceCents: 1000,
+      currency: "USD",
+      commissionRateBps: 1200,
+      availability: "in_stock" as const,
+      availabilityMetadata: {},
+      affiliateUrl: undefined,
+      affiliateLinkStatus: "not_generated" as const,
+      status: "active" as const,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    }));
+    const generated: string[] = [];
+    const marketplace = {
+      listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      discoverProducts: async () => [p],
+      getOffers: async () => offers,
+      generateAffiliateLink: async (_slug: string, _externalProductId: string, externalOfferId: string) => {
+        generated.push(externalOfferId);
+        if (externalOfferId === "failure-external-offer-1") {
+          throw new Error("provider link generation failed");
+        }
+        const source = offers.find((offer) => offer.externalOfferId === externalOfferId)!;
+        return { ...source, affiliateUrl: `https://example.invalid/${externalOfferId}`, affiliateLinkStatus: "active" as const };
+      }
+    } as any;
+
+    const result = await new AutonomousMarketplaceCandidateProvider(marketplace, {
+      maxConcurrentOffersPerProduct: 1,
+      maxConcurrentAffiliateLinkRefreshesPerConnection: 1
+    }).listCandidates();
+
+    assert.deepEqual(generated, offers.map((offer) => offer.externalOfferId));
+    assert.deepEqual(result[0].offers.map((offer) => offer.id), ["failure-offer-2", "failure-offer-3"]);
+  });
+
   it("skips inactive products before requesting offers", async () => {
     let offerCalls = 0;
     const inactive = product("product-inactive");
