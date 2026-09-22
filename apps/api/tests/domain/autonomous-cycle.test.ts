@@ -32,6 +32,55 @@ describe("autonomous cycle", () => {
     assert.ok(new Date(result.completedAt).getTime() >= new Date(result.startedAt).getTime());
   });
 
+  it("derives publication time from a configured delay", async () => {
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    let scheduledAt: string | undefined;
+    const execution = {
+      async runOnce(input: { scheduledAt?: string }) {
+        scheduledAt = input.scheduledAt;
+        return { selected: [], rejected: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+
+    const service = new AutonomousCycleService(candidates, execution);
+    const before = Date.now();
+    await service.runOnce({ publicationDelayMs: 5_000 });
+    const after = Date.now();
+
+    assert.ok(scheduledAt);
+    const scheduledMs = Date.parse(scheduledAt);
+    assert.ok(scheduledMs >= before + 4_500);
+    assert.ok(scheduledMs <= after + 5_500);
+  });
+
+  it("rejects invalid publication delays", async () => {
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const execution = {
+      async runOnce() {
+        return { selected: [], rejected: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const service = new AutonomousCycleService(candidates, execution);
+
+    await assert.rejects(() => service.runOnce({ publicationDelayMs: -1 }), /finite non-negative/);
+    await assert.rejects(() => service.runOnce({ publicationDelayMs: Number.NaN }), /finite non-negative/);
+  });
+
+  it("preserves an explicit publication time over a configured delay", async () => {
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    let scheduledAt: string | undefined;
+    const execution = {
+      async runOnce(input: { scheduledAt?: string }) {
+        scheduledAt = input.scheduledAt;
+        return { selected: [], rejected: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const service = new AutonomousCycleService(candidates, execution);
+
+    await service.runOnce({ scheduledAt: "2026-10-01T10:00:00.000Z", publicationDelayMs: 60_000 });
+    assert.equal(scheduledAt, "2026-10-01T10:00:00.000Z");
+  });
+
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     let release!: () => void;
     const candidates: AutonomousCandidateProvider = {
