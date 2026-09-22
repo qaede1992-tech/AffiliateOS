@@ -43,6 +43,7 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let publishes = 0;
     const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: (platform) => platform === "tiktok",
       publish: async () => { publishes += 1; return { externalPostId: "external-post-1", status: "published" }; }
     };
@@ -65,6 +66,7 @@ describe("PublicationWorker", () => {
     const content = await contentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: bound.id });
     let selectedAccount: string | undefined;
     const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async ({ account: selected }) => {
         selectedAccount = selected.id;
@@ -81,6 +83,7 @@ describe("PublicationWorker", () => {
   it("fails closed when an accepted operation cannot be reconciled", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const publisher: SocialPublisher = {
+      provider: "test-publisher",
       provider: "no-check-provider",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "operation-no-check" })
@@ -102,6 +105,7 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let checks = 0;
     const publisher: SocialPublisher = {
+      provider: "test-publisher",
       provider: "test-provider",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "operation-1" }),
@@ -133,6 +137,7 @@ describe("PublicationWorker", () => {
     const operations = new InMemoryPublicationOperationRepository();
     let checks = 0;
     const publisher: SocialPublisher = {
+      provider: "test-publisher",
       provider: "restart-safe-provider",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "restart-safe-operation" }),
@@ -156,6 +161,7 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
     const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => { attempts += 1; if (attempts === 1) throw new Error("temporary provider failure"); return { externalPostId: "external-post-2", status: "published" }; }
     };
@@ -187,6 +193,7 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let publishes = 0;
     const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => { publishes += 1; return { externalPostId: "external-post-recovered", status: "published" }; }
     };
