@@ -16,6 +16,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -41,6 +42,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Test
+        timeout-minutes: 10
         run: npm test
       - name: Typecheck
         run: npm run typecheck
@@ -57,6 +59,7 @@ jobs:
 
   containers:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: validate
     steps:
       - name: Checkout
