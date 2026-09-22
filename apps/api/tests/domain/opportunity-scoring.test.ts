@@ -25,6 +25,14 @@ describe("opportunity scoring", () => {
     assert.equal(result.offerId, "offer-1");
     assert.equal(result.breakdown.commission, 100);
   });
+  it("scales commission amount fallback consistently with commission rate", () => {
+    const result = scoreOpportunity({
+      product: product(),
+      offers: [offer({ commissionRateBps: undefined, commissionAmountCents: 250, priceCents: 5000 })],
+      audience: ["skincare"]
+    });
+    assert.equal(result.breakdown.commission, 25);
+  });
   it("excludes inactive products from scoring", () => {
     const result = scoreOpportunity({ product: product({ status: "inactive" }), offers: [offer()], audience: ["skincare"] });
     assert.equal(result.score, 0);
