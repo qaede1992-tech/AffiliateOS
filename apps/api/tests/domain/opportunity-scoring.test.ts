@@ -16,6 +16,15 @@ describe("opportunity scoring", () => {
     const result = scoreOpportunity({ product: product(), offers: [offer()], audience: ["skincare"] });
     assert.ok(result.score > 70); assert.equal(result.offerId, "offer-1"); assert.ok(result.breakdown.commission > 50); assert.equal(result.breakdown.audienceFit, 100); assert.ok(result.reasons.includes("Matches skincare audience intent"));
   });
+  it("uses commission amount when a marketplace does not provide a commission rate", () => {
+    const result = scoreOpportunity({
+      product: product(),
+      offers: [offer({ commissionRateBps: undefined, commissionAmountCents: 1000, priceCents: 5000 })],
+      audience: ["skincare"]
+    });
+    assert.equal(result.offerId, "offer-1");
+    assert.equal(result.breakdown.commission, 40);
+  });
   it("excludes inactive products from scoring", () => {
     const result = scoreOpportunity({ product: product({ status: "inactive" }), offers: [offer()], audience: ["skincare"] });
     assert.equal(result.score, 0);
