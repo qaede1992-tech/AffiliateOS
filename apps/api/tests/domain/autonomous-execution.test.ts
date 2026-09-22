@@ -119,6 +119,35 @@ describe("AutonomousExecutionService", () => {
     });
   });
 
+  it("does not execute the same recoverable run twice when the claim is lost", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      now: new Date("2026-09-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "worker interrupted" }, new Date("2026-09-20T09:01:00.000Z"));
+
+    let executeCalls = 0;
+    const orchestrator = {
+      execute: async () => {
+        executeCalls += 1;
+        return orchestrationResult;
+      }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+
+    const result = await service.runOnce({ candidates: [{ product, offers: [offer] }] });
+
+    assert.equal(result.recoveredRunCount, 1);
+    assert.equal(executeCalls, 1);
+    const second = await service.runOnce({ candidates: [{ product, offers: [offer] }] });
+    assert.equal(second.recoveredRunCount, 0);
+    assert.equal(executeCalls, 1);
+  });
+
   it("skips recovery when the persisted product is no longer active", async () => {
     const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
     const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
