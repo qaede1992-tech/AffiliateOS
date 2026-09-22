@@ -83,7 +83,6 @@ describe("PublicationWorker", () => {
   it("fails closed when an accepted operation cannot be reconciled", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const publisher: SocialPublisher = {
-      provider: "test-publisher",
       provider: "no-check-provider",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "operation-no-check" })
@@ -105,7 +104,6 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let checks = 0;
     const publisher: SocialPublisher = {
-      provider: "test-publisher",
       provider: "test-provider",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "operation-1" }),
@@ -137,7 +135,6 @@ describe("PublicationWorker", () => {
     const operations = new InMemoryPublicationOperationRepository();
     let checks = 0;
     const publisher: SocialPublisher = {
-      provider: "test-publisher",
       provider: "restart-safe-provider",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "restart-safe-operation" }),
