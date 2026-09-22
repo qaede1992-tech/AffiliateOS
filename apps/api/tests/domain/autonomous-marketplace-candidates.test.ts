@@ -270,6 +270,42 @@ describe("autonomous marketplace candidate provider", () => {
     assert.deepEqual(result[0].offers.map((offer) => offer.id), ["offer-one", "offer-two"]);
   });
 
+  it("keeps the newest duplicate offer when merging marketplace connections", async () => {
+    const p = product("duplicate-offer");
+    const older = {
+      id: "shared-offer",
+      productId: p.id,
+      affiliateAccountId: "account-1",
+      externalOfferId: "external-shared",
+      priceCents: 1000,
+      currency: "USD",
+      commissionRateBps: 500,
+      availability: "in_stock" as const,
+      availabilityMetadata: {},
+      affiliateUrl: "https://example.invalid/old",
+      affiliateLinkStatus: "active" as const,
+      status: "active" as const,
+      createdAt: p.createdAt,
+      updatedAt: "2026-09-21T10:00:00.000Z"
+    };
+    const newer = { ...older, commissionRateBps: 1500, affiliateUrl: "https://example.invalid/new", updatedAt: "2026-09-21T11:00:00.000Z" };
+    const marketplace = {
+      listConnections: async () => [
+        { slug: "marketplace-one", enabled: true, status: "active" },
+        { slug: "marketplace-two", enabled: true, status: "active" }
+      ],
+      discoverProducts: async () => [p],
+      getOffers: async (slug: string) => [slug === "marketplace-one" ? older : newer]
+    } as any;
+
+    const result = await new AutonomousMarketplaceCandidateProvider(marketplace).listCandidates();
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].offers.length, 1);
+    assert.equal(result[0].offers[0].commissionRateBps, 1500);
+    assert.equal(result[0].offers[0].affiliateUrl, "https://example.invalid/new");
+  });
+
   it("skips inactive products before requesting offers", async () => {
     let offerCalls = 0;
     const inactive = product("product-inactive");
