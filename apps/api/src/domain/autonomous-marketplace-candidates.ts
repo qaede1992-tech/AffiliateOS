@@ -57,26 +57,23 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
   }
 
   private async ensureAffiliateLinks(productId: string, connectionSlug: string, externalProductId: string, offers: AffiliateOffer[], affiliateLinkRefreshGate: ConcurrencyGate): Promise<AffiliateOffer[]> {
-
     const now = Date.now();
     const usable = offers.filter((offer) => offer.productId === productId && offer.status === "active");
     const refreshed = await mapWithConcurrency(usable, this.maxConcurrentOffersPerProduct, async (offer) => {
       const linkUsable = offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now);
       if (linkUsable) return offer;
       if (!offer.externalOfferId) return undefined;
+
+      const release = await affiliateLinkRefreshGate.acquire();
       try {
-        const release = await affiliateLinkRefreshGate.acquire();
-        let linked: AffiliateOffer;
-        try {
-          linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
-        } finally {
-          release();
-        }
+        const linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
         const linkedExpiry = linked.affiliateLinkExpiresAt ? new Date(linked.affiliateLinkExpiresAt).getTime() : undefined;
         const linkedUsable = linked.productId === productId && linked.status === "active" && linked.affiliateLinkStatus === "active" && Boolean(linked.affiliateUrl) && (linkedExpiry === undefined || (Number.isFinite(linkedExpiry) && linkedExpiry > Date.now()));
         return linkedUsable ? linked : undefined;
       } catch {
         return undefined;
+      } finally {
+        release();
       }
     });
     return refreshed.filter((offer): offer is AffiliateOffer => offer !== undefined);
