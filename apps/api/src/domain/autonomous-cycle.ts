@@ -1,6 +1,7 @@
 import type { AudienceSegment, ContentPlatform } from "@affiliateos/shared";
 import type { AutonomousExecutionCandidate, AutonomousExecutionInput, AutonomousExecutionResult, AutonomousExecutionService } from "./autonomous-execution.js";
 import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
+import type { AutonomousOptimizationRunResult, AutonomousOptimizationRunner } from "./autonomous-optimization-runner.js";
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 
 export interface AutonomousCandidateProvider {
@@ -22,6 +23,7 @@ export type AutonomousCycleResult = {
   completedAt: string;
   candidateCount: number;
   execution: AutonomousExecutionResult;
+  optimization?: AutonomousOptimizationRunResult;
 };
 
 export class AutonomousCycleService {
@@ -32,7 +34,8 @@ export class AutonomousCycleService {
     private readonly candidates: AutonomousCandidateProvider,
     private readonly execution: AutonomousExecutionService,
     lock?: AutonomousCycleLock,
-    private readonly lockKey = "affiliateos:autonomous-cycle"
+    private readonly lockKey = "affiliateos:autonomous-cycle",
+    private readonly optimization?: AutonomousOptimizationRunner
   ) {
     this.lock = lock ?? new InMemoryAutonomousCycleLock();
   }
@@ -52,11 +55,13 @@ export class AutonomousCycleService {
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
+      const optimization = this.optimization ? await this.optimization.run(new Date()) : undefined;
       return {
         startedAt,
         completedAt: new Date().toISOString(),
         candidateCount: candidateList.length,
-        execution: result
+        execution: result,
+        optimization
       };
     } finally {
       this.running = false;

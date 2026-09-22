@@ -15,10 +15,17 @@ export interface OptimizationStateWriter {
 }
 
 export class InMemoryOptimizationStateReader implements OptimizationStateReader {
-  constructor(private readonly state: Map<string, OptimizationState> = new Map()) {}
+  constructor(protected readonly state: Map<string, OptimizationState> = new Map()) {}
 
   async get(campaignId: string): Promise<OptimizationState | undefined> {
     return this.state.get(campaignId);
+  }
+}
+
+export class InMemoryOptimizationStateStore extends InMemoryOptimizationStateReader implements OptimizationStateWriter {
+  async save(campaignId: string, state: OptimizationState): Promise<OptimizationState> {
+    this.state.set(campaignId, state);
+    return state;
   }
 }
 
