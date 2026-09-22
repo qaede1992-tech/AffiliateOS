@@ -16,6 +16,8 @@ export type CampaignOrchestratorInput = {
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyKey?: string;
+  /** Recovery callers may already hold the processing claim. */
+  autonomousRunAlreadyClaimed?: boolean;
 };
 
 export type GeneratedCampaignContent = {
@@ -104,9 +106,14 @@ export class CampaignOrchestrator {
     let ownsRunAttempt = false;
     try {
       if (run) {
-        const claim = await this.autonomousRuns!.claimProcessing(run.id);
-        if (claim.acquired) ownsRunAttempt = true;
-        else if (claim.run.status !== "completed") throw new Error("Autonomous run is not currently available for execution.");
+        if (input.autonomousRunAlreadyClaimed) {
+          if (run.status !== "processing") throw new Error("Autonomous recovery run is not currently processing.");
+          ownsRunAttempt = true;
+        } else {
+          const claim = await this.autonomousRuns!.claimProcessing(run.id);
+          if (claim.acquired) ownsRunAttempt = true;
+          else if (claim.run.status !== "completed") throw new Error("Autonomous run is not currently available for execution.");
+        }
       }
 
       const audience = input.audience ?? [];
