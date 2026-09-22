@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
 import type { CampaignService, TrackingService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
-import type { DistributionEngine, DistributionPlan } from "./distribution-engine.js";
+import { publisherSupportsContent, type DistributionEngine, type DistributionPlan } from "./distribution-engine.js";
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
 
@@ -154,6 +154,10 @@ export class CampaignOrchestrator {
       if (input.scheduledAt) {
         const requests = content.filter((item) => item.status === "draft").map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
         if (requests.length) {
+          const unsupported = requests.find((request) =>
+            !this.distribution!.listPublishers(request.content.platform).some((publisher) => publisherSupportsContent(publisher, request.content))
+          );
+          if (unsupported) throw new Error(`No compatible publisher is available for ${unsupported.content.platform}. Autonomous distribution remains in draft.`);
           await this.distribution!.validateBatch(requests);
           const scheduled = [] as Awaited<ReturnType<DistributionEngine["schedule"]>>[];
           for (const request of requests) scheduled.push(await this.distribution!.schedule(request));
