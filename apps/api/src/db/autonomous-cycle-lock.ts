@@ -6,6 +6,8 @@ import type { AutonomousCycleLock } from "../domain/autonomous-cycle-lock.js";
  * execute the same autonomous cycle concurrently. The checked-out connection is
  * retained until release because advisory locks are scoped to a DB session.
  */
+const ADVISORY_LOCK_HASH_SEED = 0;
+
 export class PostgresAutonomousCycleLock implements AutonomousCycleLock {
   private readonly clients = new Map<string, PoolClient>();
 
@@ -17,8 +19,8 @@ export class PostgresAutonomousCycleLock implements AutonomousCycleLock {
     const client = await this.pool.connect();
     try {
       const result = await client.query<{ locked: boolean }>(
-        "SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked",
-        [key]
+        "SELECT pg_try_advisory_lock(hashtextextended($1, $2)) AS locked",
+        [key, ADVISORY_LOCK_HASH_SEED]
       );
       if (!result.rows[0]?.locked) {
         client.release();
@@ -37,7 +39,7 @@ export class PostgresAutonomousCycleLock implements AutonomousCycleLock {
     if (!client) return;
     this.clients.delete(key);
     try {
-      await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key]);
+      await client.query("SELECT pg_advisory_unlock(hashtextextended($1, $2))", [key]);
     } finally {
       client.release();
     }
