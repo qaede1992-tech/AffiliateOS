@@ -1,0 +1,54 @@
+import type { AnalyticsService, CampaignAnalytics } from "./analytics.js";
+import {
+  OptimizationEngine,
+  type OptimizationPolicy,
+  type OptimizationRecommendation,
+  type OptimizationState
+} from "./optimization-engine.js";
+
+export interface OptimizationStateReader {
+  get(campaignId: string): Promise<OptimizationState | undefined>;
+}
+
+export class InMemoryOptimizationStateReader implements OptimizationStateReader {
+  constructor(private readonly state: Map<string, OptimizationState> = new Map()) {}
+
+  async get(campaignId: string): Promise<OptimizationState | undefined> {
+    return this.state.get(campaignId);
+  }
+}
+
+export type AutonomousOptimizationResult = {
+  campaigns: CampaignAnalytics[];
+  recommendations: OptimizationRecommendation[];
+};
+
+/**
+ * Decision-only boundary between measured campaign performance and autonomous execution.
+ * It deliberately does not mutate campaigns, content, publishers, or marketplace state.
+ */
+export class AutonomousOptimizationService {
+  private readonly engine: OptimizationEngine;
+
+  constructor(
+    private readonly analytics: Pick<AnalyticsService, "overview">,
+    policy: OptimizationPolicy = {},
+    private readonly state: OptimizationStateReader = new InMemoryOptimizationStateReader()
+  ) {
+    this.engine = new OptimizationEngine(policy);
+  }
+
+  async recommend(now = new Date()): Promise<AutonomousOptimizationResult> {
+    const overview = await this.analytics.overview();
+    const state = new Map<string, OptimizationState>();
+    for (const campaign of overview.campaigns) {
+      const previous = await this.state.get(campaign.campaignId);
+      if (previous) state.set(campaign.campaignId, previous);
+    }
+
+    return {
+      campaigns: overview.campaigns,
+      recommendations: this.engine.recommend(overview.campaigns, state, now)
+    };
+  }
+}
