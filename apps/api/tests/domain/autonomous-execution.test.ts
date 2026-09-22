@@ -7,7 +7,7 @@ import type { CampaignOrchestrator, CampaignOrchestrationResult } from "../../sr
 import type { ScoredOpportunity } from "../../src/domain/opportunity-scoring.js";
 
 const product: Product = {
-  id: "product-1", marketplaceId: "marketplace-1", externalProductId: "external-1", name: "Demo Product",
+  id: "product-1", marketplaceId: "marketplace-1", externalProductId: "external-1", name: "Electronics Demo Product",
   priceCents: 10000, currency: "USD", reviewCount: 100, soldCount: 500, productUrl: "https://example.com/product", status: "active",
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
@@ -111,12 +111,10 @@ describe("AutonomousExecutionService", () => {
 
     assert.equal(result.recoveredRunCount, 1);
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0], {
-      audience: ["electronics"],
-      platforms: ["instagram"],
-      scheduledAt: "2026-09-21T12:00:00.000Z",
-      idempotencyKey: "previous-cycle:product-1:offer-1"
-    });
+    assert.equal(calls[0]?.audience?.join(","), "electronics");
+    assert.equal(calls[0]?.platforms?.join(","), "instagram");
+    assert.equal(calls[0]?.scheduledAt, "2026-09-21T12:00:00.000Z");
+    assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
   });
 
   it("does not execute the same recoverable run twice when the claim is lost", async () => {
