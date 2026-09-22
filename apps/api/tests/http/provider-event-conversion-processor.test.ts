@@ -48,6 +48,8 @@ test("orchestrates inbox claim, normalization, and conversion processing", async
 test("marks unsupported provider conversion events failed and allows retry after correction", async () => {
   const store = inbox();
   store.add("account-a", "evt-2", { id: "evt-2" });
+  const event = store.events.get("account-a:evt-2");
+  if (event) event.eventType = "unsupported.event";
   const processor = new ProviderEventConversionProcessor(
     new ProviderEventProcessor(store),
     new StaticProviderEventConversionNormalizerRegistry([new GenericProviderConversionNormalizer()]),
