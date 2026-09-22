@@ -8,7 +8,7 @@ import type { ScoredOpportunity } from "../../src/domain/opportunity-scoring.js"
 
 const product: Product = {
   id: "product-1", marketplaceId: "marketplace-1", externalProductId: "external-1", name: "Electronics Demo Product",
-  priceCents: 10000, currency: "USD", reviewCount: 100, soldCount: 500, productUrl: "https://example.com/product", status: "active",
+  priceCents: 10000, currency: "USD", reviewCount: 1000, soldCount: 100000, productUrl: "https://example.com/product", status: "active",
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
 
