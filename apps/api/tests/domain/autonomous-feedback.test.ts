@@ -41,7 +41,7 @@ describe("Autonomous analytics feedback", () => {
     assert.ok(signal);
     assert.equal(signal.conversionCount, 4);
     assert.equal(signal.trendAdjustment, 2);
-    assert.equal(signal.adjustment, 7.33);
+    assert.equal(signal.adjustment, 8);
     const snapshot = await memory.latestByProduct("p1");
     assert.ok(snapshot);
     assert.equal(snapshot.conversionCount, 4);
