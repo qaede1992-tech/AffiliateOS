@@ -51,7 +51,7 @@ export class AutonomousExecutionService {
         }
         const opportunity: ScoredOpportunity = scored;
         try {
-          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: claimedRun.idempotencyKey });
+          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: claimedRun.idempotencyKey, autonomousRunAlreadyClaimed: true });
           recoveredKeys.add(claimedRun.idempotencyKey);
           recoveredRunCount += 1;
         } catch {
