@@ -30,7 +30,7 @@ function isAffiliateLinkUsable(offer: AffiliateOffer, now = new Date()): boolean
 function commissionSignal(offer: AffiliateOffer): number {
   const rateSignal = offer.commissionRateBps === undefined ? undefined : clamp((offer.commissionRateBps / 2_000) * 100);
   const amountSignal = offer.commissionAmountCents !== undefined && offer.priceCents && offer.priceCents > 0
-    ? clamp((offer.commissionAmountCents / offer.priceCents) * 2_000)
+    ? clamp((offer.commissionAmountCents / offer.priceCents) * 500)
     : undefined;
   return Math.max(rateSignal ?? 0, amountSignal ?? 0);
 }
