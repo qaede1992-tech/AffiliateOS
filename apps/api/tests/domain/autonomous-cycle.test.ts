@@ -84,6 +84,8 @@ describe("autonomous cycle", () => {
 
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     let release!: () => void;
+    let started!: () => void;
+    const executionStarted = new Promise<void>((resolve) => { started = resolve; });
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
         return [{ product: { id: "product-1" } as never, offers: [] }];
@@ -91,13 +93,14 @@ describe("autonomous cycle", () => {
     };
     const execution = {
       runOnce: () => new Promise<{ selected: never[]; rejected: never[]; outcomes: never[] }>((resolve) => {
+        started();
         release = () => resolve({ selected: [], rejected: [], outcomes: [] });
       })
     } as unknown as AutonomousExecutionService;
 
     const service = new AutonomousCycleService(candidates, execution);
     const first = service.runOnce();
-    await new Promise((resolve) => setImmediate(resolve));
+    await executionStarted;
     const overlapping = await service.runOnce();
     assert.equal(overlapping, undefined);
 
