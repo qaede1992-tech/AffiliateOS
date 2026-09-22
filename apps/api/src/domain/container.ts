@@ -52,9 +52,9 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousRuns = new AutonomousRunService(autonomousRunRepository);
   const analytics = new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository);
   const feedback = new AutonomousAnalyticsFeedbackProvider(analytics, autonomousFeedbackMemoryRepository);
-  const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns);
-  const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback);
   const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers);
+  const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns, marketplace);
+  const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback);
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, analytics, undefined, campaigns, content, autonomousOptimizationStateRepository, autonomousCycleLock);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, autonomousCycleInput, { intervalMs: autonomousSchedulerIntervalMs });
