@@ -9,6 +9,7 @@ export interface DatabasePersistence {
   transactionManager: TransactionManager;
   providerEvents: ProviderEventStore;
   db: ReturnType<typeof drizzle>;
+  pool: Pool;
   close(): Promise<void>;
 }
 
@@ -20,6 +21,7 @@ export function createDatabasePersistence(connectionString: string): DatabasePer
     transactionManager: new DrizzleTransactionManager(db),
     providerEvents: new ProviderEventStore(db),
     db,
+    pool,
     close: () => pool.end()
   };
 }
