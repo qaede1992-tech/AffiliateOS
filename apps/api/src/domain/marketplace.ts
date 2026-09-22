@@ -94,3 +94,5 @@ function validateMarketplaceUrl(value: string, label: string): void {
   } catch {
     throw new DomainError("INVALID_MARKETPLACE_PRODUCT", `Marketplace ${label} URL must use HTTP or HTTPS.`, 400);
   }
+
+}
