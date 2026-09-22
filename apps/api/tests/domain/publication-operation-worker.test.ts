@@ -41,7 +41,6 @@ describe("Publication operation lifecycle", () => {
   it("moves an accepted provider submission into awaiting confirmation without publishing content", async () => {
     const { contentService, socialAccounts, jobs, operations, jobService, content } = await setup();
     const publisher: SocialPublisher = {
-      provider: "test-publisher",
       provider: "tiktok",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "publish-123" }),
@@ -72,7 +71,6 @@ describe("Publication operation lifecycle", () => {
     await jobs.save({ id: "job-terminal", contentId: scheduled.id, idempotencyKey: "content:terminal", attemptCount: 1, scheduledAt: "2026-09-20T10:00:00.000Z", status: "awaiting_confirmation", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
     await operations.save({ id: "operation-terminal", contentId: scheduled.id, jobId: "job-terminal", provider: "tiktok", providerOperationId: "publish-terminal", status: "accepted", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
     const publisher: SocialPublisher = {
-      provider: "test-publisher",
       provider: "tiktok",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "unused" }),
@@ -92,7 +90,6 @@ describe("Publication operation lifecycle", () => {
     const { contentService, socialAccounts, jobs, operations, jobService, content } = await setup();
     let checks = 0;
     const publisher: SocialPublisher = {
-      provider: "test-publisher",
       provider: "tiktok",
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: "publish-456" }),
