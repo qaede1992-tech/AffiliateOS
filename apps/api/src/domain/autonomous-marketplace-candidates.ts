@@ -102,7 +102,12 @@ function mergeProduct(left: Product, right: Product): Product {
 
 function mergeOffers(left: AffiliateOffer[], right: AffiliateOffer[]): AffiliateOffer[] {
   const byId = new Map<string, AffiliateOffer>();
-  for (const offer of [...left, ...right]) byId.set(offer.id, offer);
+  for (const offer of [...left, ...right]) {
+    const existing = byId.get(offer.id);
+    if (!existing || new Date(offer.updatedAt).getTime() >= new Date(existing.updatedAt).getTime()) {
+      byId.set(offer.id, offer);
+    }
+  }
   return [...byId.values()];
 }
 
