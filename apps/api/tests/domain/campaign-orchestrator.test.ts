@@ -44,10 +44,13 @@ class StubContent {
   created: Content[] = [];
   async list() { return this.created; }
   async validateProductForPublication() { return product; }
+  async update(id: string, input: Record<string, unknown>) { const item = this.created.find((entry) => entry.id === id); if (!item) throw new Error("content not found"); const updated = { ...item, ...input } as Content; this.created[this.created.indexOf(item)] = updated; return updated; }
   async create(input: Record<string, unknown>) { const item = { id: `content-${this.created.length + 1}`, ...input } as unknown as Content; this.created.push(item); return item; }
 }
 class StubDistribution {
   scheduled: Content[] = [];
+  publishers = [{ provider: "test-publisher", supports: () => true, publish: async () => ({ externalPostId: "test" }) }];
+  listPublishers() { return this.publishers; }
   async validateBatch() {}
   async schedule(input: { content: Content; scheduledAt: string }) { this.scheduled.push(input.content); return { content: { ...input.content, status: "scheduled", scheduledAt: input.scheduledAt, socialAccountId: "social-1" }, account: { id: "social-1" }, scheduledAt: input.scheduledAt, publishable: false } as never; }
 }
@@ -209,9 +212,9 @@ describe("campaign orchestrator", () => {
       idempotencyKey: "busy-run",
       productId: product.id,
       offerId: offer.id,
-      now: new Date("2026-09-21T01:00:00.000Z")
+      now: new Date()
     });
-    await autonomousRuns.claimProcessing(accepted.id, new Date("2026-09-21T01:00:00.000Z"));
+    await autonomousRuns.claimProcessing(accepted.id, new Date());
 
     const orchestrator = new CampaignOrchestrator(
       new StubCampaigns() as never,
