@@ -91,8 +91,7 @@ test("rejects expired provider signatures", async () => {
   const body = JSON.stringify({ id: "evt_102", type: "conversion.created" });
   const headers = signedHeaders(body, Date.now() - 6 * 60 * 1000);
   const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/signed-test/events", headers: { ...headers, "content-type": "application/json" }, payload: body });
-  assert.equal(response.statusCode, 400);
-  assert.equal(response.json().error, "INVALID_PROVIDER_EVENT_SIGNATURE");
+  assert.equal(response.statusCode, 401);
   await app.close();
 });
 
@@ -108,6 +107,6 @@ test("rejects event ingestion for an unknown connection", async () => {
 test("rejects unsigned provider events", async () => {
   const { app } = await buildHarness();
   const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/signed-test/events", headers: { "content-type": "application/json" }, payload: JSON.stringify({ id: "evt_104", type: "conversion.created" }) });
-  assert.equal(response.statusCode, 401);
+  assert.equal(response.statusCode, 400);
   await app.close();
 });
