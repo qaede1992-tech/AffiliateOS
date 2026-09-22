@@ -172,7 +172,7 @@ describe("PublicationWorker", () => {
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
     assert.deepEqual(blocked, []);
-    assert.equal(second[0]?.status, "succeeded", second[0]?.error ?? "retry did not succeed");
+    assert.equal(second[0]?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
     assert.equal(stored?.attemptCount, 2);
     assert.equal(stored?.status, "succeeded");
