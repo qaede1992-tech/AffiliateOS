@@ -10,6 +10,10 @@ export interface OptimizationStateReader {
   get(campaignId: string): Promise<OptimizationState | undefined>;
 }
 
+export interface OptimizationStateWriter {
+  save(campaignId: string, state: OptimizationState): Promise<OptimizationState>;
+}
+
 export class InMemoryOptimizationStateReader implements OptimizationStateReader {
   constructor(private readonly state: Map<string, OptimizationState> = new Map()) {}
 
