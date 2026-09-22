@@ -30,14 +30,17 @@ import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
 import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
 import { ProviderConversionProcessor } from "./provider-conversion-processor.js";
 import type { AutonomousCycleLock } from "./autonomous-cycle-lock.js";
+import { AutonomousCampaignActionExecutor } from "./autonomous-campaign-action-executor.js";
+import { AutonomousOptimizationRunner } from "./autonomous-optimization-runner.js";
+import { InMemoryOptimizationStateStore, type OptimizationStateReader, type OptimizationStateWriter } from "./autonomous-optimization.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
-  campaigns: CampaignService; tracking: TrackingService; content: ContentService; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
+  campaigns: CampaignService; tracking: TrackingService; content: ContentService; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock, optimizationStateReader?: OptimizationStateReader, optimizationStateWriter?: OptimizationStateWriter): Services {
   const conversions = new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager);
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
@@ -63,10 +66,14 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     async resolveTrackingLink(reference) { return (await repositories.trackingLinks.findByCode(reference))?.id; }
   }, attribution);
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
-  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock);
+  const optimizationState = optimizationStateReader ?? optimizationStateWriter ?? new InMemoryOptimizationStateStore();
+  const optimizationWriter = optimizationStateWriter ?? (optimizationState instanceof InMemoryOptimizationStateStore ? optimizationState : undefined);
+  if (!optimizationWriter) throw new Error("An optimization state writer is required when a custom optimization state reader is supplied.");
+  const autonomousOptimization = new AutonomousOptimizationRunner(analytics, optimizationState, optimizationWriter, new AutonomousCampaignActionExecutor(campaigns));
+  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, {}, { intervalMs: autonomousSchedulerIntervalMs });
   return {
-    affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, distribution,
+    affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
     socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository), analytics, attribution, publicationJobs, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
 }
