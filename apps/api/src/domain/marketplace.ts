@@ -53,7 +53,6 @@ function validateMarketplaceOfferInput(input: MarketplaceOfferInput): void {
   if (!["in_stock", "out_of_stock", "limited", "unknown"].includes(input.availability)) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace offer availability is invalid.", 400);
   if (input.affiliateLinkExpiresAt !== undefined && !Number.isFinite(Date.parse(input.affiliateLinkExpiresAt))) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace affiliate link expiry must be a valid timestamp.", 400);
 }
-}
 const secretKey = /(secret|token|password|api[_-]?key|client[_-]?secret|authorization)/i;
 function assertSafeConfiguration(value: unknown): void { if (Array.isArray(value)) { for (const item of value) assertSafeConfiguration(item); return; } if (!value || typeof value !== "object") return; for (const [key, item] of Object.entries(value)) { if (secretKey.test(key)) throw new DomainError("UNSAFE_PROVIDER_CONFIGURATION", "Provider configuration must not include credentials or secrets.", 400); assertSafeConfiguration(item); } }
 function isOpaqueReference(value: string): boolean { return /^(?:[a-z][a-z0-9+.-]*:\/\/|[A-Z][A-Z0-9_]*:)[A-Za-z0-9._\-/]+$/i.test(value) && !/[\s]/.test(value); }
