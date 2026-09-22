@@ -116,13 +116,18 @@ function createConcurrencyGate(limit: number): ConcurrencyGate {
   const waiters: Array<() => void> = [];
 
   const release = () => {
+    const next = waiters.shift();
+    if (next) {
+      next();
+      return;
+    }
     inFlight -= 1;
-    waiters.shift()?.();
   };
 
   const acquire = async (): Promise<() => void> => {
     if (inFlight >= limit) {
       await new Promise<void>((resolve) => waiters.push(resolve));
+      return release;
     }
     inFlight += 1;
     return release;
