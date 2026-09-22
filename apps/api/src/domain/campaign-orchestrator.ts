@@ -4,6 +4,7 @@ import type { ContentService } from "./content.js";
 import type { DistributionEngine, DistributionPlan } from "./distribution-engine.js";
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
+import type { MarketplaceService } from "./marketplace.js";
 
 export type CampaignOrchestratorInput = {
   opportunity: ScoredOpportunity;
@@ -64,15 +65,15 @@ export class CampaignOrchestrator {
     private readonly content: ContentService,
     private readonly contentGenerator: CampaignContentGenerator = new DeterministicCampaignContentGenerator(),
     private readonly distribution?: DistributionEngine,
-    private readonly autonomousRuns?: AutonomousRunService
+    private readonly autonomousRuns?: AutonomousRunService,
+    private readonly affiliateLinkEnsurer?: Pick<MarketplaceService, "ensureAffiliateLinkForOffer">
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
     if (input.opportunity.product.id !== input.product.id) throw new Error("Campaign opportunity and product must reference the same product.");
     if (input.opportunity.offerId !== input.offer.id) throw new Error("Campaign opportunity and affiliate offer must reference the same offer.");
     if (input.offer.productId !== input.product.id) throw new Error("Affiliate offer must belong to the selected product.");
-    if (input.offer.affiliateLinkStatus !== "active" || input.offer.status !== "active") throw new Error("Campaign orchestration requires an active affiliate offer and affiliate link.");
-    if (!input.offer.affiliateUrl) throw new Error("Campaign orchestration requires an affiliate URL.");
+    if (input.offer.status !== "active") throw new Error("Campaign orchestration requires an active affiliate offer.");
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const run = input.idempotencyKey && this.autonomousRuns
@@ -89,28 +90,32 @@ export class CampaignOrchestrator {
         if (!claim.acquired && claim.run.status === "processing") throw new Error("Autonomous run is already being processed.");
       }
 
+      const offer = this.affiliateLinkEnsurer
+        ? await this.affiliateLinkEnsurer.ensureAffiliateLinkForOffer(input.offer, input.product)
+        : input.offer;
+      if (offer.productId !== input.product.id || offer.id !== input.offer.id) throw new Error("Affiliate link preparation returned an offer for a different product or offer.");
+      if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new Error("Campaign orchestration requires a current affiliate link.");
+
       const audience = input.audience ?? [];
       const requestedPlatforms = [...new Set(input.platforms ?? defaultPlatforms)];
       let campaign: Awaited<ReturnType<CampaignService["create"]>> | undefined;
       if (input.idempotencyKey) {
         const campaigns = await this.campaigns.list();
-        campaign = campaigns.find((candidate) => orchestrationKey(candidate) === input.idempotencyKey || orchestrationKey(candidate) === stableCampaignKey(input.product.id, input.offer.id));
+        campaign = campaigns.find((candidate) => orchestrationKey(candidate) === input.idempotencyKey || orchestrationKey(candidate) === stableCampaignKey(input.product.id, offer.id));
       }
       if (!campaign) {
         campaign = await this.campaigns.create({
           name: input.campaignName ?? `Autonomous: ${input.product.name}`,
           objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
           status: "draft",
-          audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: stableCampaignKey(input.product.id, input.offer.id) }
+          audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: stableCampaignKey(input.product.id, offer.id) }
         });
       }
       currentCampaignId = campaign.id;
       if (run) await this.autonomousRuns!.transition(run.id, "processing", { campaignId: campaign.id });
 
-      const offerAttachment = await this.campaigns.attachOffer(campaign.id, input.offer.id);
-      const existingLinks = await this.tracking.list(campaign.id);
-      const trackingLink = existingLinks.find((link) => link.affiliateOfferId === input.offer.id && link.destinationUrl === input.offer.affiliateUrl) ??
-        await this.tracking.create({ affiliateOfferId: input.offer.id, campaignId: campaign.id, destinationUrl: input.offer.affiliateUrl });
+      const offerAttachment = await this.campaigns.attachOffer(campaign.id, offer.id);
+      const trackingLink = await this.tracking.ensure({ affiliateOfferId: offer.id, campaignId: campaign.id, destinationUrl: offer.affiliateUrl });
 
       const existingContent = await this.content.list(campaign.id);
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
@@ -118,7 +123,7 @@ export class CampaignOrchestrator {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion");
         if (existing) content.push(existing);
         else {
-          const generated = this.contentGenerator.generate({ product: input.product, offer: input.offer, opportunity: input.opportunity, platform });
+          const generated = this.contentGenerator.generate({ product: input.product, offer, opportunity: input.opportunity, platform });
           content.push(await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" }));
         }
       }
