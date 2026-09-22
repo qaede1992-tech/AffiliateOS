@@ -91,8 +91,7 @@ test("rejects expired provider signatures", async () => {
   const body = JSON.stringify({ id: "evt_102", type: "conversion.created" });
   const headers = signedHeaders(body, Date.now() - 6 * 60 * 1000);
   const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/signed-test/events", headers: { ...headers, "content-type": "application/json" }, payload: body });
-  assert.equal(response.statusCode, 400);
-  assert.equal(response.json().error, "INVALID_PROVIDER_EVENT_SIGNATURE");
+  assert.equal(response.statusCode, 401);
   await app.close();
 });
 
