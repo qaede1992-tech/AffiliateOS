@@ -145,6 +145,49 @@ describe("autonomous marketplace candidate provider", () => {
     assert.deepEqual(result[0].offers.map((offer) => offer.id), offers.map((offer) => offer.id));
   });
 
+  it("bounds affiliate-link refreshes across products per connection", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const products = [product("gate-one"), product("gate-two")];
+    const offersByProduct = new Map(products.map((p) => [p.id, Array.from({ length: 3 }, (_, index) => ({
+      id: `${p.id}-offer-${index + 1}`,
+      productId: p.id,
+      affiliateAccountId: "account-1",
+      externalOfferId: `${p.id}-external-offer-${index + 1}`,
+      priceCents: 1000,
+      currency: "USD",
+      commissionRateBps: 1200,
+      availability: "in_stock" as const,
+      availabilityMetadata: {},
+      affiliateUrl: undefined,
+      affiliateLinkStatus: "not_generated" as const,
+      status: "active" as const,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    }))]));
+    const marketplace = {
+      listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      discoverProducts: async () => products,
+      getOffers: async (_slug: string, externalProductId: string) => offersByProduct.get(products.find((p) => p.externalProductId === externalProductId)!.id)!,
+      generateAffiliateLink: async (_slug: string, _externalProductId: string, externalOfferId: string) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        const source = [...offersByProduct.values()].flat().find((offer) => offer.externalOfferId === externalOfferId)!;
+        return { ...source, affiliateUrl: `https://example.invalid/${externalOfferId}`, affiliateLinkStatus: "active" as const };
+      }
+    } as any;
+
+    await new AutonomousMarketplaceCandidateProvider(marketplace, {
+      maxConcurrentProductsPerConnection: 2,
+      maxConcurrentOffersPerProduct: 3,
+      maxConcurrentAffiliateLinkRefreshesPerConnection: 2
+    }).listCandidates();
+
+    assert.equal(maxInFlight, 2);
+  });
+
   it("skips inactive products before requesting offers", async () => {
     let offerCalls = 0;
     const inactive = product("product-inactive");
