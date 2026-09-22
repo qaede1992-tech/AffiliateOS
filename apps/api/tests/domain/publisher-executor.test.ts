@@ -54,7 +54,8 @@ describe("PublisherExecutor", () => {
     const isolatedContentService = new ContentService(contents, campaigns, products);
     const scheduled = await isolatedContentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z" });
     let published = false;
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => { published = true; return { externalPostId: "should-not-publish" }; }
     };
@@ -68,7 +69,8 @@ describe("PublisherExecutor", () => {
   it("publishes due scheduled content through a matching publisher", async () => {
     const { contentService, socialAccounts, created } = await setup();
     let published = 0;
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: (platform) => platform === "tiktok",
       publish: async ({ content, account: target }) => {
         published += 1;
@@ -89,7 +91,8 @@ describe("PublisherExecutor", () => {
   it("returns unsupported when a publisher supports the platform but not the content capability", async () => {
     const { contentService, socialAccounts, created } = await setup();
     let published = false;
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: (platform) => platform === "tiktok",
       supportsContent: (content) => content.contentType === "video",
       publish: async () => { published = true; return { externalPostId: "should-not-publish" }; }
@@ -103,7 +106,8 @@ describe("PublisherExecutor", () => {
 
   it("preserves compatibility for publishers without an explicit content capability method", async () => {
     const { contentService, socialAccounts, created } = await setup();
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => ({ externalPostId: "external-post-compatible" })
     };
@@ -123,7 +127,8 @@ describe("PublisherExecutor", () => {
     await socialAccounts.save(secondary);
     const bound = await contentService.update(created.id, { socialAccountId: secondary.id });
     let publishedAccountId: string | undefined;
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async ({ account: target }) => {
         publishedAccountId = target.id;
@@ -147,7 +152,8 @@ describe("PublisherExecutor", () => {
     };
     await socialAccounts.save(secondary);
     const bound = await contentService.update(created.id, { socialAccountId: secondary.id });
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => ({ externalPostId: "should-not-publish" })
     };
@@ -174,7 +180,8 @@ describe("PublisherExecutor", () => {
   it("rejects a missing bound account instead of silently selecting another account", async () => {
     const { contentService, socialAccounts, created } = await setup();
     const bound = await contentService.update(created.id, { socialAccountId: "missing-account" });
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => ({ externalPostId: "should-not-publish" })
     };
@@ -189,7 +196,8 @@ describe("PublisherExecutor", () => {
     const secret = { accessToken: "test-secret" };
     resolver.set("secret-ref-1", secret);
     let received: unknown;
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async ({ account: target, credential }) => {
         received = credential;
@@ -205,7 +213,8 @@ describe("PublisherExecutor", () => {
 
   it("fails closed when a credential reference has no configured resolver", async () => {
     const { contentService, socialAccounts, created } = await setup("secret-ref-missing");
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => ({ externalPostId: "should-not-publish" })
     };
@@ -217,7 +226,8 @@ describe("PublisherExecutor", () => {
   it("propagates a stable idempotency key to the publisher", async () => {
     const { contentService, socialAccounts, created } = await setup();
     let receivedKey: string | undefined;
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async ({ idempotencyKey }) => {
         receivedKey = idempotencyKey;
@@ -233,7 +243,8 @@ describe("PublisherExecutor", () => {
     const { contentService, socialAccounts, created } = await setup();
     await socialAccounts.save({ ...account, status: "inactive" });
     let published = false;
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => { published = true; return { externalPostId: "unexpected" }; }
     };
@@ -255,7 +266,8 @@ describe("PublisherExecutor", () => {
 
   it("marks content failed when an adapter rejects the publish", async () => {
     const { contentService, socialAccounts, created } = await setup();
-    const publisher: SocialPublisher = {\n      provider: "test-publisher",
+    const publisher: SocialPublisher = {
+      provider: "test-publisher",
       supports: () => true,
       publish: async () => { throw new Error("provider rejected request"); }
     };
