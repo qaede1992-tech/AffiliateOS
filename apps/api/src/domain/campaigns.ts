@@ -93,6 +93,15 @@ export class TrackingService {
       throw error;
     }
   }
+  async ensure(input: CreateTrackingLinkRequest) {
+    const existing = (input.campaignId ? await this.links.listByCampaign(input.campaignId) : await this.links.list())
+      .find((link) => link.affiliateOfferId === input.affiliateOfferId && link.status === "active");
+    if (existing) {
+      if (existing.destinationUrl === input.destinationUrl) return existing;
+      return this.links.save({ ...existing, destinationUrl: input.destinationUrl, updatedAt: now() });
+    }
+    return this.create(input);
+  }
   async get(id: string) { const link = await this.links.findById(id); if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404); return link; }
   async recordClick(id: string, input: RecordClickRequest) {
     const link = await this.get(id);
