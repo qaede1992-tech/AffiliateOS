@@ -109,8 +109,6 @@ export class TrackingService {
       return await this.links.save(link);
     } catch (error) {
       if (isUniqueViolation(error)) {
-        const raced = await this.links.findByCode(link.code);
-        if (raced && raced.affiliateOfferId === link.affiliateOfferId && raced.campaignId === link.campaignId && raced.destinationUrl === link.destinationUrl) return raced;
         throw new DomainError("TRACKING_CODE_EXISTS", "The tracking code is already in use.", 409);
       }
       throw error;
@@ -137,6 +135,12 @@ export class TrackingService {
     }
   }
   async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
+  async redirect(code: string, input: RecordClickRequest = {}): Promise<string> {
+    const link = await this.links.findByCode(code);
+    if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404);
+    await this.recordClick(link.id, input);
+    return link.destinationUrl;
+  }
 }
 
 function validateRedirectDestination(value: string): void {
