@@ -107,28 +107,27 @@ function mergeOffers(left: AffiliateOffer[], right: AffiliateOffer[]): Affiliate
 }
 
 
-type ConcurrencyGate = { acquire: () => Promise<() => void> };
+type ConcurrencyGate = {
+  acquire(): Promise<() => void>;
+};
 
 function createConcurrencyGate(limit: number): ConcurrencyGate {
   let inFlight = 0;
   const waiters: Array<() => void> = [];
-  const acquire = async (): Promise<() => void> => {
-    if (inFlight < limit) {
-      inFlight += 1;
-      return () => {
-        inFlight -= 1;
-        const next = waiters.shift();
-        next?.();
-      };
-    }
-    await new Promise<void>((resolve) => waiters.push(resolve));
-    inFlight += 1;
-    return () => {
-      inFlight -= 1;
-      const next = waiters.shift();
-      next?.();
-    };
+
+  const release = () => {
+    inFlight -= 1;
+    waiters.shift()?.();
   };
+
+  const acquire = async (): Promise<() => void> => {
+    if (inFlight >= limit) {
+      await new Promise<void>((resolve) => waiters.push(resolve));
+    }
+    inFlight += 1;
+    return release;
+  };
+
   return { acquire };
 }
 
