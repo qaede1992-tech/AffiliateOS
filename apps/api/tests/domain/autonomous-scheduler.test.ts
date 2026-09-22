@@ -39,7 +39,7 @@ describe("AutonomousScheduler", () => {
     scheduler.start();
     await scheduler.stop();
     assert.equal(inputs.length, 1);
-    assert.equal(inputs[0].idempotencyNamespace, "autonomous-cycle:1988832");
+    assert.equal(inputs[0].idempotencyNamespace, `autonomous-cycle:${Math.floor(new Date("2026-09-21T00:14:59.000Z").getTime() / 900_000)}`);
   });
 
   it("preserves an explicitly supplied idempotency namespace", async () => {
