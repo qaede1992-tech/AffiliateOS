@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { AutonomousCycleService, type AutonomousCandidateProvider } from "../../src/domain/autonomous-cycle.js";
+import type { AutonomousCycleLock } from "../../src/domain/autonomous-cycle-lock.js";
 import type { AutonomousExecutionService } from "../../src/domain/autonomous-execution.js";
 
 describe("autonomous cycle", () => {
@@ -103,6 +104,52 @@ describe("autonomous cycle", () => {
     release();
     assert.ok(await first);
     assert.ok(await service.runOnce());
+  });
+
+  it("does not enter a cycle when a shared lock is already held", async () => {
+    let executionCalls = 0;
+    const lock: AutonomousCycleLock = {
+      async tryAcquire() { return false; },
+      async release() { throw new Error("release must not be called without acquisition"); }
+    };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const execution = {
+      async runOnce() {
+        executionCalls += 1;
+        return { selected: [], rejected: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+
+    const service = new AutonomousCycleService(candidates, execution, lock);
+    const result = await service.runOnce();
+
+    assert.equal(result, undefined);
+    assert.equal(executionCalls, 0);
+  });
+
+  it("releases the shared lock after a successful cycle", async () => {
+    let acquired = false;
+    let released = false;
+    const lock: AutonomousCycleLock = {
+      async tryAcquire(key) {
+        assert.equal(key, "shared-cycle");
+        acquired = true;
+        return true;
+      },
+      async release(key) {
+        assert.equal(key, "shared-cycle");
+        released = true;
+      }
+    };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const execution = {
+      async runOnce() { return { selected: [], rejected: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+
+    const service = new AutonomousCycleService(candidates, execution, lock, "shared-cycle");
+    assert.ok(await service.runOnce());
+    assert.equal(acquired, true);
+    assert.equal(released, true);
   });
 
   it("releases the guard when candidate loading fails", async () => {
