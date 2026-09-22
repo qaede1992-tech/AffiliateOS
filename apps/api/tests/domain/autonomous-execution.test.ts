@@ -40,7 +40,10 @@ describe("AutonomousExecutionService", () => {
         return orchestrationResult;
       }
     } as unknown as CampaignOrchestrator;
-    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator);
+    const selector = {
+      select: () => ({ selected: [opportunity], rejected: [] })
+    } as unknown as AutonomousOpportunitySelector;
+    const service = new AutonomousExecutionService(selector, orchestrator);
 
     const result = await service.runOnce({
       candidates: [{ product, offers: [offer] }],
