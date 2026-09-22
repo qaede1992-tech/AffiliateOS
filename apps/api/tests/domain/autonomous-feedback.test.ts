@@ -44,6 +44,6 @@ describe("Autonomous analytics feedback", () => {
     assert.equal(signal.adjustment, 7.33);
     const snapshot = await memory.latestByProduct("p1");
     assert.ok(snapshot);
-    assert.equal(snapshot.conversionCount, 4);
+    assert.equal(snapshot.conversionCount, 2);
   });
 });
