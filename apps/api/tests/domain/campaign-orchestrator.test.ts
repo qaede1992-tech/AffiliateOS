@@ -34,8 +34,14 @@ class StubCampaigns {
 }
 class StubTracking {
   created = 0;
+  ensured = 0;
   async list() { return this.created ? [link] : []; }
   async create() { this.created += 1; return link; }
+  async ensure(input: { affiliateOfferId: string; campaignId: string; destinationUrl: string }) {
+    this.ensured += 1;
+    this.created += 1;
+    return { ...link, affiliateOfferId: input.affiliateOfferId, campaignId: input.campaignId, destinationUrl: input.destinationUrl };
+  }
 }
 class StubContent {
   created: Content[] = [];
@@ -101,6 +107,48 @@ describe("campaign orchestrator", () => {
     assert.equal(tracking.created, 1);
     assert.equal(content.created.length, 1);
     assert.equal(second.campaign.id, campaign.id);
+  });
+
+  it("revalidates the affiliate link before creating the tracking destination", async () => {
+    const refreshedOffer: AffiliateOffer = {
+      ...offer,
+      affiliateUrl: "https://affiliate.example.test/refreshed-offer-1",
+      affiliateLinkStatus: "active",
+      affiliateLinkMetadata: { generatedAt: "2026-09-21T12:00:00.000Z", expiresAt: "2026-09-22T12:00:00.000Z" }
+    };
+    const content = new StubContent();
+    const tracking = new StubTracking();
+    const ensurer = {
+      async ensureAffiliateLinkForOffer(currentOffer: AffiliateOffer, currentProduct: Product) {
+        assert.equal(currentOffer.id, offer.id);
+        assert.equal(currentProduct.id, product.id);
+        return refreshedOffer;
+      }
+    };
+    const result = await new CampaignOrchestrator(new StubCampaigns() as never, tracking as never, content as never, undefined, undefined, undefined, ensurer as never)
+      .execute({ opportunity, offer, product, platforms: ["tiktok"] });
+    assert.equal(tracking.ensured, 1);
+    assert.equal(result.trackingLink.destinationUrl, refreshedOffer.affiliateUrl);
+    assert.equal(result.content.length, 1);
+  });
+
+  it("fails closed when affiliate link preparation fails", async () => {
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    const content = new StubContent();
+    const ensurer = {
+      async ensureAffiliateLinkForOffer() {
+        throw new Error("affiliate provider unavailable");
+      }
+    };
+    await assert.rejects(
+      () => new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, ensurer as never)
+        .execute({ opportunity, offer, product, platforms: ["tiktok"] }),
+      /affiliate provider unavailable/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(tracking.created, 0);
+    assert.equal(content.created.length, 0);
   });
 
   it("persists the autonomous run through orchestration completion", async () => {
