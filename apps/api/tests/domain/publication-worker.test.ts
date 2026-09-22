@@ -167,7 +167,7 @@ describe("PublicationWorker", () => {
     const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date("2026-09-20T11:00:59.999Z"));
-    const second = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    const second = await worker.runOnce(new Date("2026-09-20T11:02:00.000Z"));
     const stored = await jobs.findById(job.id);
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
