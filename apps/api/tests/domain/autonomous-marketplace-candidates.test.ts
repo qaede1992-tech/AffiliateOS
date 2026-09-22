@@ -306,6 +306,45 @@ describe("autonomous marketplace candidate provider", () => {
     assert.equal(result[0].offers[0].affiliateUrl, "https://example.invalid/new");
   });
 
+  it("does not let newly queued refreshes bypass existing waiters", async () => {
+    const p = product("refresh-fairness");
+    const offers = Array.from({ length: 4 }, (_, index) => ({
+      id: `fairness-offer-${index + 1}`,
+      productId: p.id,
+      affiliateAccountId: "account-1",
+      externalOfferId: `fairness-external-offer-${index + 1}`,
+      priceCents: 1000,
+      currency: "USD",
+      commissionRateBps: 1200,
+      availability: "in_stock" as const,
+      availabilityMetadata: {},
+      affiliateUrl: undefined,
+      affiliateLinkStatus: "not_generated" as const,
+      status: "active" as const,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    }));
+    const started: string[] = [];
+    const marketplace = {
+      listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      discoverProducts: async () => [p],
+      getOffers: async () => offers,
+      generateAffiliateLink: async (_slug: string, _externalProductId: string, externalOfferId: string) => {
+        started.push(externalOfferId);
+        await new Promise((resolve) => setTimeout(resolve, externalOfferId.endsWith("1") ? 15 : 1));
+        const source = offers.find((offer) => offer.externalOfferId === externalOfferId)!;
+        return { ...source, affiliateUrl: `https://example.invalid/${externalOfferId}`, affiliateLinkStatus: "active" as const };
+      }
+    } as any;
+
+    await new AutonomousMarketplaceCandidateProvider(marketplace, {
+      maxConcurrentOffersPerProduct: 3,
+      maxConcurrentAffiliateLinkRefreshesPerConnection: 1
+    }).listCandidates();
+
+    assert.deepEqual(started, offers.map((offer) => offer.externalOfferId));
+  });
+
   it("skips inactive products before requesting offers", async () => {
     let offerCalls = 0;
     const inactive = product("product-inactive");
