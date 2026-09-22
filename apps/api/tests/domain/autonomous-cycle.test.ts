@@ -84,8 +84,9 @@ describe("autonomous cycle", () => {
 
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     let release!: () => void;
-    let started!: () => void;
-    const executionStarted = new Promise<void>((resolve) => { started = resolve; });
+    let resolveStarted!: () => void;
+    let executionStarted = new Promise<void>((resolve) => { resolveStarted = resolve; });
+
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
         return [{ product: { id: "product-1" } as never, offers: [] }];
@@ -93,7 +94,7 @@ describe("autonomous cycle", () => {
     };
     const execution = {
       runOnce: () => new Promise<{ selected: never[]; rejected: never[]; outcomes: never[] }>((resolve) => {
-        started();
+        resolveStarted();
         release = () => resolve({ selected: [], rejected: [], outcomes: [] });
       })
     } as unknown as AutonomousExecutionService;
@@ -106,6 +107,8 @@ describe("autonomous cycle", () => {
 
     release();
     assert.ok(await first);
+
+    executionStarted = new Promise<void>((resolve) => { resolveStarted = resolve; });
     const second = service.runOnce();
     await executionStarted;
     release();
