@@ -32,14 +32,23 @@ export class AutonomousExecutionService {
         const claimedRun = claim.run;
         const candidate = input.candidates.find((item) => item.product.id === claimedRun.opportunityProductId);
         const offer = candidate?.offers.find((item) => item.id === claimedRun.offerId);
-        if (!candidate || !offer) continue;
-        if (candidate.product.id !== claimedRun.opportunityProductId || candidate.product.status !== "active") continue;
+        if (!candidate || !offer) {
+          await this.autonomousRuns.transition(claimedRun.id, "failed", { error: "Original recovery candidate or affiliate offer is no longer available." });
+          continue;
+        }
+        if (candidate.product.id !== claimedRun.opportunityProductId || candidate.product.status !== "active") {
+          await this.autonomousRuns.transition(claimedRun.id, "failed", { error: "Original recovery product is no longer active." });
+          continue;
+        }
         const context = claimedRun.executionContext;
         // Recovery must honor the offer originally bound to the run. Re-ranking all
         // current offers could silently abandon a valid in-flight execution when a
         // different offer becomes the current best.
         const scored = scoreOpportunity({ product: candidate.product, offers: [offer], audience: context?.audience ?? input.audience });
-        if (scored.offerId !== claimedRun.offerId) continue;
+        if (scored.offerId !== claimedRun.offerId) {
+          await this.autonomousRuns.transition(claimedRun.id, "failed", { error: "Original recovery affiliate offer is no longer executable." });
+          continue;
+        }
         const opportunity: ScoredOpportunity = scored;
         try {
           await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: claimedRun.idempotencyKey });
