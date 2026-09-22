@@ -234,6 +234,40 @@ describe("campaign orchestrator", () => {
     assert.equal(run?.attemptCount, 1);
   });
 
+  it("executes a recovery run when the caller already owns its processing claim", async () => {
+    const runs = new InMemoryAutonomousRunRepository();
+    const autonomousRuns = new AutonomousRunService(runs);
+    const accepted = await autonomousRuns.accept({
+      idempotencyKey: "claimed-recovery",
+      productId: product.id,
+      offerId: offer.id,
+      now: new Date("2026-09-20T10:00:00.000Z")
+    });
+    const claimed = await autonomousRuns.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z"));
+    assert.equal(claimed.acquired, true);
+
+    const orchestrator = new CampaignOrchestrator(
+      new StubCampaigns() as never,
+      new StubTracking() as never,
+      new StubContent() as never,
+      undefined,
+      undefined,
+      autonomousRuns
+    );
+
+    const result = await orchestrator.execute({
+      opportunity,
+      offer,
+      product,
+      idempotencyKey: "claimed-recovery",
+      platforms: ["tiktok"],
+      autonomousRunAlreadyClaimed: true
+    });
+
+    assert.equal(result.campaign.id, campaign.id);
+    assert.equal((await runs.findById(accepted.id))?.status, "completed");
+  });
+
   it("recovers a stale autonomous run without duplicating campaign, tracking, or content", async () => {
     const runs = new InMemoryAutonomousRunRepository();
     const autonomousRuns = new AutonomousRunService(runs);
