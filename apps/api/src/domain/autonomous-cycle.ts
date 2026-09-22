@@ -42,7 +42,8 @@ export class AutonomousCycleService {
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
     if (this.running) return undefined;
-    if (!(await this.lock.tryAcquire(this.lockKey))) return undefined;
+    const acquired = await this.lock.tryAcquire(this.lockKey);
+    if (!acquired) return undefined;
     this.running = true;
     const startedAt = new Date().toISOString();
 
