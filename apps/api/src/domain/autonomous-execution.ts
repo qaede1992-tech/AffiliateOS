@@ -27,20 +27,23 @@ export class AutonomousExecutionService {
     if (this.autonomousRuns) {
       const recoverable = await this.autonomousRuns.listRecoverable();
       for (const run of recoverable) {
-        const candidate = input.candidates.find((item) => item.product.id === run.opportunityProductId);
-        const offer = candidate?.offers.find((item) => item.id === run.offerId);
+        const claim = await this.autonomousRuns.claimProcessing(run.id);
+        if (!claim.acquired) continue;
+        const claimedRun = claim.run;
+        const candidate = input.candidates.find((item) => item.product.id === claimedRun.opportunityProductId);
+        const offer = candidate?.offers.find((item) => item.id === claimedRun.offerId);
         if (!candidate || !offer) continue;
-        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active") continue;
-        const context = run.executionContext;
+        if (candidate.product.id !== claimedRun.opportunityProductId || candidate.product.status !== "active") continue;
+        const context = claimedRun.executionContext;
         // Recovery must honor the offer originally bound to the run. Re-ranking all
         // current offers could silently abandon a valid in-flight execution when a
         // different offer becomes the current best.
         const scored = scoreOpportunity({ product: candidate.product, offers: [offer], audience: context?.audience ?? input.audience });
-        if (scored.offerId !== run.offerId) continue;
+        if (scored.offerId !== claimedRun.offerId) continue;
         const opportunity: ScoredOpportunity = scored;
         try {
-          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: run.idempotencyKey });
-          recoveredKeys.add(run.idempotencyKey);
+          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: claimedRun.idempotencyKey });
+          recoveredKeys.add(claimedRun.idempotencyKey);
           recoveredRunCount += 1;
         } catch {
           // Keep the run recoverable for a later cycle; the orchestrator records the failure state.
