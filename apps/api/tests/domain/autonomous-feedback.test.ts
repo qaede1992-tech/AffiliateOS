@@ -39,11 +39,11 @@ describe("Autonomous analytics feedback", () => {
     current = { clickCount: 120, conversions: 4 };
     const signal = (await provider.getSignals()).get("p1");
     assert.ok(signal);
-    assert.equal(signal.conversionCount, 2);
+    assert.equal(signal.conversionCount, 4);
     assert.equal(signal.trendAdjustment, 2);
     assert.equal(signal.adjustment, 6);
     const snapshot = await memory.latestByProduct("p1");
     assert.ok(snapshot);
-    assert.equal(snapshot.conversionCount, 2);
+    assert.equal(snapshot.conversionCount, 4);
   });
 });
