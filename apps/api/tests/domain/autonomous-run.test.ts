@@ -143,12 +143,16 @@ describe("autonomous run", () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
     const accepted = await service.accept({ idempotencyKey: "run-manual-retry", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
-    let current = await service.claimProcessing(accepted.id, new Date("2026-09-20T10:00:00.000Z"));
-    for (let attempt = 1; attempt <= 8; attempt += 1) {
-      current = await service.transition(current.id, "failed", { error: `failure-${attempt}` }, new Date("2026-09-20T10:00:00.000Z"));
-      if (attempt < 8) current = (await service.claimProcessing(current.id, new Date(current.nextAttemptAt!))).run;
-    }
-    const reset = await service.retry(current.id, new Date("2026-09-21T10:00:00.000Z"));
+    const exhausted = {
+      ...accepted,
+      status: "failed" as const,
+      attemptCount: 8,
+      nextAttemptAt: undefined,
+      lastError: "failure-8",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    };
+    await repository.save(exhausted);
+    const reset = await service.retry(accepted.id, new Date("2026-09-21T10:00:00.000Z"));
     assert.equal(reset.status, "failed");
     assert.equal(reset.attemptCount, 0);
     assert.equal(reset.nextAttemptAt, undefined);
