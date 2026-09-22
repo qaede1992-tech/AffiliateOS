@@ -64,10 +64,10 @@ describe("Publication operation lifecycle", () => {
   it("fails an in-flight operation when its affiliate product becomes inactive", async () => {
     const { contentService, socialAccounts, jobs, operations, jobService, content } = await setup();
     const products = new InMemoryProductCatalogRepository();
-    await products.save({ ...product, status: "inactive" });
     const isolatedContents = new InMemoryRepository<Content>();
     const isolatedContentService = new ContentService(isolatedContents, new InMemoryRepository<any>(), products);
     const scheduled = await isolatedContentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: account.id });
+    await products.save({ ...product, status: "inactive" });
     await jobs.save({ id: "job-terminal", contentId: scheduled.id, idempotencyKey: "content:terminal", attemptCount: 1, scheduledAt: "2026-09-20T10:00:00.000Z", status: "awaiting_confirmation", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
     await operations.save({ id: "operation-terminal", contentId: scheduled.id, jobId: "job-terminal", provider: "tiktok", providerOperationId: "publish-terminal", status: "accepted", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
     const publisher: SocialPublisher = {
