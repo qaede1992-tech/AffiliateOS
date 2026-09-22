@@ -121,7 +121,7 @@ test("tracking redirects record a click and return the bound destination", async
   const offerId = "00000000-0000-0000-0000-000000000080";
   await affiliateOffers.save(activeOffer(offerId));
   const link = await tracking.create({ affiliateOfferId: offerId, code: "redirect-code", destinationUrl: "https://example.com/affiliate" });
-  const destination = await tracking.redirect(link.code, { source: "public-redirect", userAgent: "test-agent" });
+  const destination = await tracking.redirect(link.code, { metadata: { source: "public-redirect", userAgent: "test-agent" } });
   assert.equal(destination, "https://example.com/affiliate");
   const recorded = await clicks.listByTrackingLink(link.id);
   assert.equal(recorded.length, 1);
