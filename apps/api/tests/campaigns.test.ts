@@ -72,7 +72,14 @@ function trackingFixture() {
   return { links, clicks, campaigns, affiliateOffers, campaignOffers, tracking: new TrackingService(links, clicks, campaigns, affiliateOffers, campaignOffers) };
 }
 
-test("tracking links reject non-web redirect destinations", async () => {\n  const { affiliateOffers, tracking } = trackingFixture();\n  const offerId = "00000000-0000-0000-0000-000000000081";\n  await affiliateOffers.save({ ...activeOffer(offerId), affiliateUrl: "javascript:alert(1)" });\n  await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, destinationUrl: "javascript:alert(1)" }), /HTTP or HTTPS destination/i);\n});\n\ntest("tracking links reject expired affiliate links and destination mismatches", async () => {
+test("tracking links reject non-web redirect destinations", async () => {
+  const { affiliateOffers, tracking } = trackingFixture();
+  const offerId = "00000000-0000-0000-0000-000000000081";
+  await affiliateOffers.save({ ...activeOffer(offerId), affiliateUrl: "javascript:alert(1)" });
+  await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, destinationUrl: "javascript:alert(1)" }), /HTTP or HTTPS destination/i);
+});
+
+test("tracking links reject expired affiliate links and destination mismatches", async () => {
   const { affiliateOffers, tracking } = trackingFixture();
   const expiredId = "00000000-0000-0000-0000-000000000070";
   await affiliateOffers.save({ ...activeOffer(expiredId), affiliateUrl: "https://example.com/affiliate", affiliateLinkExpiresAt: "2000-01-01T00:00:00.000Z" });
@@ -109,7 +116,19 @@ test("the same idempotency key can be reused on different tracking links", async
   assert.equal((await clicks.listByTrackingLink(secondLink.id)).length, 1);
 });
 
-test("tracking redirects record a click and return the bound destination", async () => {\n  const { clicks, affiliateOffers, tracking } = trackingFixture();\n  const offerId = "00000000-0000-0000-0000-000000000080";\n  await affiliateOffers.save(activeOffer(offerId));\n  const link = await tracking.create({ affiliateOfferId: offerId, code: "redirect-code", destinationUrl: "https://example.com/affiliate" });\n  const destination = await tracking.redirect(link.code, { source: "public-redirect", userAgent: "test-agent" });\n  assert.equal(destination, "https://example.com/affiliate");\n  const recorded = await clicks.listByTrackingLink(link.id);\n  assert.equal(recorded.length, 1);\n  assert.deepEqual(recorded[0].metadata, { source: "public-redirect", userAgent: "test-agent" });\n});\n\ntest("clicks reject inactive tracking links", async () => {
+test("tracking redirects record a click and return the bound destination", async () => {
+  const { clicks, affiliateOffers, tracking } = trackingFixture();
+  const offerId = "00000000-0000-0000-0000-000000000080";
+  await affiliateOffers.save(activeOffer(offerId));
+  const link = await tracking.create({ affiliateOfferId: offerId, code: "redirect-code", destinationUrl: "https://example.com/affiliate" });
+  const destination = await tracking.redirect(link.code, { source: "public-redirect", userAgent: "test-agent" });
+  assert.equal(destination, "https://example.com/affiliate");
+  const recorded = await clicks.listByTrackingLink(link.id);
+  assert.equal(recorded.length, 1);
+  assert.deepEqual(recorded[0].metadata, { source: "public-redirect", userAgent: "test-agent" });
+});
+
+test("clicks reject inactive tracking links", async () => {
   const { links, affiliateOffers, tracking } = trackingFixture();
   const offerId = "00000000-0000-0000-0000-000000000030";
   await affiliateOffers.save(activeOffer(offerId));
