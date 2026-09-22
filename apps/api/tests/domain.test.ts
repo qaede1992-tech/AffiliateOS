@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
+import type { Affiliate, Commission, Offer } from "@affiliateos/shared";
 import { DomainError } from "../src/domain/errors.js";
 import { InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
 import { ConversionService } from "../src/domain/services.js";
@@ -90,7 +90,7 @@ test("creating a conversion rejects an inactive offer", async () => {
   offers.save({ id: offerId, name: "Paused", status: "archived", commissionRateBps: 1000, createdAt: new Date().toISOString() });
   const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
 
-  assert.rejects(
+  await assert.rejects(
     () => service.create({ affiliateId, offerId, amountCents: 1000 }),
     (error: unknown) => error instanceof DomainError && error.code === "OFFER_NOT_ACTIVE"
   );
