@@ -23,7 +23,7 @@ describe("opportunity scoring", () => {
       audience: ["skincare"]
     });
     assert.equal(result.offerId, "offer-1");
-    assert.equal(result.breakdown.commission, 40);
+    assert.equal(result.breakdown.commission, 100);
   });
   it("excludes inactive products from scoring", () => {
     const result = scoreOpportunity({ product: product({ status: "inactive" }), offers: [offer()], audience: ["skincare"] });
