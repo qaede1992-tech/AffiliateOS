@@ -4,16 +4,20 @@ import type { AutonomousCandidateProvider, AutonomousExecutionCandidate } from "
 
 export type AutonomousMarketplaceCandidateProviderOptions = {
   maxProductsPerConnection?: number;
+  /** Maximum number of product offer lookups processed concurrently per connection. */
+  maxConcurrentProductsPerConnection?: number;
 };
 
 export class AutonomousMarketplaceCandidateProvider implements AutonomousCandidateProvider {
   private readonly maxProductsPerConnection: number;
+  private readonly maxConcurrentProductsPerConnection: number;
 
   constructor(
     private readonly marketplace: MarketplaceService,
     options: AutonomousMarketplaceCandidateProviderOptions = {}
   ) {
     this.maxProductsPerConnection = Math.max(1, options.maxProductsPerConnection ?? 100);
+    this.maxConcurrentProductsPerConnection = Math.max(1, options.maxConcurrentProductsPerConnection ?? 4);
   }
 
   async listCandidates(): Promise<AutonomousExecutionCandidate[]> {
@@ -24,16 +28,17 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     for (const connection of activeConnections) {
       try {
         const products = (await this.marketplace.discoverProducts(connection.slug)).slice(0, this.maxProductsPerConnection);
-        for (const product of products) {
-          if (product.status !== "active") continue;
+        const connectionCandidates = await mapWithConcurrency(products, this.maxConcurrentProductsPerConnection, async (product) => {
+          if (product.status !== "active") return undefined;
           try {
             const offers = await this.marketplace.getOffers(connection.slug, product.externalProductId);
             const executableOffers = await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers);
-            candidates.push({ product, offers: executableOffers });
+            return { product, offers: executableOffers };
           } catch {
-            candidates.push({ product, offers: [] });
+            return { product, offers: [] };
           }
-        }
+        });
+        candidates.push(...connectionCandidates.filter((candidate): candidate is AutonomousExecutionCandidate => candidate !== undefined));
       } catch {
         continue;
       }
@@ -96,4 +101,19 @@ function mergeOffers(left: AffiliateOffer[], right: AffiliateOffer[]): Affiliate
   const byId = new Map<string, AffiliateOffer>();
   for (const offer of [...left, ...right]) byId.set(offer.id, offer);
   return [...byId.values()];
+}
+
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  return results;
 }
