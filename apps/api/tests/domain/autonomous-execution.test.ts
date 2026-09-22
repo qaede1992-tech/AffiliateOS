@@ -14,7 +14,8 @@ const product: Product = {
 
 const offer: AffiliateOffer = {
   id: "offer-1", affiliateAccountId: "affiliate-account-1", productId: product.id, externalOfferId: "external-offer-1",
-  status: "active", affiliateLinkStatus: "active", affiliateUrl: "https://example.com/affiliate", commissionBasisPoints: 1200,
+  priceCents: 10000, currency: "USD", commissionRateBps: 1200, availability: "in_stock", availabilityMetadata: {},
+  status: "active", affiliateLinkStatus: "active", affiliateUrl: "https://example.com/affiliate",
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
 
@@ -109,12 +110,13 @@ describe("AutonomousExecutionService", () => {
     });
 
     assert.equal(result.recoveredRunCount, 1);
-    assert.deepEqual(calls, [{
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], {
       audience: ["electronics"],
       platforms: ["instagram"],
       scheduledAt: "2026-09-21T12:00:00.000Z",
       idempotencyKey: "previous-cycle:product-1:offer-1"
-    }]);
+    });
   });
 
   it("skips recovery when the persisted product is no longer active", async () => {
