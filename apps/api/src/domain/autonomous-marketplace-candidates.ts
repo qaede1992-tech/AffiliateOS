@@ -8,12 +8,15 @@ export type AutonomousMarketplaceCandidateProviderOptions = {
   maxConcurrentProductsPerConnection?: number;
   /** Maximum number of affiliate-link refreshes processed concurrently per product. */
   maxConcurrentOffersPerProduct?: number;
+  /** Maximum number of affiliate-link refreshes processed concurrently per connection. */
+  maxConcurrentAffiliateLinkRefreshesPerConnection?: number;
 };
 
 export class AutonomousMarketplaceCandidateProvider implements AutonomousCandidateProvider {
   private readonly maxProductsPerConnection: number;
   private readonly maxConcurrentProductsPerConnection: number;
   private readonly maxConcurrentOffersPerProduct: number;
+  private readonly maxConcurrentAffiliateLinkRefreshesPerConnection: number;
 
   constructor(
     private readonly marketplace: MarketplaceService,
@@ -22,6 +25,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     this.maxProductsPerConnection = Math.max(1, options.maxProductsPerConnection ?? 100);
     this.maxConcurrentProductsPerConnection = Math.max(1, options.maxConcurrentProductsPerConnection ?? 4);
     this.maxConcurrentOffersPerProduct = Math.max(1, options.maxConcurrentOffersPerProduct ?? 4);
+    this.maxConcurrentAffiliateLinkRefreshesPerConnection = Math.max(1, options.maxConcurrentAffiliateLinkRefreshesPerConnection ?? 8);
   }
 
   async listCandidates(): Promise<AutonomousExecutionCandidate[]> {
@@ -36,7 +40,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
           if (product.status !== "active") return undefined;
           try {
             const offers = await this.marketplace.getOffers(connection.slug, product.externalProductId);
-            const executableOffers = await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers);
+            const executableOffers = await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers, affiliateLinkRefreshGate);
             return { product, offers: executableOffers };
           } catch {
             return { product, offers: [] };
@@ -51,7 +55,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     return deduplicateCandidates(candidates);
   }
 
-  private async ensureAffiliateLinks(productId: string, connectionSlug: string, externalProductId: string, offers: AffiliateOffer[]): Promise<AffiliateOffer[]> {
+  private async ensureAffiliateLinks(productId: string, connectionSlug: string, externalProductId: string, offers: AffiliateOffer[], affiliateLinkRefreshGate: ConcurrencyGate): Promise<AffiliateOffer[]> {
     if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.productId === productId && offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > Date.now()));
 
     const now = Date.now();
@@ -61,7 +65,13 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
       if (linkUsable) return offer;
       if (!offer.externalOfferId) return undefined;
       try {
-        const linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
+        const release = await affiliateLinkRefreshGate.acquire();
+        let linked: AffiliateOffer;
+        try {
+          linked = await this.marketplace.generateAffiliateLink(connectionSlug, externalProductId, offer.externalOfferId);
+        } finally {
+          release();
+        }
         const linkedExpiry = linked.affiliateLinkExpiresAt ? new Date(linked.affiliateLinkExpiresAt).getTime() : undefined;
         const linkedUsable = linked.productId === productId && linked.status === "active" && linked.affiliateLinkStatus === "active" && Boolean(linked.affiliateUrl) && (linkedExpiry === undefined || (Number.isFinite(linkedExpiry) && linkedExpiry > Date.now()));
         return linkedUsable ? linked : undefined;
@@ -99,6 +109,31 @@ function mergeOffers(left: AffiliateOffer[], right: AffiliateOffer[]): Affiliate
   return [...byId.values()];
 }
 
+
+type ConcurrencyGate = { acquire: () => Promise<() => void> };
+
+function createConcurrencyGate(limit: number): ConcurrencyGate {
+  let inFlight = 0;
+  const waiters: Array<() => void> = [];
+  const acquire = async (): Promise<() => void> => {
+    if (inFlight < limit) {
+      inFlight += 1;
+      return () => {
+        inFlight -= 1;
+        const next = waiters.shift();
+        next?.();
+      };
+    }
+    await new Promise<void>((resolve) => waiters.push(resolve));
+    inFlight += 1;
+    return () => {
+      inFlight -= 1;
+      const next = waiters.shift();
+      next?.();
+    };
+  };
+  return { acquire };
+}
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
