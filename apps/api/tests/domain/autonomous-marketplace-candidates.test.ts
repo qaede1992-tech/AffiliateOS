@@ -80,6 +80,29 @@ describe("autonomous marketplace candidate provider", () => {
     assert.equal(result[0].offers.length, 0);
   });
 
+
+  it("bounds concurrent product offer processing while preserving result order", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const products = [product("one"), product("two"), product("three"), product("four")];
+    const marketplace = {
+      listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      discoverProducts: async () => products,
+      getOffers: async (_slug: string, externalProductId: string) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        const id = externalProductId.replace("external-", "");
+        return [{ id: `offer-${id}`, productId: products.find((item) => item.externalProductId === externalProductId)!.id, affiliateAccountId: "account-1", externalOfferId: `external-offer-${id}`, priceCents: 1000, currency: "USD", commissionRateBps: 1200, availability: "in_stock" as const, availabilityMetadata: {}, affiliateUrl: "https://example.invalid/affiliate", affiliateLinkStatus: "active" as const, status: "active" as const, createdAt: products[0].createdAt, updatedAt: products[0].updatedAt }];
+      }
+    } as any;
+
+    const result = await new AutonomousMarketplaceCandidateProvider(marketplace, { maxConcurrentProductsPerConnection: 2 }).listCandidates();
+    assert.equal(maxInFlight, 2);
+    assert.deepEqual(result.map((item) => item.product.id), ["one", "two", "three", "four"]);
+  });
+
   it("skips inactive products before requesting offers", async () => {
     let offerCalls = 0;
     const inactive = product("product-inactive");
