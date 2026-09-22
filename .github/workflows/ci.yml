@@ -42,8 +42,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Test
-        timeout-minutes: 10
-        run: npm test
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' test_file; do
+            echo "::group::Test $test_file"
+            timeout --signal=TERM --kill-after=10s 60s npx tsx --test "$test_file"
+            echo "::endgroup::"
+          done < <(find apps/api/tests -type f -name '*.test.ts' -print0 | sort -z)
       - name: Typecheck
         run: npm run typecheck
       - name: Build
