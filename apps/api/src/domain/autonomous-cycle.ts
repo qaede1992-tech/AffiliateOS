@@ -1,6 +1,7 @@
 import type { AudienceSegment, ContentPlatform } from "@affiliateos/shared";
 import type { AutonomousExecutionCandidate, AutonomousExecutionInput, AutonomousExecutionResult, AutonomousExecutionService } from "./autonomous-execution.js";
 import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
+import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 
 export interface AutonomousCandidateProvider {
   listCandidates(): Promise<AutonomousExecutionCandidate[]>;
@@ -25,14 +26,20 @@ export type AutonomousCycleResult = {
 
 export class AutonomousCycleService {
   private running = false;
+  private readonly lock: AutonomousCycleLock;
 
   constructor(
     private readonly candidates: AutonomousCandidateProvider,
-    private readonly execution: AutonomousExecutionService
-  ) {}
+    private readonly execution: AutonomousExecutionService,
+    lock?: AutonomousCycleLock,
+    private readonly lockKey = "affiliateos:autonomous-cycle"
+  ) {
+    this.lock = lock ?? new InMemoryAutonomousCycleLock();
+  }
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
     if (this.running) return undefined;
+    if (!(await this.lock.tryAcquire(this.lockKey))) return undefined;
     this.running = true;
     const startedAt = new Date().toISOString();
 
@@ -53,6 +60,7 @@ export class AutonomousCycleService {
       };
     } finally {
       this.running = false;
+      await this.lock.release(this.lockKey);
     }
   }
 
