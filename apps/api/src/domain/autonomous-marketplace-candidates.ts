@@ -36,6 +36,7 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     for (const connection of activeConnections) {
       try {
         const products = (await this.marketplace.discoverProducts(connection.slug)).slice(0, this.maxProductsPerConnection);
+        const affiliateLinkRefreshGate = createConcurrencyGate(this.maxConcurrentAffiliateLinkRefreshesPerConnection);
         const connectionCandidates = await mapWithConcurrency(products, this.maxConcurrentProductsPerConnection, async (product) => {
           if (product.status !== "active") return undefined;
           try {
