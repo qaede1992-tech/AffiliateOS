@@ -30,4 +30,31 @@ describe("OptimizationEngine", () => {
     const result = new OptimizationEngine().recommend([analytics("c1", 80, 0.025)]);
     assert.equal(result[0].action, "revise-content");
   });
+
+  it("holds recommendations during the configured cooldown", () => {
+    const engine = new OptimizationEngine({ cooldownMs: 60 * 60_000 });
+    const state = new Map([
+      ["c1", { action: "scale" as const, appliedAt: "2026-09-22T10:00:00.000Z" }]
+    ]);
+    const result = engine.recommend(
+      [analytics("c1", 200, 0.1)],
+      state,
+      new Date("2026-09-22T10:30:00.000Z")
+    );
+    assert.equal(result[0].action, "maintain");
+    assert.match(result[0].reasons[0], /cooldown/i);
+  });
+
+  it("allows a new recommendation after the cooldown expires", () => {
+    const engine = new OptimizationEngine({ cooldownMs: 60 * 60_000 });
+    const state = new Map([
+      ["c1", { action: "maintain" as const, appliedAt: "2026-09-22T10:00:00.000Z" }]
+    ]);
+    const result = engine.recommend(
+      [analytics("c1", 200, 0.1)],
+      state,
+      new Date("2026-09-22T11:01:00.000Z")
+    );
+    assert.equal(result[0].action, "scale");
+  });
 });
