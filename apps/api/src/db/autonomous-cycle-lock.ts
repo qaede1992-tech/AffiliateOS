@@ -17,7 +17,7 @@ export class PostgresAutonomousCycleLock implements AutonomousCycleLock {
     const client = await this.pool.connect();
     try {
       const result = await client.query<{ locked: boolean }>(
-        "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
+        "SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked",
         [key]
       );
       if (!result.rows[0]?.locked) {
@@ -37,7 +37,7 @@ export class PostgresAutonomousCycleLock implements AutonomousCycleLock {
     if (!client) return;
     this.clients.delete(key);
     try {
-      await client.query("SELECT pg_advisory_unlock(hashtext($1))", [key]);
+      await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key]);
     } finally {
       client.release();
     }
