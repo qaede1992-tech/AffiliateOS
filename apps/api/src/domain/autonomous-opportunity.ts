@@ -9,6 +9,7 @@ export type OpportunitySelectionPolicy = {
   requiredAudience?: AudienceSegment[];
   targetPriceMaxCents?: number;
   minimumCommissionRateBps?: number;
+  minimumCommissionAmountCents?: number;
   minimumDemandScore?: number;
 };
 
@@ -42,6 +43,7 @@ const rejectionReasons = (
   minimumScore: number,
   requiredAudience: AudienceSegment[],
   minimumCommissionRateBps: number,
+  minimumCommissionAmountCents: number,
   minimumDemandScore: number
 ): string[] => {
   const reasons = [...item.reasons];
@@ -50,6 +52,7 @@ const rejectionReasons = (
   if (!item.offerId) reasons.push("No eligible affiliate offer");
   if (requiredAudience.length > 0 && item.breakdown.audienceFit <= 0) reasons.push("Does not match the required audience");
   if (item.breakdown.commission * 20 < minimumCommissionRateBps) reasons.push("Commission rate is below the minimum");
+  if ((item.breakdown.commissionAmountCents ?? 0) < minimumCommissionAmountCents) reasons.push("Commission amount is below the minimum");
   if (item.breakdown.demand < minimumDemandScore) reasons.push("Demand score is below the minimum");
   return unique(reasons);
 };
@@ -98,10 +101,12 @@ export class AutonomousOpportunitySelector {
       const minimumScore = candidatePolicy.minimumScore ?? 60;
       const requiredAudience = unique(candidatePolicy.requiredAudience ?? []);
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
+      const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       return item.score >= minimumScore && Boolean(item.offerId) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commission * 20 >= minimumCommissionRateBps &&
+        (item.breakdown.commissionAmountCents ?? 0) >= minimumCommissionAmountCents &&
         item.breakdown.demand >= minimumDemandScore &&
         item.product.status === "active";
     });
@@ -112,13 +117,14 @@ export class AutonomousOpportunitySelector {
       const minimumScore = candidatePolicy.minimumScore ?? 60;
       const requiredAudience = unique(candidatePolicy.requiredAudience ?? []);
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
+      const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       return {
         productId: item.product.id,
         score: item.score,
         reasons: selected.length < eligible.length && eligible.some((candidate) => candidate.product.id === item.product.id)
           ? ["Selection limit reached"]
-          : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore)
+          : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
       };
     });
     const audit = ranked.map((item) => {
@@ -126,10 +132,11 @@ export class AutonomousOpportunitySelector {
       const minimumScore = candidatePolicy.minimumScore ?? 60;
       const requiredAudience = unique(candidatePolicy.requiredAudience ?? []);
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
+      const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       const reasons = selectedIds.has(item.product.id)
         ? ["Selected"]
-        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore);
+        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore);
       return {
         auditId: randomUUID(),
         productId: item.product.id,

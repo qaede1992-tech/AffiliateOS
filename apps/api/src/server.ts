@@ -39,6 +39,7 @@ const services = createServices(
     minimumScore: environment.AUTONOMOUS_MINIMUM_SCORE,
     maximumResults: environment.AUTONOMOUS_MAXIMUM_RESULTS,
     minimumCommissionRateBps: environment.AUTONOMOUS_MINIMUM_COMMISSION_BPS,
+    minimumCommissionAmountCents: environment.AUTONOMOUS_MINIMUM_COMMISSION_AMOUNT_CENTS,
     minimumDemandScore: environment.AUTONOMOUS_MINIMUM_DEMAND_SCORE
   },
   environment.AUTONOMOUS_MARKETPLACE_POLICIES_JSON,
