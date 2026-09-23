@@ -111,6 +111,26 @@ describe("autonomous opportunity selection", () => {
     assert.ok(result.rejected[0]?.reasons.includes("Demand score is below the minimum"));
   });
 
+  it("applies marketplace-specific policy overrides without changing the default policy", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("default-market"), offers: [offer("default-market", { commissionRateBps: 800 })] },
+      { product: product("strict-market", { marketplaceId: "market-2" }), offers: [offer("strict-market", { commissionRateBps: 800 })] }
+    ], { minimumScore: 0, minimumCommissionRateBps: 500 }, {
+      "market-2": { minimumCommissionRateBps: 1000 }
+    });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["default-market"]);
+    assert.ok(result.rejected.find((item) => item.productId === "strict-market")?.reasons.includes("Commission rate is below the minimum"));
+  });
+
+  it("falls back to the default policy when no marketplace override exists", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("unconfigured-market", { marketplaceId: "market-unknown" }), offers: [offer("unconfigured-market", { commissionRateBps: 800 })] }
+    ], { minimumScore: 0, minimumCommissionRateBps: 500 }, {
+      "market-2": { minimumCommissionRateBps: 1000 }
+    });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["unconfigured-market"]);
+  });
+
   it("does not select a product that misses a required audience", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }

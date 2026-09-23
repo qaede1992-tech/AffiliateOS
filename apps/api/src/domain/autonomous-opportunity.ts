@@ -11,6 +11,8 @@ export type OpportunitySelectionPolicy = {
   minimumDemandScore?: number;
 };
 
+export type OpportunitySelectionPoliciesByMarketplace = Record<string, OpportunitySelectionPolicy>;
+
 export type OpportunityCandidateSource = {
   product: Product;
   offers: AffiliateOffer[];
@@ -44,13 +46,10 @@ export class AutonomousOpportunitySelector {
   select(
     candidates: OpportunityCandidateSource[],
     policy: OpportunitySelectionPolicy = {},
-    performance: Map<string, OpportunityPerformanceSignal> = new Map()
+    performance: Map<string, OpportunityPerformanceSignal> = new Map(),
+    policiesByMarketplace: OpportunitySelectionPoliciesByMarketplace = {}
   ): OpportunitySelectionResult {
-    const minimumScore = policy.minimumScore ?? 60;
     const maximumResults = policy.maximumResults ?? 10;
-    const requiredAudience = unique(policy.requiredAudience ?? []);
-    const minimumCommissionRateBps = Math.max(0, policy.minimumCommissionRateBps ?? 0);
-    const minimumDemandScore = Math.max(0, Math.min(100, policy.minimumDemandScore ?? 0));
     const mergedCandidates = new Map<string, OpportunityCandidateSource>();
     for (const candidate of candidates) {
       const existing = mergedCandidates.get(candidate.product.id);
@@ -65,30 +64,51 @@ export class AutonomousOpportunitySelector {
         existing.offers = [...offers.values()];
       }
     }
-    const scored = [...mergedCandidates.values()].map((candidate) => ({
-      product: candidate.product,
-      offers: candidate.offers,
-      audience: requiredAudience,
-      targetPriceMaxCents: policy.targetPriceMaxCents
-    }));
+    const effectivePolicy = (candidate: OpportunityCandidateSource): OpportunitySelectionPolicy => ({
+      ...policy,
+      ...(policiesByMarketplace[candidate.product.marketplaceId] ?? {})
+    });
+    const scored = [...mergedCandidates.values()].map((candidate) => {
+      const candidatePolicy = effectivePolicy(candidate);
+      return {
+        product: candidate.product,
+        offers: candidate.offers,
+        audience: unique(candidatePolicy.requiredAudience ?? []),
+        targetPriceMaxCents: candidatePolicy.targetPriceMaxCents
+      };
+    });
 
     const adjusted = rankOpportunities(scored).map((item) => applyPerformance(item, performance.get(item.product.id)));
     const ranked = adjusted.sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
 
-    const eligible = ranked.filter((item) => item.score >= minimumScore && Boolean(item.offerId) &&
-      (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
-      item.breakdown.commission * 20 >= minimumCommissionRateBps &&
-      item.breakdown.demand >= minimumDemandScore &&
-      item.product.status === "active");
+    const eligible = ranked.filter((item) => {
+      const candidatePolicy = effectivePolicy({ product: item.product, offers: [] });
+      const minimumScore = candidatePolicy.minimumScore ?? 60;
+      const requiredAudience = unique(candidatePolicy.requiredAudience ?? []);
+      const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
+      const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
+      return item.score >= minimumScore && Boolean(item.offerId) &&
+        (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
+        item.breakdown.commission * 20 >= minimumCommissionRateBps &&
+        item.breakdown.demand >= minimumDemandScore &&
+        item.product.status === "active";
+    });
     const selected = eligible.slice(0, Math.max(0, maximumResults));
     const selectedIds = new Set(selected.map((item) => item.product.id));
-    const rejected = ranked.filter((item) => !selectedIds.has(item.product.id)).map((item) => ({
-      productId: item.product.id,
-      score: item.score,
-      reasons: selected.length < eligible.length && eligible.some((candidate) => candidate.product.id === item.product.id)
-        ? ["Selection limit reached"]
-        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore)
-    }));
+    const rejected = ranked.filter((item) => !selectedIds.has(item.product.id)).map((item) => {
+      const candidatePolicy = effectivePolicy({ product: item.product, offers: [] });
+      const minimumScore = candidatePolicy.minimumScore ?? 60;
+      const requiredAudience = unique(candidatePolicy.requiredAudience ?? []);
+      const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
+      const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
+      return {
+        productId: item.product.id,
+        score: item.score,
+        reasons: selected.length < eligible.length && eligible.some((candidate) => candidate.product.id === item.product.id)
+          ? ["Selection limit reached"]
+          : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore)
+      };
+    });
     return { selected, rejected };
   }
 }
