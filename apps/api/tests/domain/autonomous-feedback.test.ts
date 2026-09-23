@@ -70,4 +70,26 @@ describe("Autonomous analytics feedback", () => {
     assert.equal(second?.commissionPerClickCents, 20);
     assert.ok((second?.adjustment ?? 0) <= 8);
   });
+  it("aggregates cross-campaign category performance within a marketplace", async () => {
+    const analytics = {
+      async overview() {
+        return {
+          clickCount: 200, trackingLinkCount: 2, campaignCount: 2, contentCount: 2,
+          publishedContentCount: 2, scheduledContentCount: 0, attributedConversionCount: 10,
+          attributedRevenueCents: 20000, attributedCommissionCents: 1000, conversionRate: 0.05,
+          campaigns: [
+            { campaignId: "c1", productId: "p1", marketplaceId: "m1", category: "skincare", clickCount: 100, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 6, attributedRevenueCents: 12000, attributedCommissionCents: 600, conversionRate: 0.06 },
+            { campaignId: "c2", productId: "p2", marketplaceId: "m1", category: "skincare", clickCount: 100, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 4, attributedRevenueCents: 8000, attributedCommissionCents: 400, conversionRate: 0.04 }
+          ]
+        };
+      }
+    };
+    const signals = await new AutonomousAnalyticsFeedbackProvider(analytics).getSignals();
+    const signal = signals.get("m1:category:skincare");
+    assert.equal(signal?.clickCount, 200);
+    assert.equal(signal?.conversionCount, 10);
+    assert.equal(signal?.conversionRate, 0.05);
+    assert.equal(signal?.attributedCommissionCents, 1000);
+  });
+
 });

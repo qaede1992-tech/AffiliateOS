@@ -93,7 +93,12 @@ export class AutonomousOpportunitySelector {
       };
     });
 
-    const adjusted = rankOpportunities(scored).map((item) => applyPerformance(item, performance.get(`${item.product.marketplaceId}:${item.product.id}`) ?? performance.get(item.product.id)));
+    const adjusted = rankOpportunities(scored).map((item) => {
+      const exact = performance.get(`${item.product.marketplaceId}:${item.product.id}`) ?? performance.get(item.product.id);
+      const category = item.product.category?.trim().toLowerCase();
+      const categorySignal = category ? performance.get(`${item.product.marketplaceId}:category:${category}`) : undefined;
+      return applyPerformance(item, exact ?? categorySignal);
+    });
     const ranked = adjusted.sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
 
     const eligible = ranked.filter((item) => {

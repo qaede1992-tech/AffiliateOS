@@ -55,6 +55,25 @@ describe("autonomous opportunity selection", () => {
     assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("positive")));
   });
 
+  it("uses marketplace category feedback when product-specific history is absent", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("category-a", { category: "skincare" }), offers: [offer("category-a")] }
+    ], { minimumScore: 0, maximumResults: 1 }, new Map([
+      ["market-1:category:skincare", {
+        clickCount: 100,
+        conversionRate: 0.08,
+        attributedCommissionCents: 1000,
+        commissionPerClickCents: 10,
+        adjustment: 6,
+        trendAdjustment: 0
+      }]
+    ]));
+    assert.equal(result.selected[0]?.product.id, "category-a");
+    assert.ok(result.selected[0]?.score !== undefined);
+    assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("Historical conversion feedback")));
+  });
+
+
 
   it("selects only active, offer-backed opportunities above the policy threshold", () => {
     const result = new AutonomousOpportunitySelector().select([
