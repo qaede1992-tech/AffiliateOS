@@ -1,3 +1,8 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { buildSignals, AutonomousAnalyticsFeedbackProvider } from "../../src/domain/autonomous-feedback.js";
+import { InMemoryAutonomousFeedbackMemoryRepository } from "../../src/domain/autonomous-feedback-memory.js";
+
 const campaign = (productId: string, clicks: number, conversions: number, commission = 0, marketplaceId?: string, audienceSegments?: string[]) => ({
   campaignId: productId + "-campaign", productId, marketplaceId, audienceSegments, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
   publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: conversions,
