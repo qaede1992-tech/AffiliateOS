@@ -92,8 +92,11 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const anomalyRecovery: AnomalyRecoveryState = recoveryAnchor
         ? (recentHalt ? "recovering" : recoveryGate ? "recovering" : "recovered")
         : "none";
+      const recoveryConfidence = anomalyRecovery === "recovered"
+        ? recoveryConfidenceMultiplier(recoveryEvidenceScore)
+        : 1;
       const windowAdjustment = windows && anomaly !== "halt"
-        ? calculateWindowAdjustment(windows, regime) * regimeConfidence * (anomaly === "watch" ? 0.35 : 1)
+        ? calculateWindowAdjustment(windows, regime) * regimeConfidence * recoveryConfidence * (anomaly === "watch" ? 0.35 : 1)
         : 0;
       const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
@@ -287,6 +290,12 @@ function calculateWindowAdjustment(w:{ "24h":PerformanceWindow;"7d":PerformanceW
   if(!weight)return 0;
   const base=clamp((total/weight)*2,-2,2);
   return regime==="volatile"?base*0.5:base;
+}
+
+function recoveryConfidenceMultiplier(evidenceScore: number): number {
+  // Recovered evidence earns influence gradually: 0.5 at the recovery threshold,
+  // rising to 1.0 only when recovery evidence is fully stable.
+  return 0.5 + 0.5 * Math.max(0, Math.min(1, evidenceScore));
 }
 
 function confidenceForClicks(clicks: number): number { return Math.min(1, Math.sqrt(Math.max(0, clicks) / MINIMUM_EVIDENCE_CLICKS)); }
