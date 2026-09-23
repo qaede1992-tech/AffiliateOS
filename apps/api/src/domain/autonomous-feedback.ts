@@ -11,6 +11,7 @@ export type OpportunityPerformanceSignal = {
   trendAdjustment: number;
   confidence?: number;
   scope?: "marketplace" | "global";
+  regime?: "rising" | "stable" | "declining" | "volatile";
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -49,7 +50,9 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous)
         : 0;
-      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
+      const regime = classifyPerformanceRegime(signal, previous, trendAdjustment, efficiencyAdjustment);
+      const regimeAdjustment = regime === "rising" ? 0.75 : regime === "declining" ? -0.75 : regime === "volatile" ? 0 : 0;
+      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + regimeAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
         observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
@@ -65,7 +68,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100 }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, regime }] as const;
     }));
     return new Map(entries);
   }
@@ -168,6 +171,26 @@ function calculateTrendAdjustment(current: OpportunityPerformanceSignal, previou
   const incrementalConversions = Math.max(0, current.conversionCount - previous.conversionCount);
   const incrementalRate = incrementalConversions / incrementalClicks;
   return clamp(((incrementalRate - previous.conversionRate) / Math.max(previous.conversionRate, BASELINE_CONVERSION_RATE)) * MAX_TREND_ADJUSTMENT, -MAX_TREND_ADJUSTMENT, MAX_TREND_ADJUSTMENT);
+}
+
+function classifyPerformanceRegime(
+  current: OpportunityPerformanceSignal,
+  previous: { clickCount: number; conversionCount: number; conversionRate: number } | undefined,
+  trendAdjustment: number,
+  efficiencyAdjustment: number
+): "rising" | "stable" | "declining" | "volatile" {
+  if (!previous || current.clickCount <= previous.clickCount) return "stable";
+  const incrementalClicks = current.clickCount - previous.clickCount;
+  if (incrementalClicks < MINIMUM_EVIDENCE_CLICKS) return "stable";
+  const incrementalConversions = Math.max(0, current.conversionCount - previous.conversionCount);
+  const incrementalRate = incrementalConversions / incrementalClicks;
+  const baseline = Math.max(previous.conversionRate, BASELINE_CONVERSION_RATE);
+  const relativeRateChange = (incrementalRate - previous.conversionRate) / baseline;
+  const efficiencySignal = Math.abs(efficiencyAdjustment);
+  if (Math.abs(relativeRateChange) >= 1.5 && efficiencySignal >= 0.75) return "volatile";
+  if (trendAdjustment >= 0.75 || relativeRateChange >= 0.75) return "rising";
+  if (trendAdjustment <= -0.75 || relativeRateChange <= -0.75) return "declining";
+  return "stable";
 }
 
 function clamp(value: number, min: number, max: number): number { return Math.min(max, Math.max(min, value)); }
