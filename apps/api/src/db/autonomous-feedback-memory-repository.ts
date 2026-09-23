@@ -1,4 +1,4 @@
-import { desc, eq, and } from "drizzle-orm";
+import { desc, eq, and, gte } from "drizzle-orm";
 import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } from "../domain/autonomous-feedback-memory.js";
 import { autonomousFeedbackSnapshots } from "./schema.js";
 
@@ -74,6 +74,13 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       .orderBy(desc(autonomousFeedbackSnapshots.observedAt), desc(autonomousFeedbackSnapshots.id))
       .limit(1);
     return rows[0] ? toDomain(rows[0]) : undefined;
+  }
+
+  async recentByProductAndMarketplace(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]> {
+    const rows = await this.db.select().from(autonomousFeedbackSnapshots)
+      .where(and(eq(autonomousFeedbackSnapshots.productId, productId), eq(autonomousFeedbackSnapshots.marketplaceId, marketplaceId), gte(autonomousFeedbackSnapshots.observedAt, since)))
+      .orderBy(desc(autonomousFeedbackSnapshots.observedAt), desc(autonomousFeedbackSnapshots.id));
+    return rows.map(toDomain);
   }
 
   async latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
