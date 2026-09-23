@@ -32,7 +32,9 @@ const services = createServices(
   new DrizzleAutonomousRunRepository(persistence.db),
   environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
   new DrizzleAutonomousFeedbackMemoryRepository(persistence.db),
-  autonomousCycleLock
+  autonomousCycleLock,
+  persistence.optimizationState,
+  persistence.optimizationState
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
