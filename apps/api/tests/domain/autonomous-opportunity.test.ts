@@ -21,6 +21,24 @@ const product = (id: string, overrides: Partial<Product> = {}): Product => ({
   createdAt: "2026-09-20T00:00:00.000Z",
   updatedAt: "2026-09-20T00:00:00.000Z",
   ...overrides
+  it("enforces a minimum commission rate when configured", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("low-commission"), offers: [offer("low-commission", { commissionRateBps: 500 })] },
+      { product: product("high-commission"), offers: [offer("high-commission", { commissionRateBps: 1500 })] }
+    ], { minimumScore: 0, minimumCommissionRateBps: 1000 });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["high-commission"]);
+    assert.ok(result.rejected.find((item) => item.productId === "low-commission")?.reasons.some((reason) => reason.includes("Commission rate is below minimum")));
+  });
+
+  it("enforces a minimum demand score when configured", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("low-demand", { soldCount: 0, reviewCount: 0 }), offers: [offer("low-demand")] },
+      { product: product("high-demand"), offers: [offer("high-demand")] }
+    ], { minimumScore: 0, minimumDemandScore: 50 });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["high-demand"]);
+    assert.ok(result.rejected.find((item) => item.productId === "low-demand")?.reasons.some((reason) => reason.includes("Demand score")));
+  });
+
 });
 
 const offer = (productId: string, overrides: Partial<AffiliateOffer> = {}): AffiliateOffer => ({
