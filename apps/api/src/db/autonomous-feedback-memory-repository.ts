@@ -18,6 +18,9 @@ const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   adjustment: row.adjustment,
   anomaly: (row.anomaly ?? "none") as "none" | "watch" | "halt",
   anomalyScore: row.anomalyScore ?? 0,
+  recoveryState: (row.recoveryState ?? "none") as "none" | "recovering" | "recovered",
+  recoveryClicks: row.recoveryClicks ?? 0,
+  recoveryEvidenceScore: row.recoveryEvidenceScore ?? 0,
   observedAt: row.observedAt
 });
 
