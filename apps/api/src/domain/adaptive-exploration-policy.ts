@@ -1,4 +1,4 @@
-import type { AutonomousDecisionAudit, AutonomousDecisionAuditReader } from "./autonomous-decision-audit.js";
+import type { AutonomousDecisionAuditReader } from "./autonomous-decision-audit.js";
 import type { OpportunityCandidateSource, OpportunitySelectionPoliciesByMarketplace, OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
 
 export type AdaptiveExplorationPolicy = {
