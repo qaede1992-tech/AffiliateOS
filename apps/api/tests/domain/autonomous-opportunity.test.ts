@@ -154,3 +154,15 @@ describe("autonomous opportunity selection", () => {
     assert.ok(result.rejected[0]?.reasons.includes("Does not match the required audience"));
   });
 });
+
+
+describe("autonomous commission amount guard", () => {
+  it("rejects low expected commission amounts even when the rate is sufficient", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("low-amount", { priceCents: 1000 }), offers: [offer("low-amount", { commissionRateBps: 2000, commissionAmountCents: 100 })] },
+      { product: product("high-amount"), offers: [offer("high-amount", { commissionRateBps: 1200, commissionAmountCents: 800 })] }
+    ], { minimumScore: 0, minimumCommissionAmountCents: 500 });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["high-amount"]);
+    assert.ok(result.rejected.find((item) => item.productId === "low-amount")?.reasons.includes("Commission amount is below the minimum"));
+  });
+});
