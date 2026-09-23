@@ -94,12 +94,14 @@ export class AutonomousOpportunitySelector {
     });
 
     const adjusted = rankOpportunities(scored).map((item) => {
-      const exact = performance.get(`${item.product.marketplaceId}:${item.product.id}`) ?? performance.get(item.product.id);
+      const candidatePolicy = effectivePolicy({ product: item.product, offers: [] });
+      const exact = performance.get(item.product.marketplaceId + ":" + item.product.id) ?? performance.get(item.product.id);
       const category = item.product.category?.trim().toLowerCase();
-      const categorySignal = category ? performance.get(`${item.product.marketplaceId}:category:${category}`) : undefined;
-      const audienceSignals = unique(candidatePolicy.requiredAudience ?? []).map((segment) => performance.get(`${item.product.marketplaceId}:audience:${segment.toLowerCase()}`)).filter((signal): signal is OpportunityPerformanceSignal => Boolean(signal));
-      const audienceSignal = audienceSignals.length > 0 ? audienceSignals.reduce((best, signal) => Math.abs(signal.adjustment) > Math.abs(best.adjustment) ? signal : best) : undefined;
-      return applyPerformance(item, exact ?? categorySignal ?? audienceSignal);
+      const categorySignal = category ? performance.get(item.product.marketplaceId + ":category:" + category) : undefined;
+      const audienceSignals = unique(candidatePolicy.requiredAudience ?? [])
+        .map((segment) => performance.get(item.product.marketplaceId + ":audience:" + segment.toLowerCase()))
+        .filter((signal): signal is OpportunityPerformanceSignal => Boolean(signal));
+      return applyPerformance(item, composePerformance(exact, categorySignal, audienceSignals));
     });
     const ranked = adjusted.sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
 
@@ -156,6 +158,18 @@ export class AutonomousOpportunitySelector {
     });
     return { selected, rejected, audit };
   }
+}
+
+function composePerformance(exact: OpportunityPerformanceSignal | undefined, category: OpportunityPerformanceSignal | undefined, audience: OpportunityPerformanceSignal[]): OpportunityPerformanceSignal | undefined {
+  const weighted: Array<[OpportunityPerformanceSignal, number]> = [];
+  if (exact) weighted.push([exact, 0.5]);
+  if (category) weighted.push([category, 0.3]);
+  if (audience.length) weighted.push([audience.reduce((best, signal) => Math.abs(signal.adjustment) > Math.abs(best.adjustment) ? signal : best), 0.2]);
+  if (!weighted.length) return undefined;
+  const totalWeight = weighted.reduce((sum, [, weight]) => sum + weight, 0);
+  const adjustment = weighted.reduce((sum, [signal, weight]) => sum + signal.adjustment * weight, 0) / totalWeight;
+  const evidence = weighted.reduce((sum, [signal, weight]) => sum + signal.clickCount * weight, 0) / totalWeight;
+  return { ...weighted[0][0], clickCount: evidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
 }
 
 function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPerformanceSignal): ScoredOpportunity {
