@@ -278,4 +278,49 @@ describe("campaign orchestrator", () => {
     assert.equal((await runs.findById(accepted.id))?.status, "completed");
   });
 
+
+  it("connects scheduled autonomous campaign content to the publication worker", async () => {
+    const campaigns = new StubCampaigns();
+    const tracking = new StubTracking();
+    const contents = new StubContent();
+    const products = new (await import("../../src/domain/repository.js")).InMemoryProductCatalogRepository();
+    const campaignRepo = new (await import("../../src/domain/repository.js")).InMemoryRepository<Campaign>();
+    const contentRepo = new (await import("../../src/domain/repository.js")).InMemoryRepository<Content>();
+    const accounts = new (await import("../../src/domain/repository.js")).InMemorySocialAccountRepository();
+    const jobs = new (await import("../../src/domain/publication-job.js")).InMemoryPublicationJobRepository();
+    const jobService = new (await import("../../src/domain/publication-job-service.js")).PublicationJobService(jobs);
+    const contentService = new (await import("../../src/domain/content.js")).ContentService(contentRepo, campaignRepo, products);
+    await products.save(product);
+    await campaignRepo.save(campaign);
+    await accounts.save({
+      id: "social-1", platform: "tiktok", accountReference: "test-account", status: "active", connection: {},
+      createdAt: campaign.createdAt, updatedAt: campaign.updatedAt
+    });
+    const publisher = {
+      supports: (platform: string) => platform === "tiktok",
+      publish: async () => ({ status: "published" as const, externalPostId: "post-lifecycle-1" })
+    };
+    const distribution = new (await import("../../src/domain/distribution-engine.js")).DistributionEngine(
+      contentService, accounts, [publisher], jobService
+    );
+    const orchestrator = new CampaignOrchestrator(
+      campaigns as never, tracking as never, contents as never, undefined, distribution
+    );
+    const scheduledAt = "2026-09-21T12:00:00.000Z";
+    const result = await orchestrator.execute({ opportunity, offer, product, platforms: ["tiktok"], scheduledAt });
+    const scheduledContent = result.content[0];
+    assert.equal(scheduledContent?.status, "scheduled");
+    assert.equal((await jobs.list()).length, 1);
+    assert.equal((await jobs.list())[0]?.contentId, scheduledContent?.id);
+
+    const worker = new (await import("../../src/domain/publication-worker.js")).PublicationWorker(
+      jobs, jobService,
+      new (await import("../../src/domain/publisher-executor.js")).PublisherExecutor(contentService, accounts, [publisher]),
+      contentService
+    );
+    const published = await worker.runOnce(new Date("2026-09-21T13:00:00.000Z"));
+    assert.equal(published[0]?.status, "succeeded");
+    assert.equal((await contentService.get(scheduledContent!.id)).status, "published");
+  });
+
 });
