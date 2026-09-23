@@ -11,6 +11,8 @@ export type OpportunitySelectionPolicy = {
   minimumCommissionRateBps?: number;
   minimumCommissionAmountCents?: number;
   minimumDemandScore?: number;
+  explorationRate?: number;
+  explorationMinimumEvidenceClicks?: number;
 };
 
 export type OpportunitySelectionPoliciesByMarketplace = Record<string, OpportunitySelectionPolicy>;
@@ -119,7 +121,7 @@ export class AutonomousOpportunitySelector {
         item.breakdown.demand >= minimumDemandScore &&
         item.product.status === "active";
     });
-    const selected = eligible.slice(0, Math.max(0, maximumResults));
+    const selected = selectWithExploration(eligible, maximumResults, performance, effectivePolicy);
     const selectedIds = new Set(selected.map((item) => item.product.id));
     const rejected = ranked.filter((item) => !selectedIds.has(item.product.id)).map((item) => {
       const candidatePolicy = effectivePolicy({ product: item.product, offers: [] });
@@ -158,6 +160,31 @@ export class AutonomousOpportunitySelector {
     });
     return { selected, rejected, audit };
   }
+}
+
+function selectWithExploration(
+  eligible: ScoredOpportunity[],
+  maximumResults: number,
+  performance: Map<string, OpportunityPerformanceSignal>,
+  effectivePolicy: (candidate: OpportunityCandidateSource) => OpportunitySelectionPolicy
+): ScoredOpportunity[] {
+  const limit = Math.max(0, maximumResults);
+  if (limit === 0 || eligible.length <= limit) return eligible.slice(0, limit);
+  const rate = Math.min(1, Math.max(0, effectivePolicy({ product: eligible[0].product, offers: [] }).explorationRate ?? 0.2));
+  const explorationSlots = Math.min(limit, Math.max(0, Math.floor(limit * rate)));
+  if (explorationSlots === 0) return eligible.slice(0, limit);
+  const minimumEvidence = Math.max(0, effectivePolicy({ product: eligible[0].product, offers: [] }).explorationMinimumEvidenceClicks ?? 20);
+  const exploratory = eligible.filter((item) => {
+    const signal = performance.get(item.product.marketplaceId + ":" + item.product.id);
+    return !signal || signal.clickCount < minimumEvidence;
+  });
+  if (!exploratory.length) return eligible.slice(0, limit);
+  const exploration = exploratory
+    .slice()
+    .sort((a, b) => a.product.id.localeCompare(b.product.id))
+    .slice(0, explorationSlots);
+  const explorationIds = new Set(exploration.map((item) => item.product.id));
+  return [...exploration, ...eligible.filter((item) => !explorationIds.has(item.product.id))].slice(0, limit);
 }
 
 function composePerformance(exact: OpportunityPerformanceSignal | undefined, category: OpportunityPerformanceSignal | undefined, audience: OpportunityPerformanceSignal[]): OpportunityPerformanceSignal | undefined {
