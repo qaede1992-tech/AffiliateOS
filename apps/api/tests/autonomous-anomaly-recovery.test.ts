@@ -70,3 +70,16 @@ test("recovery signals retain a stable episode identity",async()=>{
  assert.equal(signal?.anomalyRecovery,"recovered");
  assert.equal(signal?.recoveryEpisodeId,"episode-halt-1");
 });
+
+
+test("recovery episode closes after a recovered snapshot",async()=>{
+ const now=new Date("2026-01-03T00:00:00.000Z");
+ const analytics:any={overview:async()=>({campaigns:[{campaignId:"c",productId:"p",marketplaceId:"m",clickCount:180,trackingLinkCount:1,contentCount:1,publishedContentCount:1,scheduledContentCount:0,attributedConversionCount:36,attributedRevenueCents:0,attributedCommissionCents:0,conversionRate:.2}]})};
+ const halt={id:"episode-1",productId:"p",marketplaceId:"m",clickCount:100,conversionCount:10,attributedCommissionCents:0,commissionPerClickCents:0,conversionRate:.1,adjustment:0,anomaly:"halt",anomalyScore:1,recoveryState:"recovering",recoveryEvidenceScore:0,observedAt:"2026-01-01T00:00:00.000Z"};
+ const recovered={...halt,id:"recovered-1",clickCount:150,conversionCount:30,conversionRate:.2,anomaly:"none",anomalyScore:0,recoveryState:"recovered",recoveryEvidenceScore:.9,recoveryEpisodeId:"episode-1",observedAt:"2026-01-02T00:00:00.000Z"};
+ const memory:any={latestByProductAndMarketplace:async()=>recovered,recentByProductAndMarketplace:async()=>[halt,recovered],saveIfAbsent:async(s:any)=>s};
+ const provider=new AutonomousAnalyticsFeedbackProvider(analytics,memory,()=>now);
+ const signal=(await provider.getSignals()).get("m:p");
+ assert.equal(signal?.anomalyRecovery,"none");
+ assert.equal(signal?.recoveryEpisodeId,undefined);
+});
