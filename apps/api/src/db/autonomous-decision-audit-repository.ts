@@ -63,6 +63,10 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
     })));
   }
 
+  async updateExplorationEvaluation(auditId: string, evaluation: { status: string; reason: string; confidence: number }): Promise<void> {
+    await this.db.update(autonomousDecisionAudits).set({ explorationEvaluation: evaluation }).where(eq(autonomousDecisionAudits.id, auditId));
+  }
+
   async updateOutcome(auditId: string, outcome: AutonomousDecisionOutcome): Promise<void> {
     await this.db.update(autonomousDecisionAudits).set({
       outcomeOfferId: outcome.offerId ?? null,
