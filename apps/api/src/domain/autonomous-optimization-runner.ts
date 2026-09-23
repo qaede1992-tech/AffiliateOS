@@ -58,7 +58,8 @@ export class AutonomousOptimizationRunner {
           try {
             await this.outcomeWriter.updateRecovery(result.outcomeId, {
               state: signal.anomalyRecovery ?? "none",
-              evidenceScore: signal.recoveryEvidenceScore ?? 0
+              evidenceScore: signal.recoveryEvidenceScore ?? 0,
+              episodeId: signal.recoveryEpisodeId
             });
           } catch {
             // Recovery context is advisory enrichment; the action outcome remains durable.

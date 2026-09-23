@@ -18,7 +18,8 @@ const toDomain = (row: OutcomeRow): AutonomousActionOutcome => ({
   ...(row.evaluationMetrics ? { evaluation: row.evaluationMetrics } : {}),
   ...(row.evaluatedAt ? { evaluatedAt: row.evaluatedAt } : {}),
   recoveryState: row.recoveryState as AutonomousActionOutcome["recoveryState"],
-  recoveryEvidenceScore: row.recoveryEvidenceScore
+  recoveryEvidenceScore: row.recoveryEvidenceScore,
+  recoveryEpisodeId: row.recoveryEpisodeId ?? undefined
 });
 
 export class DrizzleAutonomousActionOutcomeRepository implements AutonomousActionOutcomeWriter {
@@ -40,8 +41,8 @@ export class DrizzleAutonomousActionOutcomeRepository implements AutonomousActio
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 
-  async updateRecovery(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number }) {
-    const rows = await this.db.update(autonomousActionOutcomes).set({ recoveryState: recovery.state, recoveryEvidenceScore: recovery.evidenceScore ?? 0 }).where(eq(autonomousActionOutcomes.id, id)).returning();
+  async updateRecovery(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number; episodeId?: string }) {
+    const rows = await this.db.update(autonomousActionOutcomes).set({ recoveryState: recovery.state, recoveryEvidenceScore: recovery.evidenceScore ?? 0, recoveryEpisodeId: recovery.episodeId }).where(eq(autonomousActionOutcomes.id, id)).returning();
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 

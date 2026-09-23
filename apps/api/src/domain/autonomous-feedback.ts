@@ -126,6 +126,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         recoveryState: recoveryAnchor ? (recentHalt || recoveryGate ? "recovering" : "recovered") : "none",
         recoveryClicks,
         recoveryEvidenceScore,
+        recoveryEpisodeId,
         observedAt
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);

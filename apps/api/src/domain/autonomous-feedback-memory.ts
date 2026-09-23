@@ -14,6 +14,7 @@ export type AutonomousFeedbackSnapshot = {
   recoveryState: "none" | "recovering" | "recovered";
   recoveryClicks: number;
   recoveryEvidenceScore: number;
+  recoveryEpisodeId?: string;
   observedAt: string;
 };
 
