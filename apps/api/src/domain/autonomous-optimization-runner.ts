@@ -1,6 +1,7 @@
 import type { AnalyticsService, CampaignAnalytics } from "./analytics.js";
 import type { AutonomousCampaignActionResult, AutonomousCampaignActionExecutor } from "./autonomous-campaign-action-executor.js";
 import type { OptimizationStateReader, OptimizationStateWriter } from "./autonomous-optimization.js";
+import type { AutonomousActionMetrics, AutonomousActionOutcomeWriter } from "./autonomous-action-outcome.js";
 import { OptimizationEngine, type OptimizationPolicy, type OptimizationRecommendation, type OptimizationState } from "./optimization-engine.js";
 
 export type AutonomousOptimizationRunResult = {
@@ -13,10 +14,11 @@ export class AutonomousOptimizationRunner {
   private readonly engine: OptimizationEngine;
 
   constructor(
-    private readonly analytics: Pick<AnalyticsService, "overview">,
+    private readonly analytics: Pick<AnalyticsService, "overview" | "campaign">,
     private readonly stateReader: OptimizationStateReader,
     private readonly stateWriter: OptimizationStateWriter,
     private readonly executor: AutonomousCampaignActionExecutor,
+    private readonly outcomeWriter?: AutonomousActionOutcomeWriter,
     policy: OptimizationPolicy = {}
   ) {
     this.engine = new OptimizationEngine(policy);
@@ -34,8 +36,18 @@ export class AutonomousOptimizationRunner {
     const actions: AutonomousCampaignActionResult[] = [];
     for (const recommendation of recommendations) {
       if (recommendation.action === "maintain") continue;
+      const baseline = toActionMetrics(overview.campaigns.find((campaign) => campaign.campaignId === recommendation.campaignId));
       const result = await this.executor.execute(recommendation);
       actions.push(result);
+      if (result.outcomeId && this.outcomeWriter?.updateMetrics) {
+        try {
+          const observed = toActionMetrics(await this.analytics.campaign(recommendation.campaignId));
+          await this.outcomeWriter.updateMetrics(result.outcomeId, { baseline, observed });
+        } catch {
+          // The action outcome is already persisted. Analytics enrichment must not
+          // turn a completed autonomous action into a failed action.
+        }
+      }
       await this.stateWriter.save(recommendation.campaignId, {
         action: recommendation.action,
         appliedAt: now.toISOString()
@@ -44,4 +56,15 @@ export class AutonomousOptimizationRunner {
 
     return { campaigns: overview.campaigns, recommendations, actions };
   }
+}
+
+function toActionMetrics(campaign?: CampaignAnalytics): AutonomousActionMetrics | undefined {
+  if (!campaign) return undefined;
+  return {
+    clickCount: campaign.clickCount,
+    attributedConversionCount: campaign.attributedConversionCount,
+    attributedRevenueCents: campaign.attributedRevenueCents,
+    attributedCommissionCents: campaign.attributedCommissionCents,
+    conversionRate: campaign.conversionRate
+  };
 }
