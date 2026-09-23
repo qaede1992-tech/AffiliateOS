@@ -56,7 +56,7 @@ export class ProviderEventStore {
       ))
       .orderBy(asc(providerEvents.receivedAt))
       .limit(Math.min(Math.max(limit, 1), 500));
-    return rows.map((row) => ({
+    return rows.map((row: typeof providerEvents.$inferSelect) => ({
       id: row.id,
       affiliateAccountId: row.affiliateAccountId,
       externalEventId: row.externalEventId,
