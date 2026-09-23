@@ -1,6 +1,8 @@
 import { DomainError } from "./errors.js";
 import type { Campaign } from "@affiliateos/shared";
 import type { CampaignService } from "./campaigns.js";
+import type { ContentService } from "./content.js";
+import type { DistributionEngine } from "./distribution-engine.js";
 import type { OptimizationRecommendation } from "./optimization-engine.js";
 
 export type AutonomousCampaignActionResult = {
@@ -17,7 +19,11 @@ export type AutonomousCampaignActionResult = {
  * intentionally left as non-mutating decisions.
  */
 export class AutonomousCampaignActionExecutor {
-  constructor(private readonly campaigns: Pick<CampaignService, "get" | "update">) {}
+  constructor(
+    private readonly campaigns: Pick<CampaignService, "get" | "update">,
+    private readonly content?: Pick<ContentService, "list">,
+    private readonly distribution?: Pick<DistributionEngine, "schedule">
+  ) {}
 
   async execute(recommendation: OptimizationRecommendation): Promise<AutonomousCampaignActionResult> {
     const campaign = await this.campaigns.get(recommendation.campaignId);
@@ -36,7 +42,16 @@ export class AutonomousCampaignActionExecutor {
         const updated = await this.campaigns.update(campaign.id, { status: "paused" });
         return { campaignId: campaign.id, action: recommendation.action, campaign: updated, mutated: true };
       }
-      case "scale":
+      case "scale": {
+        if (!this.content || !this.distribution) return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: false };
+        if (campaign.status !== "scheduled" && campaign.status !== "active") return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: false };
+        const drafts = (await this.content.list(campaign.id)).filter((item) => item.status === "draft");
+        const draft = drafts[0];
+        if (!draft) return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: false };
+        const scheduledAt = new Date(Date.now() + 60 * 60_000).toISOString();
+        await this.distribution.schedule({ content: draft, scheduledAt });
+        return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: true };
+      }
       case "revise-content":
       case "maintain":
         return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: false };
