@@ -5,6 +5,7 @@ export type ExplorationEvaluation = {
   reason: string;
   confidence: number;
   recoveryEpisodeId?: string;
+  episodeMetrics?: { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number };
 };
 
 export type ExplorationEvaluationPolicy = {
@@ -25,7 +26,8 @@ export function evaluateExploration(
       status: "continue-exploration",
       reason: "Recovery-phase evidence is isolated from normal exploration promotion/deprioritization learning until recovery is complete.",
       confidence: Math.min(0.25, confidenceFromEvidence(analytics.clickCount, Math.max(1, policy.minimumClicks ?? 20)) * 0.25),
-      recoveryEpisodeId: audit.recovery.recoveryEpisodeId
+      recoveryEpisodeId: audit.recovery.recoveryEpisodeId,
+      episodeMetrics: audit.recovery.episodeMetrics
     };
   }
   const minimumClicks = Math.max(1, policy.minimumClicks ?? 20);

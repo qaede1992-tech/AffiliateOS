@@ -26,7 +26,10 @@ export type OpportunityPerformanceSignal = {
   recoveryClicks?: number;
   recoveryEvidenceScore?: number;
   recoveryEpisodeId?: string;
+  recoveryEpisodeMetrics?: RecoveryEpisodeMetrics;
 };
+
+export type RecoveryEpisodeMetrics = { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
 
@@ -103,6 +106,12 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
             : stableRecovery ? "recovered" : "recovering")
         : "none";
       const recoveryEpisodeId = recoveryAnchor ? recoveryAnchor.id : undefined;
+      const recoveryEpisodeMetrics = recoveryAnchor ? {
+        recoveryDurationMs: Math.max(0, Date.parse(observedAt) - Date.parse(recoveryAnchor.observedAt)),
+        recoveryClicks,
+        conversionDelta: signal.conversionCount - recoveryAnchor.conversionCount,
+        commissionDeltaCents: signal.attributedCommissionCents - recoveryAnchor.attributedCommissionCents
+      } : undefined;
       const recoveryConfidence = anomalyRecovery === "recovered"
         ? recoveryConfidenceMultiplier(recoveryEvidenceScore)
         : 1;
@@ -131,7 +140,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore, recoveryEpisodeId }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore, recoveryEpisodeId, recoveryEpisodeMetrics }] as const;
     }));
     return new Map(entries);
   }
