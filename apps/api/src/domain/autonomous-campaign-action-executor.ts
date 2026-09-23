@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { DomainError } from "./errors.js";
+import type { AutonomousActionOutcome, AutonomousActionOutcomeWriter } from "./autonomous-action-outcome.js";
 import type { Campaign } from "@affiliateos/shared";
 import type { CampaignService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
@@ -22,12 +24,30 @@ export class AutonomousCampaignActionExecutor {
   constructor(
     private readonly campaigns: Pick<CampaignService, "get" | "update">,
     private readonly content?: Pick<ContentService, "list" | "update">,
-    private readonly distribution?: Pick<DistributionEngine, "schedule">
+    private readonly distribution?: Pick<DistributionEngine, "schedule">,
+    private readonly outcomes?: AutonomousActionOutcomeWriter
   ) {}
 
-  async execute(recommendation: OptimizationRecommendation): Promise<AutonomousCampaignActionResult> {
-    const campaign = await this.campaigns.get(recommendation.campaignId);
+  private async record(recommendation: OptimizationRecommendation, result: AutonomousCampaignActionResult, error?: unknown): Promise<void> {
+    if (!this.outcomes) return;
+    const outcome: AutonomousActionOutcome = { id: randomUUID(), campaignId: result.campaignId, action: recommendation.action, status: error ? "failed" : result.mutated ? "mutated" : "skipped", mutated: result.mutated, observedAt: new Date().toISOString(), ...(error ? { error: error instanceof Error ? error.message : String(error) } : {}) };
+    await this.outcomes.save(outcome);
+  }
 
+  async execute(recommendation: OptimizationRecommendation): Promise<AutonomousCampaignActionResult> {
+    try {
+      const campaign = await this.campaigns.get(recommendation.campaignId);
+
+      const result = await this.executeInternal(recommendation, campaign);
+      await this.record(recommendation, result);
+      return result;
+    } catch (error) {
+      if (this.outcomes) await this.outcomes.save({ id: randomUUID(), campaignId: recommendation.campaignId, action: recommendation.action, status: "failed", mutated: false, observedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  }
+
+  private async executeInternal(recommendation: OptimizationRecommendation, campaign: Campaign): Promise<AutonomousCampaignActionResult> {
     switch (recommendation.action) {
       case "pause": {
         if (campaign.status === "paused") {
