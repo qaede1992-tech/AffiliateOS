@@ -1,4 +1,5 @@
 import type { AnalyticsService, CampaignAnalytics } from "./analytics.js";
+import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import {
   OptimizationEngine,
   type OptimizationPolicy,
@@ -44,7 +45,8 @@ export class AutonomousOptimizationService {
   constructor(
     private readonly analytics: Pick<AnalyticsService, "overview">,
     policy: OptimizationPolicy = {},
-    private readonly state: OptimizationStateReader = new InMemoryOptimizationStateReader()
+    private readonly state: OptimizationStateReader = new InMemoryOptimizationStateReader(),
+    private readonly feedback?: AutonomousFeedbackProvider
   ) {
     this.engine = new OptimizationEngine(policy);
   }
@@ -57,9 +59,29 @@ export class AutonomousOptimizationService {
       if (previous) state.set(campaign.campaignId, previous);
     }
 
-    return {
-      campaigns: overview.campaigns,
-      recommendations: this.engine.recommend(overview.campaigns, state, now)
-    };
+    const recommendations = this.engine.recommend(overview.campaigns, state, now);
+    if (!this.feedback) {
+      return { campaigns: overview.campaigns, recommendations };
+    }
+
+    const performance = await this.feedback.getSignals({ observationKey: "autonomous-optimization" });
+    const guardedRecommendations = recommendations.map((recommendation) => {
+      const campaign = overview.campaigns.find((item) => item.campaignId === recommendation.campaignId);
+      const signal = campaign?.productId && campaign.marketplaceId
+        ? performance.get(campaign.marketplaceId + ":" + campaign.productId) ?? performance.get(campaign.productId)
+        : undefined;
+      if (signal?.anomaly !== "halt") return recommendation;
+      return {
+        ...recommendation,
+        action: "maintain" as const,
+        confidence: Math.min(recommendation.confidence, 0.5),
+        reasons: [
+          "Optimization action held because the associated product is under an active performance anomaly halt.",
+          "Wait for the anomaly cooldown and fresh evidence before changing campaign distribution or content."
+        ]
+      };
+    });
+
+    return { campaigns: overview.campaigns, recommendations: guardedRecommendations };
   }
 }
