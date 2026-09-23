@@ -28,10 +28,11 @@ export class AutonomousCampaignActionExecutor {
     private readonly outcomes?: AutonomousActionOutcomeWriter
   ) {}
 
-  private async record(recommendation: OptimizationRecommendation, result: AutonomousCampaignActionResult, error?: unknown): Promise<void> {
-    if (!this.outcomes) return;
+  private async record(recommendation: OptimizationRecommendation, result: AutonomousCampaignActionResult, error?: unknown): Promise<string | undefined> {
+    if (!this.outcomes) return undefined;
     const outcome: AutonomousActionOutcome = { id: randomUUID(), campaignId: result.campaignId, action: recommendation.action, status: error ? "failed" : result.mutated ? "mutated" : "skipped", mutated: result.mutated, observedAt: new Date().toISOString(), ...(error ? { error: error instanceof Error ? error.message : String(error) } : {}) };
-    await this.outcomes.save(outcome);
+    const saved = await this.outcomes.save(outcome);
+    return saved.id;
   }
 
   async execute(recommendation: OptimizationRecommendation): Promise<AutonomousCampaignActionResult> {
