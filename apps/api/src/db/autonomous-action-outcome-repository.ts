@@ -19,7 +19,7 @@ const toDomain = (row: OutcomeRow): AutonomousActionOutcome => ({
   ...(row.evaluatedAt ? { evaluatedAt: row.evaluatedAt } : {}),
   recoveryState: row.recoveryState as AutonomousActionOutcome["recoveryState"],
   recoveryEvidenceScore: row.recoveryEvidenceScore,
-  recoveryEpisodeId: row.recoveryEpisodeId ?? undefined
+  recoveryEpisodeId: row.recoveryEpisodeId ?? undefined,\n    recoveryPolicy: row.recoveryPolicy as AutonomousActionOutcome["recoveryPolicy"]
 });
 
 export class DrizzleAutonomousActionOutcomeRepository implements AutonomousActionOutcomeWriter {
