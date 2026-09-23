@@ -97,3 +97,45 @@ test("creating a conversion rejects an inactive offer", async () => {
   assert.equal((await conversions.list()).length, 0);
   assert.equal((await commissions.list()).length, 0);
 });
+
+test("reconciling a provider rejection preserves rejected state on conversion and commission", async () => {
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryRepository<Commission>();
+  const affiliate: Affiliate = {
+    id: "00000000-0000-4000-8000-000000000009",
+    name: "Partner",
+    email: "partner@example.com",
+    status: "active",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  };
+  const offer: Offer = {
+    id: "00000000-0000-4000-8000-000000000010",
+    name: "Standard",
+    status: "active",
+    commissionRateBps: 1000,
+    createdAt: "2026-01-01T00:00:00.000Z"
+  };
+  await affiliates.save(affiliate);
+  await offers.save(offer);
+
+  const service = new ConversionService(
+    conversions,
+    commissions,
+    affiliates,
+    offers,
+    { run: async (work) => work({ conversions, commissions }) }
+  );
+  const conversion = await service.create({
+    affiliateId: affiliate.id,
+    offerId: offer.id,
+    amountCents: 10_000
+  });
+
+  const reconciled = await service.reconcileProviderState(conversion.id, "rejected");
+
+  assert.equal(reconciled.status, "rejected");
+  assert.equal((await conversions.findById(conversion.id))?.status, "rejected");
+  assert.equal((await commissions.findByConversionId(conversion.id))?.status, "rejected");
+});
