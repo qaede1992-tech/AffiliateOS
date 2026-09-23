@@ -23,6 +23,8 @@ export type OpportunityPerformanceSignal = {
   anomaly?: PerformanceAnomaly;
   anomalyScore?: number;
   anomalyRecovery?: AnomalyRecoveryState;
+  recoveryClicks?: number;
+  recoveryEvidenceScore?: number;
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -114,7 +116,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore }] as const;
     }));
     return new Map(entries);
   }

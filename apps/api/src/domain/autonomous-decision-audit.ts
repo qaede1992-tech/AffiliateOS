@@ -4,7 +4,15 @@ import type { OpportunitySelectionAudit } from "./autonomous-opportunity.js";
 export type AutonomousDecisionAudit = OpportunitySelectionAudit & {
   cycleId: string;
   createdAt: string;
+  recovery?: AutonomousDecisionRecovery;
   outcome?: AutonomousDecisionOutcome;
+};
+
+export type AutonomousDecisionRecovery = {
+  anomaly: "none" | "watch" | "halt";
+  recoveryState: "none" | "recovering" | "recovered";
+  recoveryClicks: number;
+  recoveryEvidenceScore: number;
 };
 
 export type AutonomousDecisionOutcome = {

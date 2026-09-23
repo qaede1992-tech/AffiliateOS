@@ -267,6 +267,13 @@
       "when": 1790134262000,
       "tag": "0040_autonomous_anomaly_recovery_state",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790134263000,
+      "tag": "0041_autonomous_decision_recovery_audit",
+      "breakpoints": true
     }
   ]
 }
