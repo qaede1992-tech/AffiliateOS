@@ -34,6 +34,13 @@ const services = createServices(
   new DrizzleAutonomousFeedbackMemoryRepository(persistence.db),
   autonomousCycleLock,
   persistence.optimizationState,
+  persistence.optimizationState,
+  {
+    minimumScore: environment.AUTONOMOUS_MINIMUM_SCORE,
+    maximumResults: environment.AUTONOMOUS_MAXIMUM_RESULTS,
+    minimumCommissionRateBps: environment.AUTONOMOUS_MINIMUM_COMMISSION_BPS,
+    minimumDemandScore: environment.AUTONOMOUS_MINIMUM_DEMAND_SCORE
+  },
   persistence.optimizationState
 );
 const app = createApp(services, {
