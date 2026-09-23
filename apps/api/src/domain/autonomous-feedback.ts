@@ -1,5 +1,5 @@
 import type { AnalyticsOverview, CampaignAnalytics } from "./analytics.js";
-import type { AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
+import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } from "./autonomous-feedback-memory.js";
 
 export type PerformanceWindow = { clickCount:number; conversionCount:number; conversionRate:number; confidence:number; };
 export type PerformanceRegime = "rising" | "stable" | "declining" | "volatile";
