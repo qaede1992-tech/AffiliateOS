@@ -117,6 +117,7 @@ export class AutonomousOpportunitySelector {
       const minimumScore = candidatePolicy.minimumScore ?? 60;
       const requiredAudience = unique(candidatePolicy.requiredAudience ?? []);
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
+      const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       return {
         productId: item.product.id,
@@ -135,7 +136,7 @@ export class AutonomousOpportunitySelector {
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       const reasons = selectedIds.has(item.product.id)
         ? ["Selected"]
-        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore);
+        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore);
       return {
         auditId: randomUUID(),
         productId: item.product.id,
