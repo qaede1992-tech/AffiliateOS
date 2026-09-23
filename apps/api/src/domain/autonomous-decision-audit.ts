@@ -14,6 +14,7 @@ export type AutonomousDecisionRecovery = {
   recoveryClicks: number;
   recoveryEvidenceScore: number;
   recoveryEpisodeId?: string;
+  episodeMetrics?: { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number };
 };
 
 export type AutonomousDecisionOutcome = {
