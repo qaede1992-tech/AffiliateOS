@@ -1,5 +1,5 @@
 import type { AnalyticsOverview, CampaignAnalytics } from "./analytics.js";
-import type { AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
+import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } from "./autonomous-feedback-memory.js";
 
 export type OpportunityPerformanceSignal = {
   clickCount: number;
@@ -11,6 +11,10 @@ export type OpportunityPerformanceSignal = {
   trendAdjustment: number;
   confidence?: number;
   scope?: "marketplace" | "global";
+  recentClickCount?: number;
+  recentConversionCount?: number;
+  recentConversionRate?: number;
+  recentWindowDays?: number;
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -25,6 +29,8 @@ const MAX_ADJUSTMENT = 8;
 const MAX_TREND_ADJUSTMENT = 2;
 const MAX_EFFICIENCY_ADJUSTMENT = 2;
 const MIN_EFFICIENCY_EVIDENCE_CLICKS = 20;
+const RECENT_WINDOW_DAYS = 7;
+const RECENT_WINDOW_MS = RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
   constructor(
@@ -46,10 +52,17 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const trendAdjustment = previous && signal.clickCount > previous.clickCount
         ? calculateTrendAdjustment(signal, previous)
         : 0;
+      const recentSnapshots = previous && this.memory!.recentByProductAndMarketplace
+        ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId!, new Date(Date.parse(observedAt) - RECENT_WINDOW_MS).toISOString())
+        : [];
+      const recent = buildRecentWindow(signal, recentSnapshots);
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous)
         : 0;
-      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
+      const windowAdjustment = recent.recentClickCount >= MINIMUM_EVIDENCE_CLICKS
+        ? calculateWindowAdjustment(recent.recentConversionRate)
+        : 0;
+      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
         observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
@@ -65,7 +78,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100 }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment + windowAdjustment) * 100) / 100, ...recent }] as const;
     }));
     return new Map(entries);
   }
@@ -155,6 +168,18 @@ function splitSignalKey(key: string): [string | undefined, string] {
 }
 
 function confidenceForClicks(clicks: number): number { return Math.min(1, Math.sqrt(Math.max(0, clicks) / MINIMUM_EVIDENCE_CLICKS)); }
+
+function buildRecentWindow(current: OpportunityPerformanceSignal, snapshots: AutonomousFeedbackSnapshot[]): { recentClickCount: number; recentConversionCount: number; recentConversionRate: number; recentWindowDays: number } {
+  if (!snapshots.length) return { recentClickCount: 0, recentConversionCount: 0, recentConversionRate: 0, recentWindowDays: RECENT_WINDOW_DAYS };
+  const oldest = snapshots[snapshots.length - 1];
+  const clicks = Math.max(0, current.clickCount - oldest.clickCount);
+  const conversions = Math.max(0, current.conversionCount - oldest.conversionCount);
+  return { recentClickCount: clicks, recentConversionCount: conversions, recentConversionRate: clicks ? conversions / clicks : 0, recentWindowDays: RECENT_WINDOW_DAYS };
+}
+
+function calculateWindowAdjustment(conversionRate: number): number {
+  return clamp(((conversionRate - BASELINE_CONVERSION_RATE) / BASELINE_CONVERSION_RATE) * (MAX_ADJUSTMENT * 0.5), -MAX_ADJUSTMENT * 0.5, MAX_ADJUSTMENT * 0.5);
+}
 
 function calculateEfficiencyAdjustment(current: OpportunityPerformanceSignal, previous: { clickCount: number; commissionPerClickCents: number }): number {
   if (previous.clickCount < MIN_EFFICIENCY_EVIDENCE_CLICKS || previous.commissionPerClickCents <= 0) return 0;
