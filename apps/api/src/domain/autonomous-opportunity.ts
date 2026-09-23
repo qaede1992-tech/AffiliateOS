@@ -224,7 +224,11 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
 function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPerformanceSignal): ScoredOpportunity {
   if (!signal || signal.adjustment === 0) return item;
   const regimeConfidence = signal.regimeConfidence ?? 1;
-  const recoveryMultiplier = signal.anomalyRecovery === "recovering" ? 0.25 : 1;
+  const recoveryMultiplier = signal.anomalyRecovery === "recovering"
+    ? 0.25
+    : signal.anomalyRecovery === "recovered"
+      ? 0.5 + 0.5 * Math.max(0, Math.min(1, signal.recoveryEvidenceScore ?? 0))
+      : 1;
   const guardedAdjustment = (signal.regime === "volatile" ? signal.adjustment * Math.min(0.5, regimeConfidence) : signal.adjustment * regimeConfidence) * recoveryMultiplier;
   const score = Math.round(Math.min(100, Math.max(0, item.score + guardedAdjustment)) * 100) / 100;
   const direction = guardedAdjustment > 0 ? "positive" : "negative";
