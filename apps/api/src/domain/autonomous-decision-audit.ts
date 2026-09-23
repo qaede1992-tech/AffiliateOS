@@ -40,5 +40,5 @@ export interface AutonomousDecisionAuditRepository {
   updateExplorationEvaluation?(auditId: string, evaluation: import("./exploration-evaluator.js").ExplorationEvaluation): Promise<void>;
 }
 
-export type AutonomousDecisionAuditQuery = { cycleId?: string; marketplaceId?: string; productId?: string; selected?: boolean; limit?: number };
+export type AutonomousDecisionAuditQuery = { cycleId?: string; marketplaceId?: string; productId?: string; recoveryEpisodeId?: string; selected?: boolean; limit?: number };
 export interface AutonomousDecisionAuditReader { list(query?: AutonomousDecisionAuditQuery): Promise<AutonomousDecisionAudit[]>; }
