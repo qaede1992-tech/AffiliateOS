@@ -33,7 +33,11 @@ export class AutonomousOptimizationRunner {
       if (previous) state.set(campaign.campaignId, previous);
     }
 
-    await this.evaluateDueActionOutcomes(overview.campaigns, now);
+    const evaluations = await this.evaluateDueActionOutcomes(overview.campaigns, now);
+    for (const [campaignId, evaluation] of evaluations) {
+      const previous = state.get(campaignId);
+      if (previous) state.set(campaignId, { ...previous, evaluation });
+    }
 
     const recommendations = this.engine.recommend(overview.campaigns, state, now);
     const actions: AutonomousCampaignActionResult[] = [];
@@ -60,8 +64,9 @@ export class AutonomousOptimizationRunner {
     return { campaigns: overview.campaigns, recommendations, actions };
   }
 
-  private async evaluateDueActionOutcomes(campaigns: CampaignAnalytics[], now: Date): Promise<void> {
-    if (!this.outcomeWriter?.latestByCampaign || !this.outcomeWriter.updateEvaluation) return;
+  private async evaluateDueActionOutcomes(campaigns: CampaignAnalytics[], now: Date): Promise<Map<string, NonNullable<OptimizationState["evaluation"]>>> {
+    const evaluations = new Map<string, NonNullable<OptimizationState["evaluation"]>>();
+    if (!this.outcomeWriter?.latestByCampaign || !this.outcomeWriter.updateEvaluation) return evaluations;
     for (const campaign of campaigns) {
       try {
         const outcome = await this.outcomeWriter.latestByCampaign(campaign.campaignId);
@@ -71,11 +76,25 @@ export class AutonomousOptimizationRunner {
         const current = toActionMetrics(campaign);
         if (!current) continue;
         await this.outcomeWriter.updateEvaluation(outcome.id, current, now.toISOString());
+        const baselineRate = outcome.baseline?.conversionRate ?? outcome.observed?.conversionRate;
+        const baselineCommissionPerClick = outcome.baseline && outcome.baseline.clickCount > 0
+          ? outcome.baseline.attributedCommissionCents / outcome.baseline.clickCount
+          : outcome.observed && outcome.observed.clickCount > 0
+            ? outcome.observed.attributedCommissionCents / outcome.observed.clickCount
+            : 0;
+        const currentCommissionPerClick = current.clickCount > 0 ? current.attributedCommissionCents / current.clickCount : 0;
+        evaluations.set(campaign.campaignId, {
+          outcomeId: outcome.id,
+          evaluatedAt: now.toISOString(),
+          conversionRateDelta: current.conversionRate - (baselineRate ?? current.conversionRate),
+          commissionPerClickDeltaCents: currentCommissionPerClick - baselineCommissionPerClick
+        });
       } catch {
         // Evaluation is observational. A transient analytics/persistence failure
         // must not block the next autonomous optimization cycle.
       }
     }
+    return evaluations;
   }
 }
 
