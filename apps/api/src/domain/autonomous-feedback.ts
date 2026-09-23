@@ -35,6 +35,7 @@ const MAX_ADJUSTMENT = 8;
 const MAX_TREND_ADJUSTMENT = 2;
 const MAX_EFFICIENCY_ADJUSTMENT = 2;
 const MIN_EFFICIENCY_EVIDENCE_CLICKS = 20;
+const ANOMALY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const LEARNING_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
@@ -68,7 +69,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const regime = windows ? classifyWindowRegime(windows) : "stable";
       const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
       const anomalyScore = windows ? calculateAnomalyScore(windows) : 0;
-      const anomaly = classifyAnomaly(anomalyScore);
+      const recentHalt = previous?.anomaly === "halt" && Date.parse(observedAt) - Date.parse(previous.observedAt) < ANOMALY_COOLDOWN_MS;
+      const anomaly = recentHalt ? "halt" : classifyAnomaly(anomalyScore);
       const windowAdjustment = windows && anomaly !== "halt"
         ? calculateWindowAdjustment(windows, regime) * regimeConfidence * (anomaly === "watch" ? 0.35 : 1)
         : 0;
@@ -84,6 +86,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         commissionPerClickCents: signal.commissionPerClickCents,
         conversionRate: signal.conversionRate,
         adjustment,
+        anomaly,
+        anomalyScore,
         observedAt
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);

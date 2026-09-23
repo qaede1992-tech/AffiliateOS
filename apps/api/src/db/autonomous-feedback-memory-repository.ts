@@ -16,6 +16,8 @@ const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   commissionPerClickCents: row.commissionPerClickCents,
   conversionRate: row.conversionRate,
   adjustment: row.adjustment,
+  anomaly: (row.anomaly ?? "none") as "none" | "watch" | "halt",
+  anomalyScore: row.anomalyScore ?? 0,
   observedAt: row.observedAt
 });
 
@@ -34,6 +36,8 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       commissionPerClickCents: snapshot.commissionPerClickCents,
       conversionRate: snapshot.conversionRate,
       adjustment: snapshot.adjustment,
+      anomaly: snapshot.anomaly,
+      anomalyScore: snapshot.anomalyScore,
       observedAt: snapshot.observedAt
     });
     return snapshot;
