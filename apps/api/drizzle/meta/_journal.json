@@ -183,6 +183,13 @@
       "when": 1791112800000,
       "tag": "0027_autonomous_decision_outcomes",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791199200000,
+      "tag": "0028_autonomous_feedback_marketplace",
+      "breakpoints": true
     }
   ]
 }
