@@ -7,6 +7,8 @@ export type OpportunitySelectionPolicy = {
   maximumResults?: number;
   requiredAudience?: AudienceSegment[];
   targetPriceMaxCents?: number;
+  minimumCommissionRateBps?: number;
+  minimumDemandScore?: number;
 };
 
 export type OpportunityCandidateSource = {
@@ -24,13 +26,17 @@ const unique = <T>(items: T[]): T[] => [...new Set(items)];
 const rejectionReasons = (
   item: ScoredOpportunity,
   minimumScore: number,
-  requiredAudience: AudienceSegment[]
+  requiredAudience: AudienceSegment[],
+  minimumCommissionRateBps: number,
+  minimumDemandScore: number
 ): string[] => {
   const reasons = [...item.reasons];
   if (item.product.status !== "active") reasons.push("Product is not active");
   if (item.score < minimumScore) reasons.push(`Score ${item.score} is below minimum ${minimumScore}`);
   if (!item.offerId) reasons.push("No eligible affiliate offer");
   if (requiredAudience.length > 0 && item.breakdown.audienceFit <= 0) reasons.push("Does not match the required audience");
+  if ((item.offerId ? 1 : 0) && (item.breakdown.commission * 2_000) < minimumCommissionRateBps) reasons.push(`Commission rate is below minimum ${minimumCommissionRateBps} bps`);
+  if (item.breakdown.demand < minimumDemandScore) reasons.push(`Demand score ${item.breakdown.demand} is below minimum ${minimumDemandScore}`);
   return unique(reasons);
 };
 
@@ -43,6 +49,8 @@ export class AutonomousOpportunitySelector {
     const minimumScore = policy.minimumScore ?? 60;
     const maximumResults = policy.maximumResults ?? 10;
     const requiredAudience = unique(policy.requiredAudience ?? []);
+    const minimumCommissionRateBps = Math.max(0, policy.minimumCommissionRateBps ?? 0);
+    const minimumDemandScore = Math.max(0, Math.min(100, policy.minimumDemandScore ?? 0));
     const mergedCandidates = new Map<string, OpportunityCandidateSource>();
     for (const candidate of candidates) {
       const existing = mergedCandidates.get(candidate.product.id);
@@ -68,7 +76,10 @@ export class AutonomousOpportunitySelector {
     const ranked = adjusted.sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
 
     const eligible = ranked.filter((item) => item.score >= minimumScore && Boolean(item.offerId) &&
-      (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) && item.product.status === "active");
+      (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
+      item.breakdown.commission * 2_000 >= minimumCommissionRateBps &&
+      item.breakdown.demand >= minimumDemandScore &&
+      item.product.status === "active");
     const selected = eligible.slice(0, Math.max(0, maximumResults));
     const selectedIds = new Set(selected.map((item) => item.product.id));
     const rejected = ranked.filter((item) => !selectedIds.has(item.product.id)).map((item) => ({
@@ -76,7 +87,7 @@ export class AutonomousOpportunitySelector {
       score: item.score,
       reasons: selected.length < eligible.length && eligible.some((candidate) => candidate.product.id === item.product.id)
         ? ["Selection limit reached"]
-        : rejectionReasons(item, minimumScore, requiredAudience)
+        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore)
     }));
     return { selected, rejected };
   }
