@@ -4,7 +4,7 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, createContentSchema, updateContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, createContentSchema, updateContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { requireOperator } from "./auth.js";
@@ -13,6 +13,10 @@ const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   app.get("/api/v1/publishers/readiness", async () => list(services.publisherReadiness.list()));
   app.get("/api/v1/autonomous/status", async () => services.autonomousScheduler.status);
+  app.get("/api/v1/autonomous/decision-audits", writeGuard, async (request, reply) => {
+    if (!services.autonomousDecisionAudits) return reply.status(503).send({ error: "AUTONOMOUS_AUDIT_UNAVAILABLE", message: "Autonomous decision audit persistence is unavailable." });
+    return list(await services.autonomousDecisionAudits.list(autonomousDecisionAuditQuerySchema.parse(request.query)));
+  });
   app.get("/api/v1/autonomous/runs", writeGuard, async (request) => { const query = autonomousRunQuerySchema.parse(request.query); return list(await services.autonomousRuns.list(query)); });
   app.get("/api/v1/autonomous/runs/:runId", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); return services.autonomousRuns.findById(runId); });
   app.post("/api/v1/autonomous/runs/:runId/retry", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); const run = await services.autonomousRuns.retry(runId); auditSecurityEvent(request.log, request, "autonomous_run_retry_requested", { runId, status: run.status, attemptCount: run.attemptCount }); return run; });
