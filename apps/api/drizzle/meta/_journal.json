@@ -190,6 +190,13 @@
       "when": 1791199200000,
       "tag": "0028_autonomous_feedback_marketplace",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791285600000,
+      "tag": "0029_autonomous_feedback_commission_efficiency",
+      "breakpoints": true
     }
   ]
 }
