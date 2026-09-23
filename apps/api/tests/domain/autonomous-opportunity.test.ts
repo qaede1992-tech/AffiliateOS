@@ -47,9 +47,9 @@ describe("autonomous opportunity selection", () => {
       { product: product("a", { marketplaceId: "market-1" }), offers: [offer("a")] },
       { product: product("b", { marketplaceId: "market-2" }), offers: [offer("b")] }
     ], { minimumScore: 0, maximumResults: 1 }, new Map([
-      ["market-1:a", { clickCount: 100, conversionRate: 0.1, attributedCommissionCents: 1000, adjustment: 8, trendAdjustment: 0 }],
-      ["a", { clickCount: 100, conversionRate: 0, attributedCommissionCents: 0, adjustment: -8, trendAdjustment: 0 }],
-      ["market-2:b", { clickCount: 100, conversionRate: 0, attributedCommissionCents: 0, adjustment: -8, trendAdjustment: 0 }]
+      ["market-1:a", { clickCount: 100, conversionRate: 0.1, attributedCommissionCents: 1000, commissionPerClickCents: 0, adjustment: 8, trendAdjustment: 0 }],
+      ["a", { clickCount: 100, conversionRate: 0, attributedCommissionCents: 0, commissionPerClickCents: 0, adjustment: -8, trendAdjustment: 0 }],
+      ["market-2:b", { clickCount: 100, conversionRate: 0, attributedCommissionCents: 0, commissionPerClickCents: 0, adjustment: -8, trendAdjustment: 0 }]
     ]));
     assert.equal(result.selected[0]?.product.id, "a");
     assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("positive")));
@@ -82,7 +82,7 @@ describe("autonomous opportunity selection", () => {
   it("applies performance feedback before enforcing the selection limit", () => {
     const candidates = ["a", "b"].map((id) => ({ product: product(id), offers: [offer(id)] }));
     const result = new AutonomousOpportunitySelector().select(candidates, { minimumScore: 0, maximumResults: 1 }, new Map([
-      ["b", { clickCount: 100, conversionRate: 0.1, attributedCommissionCents: 1000, adjustment: 8, trendAdjustment: 0 }]
+      ["b", { clickCount: 100, conversionRate: 0.1, attributedCommissionCents: 1000, commissionPerClickCents: 0, adjustment: 8, trendAdjustment: 0 }]
     ]));
     assert.deepEqual(result.selected.map((item) => item.product.id), ["b"]);
     assert.equal(result.rejected[0]?.productId, "a");

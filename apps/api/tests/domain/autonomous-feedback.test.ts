@@ -1,10 +1,5 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
-import { buildSignals, AutonomousAnalyticsFeedbackProvider } from "../../src/domain/autonomous-feedback.js";
-import { InMemoryAutonomousFeedbackMemoryRepository } from "../../src/domain/autonomous-feedback-memory.js";
-
 const campaign = (productId: string, clicks: number, conversions: number, commission = 0, marketplaceId?: string) => ({
-  campaignId: `${productId}-campaign`, productId, marketplaceId, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
+  campaignId: productId + "-campaign", productId, marketplaceId, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
   publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: conversions,
   attributedRevenueCents: conversions * 10000, attributedCommissionCents: commission, conversionRate: clicks ? conversions / clicks : 0
 });
@@ -15,23 +10,18 @@ describe("Autonomous analytics feedback", () => {
       clickCount: 200, trackingLinkCount: 2, campaignCount: 2, contentCount: 2,
       publishedContentCount: 2, scheduledContentCount: 0, attributedConversionCount: 12,
       attributedRevenueCents: 120000, attributedCommissionCents: 12000, conversionRate: 0.06,
-      campaigns: [
-        campaign("p1", 100, 10, 10000, "market-1"),
-        campaign("p1", 100, 2, 2000, "market-2")
-      ]
+      campaigns: [campaign("p1", 100, 10, 10000, "market-1"), campaign("p1", 100, 2, 2000, "market-2")]
     };
     const signals = buildSignals(overview);
     assert.equal(signals.get("market-1:p1")?.adjustment, 8);
     assert.equal(signals.get("market-2:p1")?.adjustment, 0);
     assert.equal(signals.get("p1"), undefined);
-
     const memory = new InMemoryAutonomousFeedbackMemoryRepository();
     const provider = new AutonomousAnalyticsFeedbackProvider({ overview: async () => overview }, memory, () => new Date("2026-09-21T02:00:00.000Z"));
     await provider.getSignals({ observationKey: "cycle-1" });
     assert.equal((await memory.latestByProductAndMarketplace("p1", "market-1"))?.adjustment, 8);
     assert.equal((await memory.latestByProductAndMarketplace("p1", "market-2"))?.adjustment, 0);
   });
-
 
   it("does not adjust products without enough click evidence", () => {
     const signals = buildSignals({ clickCount: 10, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 10000, attributedCommissionCents: 500, conversionRate: 0.1, campaigns: [campaign("p1", 10, 1, 500)] });
@@ -54,10 +44,8 @@ describe("Autonomous analytics feedback", () => {
     let current = { clickCount: 100, conversions: 2 };
     const provider = new AutonomousAnalyticsFeedbackProvider(
       { overview: async () => ({ ...current, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: current.conversions, attributedRevenueCents: 100000, attributedCommissionCents: 10000, conversionRate: current.conversions / current.clickCount, campaigns: [campaign("p1", current.clickCount, current.conversions, 10000)] }) },
-      memory,
-      () => new Date("2026-09-21T01:00:00.000Z")
+      memory, () => new Date("2026-09-21T01:00:00.000Z")
     );
-
     await provider.getSignals();
     current = { clickCount: 120, conversions: 4 };
     const signal = (await provider.getSignals()).get("p1");
@@ -65,8 +53,21 @@ describe("Autonomous analytics feedback", () => {
     assert.equal(signal.conversionCount, 4);
     assert.equal(signal.trendAdjustment, 2);
     assert.equal(signal.adjustment, 7.33);
-    const snapshot = await memory.latestByProduct("p1");
-    assert.ok(snapshot);
-    assert.equal(snapshot.conversionCount, 4);
+    assert.equal((await memory.latestByProduct("p1"))?.commissionPerClickCents, 83.33333333333333);
+  });
+
+  it("tracks commission efficiency and keeps its contribution bounded", async () => {
+    const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+    let commission = 1000;
+    const provider = new AutonomousAnalyticsFeedbackProvider(
+      { overview: async () => ({ clickCount: 100, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 2, attributedRevenueCents: 100000, attributedCommissionCents: commission, conversionRate: 0.02, campaigns: [campaign("p1", 100, 2, commission, "market-1")] }) },
+      memory, () => new Date("2026-09-21T03:00:00.000Z")
+    );
+    const first = (await provider.getSignals({ observationKey: "efficiency-1" })).get("market-1:p1");
+    assert.equal(first?.commissionPerClickCents, 10);
+    commission = 2000;
+    const second = (await provider.getSignals({ observationKey: "efficiency-2" })).get("market-1:p1");
+    assert.equal(second?.commissionPerClickCents, 20);
+    assert.ok((second?.adjustment ?? 0) <= 8);
   });
 });
