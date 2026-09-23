@@ -17,7 +17,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
 
   async list(query: AutonomousDecisionAuditQuery = {}): Promise<AutonomousDecisionAudit[]> {
     const limit = Math.min(Math.max(1, query.limit ?? 100), 500);
-    const filters = [query.cycleId ? eq(autonomousDecisionAudits.cycleId, query.cycleId) : undefined, query.marketplaceId ? eq(autonomousDecisionAudits.marketplaceId, query.marketplaceId) : undefined, query.productId ? eq(autonomousDecisionAudits.productId, query.productId) : undefined, query.selected === undefined ? undefined : eq(autonomousDecisionAudits.selected, query.selected)].filter(Boolean) as any[];
+    const filters = [query.cycleId ? eq(autonomousDecisionAudits.cycleId, query.cycleId) : undefined, query.marketplaceId ? eq(autonomousDecisionAudits.marketplaceId, query.marketplaceId) : undefined, query.productId ? eq(autonomousDecisionAudits.productId, query.productId) : undefined, query.recoveryEpisodeId ? sql`${autonomousDecisionAudits.recovery}->>'recoveryEpisodeId' = ${query.recoveryEpisodeId}` : undefined, query.selected === undefined ? undefined : eq(autonomousDecisionAudits.selected, query.selected)].filter(Boolean) as any[];
     const rows = await this.db.select().from(autonomousDecisionAudits).where(filters.length ? and(...filters) : undefined).orderBy(desc(autonomousDecisionAudits.createdAt)).limit(limit);
     const campaignIds = rows.map((row: any) => row.outcomeCampaignId).filter((id: unknown): id is string => typeof id === "string");
     const analyticsByCampaign = new Map<string, AutonomousDecisionAuditAnalytics>();
