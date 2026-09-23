@@ -9,6 +9,7 @@ export type OpportunityScoringInput = {
 
 export type OpportunityScoreBreakdown = {
   commission: number;
+  commissionAmountCents: number;
   demand: number;
   audienceFit: number;
   socialProof: number;
@@ -54,11 +55,12 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
       score: 0,
       reasons: ["Product is inactive"],
       disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.",
-      breakdown: { commission: 0, demand: 0, audienceFit: 0, socialProof: 0, priceAppeal: 0, availability: 0, confidencePenalty: 0, total: 0 }
+      breakdown: { commission: 0, commissionAmountCents: 0, demand: 0, audienceFit: 0, socialProof: 0, priceAppeal: 0, availability: 0, confidencePenalty: 0, total: 0 }
     };
   }
   const offer = bestOffer(product.id, input.offers); const audience = audienceFit(product, input.audience ?? []);
   const commission = offer?.commissionRateBps !== undefined ? clamp((offer.commissionRateBps / 2_000) * 100) : 0;
+  const commissionAmountCents = Math.max(0, offer?.commissionAmountCents ?? 0);
   const demand = clamp(logScore(product.soldCount, 5) * 0.7 + logScore(product.reviewCount, 5) * 0.3);
   const socialProof = clamp((product.ratingMilli ?? 0) / 50 * 0.7 + logScore(product.reviewCount, 6) * 0.3);
   const discount = product.originalPriceCents && product.originalPriceCents > product.priceCents ? clamp(((product.originalPriceCents - product.priceCents) / product.originalPriceCents) * 100) : 0;
@@ -67,6 +69,6 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   const confidencePenalty = audience.score === 50 && (input.audience?.length ?? 0) === 0 ? 8 : 0;
   const total = clamp(commission * 0.25 + demand * 0.20 + audience.score * 0.20 + socialProof * 0.10 + priceAppeal * 0.10 + availability * 0.15 - confidencePenalty);
   const reasons: string[] = []; if (commission >= 60) reasons.push("Strong commission potential"); if (demand >= 60) reasons.push("Strong demand signals from sales and reviews"); if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`); if (priceAppeal >= 60) reasons.push("Competitive price or discount signal"); if (socialProof >= 70) reasons.push("Strong rating and review evidence"); if (!offer) reasons.push("No active affiliate offer available"); if (availability < 100 && availability > 0) reasons.push("Offer availability is limited");
-  return { product, offerId: offer?.id, score: Math.round(total * 100) / 100, reasons, disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.", breakdown: { commission: Math.round(commission * 100) / 100, demand: Math.round(demand * 100) / 100, audienceFit: Math.round(audience.score * 100) / 100, socialProof: Math.round(socialProof * 100) / 100, priceAppeal: Math.round(priceAppeal * 100) / 100, availability, confidencePenalty, total: Math.round(total * 100) / 100 } };
+  return { product, offerId: offer?.id, score: Math.round(total * 100) / 100, reasons, disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.", breakdown: { commission: Math.round(commission * 100) / 100, commissionAmountCents, demand: Math.round(demand * 100) / 100, audienceFit: Math.round(audience.score * 100) / 100, socialProof: Math.round(socialProof * 100) / 100, priceAppeal: Math.round(priceAppeal * 100) / 100, availability, confidencePenalty, total: Math.round(total * 100) / 100 } };
 }
 export function rankOpportunities(inputs: OpportunityScoringInput[]): ScoredOpportunity[] { return inputs.map(scoreOpportunity).sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id)); }
