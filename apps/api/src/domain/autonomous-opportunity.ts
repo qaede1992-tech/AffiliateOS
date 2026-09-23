@@ -122,7 +122,7 @@ export class AutonomousOpportunitySelector {
         item.breakdown.demand >= minimumDemandScore &&
         item.product.status === "active";
     });
-    const selected = selectWithExploration(eligible, maximumResults, performance, effectivePolicy);
+    const selected = selectWithExploration(eligible, maximumResults, performance, effectivePolicy, adaptiveExplorationRates);
     const selectedIds = new Set(selected.map((item) => item.product.id));
     const rejected = ranked.filter((item) => !selectedIds.has(item.product.id)).map((item) => {
       const candidatePolicy = effectivePolicy({ product: item.product, offers: [] });
@@ -146,7 +146,7 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
-      const exploration = selectedIds.has(item.product.id) && isExplorationSelection(item, performance, candidatePolicy);
+      const exploration = selectedIds.has(item.product.id) && isExplorationSelection(item, performance, candidatePolicy, adaptiveExplorationRates);
       const reasons = selectedIds.has(item.product.id)
         ? [exploration ? "Selected for controlled exploration" : "Selected"]
         : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore);
@@ -178,7 +178,7 @@ function selectWithExploration(
 ): ScoredOpportunity[] {
   const limit = Math.max(0, maximumResults);
   if (limit === 0 || eligible.length <= limit) return eligible.slice(0, limit);
-  const explorationSlots = Math.min(limit, Math.max(0, Math.floor(eligible.reduce((sum, item) => sum + Math.min(1, Math.max(0, effectivePolicy({ product: item.product, offers: [] }).explorationRate ?? 0.2)), 0) / Math.max(1, eligible.length) * limit)));
+  const explorationSlots = Math.min(limit, Math.max(0, Math.floor(eligible.reduce((sum, item) => {\n    const policy = effectivePolicy({ product: item.product, offers: [] });\n    return sum + Math.min(1, Math.max(0, adaptiveExplorationRates.get(item.product.id) ?? policy.explorationRate ?? 0.2));\n  }, 0) / Math.max(1, eligible.length) * limit)));
   if (explorationSlots === 0) return eligible.slice(0, limit);
   const exploratory = eligible.filter((item) => {
     const policy = effectivePolicy({ product: item.product, offers: [] });
