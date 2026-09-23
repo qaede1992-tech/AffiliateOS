@@ -16,6 +16,7 @@ export type OpportunityPerformanceSignal = {
   scope?: "marketplace" | "global";
   windows?: { "24h": PerformanceWindow; "7d": PerformanceWindow; "30d": PerformanceWindow };
   regime?: PerformanceRegime;
+  regimeConfidence?: number;
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -61,7 +62,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, signal, observedAt)
         : undefined;
       const regime = windows ? classifyWindowRegime(windows) : "stable";
-      const windowAdjustment = windows ? calculateWindowAdjustment(windows, regime) : 0;
+      const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
+      const windowAdjustment = windows ? calculateWindowAdjustment(windows, regime) * regimeConfidence : 0;
       const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
@@ -78,7 +80,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence }] as const;
     }));
     return new Map(entries);
   }
@@ -196,6 +198,14 @@ function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow
   if(Math.max(short,medium,long)-Math.min(short,medium,long)>=0.06)return "volatile";
   return "stable";
 }
+function calculateRegimeConfidence(w:{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow }, regime:PerformanceRegime):number {
+  const short=w["24h"], medium=w["7d"], long=w["30d"];
+  const evidence=Math.min(1,(short.confidence*0.5)+(medium.confidence*0.3)+(long.confidence*0.2));
+  if(regime==="stable") return evidence;
+  const divergence=Math.min(1,Math.abs(short.conversionRate-long.conversionRate)/0.05);
+  return Math.min(1,evidence*(0.5+0.5*divergence));
+}
+
 function calculateWindowAdjustment(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow;"30d":PerformanceWindow },regime:PerformanceRegime):number {
   const weighted=[["24h",0.5],["7d",0.3],["30d",0.2]] as const;
   let total=0,weight=0;
