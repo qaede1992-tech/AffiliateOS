@@ -1,6 +1,7 @@
 import type { AffiliateOffer, Product } from "@affiliateos/shared";
 import type { MarketplaceService } from "./marketplace.js";
-import type { AutonomousCandidateProvider } from "./autonomous-cycle.js";\nimport type { AutonomousExecutionCandidate } from "./autonomous-execution.js";
+import type { AutonomousCandidateProvider } from "./autonomous-cycle.js";
+import type { AutonomousExecutionCandidate } from "./autonomous-execution.js";
 
 export type AutonomousMarketplaceCandidateProviderOptions = {
   maxProductsPerConnection?: number;
