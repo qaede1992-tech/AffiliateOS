@@ -14,6 +14,8 @@ export type AutonomousActionOutcome = {
   observed?: AutonomousActionMetrics;
   evaluation?: AutonomousActionMetrics;
   evaluatedAt?: string;
+  recoveryState?: "none" | "recovering" | "recovered";
+  recoveryEvidenceScore?: number;
 };
 
 export type AutonomousActionMetrics = {
@@ -29,6 +31,7 @@ export interface AutonomousActionOutcomeWriter {
   updateMetrics?(id: string, metrics: { baseline?: AutonomousActionMetrics; observed?: AutonomousActionMetrics }): Promise<AutonomousActionOutcome | undefined>;
   latestByCampaign?(campaignId: string): Promise<AutonomousActionOutcome | undefined>;
   updateEvaluation?(id: string, evaluation: AutonomousActionMetrics, evaluatedAt: string): Promise<AutonomousActionOutcome | undefined>;
+  updateRecovery?(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number }): Promise<AutonomousActionOutcome | undefined>;
 }
 
 export class InMemoryAutonomousActionOutcomeRepository implements AutonomousActionOutcomeWriter {
@@ -51,6 +54,13 @@ export class InMemoryAutonomousActionOutcomeRepository implements AutonomousActi
     if (!item) return undefined;
     item.evaluation = evaluation;
     item.evaluatedAt = evaluatedAt;
+    return item;
+  }
+  async updateRecovery(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number }) {
+    const item = this.outcomes.find((outcome) => outcome.id === id);
+    if (!item) return undefined;
+    item.recoveryState = recovery.state;
+    item.recoveryEvidenceScore = recovery.evidenceScore ?? 0;
     return item;
   }
 }
