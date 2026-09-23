@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, and } from "drizzle-orm";
 import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } from "../domain/autonomous-feedback-memory.js";
 import { autonomousFeedbackSnapshots } from "./schema.js";
 
@@ -9,6 +9,7 @@ const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   id: row.id,
   observationKey: row.observationKey,
   productId: row.productId,
+  marketplaceId: row.marketplaceId,
   clickCount: row.clickCount,
   conversionCount: row.conversionCount,
   attributedCommissionCents: row.attributedCommissionCents,
@@ -25,6 +26,7 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       id: snapshot.id,
       observationKey: snapshot.observationKey,
       productId: snapshot.productId,
+      marketplaceId: snapshot.marketplaceId,
       clickCount: snapshot.clickCount,
       conversionCount: snapshot.conversionCount,
       attributedCommissionCents: snapshot.attributedCommissionCents,
@@ -41,6 +43,7 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
         id: snapshot.id,
         observationKey: snapshot.observationKey,
         productId: snapshot.productId,
+        marketplaceId: snapshot.marketplaceId,
         clickCount: snapshot.clickCount,
         conversionCount: snapshot.conversionCount,
         attributedCommissionCents: snapshot.attributedCommissionCents,
@@ -66,6 +69,14 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
   async latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
     const rows = await this.db.select().from(autonomousFeedbackSnapshots)
       .where(eq(autonomousFeedbackSnapshots.productId, productId))
+      .orderBy(desc(autonomousFeedbackSnapshots.observedAt), desc(autonomousFeedbackSnapshots.id))
+      .limit(1);
+    return rows[0] ? toDomain(rows[0]) : undefined;
+  }
+
+  async latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
+    const rows = await this.db.select().from(autonomousFeedbackSnapshots)
+      .where(and(eq(autonomousFeedbackSnapshots.productId, productId), eq(autonomousFeedbackSnapshots.marketplaceId, marketplaceId)))
       .orderBy(desc(autonomousFeedbackSnapshots.observedAt), desc(autonomousFeedbackSnapshots.id))
       .limit(1);
     return rows[0] ? toDomain(rows[0]) : undefined;
