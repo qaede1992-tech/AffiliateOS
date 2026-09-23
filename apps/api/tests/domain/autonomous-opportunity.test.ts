@@ -49,6 +49,8 @@ describe("autonomous opportunity selection", () => {
       { product: product("no-offer"), offers: [] }
     ], { minimumScore: 60, maximumResults: 5, requiredAudience: ["skincare"] });
     assert.deepEqual(result.selected.map((item) => item.product.id), ["good"]);
+    assert.equal(result.audit.find((item) => item.productId === "good")?.marketplaceId, "market-1");
+    assert.equal(result.audit.find((item) => item.productId === "good")?.selected, true);
     assert.ok(result.rejected.map((item) => item.productId).includes("inactive"));
     assert.ok(result.rejected.map((item) => item.productId).includes("no-offer"));
     assert.ok(result.rejected.find((item) => item.productId === "inactive")?.reasons.includes("Product is not active"));
@@ -129,6 +131,19 @@ describe("autonomous opportunity selection", () => {
       "market-2": { minimumCommissionRateBps: 1000 }
     });
     assert.deepEqual(result.selected.map((item) => item.product.id), ["unconfigured-market"]);
+  });
+
+  it("records the effective marketplace policy for rejected opportunities", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("audited", { marketplaceId: "market-2" }), offers: [offer("audited", { commissionRateBps: 500 })] }
+    ], { minimumScore: 0, minimumCommissionRateBps: 100 }, new Map(), {
+      "market-2": { minimumCommissionRateBps: 1000 }
+    });
+    const audit = result.audit[0];
+    assert.equal(audit?.marketplaceId, "market-2");
+    assert.equal(audit?.selected, false);
+    assert.equal(audit?.policy.minimumCommissionRateBps, 1000);
+    assert.ok(audit?.reasons.includes("Commission rate is below the minimum"));
   });
 
   it("does not select a product that misses a required audience", () => {
