@@ -43,7 +43,8 @@ const services = createServices(
     minimumDemandScore: environment.AUTONOMOUS_MINIMUM_DEMAND_SCORE
   },
   environment.AUTONOMOUS_MARKETPLACE_POLICIES_JSON,
-  persistence.autonomousDecisionAudits
+  persistence.autonomousDecisionAudits,
+  { minimumCommissionPerClickCents: environment.AUTONOMOUS_OPTIMIZATION_MIN_COMMISSION_PER_CLICK_CENTS }
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
