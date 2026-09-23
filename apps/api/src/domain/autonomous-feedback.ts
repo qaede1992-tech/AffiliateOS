@@ -9,6 +9,8 @@ export type OpportunityPerformanceSignal = {
   commissionPerClickCents: number;
   adjustment: number;
   trendAdjustment: number;
+  confidence?: number;
+  scope?: "marketplace" | "global";
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -73,6 +75,8 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
   const grouped = new Map<string, CampaignAnalytics[]>();
   const categoryGrouped = new Map<string, CampaignAnalytics[]>();
   const audienceGrouped = new Map<string, CampaignAnalytics[]>();
+  const globalCategoryGrouped = new Map<string, CampaignAnalytics[]>();
+  const globalAudienceGrouped = new Map<string, CampaignAnalytics[]>();
   for (const campaign of overview.campaigns) {
     if (!campaign.productId) continue;
     const key = campaign.marketplaceId ? signalKey(campaign.marketplaceId, campaign.productId) : campaign.productId;
@@ -82,6 +86,8 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
     const category = campaign.category?.trim().toLowerCase();
     if (category) {
       const categoryKey = categorySignalKey(campaign.marketplaceId, category);
+      const globalCategory = globalCategoryGrouped.get("global:category:" + category) ?? [];
+      globalCategory.push(campaign); globalCategoryGrouped.set("global:category:" + category, globalCategory);
       const categoryCurrent = categoryGrouped.get(categoryKey) ?? [];
       categoryCurrent.push(campaign);
       categoryGrouped.set(categoryKey, categoryCurrent);
@@ -90,6 +96,8 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
       const normalized = segment.trim().toLowerCase();
       if (!normalized) continue;
       const audienceKey = audienceSignalKey(campaign.marketplaceId, normalized);
+      const globalAudience = globalAudienceGrouped.get("global:audience:" + normalized) ?? [];
+      globalAudience.push(campaign); globalAudienceGrouped.set("global:audience:" + normalized, globalAudience);
       const audienceCurrent = audienceGrouped.get(audienceKey) ?? [];
       audienceCurrent.push(campaign);
       audienceGrouped.set(audienceKey, audienceCurrent);
@@ -112,11 +120,15 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
       attributedCommissionCents: commission,
       commissionPerClickCents,
       adjustment: Math.round(adjustment * 100) / 100,
-      trendAdjustment: 0
+      trendAdjustment: 0,
+      confidence: confidenceForClicks(clicks),
+      scope: "marketplace"
     });
   }
   for (const [key, campaigns] of categoryGrouped) signals.set(key, aggregateSignals(campaigns));
   for (const [key, campaigns] of audienceGrouped) signals.set(key, aggregateSignals(campaigns));
+  for (const [key, campaigns] of globalCategoryGrouped) signals.set(key, { ...aggregateSignals(campaigns), scope: "global" });
+  for (const [key, campaigns] of globalAudienceGrouped) signals.set(key, { ...aggregateSignals(campaigns), scope: "global" });
   return signals;
 }
 
@@ -127,7 +139,7 @@ function aggregateSignals(campaigns: CampaignAnalytics[]): OpportunityPerformanc
   const commissionPerClickCents = clicks === 0 ? 0 : commission / clicks;
   const conversionRate = clicks === 0 ? 0 : conversions / clicks;
   const adjustment = clicks < MINIMUM_EVIDENCE_CLICKS ? 0 : clamp(((conversionRate - BASELINE_CONVERSION_RATE) / BASELINE_CONVERSION_RATE) * MAX_ADJUSTMENT, -MAX_ADJUSTMENT, MAX_ADJUSTMENT);
-  return { clickCount: clicks, conversionCount: conversions, conversionRate, attributedCommissionCents: commission, commissionPerClickCents, adjustment: Math.round(adjustment * 100) / 100, trendAdjustment: 0 };
+  return { clickCount: clicks, conversionCount: conversions, conversionRate, attributedCommissionCents: commission, commissionPerClickCents, adjustment: Math.round(adjustment * 100) / 100, trendAdjustment: 0, confidence: confidenceForClicks(clicks), scope: "marketplace" };
 }
 
 function categorySignalKey(marketplaceId: string | undefined, category: string): string { return `${marketplaceId ?? "unknown"}:category:${category}`; }
@@ -141,6 +153,8 @@ function splitSignalKey(key: string): [string | undefined, string] {
   const separator = key.indexOf(":");
   return separator < 0 ? [undefined, key] : [key.slice(0, separator), key.slice(separator + 1)];
 }
+
+function confidenceForClicks(clicks: number): number { return Math.min(1, Math.sqrt(Math.max(0, clicks) / MINIMUM_EVIDENCE_CLICKS)); }
 
 function calculateEfficiencyAdjustment(current: OpportunityPerformanceSignal, previous: { clickCount: number; commissionPerClickCents: number }): number {
   if (previous.clickCount < MIN_EFFICIENCY_EVIDENCE_CLICKS || previous.commissionPerClickCents <= 0) return 0;

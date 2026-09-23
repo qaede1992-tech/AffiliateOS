@@ -102,3 +102,21 @@ test("adaptive exploration consumes persistent optimization feedback", async () 
   const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.2 });
   assert.equal(rates.get("p0"), 0.1);
 });
+
+import { buildSignals } from "../src/domain/autonomous-feedback.js";
+
+test("confidence-aware feedback exposes global category learning across marketplaces", () => {
+  const campaign = (marketplaceId: string, campaignId: string, clicks: number, conversions: number) => ({
+    campaignId, productId: campaignId, marketplaceId, category: "electronics", audienceSegments: ["electronics"],
+    clickCount: clicks, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0,
+    attributedConversionCount: conversions, attributedRevenueCents: conversions * 1000, attributedCommissionCents: conversions * 100,
+    conversionRate: clicks ? conversions / clicks : 0
+  });
+  const signals = buildSignals({ clickCount: 40, trackingLinkCount: 2, campaignCount: 2, contentCount: 2, publishedContentCount: 2, scheduledContentCount: 0,
+    attributedConversionCount: 4, attributedRevenueCents: 4000, attributedCommissionCents: 400,
+    conversionRate: 0.1, campaigns: [campaign("m1","p1",20,2), campaign("m2","p2",20,2)] });
+  const global = signals.get("global:category:electronics");
+  assert.equal(global?.scope, "global");
+  assert.equal(global?.confidence, 1);
+  assert.equal(global?.conversionRate, 0.1);
+});
