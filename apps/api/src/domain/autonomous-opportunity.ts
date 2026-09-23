@@ -65,7 +65,8 @@ export class AutonomousOpportunitySelector {
     candidates: OpportunityCandidateSource[],
     policy: OpportunitySelectionPolicy = {},
     performance: Map<string, OpportunityPerformanceSignal> = new Map(),
-    policiesByMarketplace: OpportunitySelectionPoliciesByMarketplace = {}
+    policiesByMarketplace: OpportunitySelectionPoliciesByMarketplace = {},
+    adaptiveExplorationRates: Map<string, number> = new Map()
   ): OpportunitySelectionResult {
     const maximumResults = policy.maximumResults ?? 10;
     const mergedCandidates = new Map<string, OpportunityCandidateSource>();
@@ -165,16 +166,18 @@ export class AutonomousOpportunitySelector {
   }
 }
 
-function isExplorationSelection(item: ScoredOpportunity, performance: Map<string, OpportunityPerformanceSignal>, policy: OpportunitySelectionPolicy): boolean {
+function isExplorationSelection(item: ScoredOpportunity, performance: Map<string, OpportunityPerformanceSignal>, policy: OpportunitySelectionPolicy, adaptiveExplorationRates: Map<string, number>): boolean {
   const signal = performance.get(item.product.marketplaceId + ":" + item.product.id);
-  return (policy.explorationRate ?? 0.2) > 0 && (!signal || signal.clickCount < (policy.explorationMinimumEvidenceClicks ?? 20));
+  const rate = adaptiveExplorationRates.get(item.product.id) ?? policy.explorationRate ?? 0.2;
+  return rate > 0 && (!signal || signal.clickCount < (policy.explorationMinimumEvidenceClicks ?? 20));
 }
 
 function selectWithExploration(
   eligible: ScoredOpportunity[],
   maximumResults: number,
   performance: Map<string, OpportunityPerformanceSignal>,
-  effectivePolicy: (candidate: OpportunityCandidateSource) => OpportunitySelectionPolicy
+  effectivePolicy: (candidate: OpportunityCandidateSource) => OpportunitySelectionPolicy,
+  adaptiveExplorationRates: Map<string, number>
 ): ScoredOpportunity[] {
   const limit = Math.max(0, maximumResults);
   if (limit === 0 || eligible.length <= limit) return eligible.slice(0, limit);
