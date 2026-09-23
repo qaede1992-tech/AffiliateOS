@@ -35,7 +35,8 @@ import { AutonomousOptimizationRunner } from "./autonomous-optimization-runner.j
 import { InMemoryOptimizationStateStore, type OptimizationStateReader, type OptimizationStateWriter } from "./autonomous-optimization.js";
 import type { AutonomousDecisionAuditRepository, AutonomousDecisionAuditReader } from "./autonomous-decision-audit.js";
 import type { AutonomousActionOutcomeWriter } from "./autonomous-action-outcome.js";
-import { AutonomousExplorationEvaluationRunner } from "./autonomous-exploration-evaluation-runner.js";\nimport { AdaptiveExplorationPolicyProvider, type AdaptiveExplorationPolicy } from "./adaptive-exploration-policy.js";
+import { AutonomousExplorationEvaluationRunner } from "./autonomous-exploration-evaluation-runner.js";
+import { AdaptiveExplorationPolicyProvider, type AdaptiveExplorationPolicy } from "./adaptive-exploration-policy.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
@@ -63,7 +64,6 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const analytics = new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository);
   const feedback = new AutonomousAnalyticsFeedbackProvider(analytics, autonomousFeedbackMemoryRepository);
   const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns);
-  const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback, autonomousRuns, autonomousDecisionAuditRepository);
   const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliateOffers);
   const attribution = new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository);
   const providerConversions = new ProviderConversionProcessor(conversions, {
@@ -77,6 +77,8 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const stateWriter = optimizationStateWriter ?? defaultOptimizationState;
   const autonomousOptimization = new AutonomousOptimizationRunner(analytics, stateReader, stateWriter, new AutonomousCampaignActionExecutor(campaigns, content, distribution, autonomousActionOutcomeWriter), autonomousActionOutcomeWriter, autonomousOptimizationPolicy);
   const explorationEvaluation = autonomousDecisionAuditRepository ? new AutonomousExplorationEvaluationRunner(autonomousDecisionAuditRepository, autonomousDecisionAuditRepository, explorationEvaluationPolicy) : undefined;
+  const adaptiveExploration = autonomousDecisionAuditRepository ? new AdaptiveExplorationPolicyProvider(autonomousDecisionAuditRepository, adaptiveExplorationPolicy) : undefined;
+  const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback, autonomousRuns, autonomousDecisionAuditRepository, adaptiveExploration);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies }, { intervalMs: autonomousSchedulerIntervalMs });
   return {
