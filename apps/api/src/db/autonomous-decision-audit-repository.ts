@@ -24,18 +24,13 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
     if (campaignIds.length) {
       const result = await this.db.execute(sql`
         SELECT
-          tl.campaign_id,
-          COUNT(DISTINCT cl.id) AS click_count,
-          COUNT(DISTINCT CASE WHEN cv.status <> 'rejected' THEN cv.id END) AS attributed_conversion_count,
-          COALESCE(SUM(CASE WHEN cv.status <> 'rejected' THEN cv.amount_cents ELSE 0 END), 0) AS attributed_revenue_cents,
-          COALESCE(SUM(CASE WHEN cv.status <> 'rejected' THEN cm.amount_cents ELSE 0 END), 0) AS attributed_commission_cents
-        FROM tracking_links tl
-        LEFT JOIN clicks cl ON cl.tracking_link_id = tl.id
-        LEFT JOIN conversion_attributions ca ON ca.tracking_link_id = tl.id
-        LEFT JOIN conversions cv ON cv.id = ca.conversion_id
-        LEFT JOIN commissions cm ON cm.conversion_id = cv.id
-        WHERE tl.campaign_id IN (${sql.join(campaignIds.map((id) => sql`${id}::uuid`), sql`, `)})
-        GROUP BY tl.campaign_id
+          campaigns.id AS campaign_id,
+          (SELECT COUNT(*) FROM clicks cl JOIN tracking_links tl ON tl.id = cl.tracking_link_id WHERE tl.campaign_id = campaigns.id) AS click_count,
+          (SELECT COUNT(*) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_conversion_count,
+          (SELECT COALESCE(SUM(cv.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_revenue_cents,
+          (SELECT COALESCE(SUM(cm.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN commissions cm ON cm.conversion_id = cv.id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_commission_cents
+        FROM campaigns
+        WHERE campaigns.id IN (${sql.join(campaignIds.map((id) => sql`${id}::uuid`), sql`, `)})
       `);
       for (const row of rowsOf(result)) {
         const clickCount = Number(row.click_count ?? 0);
