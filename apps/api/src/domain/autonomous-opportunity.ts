@@ -31,6 +31,7 @@ export type OpportunitySelectionAudit = {
   policy: OpportunitySelectionPolicy;
   reasons: string[];
   selectionMode?: "exploration" | "exploitation";
+  performanceRegime?: "rising" | "stable" | "declining" | "volatile";
   category?: string;
   audienceSegments?: AudienceSegment[];
 };
@@ -166,6 +167,7 @@ export class AutonomousOpportunitySelector {
         policy: { ...candidatePolicy },
         reasons,
         selectionMode: selectedIds.has(item.product.id) ? (exploration ? "exploration" : "exploitation") : undefined,
+        performanceRegime: performance.get(item.product.marketplaceId + ":" + item.product.id)?.regime ?? performance.get(item.product.id)?.regime,
         category: item.product.category?.trim() || undefined,
         audienceSegments: requiredAudience.length ? requiredAudience : undefined
       };
