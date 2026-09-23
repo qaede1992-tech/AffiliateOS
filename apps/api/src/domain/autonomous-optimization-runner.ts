@@ -14,7 +14,7 @@ export class AutonomousOptimizationRunner {
   private readonly engine: OptimizationEngine;
 
   constructor(
-    private readonly analytics: Pick<AnalyticsService, "overview">,
+    private readonly analytics: Pick<AnalyticsService, "overview" | "campaign">,
     private readonly stateReader: OptimizationStateReader,
     private readonly stateWriter: OptimizationStateWriter,
     private readonly executor: AutonomousCampaignActionExecutor,
