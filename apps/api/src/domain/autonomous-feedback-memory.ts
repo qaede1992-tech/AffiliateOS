@@ -14,7 +14,7 @@ export type AutonomousFeedbackSnapshot = {
   recoveryState: "none" | "recovering" | "recovered";
   recoveryClicks: number;
   recoveryEvidenceScore: number;
-  recoveryQualityScore: number;
+  recoveryQualityScore: number;\n  recoveryPolicy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
   recoveryEpisodeId?: string;
   observedAt: string;
 };
