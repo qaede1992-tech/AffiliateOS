@@ -41,7 +41,8 @@ const services = createServices(
     minimumCommissionRateBps: environment.AUTONOMOUS_MINIMUM_COMMISSION_BPS,
     minimumDemandScore: environment.AUTONOMOUS_MINIMUM_DEMAND_SCORE
   },
-  environment.AUTONOMOUS_MARKETPLACE_POLICIES_JSON
+  environment.AUTONOMOUS_MARKETPLACE_POLICIES_JSON,
+  persistence.autonomousDecisionAudits
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,

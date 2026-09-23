@@ -4,6 +4,7 @@ import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import type { CampaignOrchestrator, CampaignOrchestrationResult } from "./campaign-orchestrator.js";
 import { scoreOpportunity, type ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
+import type { AutonomousDecisionAuditRepository } from "./autonomous-decision-audit.js";
 
 export type AutonomousExecutionInput = {
   candidates: OpportunityCandidateSource[];
@@ -19,7 +20,7 @@ export type AutonomousExecutionResult = { selected: ScoredOpportunity[]; rejecte
 const executionKey = (namespace: string, opportunity: ScoredOpportunity): string => `${namespace}:${opportunity.product.id}:${opportunity.offerId ?? "no-offer"}`;
 
 export class AutonomousExecutionService {
-  constructor(private readonly selector: AutonomousOpportunitySelector, private readonly orchestrator: CampaignOrchestrator, private readonly feedback?: AutonomousFeedbackProvider, private readonly autonomousRuns?: AutonomousRunService) {}
+  constructor(private readonly selector: AutonomousOpportunitySelector, private readonly orchestrator: CampaignOrchestrator, private readonly feedback?: AutonomousFeedbackProvider, private readonly autonomousRuns?: AutonomousRunService, private readonly decisionAudits?: AutonomousDecisionAuditRepository) {}
 
   async runOnce(input: AutonomousExecutionInput): Promise<AutonomousExecutionResult> {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
@@ -50,6 +51,10 @@ export class AutonomousExecutionService {
     }
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const selection = this.selector.select(input.candidates, input.policy, performance, input.policiesByMarketplace);
+    if (this.decisionAudits) {
+      const createdAt = new Date().toISOString();
+      await this.decisionAudits.saveMany(selection.audit.map((audit) => ({ ...audit, cycleId: namespace, createdAt })));
+    }
     const candidatesByOpportunity = new Map(
       input.candidates.flatMap((candidate) =>
         candidate.offers.map((offer) => [`${candidate.product.id}:${offer.id}`, { candidate, offer }] as const)
