@@ -1,14 +1,15 @@
 import { desc, eq } from "drizzle-orm";
 import type { OptimizationState, OptimizationAction } from "../domain/optimization-engine.js";
 import type { OptimizationStateReader } from "../domain/autonomous-optimization.js";
-import { pgTable, timestamp, uuid, varchar, uniqueIndex } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, timestamp, uuid, varchar, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const autonomousOptimizationStates = pgTable("autonomous_optimization_states", {
   campaignId: uuid("campaign_id").primaryKey(),
   action: varchar("action", { length: 20 }).notNull(),
   appliedAt: timestamp("applied_at", { withTimezone: true, mode: "string" }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull()
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull(),
+  evaluation: jsonb("evaluation").$type<OptimizationState["evaluation"]>()
 }, (table) => [uniqueIndex("autonomous_optimization_states_campaign_unique").on(table.campaignId)]);
 
 type DatabaseExecutor = any;
@@ -17,7 +18,7 @@ const actions = new Set<OptimizationAction>(["scale", "maintain", "revise-conten
 
 const toDomain = (row: StateRow): OptimizationState => {
   if (!actions.has(row.action as OptimizationAction)) throw new Error(`Unknown optimization action persisted for campaign ${row.campaignId}.`);
-  return { action: row.action as OptimizationAction, appliedAt: row.appliedAt };
+  return { action: row.action as OptimizationAction, appliedAt: row.appliedAt, ...(row.evaluation ? { evaluation: row.evaluation } : {}) };
 };
 
 export class DrizzleOptimizationStateReader implements OptimizationStateReader {
@@ -31,7 +32,7 @@ export class DrizzleOptimizationStateReader implements OptimizationStateReader {
   async save(campaignId: string, state: OptimizationState): Promise<OptimizationState> {
     if (!actions.has(state.action)) throw new Error(`Unsupported optimization action: ${state.action}`);
     const now = new Date().toISOString();
-    const rows = await this.db.insert(autonomousOptimizationStates).values({ campaignId, action: state.action, appliedAt: state.appliedAt, createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: autonomousOptimizationStates.campaignId, set: { action: state.action, appliedAt: state.appliedAt, updatedAt: now } }).returning();
+    const rows = await this.db.insert(autonomousOptimizationStates).values({ campaignId, action: state.action, appliedAt: state.appliedAt, evaluation: state.evaluation, createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: autonomousOptimizationStates.campaignId, set: { action: state.action, appliedAt: state.appliedAt, evaluation: state.evaluation, updatedAt: now } }).returning();
     return toDomain(rows[0]);
   }
 }
