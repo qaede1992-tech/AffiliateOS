@@ -42,6 +42,10 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       adjustment: snapshot.adjustment,
       anomaly: snapshot.anomaly,
       anomalyScore: snapshot.anomalyScore,
+      recoveryState: snapshot.recoveryState,
+      recoveryClicks: snapshot.recoveryClicks,
+      recoveryEvidenceScore: snapshot.recoveryEvidenceScore,
+      recoveryEpisodeId: snapshot.recoveryEpisodeId,
       observedAt: snapshot.observedAt
     });
     return snapshot;
