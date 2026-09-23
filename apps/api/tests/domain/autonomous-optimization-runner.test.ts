@@ -16,6 +16,32 @@ const metrics = (campaignId: string, clicks: number, conversions: number): Campa
   attributedRevenueCents: 10000,
   attributedCommissionCents: 500,
   conversionRate: clicks === 0 ? 0 : conversions / clicks
+  it("evaluates a completed action after the evidence delay", async () => {
+    const campaign = metrics("c1", 140, 7);
+    const observedAt = "2026-09-22T00:00:00.000Z";
+    const updates: Array<{ id: string; evaluatedAt: string }> = [];
+    const analytics = {
+      async overview() { return { campaigns: [campaign], clickCount: 140, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 7, attributedRevenueCents: 10000, attributedCommissionCents: 500, conversionRate: 0.05 }; },
+      async campaign() { return campaign; }
+    };
+    const outcomeWriter: AutonomousActionOutcomeWriter = {
+      async save(outcome) { return outcome; },
+      async latestByCampaign() { return { id: "outcome-old", campaignId: "c1", action: "scale", status: "mutated", mutated: true, observedAt, observed: metrics("c1", 100, 5) } as never; },
+      async updateEvaluation(id, _evaluation, evaluatedAt) { updates.push({ id, evaluatedAt }); return undefined; }
+    };
+    const executor = { async execute() { throw new Error("no new action expected"); } } as unknown as AutonomousCampaignActionExecutor;
+    const runner = new AutonomousOptimizationRunner(
+      analytics,
+      { async get() { return undefined; } },
+      { async save() {} },
+      executor,
+      outcomeWriter,
+      {},
+      60 * 60_000
+    );
+    await runner.run(new Date("2026-09-23T02:00:00.000Z"));
+    assert.deepEqual(updates, [{ id: "outcome-old", evaluatedAt: "2026-09-23T02:00:00.000Z" }]);
+  });
 });
 
 describe("AutonomousOptimizationRunner", () => {
