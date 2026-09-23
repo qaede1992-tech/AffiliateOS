@@ -44,6 +44,7 @@ const services = createServices(
   },
   environment.AUTONOMOUS_MARKETPLACE_POLICIES_JSON,
   persistence.autonomousDecisionAudits,
+  persistence.autonomousActionOutcomes,
   { minimumCommissionPerClickCents: environment.AUTONOMOUS_OPTIMIZATION_MIN_COMMISSION_PER_CLICK_CENTS }
 );
 const app = createApp(services, {
