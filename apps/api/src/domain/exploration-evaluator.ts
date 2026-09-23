@@ -19,6 +19,13 @@ export function evaluateExploration(
 ): ExplorationEvaluation | undefined {
   if (audit.selectionMode !== "exploration" || !audit.outcome?.analytics) return undefined;
   const analytics = audit.outcome.analytics;
+  if (audit.recovery?.recoveryState === "recovering") {
+    return {
+      status: "continue-exploration",
+      reason: "Recovery-phase evidence is isolated from normal exploration promotion/deprioritization learning until recovery is complete.",
+      confidence: Math.min(0.25, confidenceFromEvidence(analytics.clickCount, Math.max(1, policy.minimumClicks ?? 20)) * 0.25)
+    };
+  }
   const minimumClicks = Math.max(1, policy.minimumClicks ?? 20);
   const promotionConversionRate = Math.max(0, policy.promotionConversionRate ?? 0.02);
   const minimumCommissionPerClickCents = Math.max(0, policy.minimumCommissionPerClickCents ?? 0);

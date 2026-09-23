@@ -31,3 +31,12 @@ describe("exploration evaluator", () => {
     assert.equal(evaluateExploration({ ...base, selectionMode: "exploitation" }), undefined);
   });
 });
+
+
+test("recovery-phase exploration evidence is isolated from learning",()=>{
+ const audit:any={selectionMode:"exploration",recovery:{anomaly:"none",recoveryState:"recovering",recoveryClicks:25,recoveryEvidenceScore:.4},outcome:{analytics:{clickCount:100,attributedConversionCount:10,attributedRevenueCents:1000,attributedCommissionCents:100,conversionRate:.1}}};
+ const result=evaluateExploration(audit);
+ assert.equal(result?.status,"continue-exploration");
+ assert.equal(result?.confidence,.25);
+ assert.match(result?.reason??"","isolated");
+});
