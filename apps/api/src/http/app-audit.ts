@@ -3,7 +3,7 @@ import type { FastifyBaseLogger, FastifyRequest } from "fastify";
 export type AuditEvent =
   | "authentication_failed"
   | "authorization_denied"
-  | "marketplace_connection_enabled_changed";
+  | "marketplace_connection_enabled_changed"\n  | "autonomous_run_retry_requested"\n  | "autonomous_cycle_triggered"\n  | "social_credential_rotated"\n  | "social_credential_revoked";
 
 export function auditSecurityEvent(
   log: FastifyBaseLogger,
