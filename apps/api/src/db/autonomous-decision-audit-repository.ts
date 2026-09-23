@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AutonomousDecisionAudit, AutonomousDecisionAuditRepository } from "../domain/autonomous-decision-audit.js";
 import { autonomousDecisionAudits } from "./schema.js";
 
@@ -9,7 +10,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
   async saveMany(audits: AutonomousDecisionAudit[]): Promise<void> {
     if (!audits.length) return;
     await this.db.insert(autonomousDecisionAudits).values(audits.map((audit) => ({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       cycleId: audit.cycleId,
       productId: audit.productId,
       marketplaceId: audit.marketplaceId,
