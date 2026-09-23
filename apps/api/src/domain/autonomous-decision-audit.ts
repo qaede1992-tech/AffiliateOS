@@ -4,6 +4,7 @@ import type { OpportunitySelectionAudit } from "./autonomous-opportunity.js";
 export type AutonomousDecisionAudit = OpportunitySelectionAudit & {
   cycleId: string;
   createdAt: string;
+  performanceRegime?: "rising" | "stable" | "declining" | "volatile";
   outcome?: AutonomousDecisionOutcome;
 };
 
