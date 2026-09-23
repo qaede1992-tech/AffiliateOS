@@ -21,7 +21,7 @@ export type AutonomousCampaignActionResult = {
 export class AutonomousCampaignActionExecutor {
   constructor(
     private readonly campaigns: Pick<CampaignService, "get" | "update">,
-    private readonly content?: Pick<ContentService, "list">,
+    private readonly content?: Pick<ContentService, "list" | "update">,
     private readonly distribution?: Pick<DistributionEngine, "schedule">
   ) {}
 
@@ -52,7 +52,15 @@ export class AutonomousCampaignActionExecutor {
         await this.distribution.schedule({ content: draft, scheduledAt });
         return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: true };
       }
-      case "revise-content":
+      case "revise-content": {
+        if (!this.content) return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: false };
+        const scheduled = (await this.content.list(campaign.id)).filter((item) => item.status === "scheduled");
+        const candidate = scheduled[0];
+        if (!candidate) return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: false };
+        const updatedContent = await this.content.update(candidate.id, { status: "draft", scheduledAt: undefined, socialAccountId: undefined });
+        if (updatedContent.status !== "draft") throw new DomainError("AUTONOMOUS_REVISION_NOT_STAGED", "Autonomous content revision could not be staged as a draft.");
+        return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: true };
+      }
       case "maintain":
         return { campaignId: campaign.id, action: recommendation.action, campaign, mutated: false };
       default:
