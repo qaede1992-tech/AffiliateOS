@@ -1,0 +1,1 @@
+ALTER TABLE autonomous_decision_audits ADD COLUMN selection_mode varchar(20);
