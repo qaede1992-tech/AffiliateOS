@@ -12,3 +12,19 @@ test("multi-window regime confidence is bounded",async()=>{
  assert.ok((signal?.regimeConfidence??-1)>=0);
  assert.ok((signal?.regimeConfidence??2)<=1);
 });
+
+
+test("recovered evidence does not regain full influence immediately",async()=>{
+ const memory:any={
+  latestByProductAndMarketplace:async()=>({clickCount:20,conversionCount:1,attributedCommissionCents:20,commissionPerClickCents:1,observedAt:"2026-09-20T00:00:00Z",anomaly:"halt"}),
+  recentByProductAndMarketplace:async()=>[
+   {clickCount:20,conversionCount:1,attributedCommissionCents:20,observedAt:"2026-09-20T00:00:00Z",anomaly:"halt"},
+   {clickCount:40,conversionCount:2,attributedCommissionCents:40,observedAt:"2026-09-22T00:00:00Z",anomaly:"none"}
+  ],saveIfAbsent:async(s:any)=>s
+ };
+ const overview:any={campaigns:[{campaignId:"c",productId:"p",marketplaceId:"m",clickCount:60,trackingLinkCount:1,contentCount:1,publishedContentCount:1,scheduledContentCount:0,attributedConversionCount:6,attributedRevenueCents:1000,attributedCommissionCents:120,conversionRate:.1}]};
+ const provider=new AutonomousAnalyticsFeedbackProvider({overview:async()=>overview},memory,()=>new Date("2026-09-23T00:00:00Z"));
+ const signal=(await provider.getSignals()).get("m:p");
+ assert.equal(signal?.anomalyRecovery,"recovered");
+ assert.ok((signal?.recoveryEvidenceScore??0)>=0);
+});
