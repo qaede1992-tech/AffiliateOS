@@ -57,7 +57,20 @@ export class AutonomousExecutionService {
     const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
-      const audits = selection.audit.map((audit) => ({ ...audit, cycleId: namespace, createdAt }));
+      const audits = selection.audit.map((audit) => {
+        const signal = performance.get(audit.marketplaceId + ":" + audit.productId) ?? performance.get(audit.productId);
+        return {
+          ...audit,
+          cycleId: namespace,
+          createdAt,
+          recovery: signal ? {
+            anomaly: signal.anomaly ?? "none",
+            recoveryState: signal.anomalyRecovery ?? "none",
+            recoveryClicks: signal.clickCount,
+            recoveryEvidenceScore: signal.anomalyRecovery === "recovered" ? 1 : signal.anomalyRecovery === "recovering" ? 0.5 : 0
+          } : undefined
+        };
+      });
       await this.decisionAudits.saveMany(audits);
       for (const audit of audits) auditByProductId.set(audit.productId, audit);
     }
