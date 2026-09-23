@@ -1,6 +1,6 @@
 import type { AffiliateOffer, Product } from "@affiliateos/shared";
 import type { MarketplaceService } from "./marketplace.js";
-import type { AutonomousCandidateProvider, AutonomousExecutionCandidate } from "./autonomous-cycle.js";
+import type { AutonomousCandidateProvider } from "./autonomous-cycle.js";\nimport type { AutonomousExecutionCandidate } from "./autonomous-execution.js";
 
 export type AutonomousMarketplaceCandidateProviderOptions = {
   maxProductsPerConnection?: number;
@@ -148,7 +148,7 @@ async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper:
     while (true) {
       const index = nextIndex++;
       if (index >= items.length) return;
-      results[index] = await mapper(items[index], index);
+      const item = items[index];\n      if (item === undefined) return;\n      results[index] = await mapper(item, index);
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
