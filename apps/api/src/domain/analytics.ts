@@ -8,6 +8,7 @@ import type { ConversionAttributionRepository } from "./attribution.js";
 export interface CampaignAnalytics {
   campaignId: string;
   productId?: string;
+  marketplaceId?: string;
   clickCount: number;
   trackingLinkCount: number;
   contentCount: number;
@@ -95,9 +96,11 @@ export class AnalyticsService {
     const attributed = this.attribute(allClicks, trackingLinks, conversions, commissions, attributions);
     const clickCount = allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length;
     const productId = typeof campaign.audience.productId === "string" ? campaign.audience.productId : undefined;
+    const marketplaceId = typeof campaign.audience.marketplaceId === "string" ? campaign.audience.marketplaceId : undefined;
     return {
       campaignId: campaign.id,
       productId,
+      marketplaceId,
       clickCount,
       trackingLinkCount: trackingLinks.length,
       contentCount: contents.length,
