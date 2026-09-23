@@ -39,6 +39,9 @@ const MAX_EFFICIENCY_ADJUSTMENT = 2;
 const MIN_EFFICIENCY_EVIDENCE_CLICKS = 20;
 const ANOMALY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const ANOMALY_RECOVERY_CLICKS = 20;
+const ANOMALY_RECOVERY_MIN_CONFIDENCE = 0.5;
+const ANOMALY_RECOVERY_MAX_SCORE = 0.45;
+const ANOMALY_RECOVERY_MAX_RATE_DIVERGENCE = 0.04;
 const LEARNING_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
@@ -78,7 +81,10 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         ? await latestHaltSnapshot(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
         : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
-      const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && recoveryClicks < ANOMALY_RECOVERY_CLICKS;
+      const recoveryEvidence = windows
+        ? hasRecoveryEvidence(windows, recoveryClicks, anomalyScore)
+        : recoveryClicks >= ANOMALY_RECOVERY_CLICKS;
+      const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
       const anomaly = recentHalt || recoveryGate ? "halt" : classifyAnomaly(anomalyScore);
       const anomalyRecovery: AnomalyRecoveryState = recoveryAnchor
         ? (recentHalt ? "recovering" : recoveryGate ? "recovering" : "recovered")
@@ -245,6 +251,20 @@ function classifyAnomaly(score:number):PerformanceAnomaly {
   if(score>=0.45)return "watch";
   return "none";
 }
+function hasRecoveryEvidence(
+  windows:{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow },
+  recoveryClicks:number,
+  anomalyScore:number
+):boolean {
+  if (recoveryClicks < ANOMALY_RECOVERY_CLICKS || anomalyScore >= ANOMALY_RECOVERY_MAX_SCORE) return false;
+  const short = windows["24h"];
+  const medium = windows["7d"];
+  const long = windows["30d"];
+  if (short.confidence < ANOMALY_RECOVERY_MIN_CONFIDENCE || medium.confidence < ANOMALY_RECOVERY_MIN_CONFIDENCE) return false;
+  if (Math.abs(short.conversionRate - long.conversionRate) > ANOMALY_RECOVERY_MAX_RATE_DIVERGENCE) return false;
+  return true;
+}
+
 
 function calculateRegimeConfidence(w:{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow }, regime:PerformanceRegime):number {
   const short=w["24h"], medium=w["7d"], long=w["30d"];
