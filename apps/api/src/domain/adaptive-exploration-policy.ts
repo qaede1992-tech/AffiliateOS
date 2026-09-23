@@ -22,7 +22,7 @@ export class AdaptiveExplorationPolicyProvider {
   const exact=performance.get(c.product.marketplaceId + ":" + c.product.id) ?? performance.get(c.product.id);
   if(exact?.anomalyRecovery === "recovering") {
     rate=clamp(Math.max(rate, Math.min(maxRate, 0.35)), minRate, maxRate);
-  } else if(exact?.anomalyRecovery === "recovered") {
+  } else if(exact?.anomalyRecovery === "recovered") {\n    const qualityDelta = exact.recoveryEpisodeMetrics?.qualityDelta ?? 0;\n    if (qualityDelta < -0.15) rate=clamp(Math.max(rate, 0.35), minRate, maxRate);\n    else if (qualityDelta > 0.15) rate=clamp(rate * 0.9, minRate, maxRate);
     const recoveryEvidence = Math.max(0, Math.min(1, exact.recoveryEvidenceScore ?? 0));
     const recoveryConfidence = 0.5 + 0.5 * recoveryEvidence;
     if(exact.regime === "rising") rate=clamp(rate * (1 - 0.2 * recoveryConfidence), minRate, maxRate);
