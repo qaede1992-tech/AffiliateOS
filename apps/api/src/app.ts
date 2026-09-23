@@ -14,7 +14,8 @@ import type { ProviderEventStore } from "./db/provider-events.js";
 
 export const configuredCorsOrigin = (production = process.env.NODE_ENV === "production") => { const origin = process.env.API_CORS_ORIGIN?.trim(); if (production && !origin) throw new Error("API_CORS_ORIGIN must be configured in production."); return origin || "http://localhost:5173"; };
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
-const isPublicProviderEvent = (url: string) => /^\/api\/v1\/marketplaces\/[^/]+\/events(?:\?|$)/.test(url);\nconst isPublicTrackingRedirect = (url: string) => /^\/r\/[^/]+(?:\?|$)/.test(url);
+const isPublicProviderEvent = (url: string) => /^\/api\/v1\/marketplaces\/[^/]+\/events(?:\?|$)/.test(url);
+const isPublicTrackingRedirect = (url: string) => /^\/r\/[^/]+(?:\?|$)/.test(url);
 const isHealthEndpoint = (url: string) => url === "/api/v1/health" || url === "/api/v1/ready";
 const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
 const isStateChangingMethod = (method: string) => ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
