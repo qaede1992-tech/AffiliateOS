@@ -71,12 +71,20 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
 
 export function buildSignals(overview: AnalyticsOverview): Map<string, OpportunityPerformanceSignal> {
   const grouped = new Map<string, CampaignAnalytics[]>();
+  const categoryGrouped = new Map<string, CampaignAnalytics[]>();
   for (const campaign of overview.campaigns) {
     if (!campaign.productId) continue;
     const key = campaign.marketplaceId ? signalKey(campaign.marketplaceId, campaign.productId) : campaign.productId;
     const current = grouped.get(key) ?? [];
     current.push(campaign);
     grouped.set(key, current);
+    const category = campaign.category?.trim().toLowerCase();
+    if (category) {
+      const categoryKey = categorySignalKey(campaign.marketplaceId, category);
+      const categoryCurrent = categoryGrouped.get(categoryKey) ?? [];
+      categoryCurrent.push(campaign);
+      categoryGrouped.set(categoryKey, categoryCurrent);
+    }
   }
   const signals = new Map<string, OpportunityPerformanceSignal>();
   for (const [key, campaigns] of grouped) {
@@ -98,8 +106,21 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
       trendAdjustment: 0
     });
   }
+  for (const [key, campaigns] of categoryGrouped) signals.set(key, aggregateSignals(campaigns));
   return signals;
 }
+
+function aggregateSignals(campaigns: CampaignAnalytics[]): OpportunityPerformanceSignal {
+  const clicks = campaigns.reduce((sum, item) => sum + item.clickCount, 0);
+  const conversions = campaigns.reduce((sum, item) => sum + item.attributedConversionCount, 0);
+  const commission = campaigns.reduce((sum, item) => sum + item.attributedCommissionCents, 0);
+  const commissionPerClickCents = clicks === 0 ? 0 : commission / clicks;
+  const conversionRate = clicks === 0 ? 0 : conversions / clicks;
+  const adjustment = clicks < MINIMUM_EVIDENCE_CLICKS ? 0 : clamp(((conversionRate - BASELINE_CONVERSION_RATE) / BASELINE_CONVERSION_RATE) * MAX_ADJUSTMENT, -MAX_ADJUSTMENT, MAX_ADJUSTMENT);
+  return { clickCount: clicks, conversionCount: conversions, conversionRate, attributedCommissionCents: commission, commissionPerClickCents, adjustment: Math.round(adjustment * 100) / 100, trendAdjustment: 0 };
+}
+
+function categorySignalKey(marketplaceId: string | undefined, category: string): string { return `${marketplaceId ?? "unknown"}:category:${category}`; }
 
 function signalKey(marketplaceId: string, productId: string): string {
   return marketplaceId + ":" + productId;
