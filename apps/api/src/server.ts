@@ -46,7 +46,8 @@ const services = createServices(
   persistence.autonomousDecisionAudits,
   persistence.autonomousActionOutcomes,
   { minimumCommissionPerClickCents: environment.AUTONOMOUS_OPTIMIZATION_MIN_COMMISSION_PER_CLICK_CENTS },
-  {}
+  {},
+  persistence.autonomousExplorationStates
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
