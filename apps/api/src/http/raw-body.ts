@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import type { FastifyRequest } from "fastify";
+import type { FastifyRequest, preParsingHookHandler } from "fastify";
 
 const rawBodies = new WeakMap<object, string>();
 
