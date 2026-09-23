@@ -4,6 +4,7 @@ export type ExplorationEvaluation = {
   status: "insufficient-evidence" | "promote-to-exploitation" | "continue-exploration" | "deprioritize";
   reason: string;
   confidence: number;
+  recoveryEpisodeId?: string;
 };
 
 export type ExplorationEvaluationPolicy = {
@@ -23,7 +24,8 @@ export function evaluateExploration(
     return {
       status: "continue-exploration",
       reason: "Recovery-phase evidence is isolated from normal exploration promotion/deprioritization learning until recovery is complete.",
-      confidence: Math.min(0.25, confidenceFromEvidence(analytics.clickCount, Math.max(1, policy.minimumClicks ?? 20)) * 0.25)
+      confidence: Math.min(0.25, confidenceFromEvidence(analytics.clickCount, Math.max(1, policy.minimumClicks ?? 20)) * 0.25),
+      recoveryEpisodeId: audit.recovery.recoveryEpisodeId
     };
   }
   const minimumClicks = Math.max(1, policy.minimumClicks ?? 20);
