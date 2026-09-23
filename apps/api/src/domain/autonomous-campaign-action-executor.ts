@@ -12,6 +12,7 @@ export type AutonomousCampaignActionResult = {
   action: OptimizationRecommendation["action"];
   campaign: Campaign;
   mutated: boolean;
+  outcomeId?: string;
 };
 
 /**
@@ -40,8 +41,8 @@ export class AutonomousCampaignActionExecutor {
       const campaign = await this.campaigns.get(recommendation.campaignId);
 
       const result = await this.executeInternal(recommendation, campaign);
-      await this.record(recommendation, result);
-      return result;
+      const outcomeId = await this.record(recommendation, result);
+      return outcomeId ? { ...result, outcomeId } : result;
     } catch (error) {
       if (this.outcomes) await this.outcomes.save({ id: randomUUID(), campaignId: recommendation.campaignId, action: recommendation.action, status: "failed", mutated: false, observedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) });
       throw error;
