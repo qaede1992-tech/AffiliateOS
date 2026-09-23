@@ -224,7 +224,7 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
   return { ...weighted[0][0], clickCount: evidence, confidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
 }
 
-function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPerformanceSignal): ScoredOpportunity {
+export function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPerformanceSignal): ScoredOpportunity {
   if (!signal || signal.adjustment === 0) return item;
   const regimeConfidence = signal.regimeConfidence ?? 1;
   const recoveryMultiplier = signal.anomalyRecovery === "recovering"
