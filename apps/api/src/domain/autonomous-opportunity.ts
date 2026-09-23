@@ -146,7 +146,7 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       const reasons = selectedIds.has(item.product.id)
-        ? ["Selected"]
+        ? [isExplorationSelection(item, performance, candidatePolicy) ? "Selected for controlled exploration" : "Selected"]
         : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore);
       return {
         auditId: randomUUID(),
@@ -160,6 +160,11 @@ export class AutonomousOpportunitySelector {
     });
     return { selected, rejected, audit };
   }
+}
+
+function isExplorationSelection(item: ScoredOpportunity, performance: Map<string, OpportunityPerformanceSignal>, policy: OpportunitySelectionPolicy): boolean {
+  const signal = performance.get(item.product.marketplaceId + ":" + item.product.id);
+  return (policy.explorationRate ?? 0.2) > 0 && (!signal || signal.clickCount < (policy.explorationMinimumEvidenceClicks ?? 20));
 }
 
 function selectWithExploration(
