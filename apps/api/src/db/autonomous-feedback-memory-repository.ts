@@ -21,6 +21,7 @@ const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   recoveryState: (row.recoveryState ?? "none") as "none" | "recovering" | "recovered",
   recoveryClicks: row.recoveryClicks ?? 0,
   recoveryEvidenceScore: row.recoveryEvidenceScore ?? 0,
+  recoveryQualityScore: row.recoveryQualityScore ?? 0,
   recoveryEpisodeId: row.recoveryEpisodeId ?? undefined,
   observedAt: row.observedAt
 });
@@ -45,6 +46,7 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       recoveryState: snapshot.recoveryState,
       recoveryClicks: snapshot.recoveryClicks,
       recoveryEvidenceScore: snapshot.recoveryEvidenceScore,
+      recoveryQualityScore: snapshot.recoveryQualityScore,
       recoveryEpisodeId: snapshot.recoveryEpisodeId,
       observedAt: snapshot.observedAt
     });
