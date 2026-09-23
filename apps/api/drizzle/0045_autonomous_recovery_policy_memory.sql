@@ -1,0 +1,1 @@
+ALTER TABLE "autonomous_feedback_snapshots" ADD COLUMN IF NOT EXISTS "recovery_policy" jsonb;
