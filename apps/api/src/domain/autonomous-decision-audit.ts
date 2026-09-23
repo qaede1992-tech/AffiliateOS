@@ -14,7 +14,8 @@ export type AutonomousDecisionRecovery = {
   recoveryClicks: number;
   recoveryEvidenceScore: number;
   recoveryEpisodeId?: string;
-  episodeMetrics?: { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; previousEpisodeQualityScore?: number; qualityDelta?: number };\n  policy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
+  episodeMetrics?: { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; previousEpisodeQualityScore?: number; qualityDelta?: number };
+  policy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
 };
 
 export type AutonomousDecisionOutcome = {
