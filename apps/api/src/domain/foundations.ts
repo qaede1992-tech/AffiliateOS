@@ -18,7 +18,26 @@ export interface MarketplaceProvider {
 }
 export class MarketplaceProviderRegistry {
   private readonly providers = new Map<string, MarketplaceProvider>();
-  register(provider: MarketplaceProvider): void { if (this.providers.has(provider.slug)) throw new Error(`Marketplace provider already registered: ${provider.slug}`); this.providers.set(provider.slug, provider); }
+
+  register(provider: MarketplaceProvider): void {
+    if (!provider.slug.trim()) throw new Error("Marketplace provider slug is required.");
+    if (this.providers.has(provider.slug)) throw new Error(`Marketplace provider already registered: ${provider.slug}`);
+    const capabilityMethods: Record<MarketplaceCapability, keyof MarketplaceProvider> = {
+      discoverProducts: "discoverProducts",
+      searchProducts: "searchProducts",
+      getProduct: "getProduct",
+      getOffers: "getOffers",
+      generateAffiliateLink: "generateAffiliateLink",
+      syncConversions: "syncConversions"
+    };
+    for (const capability of provider.capabilities) {
+      if (!Object.prototype.hasOwnProperty.call(capabilityMethods, capability)) throw new Error(`Unsupported marketplace capability: ${capability}`);
+      const method = capabilityMethods[capability];
+      if (typeof provider[method] !== "function") throw new Error(`Marketplace provider ${provider.slug} declares capability ${capability} but does not implement it.`);
+    }
+    this.providers.set(provider.slug, provider);
+  }
+
   get(slug: string): MarketplaceProvider { const provider = this.providers.get(slug); if (!provider) throw new Error(`Marketplace provider is not configured: ${slug}`); return provider; }
   list(): MarketplaceProvider[] { return [...this.providers.values()]; }
 }
