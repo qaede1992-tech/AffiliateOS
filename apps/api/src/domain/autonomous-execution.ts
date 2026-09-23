@@ -68,7 +68,8 @@ export class AutonomousExecutionService {
             recoveryState: signal.anomalyRecovery ?? "none",
             recoveryClicks: signal.recoveryClicks ?? 0,
             recoveryEvidenceScore: signal.recoveryEvidenceScore ?? 0,
-            recoveryEpisodeId: signal.recoveryEpisodeId
+            recoveryEpisodeId: signal.recoveryEpisodeId,
+            episodeMetrics: signal.recoveryEpisodeMetrics
           } : undefined
         };
       });
