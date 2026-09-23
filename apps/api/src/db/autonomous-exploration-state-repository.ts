@@ -22,8 +22,21 @@ export class DrizzleAutonomousExplorationStateRepository implements AutonomousEx
     FROM autonomous_action_outcomes o
     JOIN campaigns c ON c.id = o.campaign_id
     LEFT JOIN products p ON p.id = NULLIF(c.audience ->> 'productId', '')::uuid
+    LEFT JOIN LATERAL (
+      SELECT fs.recovery_episode_id
+      FROM autonomous_feedback_snapshots fs
+      WHERE fs.product_id = NULLIF(c.audience ->> 'productId', '')::uuid
+        AND fs.marketplace_id = NULLIF(c.audience ->> 'marketplaceId', '')::uuid
+      ORDER BY fs.observed_at DESC, fs.id DESC
+      LIMIT 1
+    ) current_recovery ON TRUE
     WHERE o.status = 'mutated' AND o.evaluated_at IS NOT NULL AND o.evaluation_metrics IS NOT NULL
-      AND COALESCE(o.recovery_state, 'none') <> 'recovering'`);
+      AND COALESCE(o.recovery_state, 'none') <> 'recovering'
+      AND NOT (
+        o.recovery_episode_id IS NOT NULL
+        AND current_recovery.recovery_episode_id IS NOT NULL
+        AND o.recovery_episode_id <> current_recovery.recovery_episode_id
+      )`);
   if (!rows.rows?.length) return;
   await this.db.transaction(async (tx: DatabaseExecutor) => {
     for (const row of rows.rows as any[]) {
