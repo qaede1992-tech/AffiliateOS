@@ -52,6 +52,25 @@ describe("OptimizationEngine", () => {
     assert.match(result[0].reasons[0], /cooldown/i);
   });
 
+  it("revises after a prior scale action shows lower conversion and commission efficiency", () => {
+    const engine = new OptimizationEngine();
+    const state = new Map([
+      ["c1", {
+        action: "scale" as const,
+        appliedAt: "2026-09-21T10:00:00.000Z",
+        evaluation: {
+          outcomeId: "o1",
+          evaluatedAt: "2026-09-22T10:00:00.000Z",
+          conversionRateDelta: -0.02,
+          commissionPerClickDeltaCents: -1
+        }
+      }]
+    ]);
+    const result = engine.recommend([analytics("c1", 200, 0.08)], state, new Date("2026-09-23T10:00:00.000Z"));
+    assert.equal(result[0].action, "revise-content");
+    assert.match(result[0].reasons[0], /lower conversion/i);
+  });
+
   it("allows a new recommendation after the cooldown expires", () => {
     const engine = new OptimizationEngine({ cooldownMs: 60 * 60_000 });
     const state = new Map([
