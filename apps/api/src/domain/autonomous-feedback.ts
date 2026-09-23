@@ -29,12 +29,18 @@ export type OpportunityPerformanceSignal = {
   recoveryEpisodeMetrics?: RecoveryEpisodeMetrics;
 };
 
-export type RecoveryEpisodeMetrics = { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; };
+export type RecoveryEpisodeMetrics = { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; };
 
 function calculateRecoveryQuality(metrics: RecoveryEpisodeMetrics): number {
   const conversionQuality = metrics.conversionDelta >= ANOMALY_RECOVERY_MIN_CONVERSION_DELTA ? 1 : 0.5;
   const commissionQuality = metrics.commissionDeltaCents >= ANOMALY_RECOVERY_MIN_COMMISSION_DELTA_CENTS ? 1 : 0.5;
-  return 0.5 + 0.5 * ((conversionQuality + commissionQuality) / 2);
+  const clickQuality = Math.min(1, metrics.recoveryClicks / ANOMALY_RECOVERY_CLICKS);
+  const durationQuality = metrics.recoveryDurationMs <= 7 * 24 * 60 * 60 * 1000 ? 1 : 0.75;
+  return clamp(
+    0.25 * conversionQuality + 0.25 * commissionQuality + 0.25 * clickQuality + 0.25 * durationQuality,
+    0.5,
+    1
+  );
 }
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -121,6 +127,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         commissionDeltaCents: signal.attributedCommissionCents - recoveryAnchor.attributedCommissionCents
       } : undefined;
       const recoveryQuality = recoveryAnchor ? calculateRecoveryQuality(recoveryEpisodeMetrics!) : 1;
+      if (recoveryEpisodeMetrics) recoveryEpisodeMetrics.qualityScore = recoveryQuality;
       const recoveryConfidence = anomalyRecovery === "recovered"
         ? recoveryConfidenceMultiplier(recoveryEvidenceScore) * recoveryQuality
         : 1;
