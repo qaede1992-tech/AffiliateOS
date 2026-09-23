@@ -36,6 +36,7 @@ const MAX_TREND_ADJUSTMENT = 2;
 const MAX_EFFICIENCY_ADJUSTMENT = 2;
 const MIN_EFFICIENCY_EVIDENCE_CLICKS = 20;
 const ANOMALY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const ANOMALY_RECOVERY_CLICKS = 20;
 const LEARNING_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
@@ -69,8 +70,14 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const regime = windows ? classifyWindowRegime(windows) : "stable";
       const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
       const anomalyScore = windows ? calculateAnomalyScore(windows) : 0;
-      const recentHalt = previous?.anomaly === "halt" && Date.parse(observedAt) - Date.parse(previous.observedAt) < ANOMALY_COOLDOWN_MS;
-      const anomaly = recentHalt ? "halt" : classifyAnomaly(anomalyScore);
+      const elapsedSincePrevious = previous ? Date.parse(observedAt) - Date.parse(previous.observedAt) : Number.POSITIVE_INFINITY;
+      const recentHalt = previous?.anomaly === "halt" && elapsedSincePrevious < ANOMALY_COOLDOWN_MS;
+      const recoveryAnchor = isProductSignal && this.memory!.recentByProductAndMarketplace
+        ? await latestHaltSnapshot(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
+        : undefined;
+      const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
+      const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && recoveryClicks < ANOMALY_RECOVERY_CLICKS;
+      const anomaly = recentHalt || recoveryGate ? "halt" : classifyAnomaly(anomalyScore);
       const windowAdjustment = windows && anomaly !== "halt"
         ? calculateWindowAdjustment(windows, regime) * regimeConfidence * (anomaly === "watch" ? 0.35 : 1)
         : 0;
@@ -179,6 +186,17 @@ function signalKey(marketplaceId: string, productId: string): string {
 function splitSignalKey(key: string): [string | undefined, string] {
   const separator = key.indexOf(":");
   return separator < 0 ? [undefined, key] : [key.slice(0, separator), key.slice(separator + 1)];
+}
+
+async function latestHaltSnapshot(
+  reader:(productId:string,marketplaceId:string,since:string)=>Promise<AutonomousFeedbackSnapshot[]>,
+  productId:string, marketplaceId:string, observedAt:string
+):Promise<AutonomousFeedbackSnapshot|undefined> {
+  const since = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const snapshots = await reader(productId, marketplaceId, since);
+  return snapshots
+    .filter((snapshot) => snapshot.anomaly === "halt" && Date.parse(snapshot.observedAt) <= Date.parse(observedAt))
+    .sort((a,b) => b.observedAt.localeCompare(a.observedAt))[0];
 }
 
 async function buildWindows(
