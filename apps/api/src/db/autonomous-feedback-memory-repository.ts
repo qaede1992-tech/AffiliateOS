@@ -56,8 +56,14 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
         clickCount: snapshot.clickCount,
         conversionCount: snapshot.conversionCount,
         attributedCommissionCents: snapshot.attributedCommissionCents,
+        commissionPerClickCents: snapshot.commissionPerClickCents,
         conversionRate: snapshot.conversionRate,
         adjustment: snapshot.adjustment,
+        anomaly: snapshot.anomaly,
+        anomalyScore: snapshot.anomalyScore,
+        recoveryState: snapshot.recoveryState,
+        recoveryClicks: snapshot.recoveryClicks,
+        recoveryEvidenceScore: snapshot.recoveryEvidenceScore,
         observedAt: snapshot.observedAt
       })
       .onConflictDoNothing({ target: autonomousFeedbackSnapshots.observationKey })
