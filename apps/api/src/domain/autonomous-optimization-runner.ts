@@ -19,7 +19,8 @@ export class AutonomousOptimizationRunner {
     private readonly stateWriter: OptimizationStateWriter,
     private readonly executor: AutonomousCampaignActionExecutor,
     private readonly outcomeWriter?: AutonomousActionOutcomeWriter,
-    policy: OptimizationPolicy = {}
+    policy: OptimizationPolicy = {},
+    private readonly actionOutcomeEvaluationDelayMs = 24 * 60 * 60_000
   ) {
     this.engine = new OptimizationEngine(policy);
   }
@@ -31,6 +32,8 @@ export class AutonomousOptimizationRunner {
       const previous = await this.stateReader.get(campaign.campaignId);
       if (previous) state.set(campaign.campaignId, previous);
     }
+
+    await this.evaluateDueActionOutcomes(overview.campaigns, now);
 
     const recommendations = this.engine.recommend(overview.campaigns, state, now);
     const actions: AutonomousCampaignActionResult[] = [];
@@ -55,6 +58,24 @@ export class AutonomousOptimizationRunner {
     }
 
     return { campaigns: overview.campaigns, recommendations, actions };
+  }
+
+  private async evaluateDueActionOutcomes(campaigns: CampaignAnalytics[], now: Date): Promise<void> {
+    if (!this.outcomeWriter?.latestByCampaign || !this.outcomeWriter.updateEvaluation) return;
+    for (const campaign of campaigns) {
+      try {
+        const outcome = await this.outcomeWriter.latestByCampaign(campaign.campaignId);
+        if (!outcome || outcome.status !== "mutated" || outcome.evaluatedAt) continue;
+        const observedAt = Date.parse(outcome.observedAt);
+        if (!Number.isFinite(observedAt) || now.getTime() - observedAt < this.actionOutcomeEvaluationDelayMs) continue;
+        const current = toActionMetrics(campaign);
+        if (!current) continue;
+        await this.outcomeWriter.updateEvaluation(outcome.id, current, now.toISOString());
+      } catch {
+        // Evaluation is observational. A transient analytics/persistence failure
+        // must not block the next autonomous optimization cycle.
+      }
+    }
   }
 }
 
