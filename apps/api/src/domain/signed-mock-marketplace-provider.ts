@@ -15,14 +15,14 @@ export class SignedMockMarketplaceProvider implements MarketplaceProvider {
     this.delegate = new MockMarketplaceProvider(products, offers);
   }
 
-  validateConfiguration(configuration: Record<string, unknown>): void { this.delegate.validateConfiguration(configuration); }
+  validateConfiguration(configuration: Record<string, unknown>): void { this.delegate.validateConfiguration(); }
   testConnection() { return this.delegate.testConnection!(); }
   discoverProducts() { return this.delegate.discoverProducts!(); }
   getProduct(externalProductId: string) { return this.delegate.getProduct!(externalProductId); }
   searchProducts(query: string) { return this.delegate.searchProducts!(query); }
   getOffers(externalProductId: string) { return this.delegate.getOffers!(externalProductId); }
   generateAffiliateLink(externalOfferId: string) { return this.delegate.generateAffiliateLink!(externalOfferId); }
-  syncConversions(since: string) { return this.delegate.syncConversions!(since); }
+  syncConversions(since: string) { return this.delegate.syncConversions!(); }
 
   verifyEventSignature(input: { rawBody: string; headers: ProviderEventSignatureHeaders; credentialReference?: string; configuration: Record<string, unknown> }): Promise<{ valid: boolean; version?: string }> {
     const valid = verifyProviderEventSignature(input.rawBody, this.signingSecret, input.headers);
