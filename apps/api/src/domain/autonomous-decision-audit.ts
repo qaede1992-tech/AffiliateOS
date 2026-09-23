@@ -12,6 +12,15 @@ export type AutonomousDecisionOutcome = {
   campaignId?: string;
   error?: string;
   observedAt: string;
+  analytics?: AutonomousDecisionOutcomeAnalytics;
+};
+
+export type AutonomousDecisionOutcomeAnalytics = {
+  clickCount: number;
+  attributedConversionCount: number;
+  attributedRevenueCents: number;
+  attributedCommissionCents: number;
+  conversionRate: number;
 };
 
 export interface AutonomousDecisionAuditRepository {
