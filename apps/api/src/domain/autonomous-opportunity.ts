@@ -189,7 +189,10 @@ function selectWithExploration(
 ): ScoredOpportunity[] {
   const limit = Math.max(0, maximumResults);
   if (limit === 0 || eligible.length <= limit) return eligible.slice(0, limit);
-  const explorationSlots = Math.min(limit, Math.max(0, Math.floor(eligible.reduce((sum, item) => {\n    const policy = effectivePolicy({ product: item.product, offers: [] });\n    return sum + Math.min(1, Math.max(0, adaptiveExplorationRates.get(item.product.id) ?? policy.explorationRate ?? 0.2));\n  }, 0) / Math.max(1, eligible.length) * limit)));
+  const explorationSlots = Math.min(limit, Math.max(0, Math.floor(eligible.reduce((sum, item) => {
+    const policy = effectivePolicy({ product: item.product, offers: [] });
+    return sum + Math.min(1, Math.max(0, adaptiveExplorationRates.get(item.product.id) ?? policy.explorationRate ?? 0.2));
+  }, 0) / Math.max(1, eligible.length) * limit)));
   if (explorationSlots === 0) return eligible.slice(0, limit);
   const exploratory = eligible.filter((item) => {
     const policy = effectivePolicy({ product: item.product, offers: [] });
