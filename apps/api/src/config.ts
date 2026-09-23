@@ -11,6 +11,22 @@ const booleanEnvironment = z.preprocess((value) => {
   return value;
 }, z.boolean());
 
+const opportunitySelectionPolicySchema = z.object({
+  minimumScore: z.number().min(0).max(100).optional(),
+  maximumResults: z.number().int().min(1).max(1000).optional(),
+  targetPriceMaxCents: z.number().int().positive().optional(),
+  minimumCommissionRateBps: z.number().int().min(0).max(1_000_000).optional(),
+  minimumDemandScore: z.number().min(0).max(100).optional()
+}).strict();
+
+const marketplacePoliciesEnvironment = z.preprocess((value) => {
+  if (value === undefined || value === "") return {};
+  if (typeof value === "string") {
+    try { return JSON.parse(value); } catch { return value; }
+  }
+  return value;
+}, z.record(z.string().trim().min(1), opportunitySelectionPolicySchema));
+
 const environmentSchema = z.object({
   API_HOST: z.string().default("127.0.0.1"),
   API_PORT: z.coerce.number().int().positive().default(3001),
@@ -24,6 +40,7 @@ const environmentSchema = z.object({
   AUTONOMOUS_MAXIMUM_RESULTS: z.coerce.number().int().min(1).max(1000).default(10),
   AUTONOMOUS_MINIMUM_COMMISSION_BPS: z.coerce.number().int().min(0).max(1_000_000).default(0),
   AUTONOMOUS_MINIMUM_DEMAND_SCORE: z.coerce.number().min(0).max(100).default(0),
+  AUTONOMOUS_MARKETPLACE_POLICIES_JSON: marketplacePoliciesEnvironment.default({}),
   PROVIDER_EVENT_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).default(60_000)
 });
 
