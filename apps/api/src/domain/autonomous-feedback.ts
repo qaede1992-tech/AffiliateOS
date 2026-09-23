@@ -26,7 +26,7 @@ export type OpportunityPerformanceSignal = {
   recoveryClicks?: number;
   recoveryEvidenceScore?: number;
   recoveryEpisodeId?: string;
-  recoveryEpisodeMetrics?: RecoveryEpisodeMetrics;
+  recoveryEpisodeMetrics?: RecoveryEpisodeMetrics;\n  recoveryPolicy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
 };
 
 export type RecoveryEpisodeMetrics = { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; previousEpisodeQualityScore?: number; qualityDelta?: number; };
@@ -128,7 +128,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       } : undefined;
       const recoveryQuality = recoveryAnchor ? calculateRecoveryQuality(recoveryEpisodeMetrics!) : 1;
       if (recoveryEpisodeMetrics) recoveryEpisodeMetrics.qualityScore = recoveryQuality;
-      const previousEpisode = recoveryAnchor && this.memory!.previousRecoveryEpisodeAnalytics\n        ? await this.memory!.previousRecoveryEpisodeAnalytics(productId, marketplaceId!, recoveryAnchor.id)\n        : undefined;\n      if (recoveryEpisodeMetrics && previousEpisode) { recoveryEpisodeMetrics.previousEpisodeQualityScore = previousEpisode.closingQualityScore ?? previousEpisode.averageQualityScore; recoveryEpisodeMetrics.qualityDelta = (recoveryEpisodeMetrics.qualityScore ?? 0) - recoveryEpisodeMetrics.previousEpisodeQualityScore; }\n      const recoveryConfidence = anomalyRecovery === "recovered"
+      const previousEpisode = recoveryAnchor && this.memory!.previousRecoveryEpisodeAnalytics\n        ? await this.memory!.previousRecoveryEpisodeAnalytics(productId, marketplaceId!, recoveryAnchor.id)\n        : undefined;\n      if (recoveryEpisodeMetrics && previousEpisode) { recoveryEpisodeMetrics.previousEpisodeQualityScore = previousEpisode.closingQualityScore ?? previousEpisode.averageQualityScore; recoveryEpisodeMetrics.qualityDelta = (recoveryEpisodeMetrics.qualityScore ?? 0) - recoveryEpisodeMetrics.previousEpisodeQualityScore; }\n      const qualityDelta = recoveryEpisodeMetrics?.qualityDelta;\n      const recoveryPolicy = {\n        explorationFloor: qualityDelta !== undefined && qualityDelta < -0.15 ? 0.35 : 0,\n        direction: qualityDelta !== undefined && qualityDelta < -0.15 ? "hold-exploration" as const : qualityDelta !== undefined && qualityDelta > 0.15 ? "reduce-exploration" as const : "neutral" as const,\n        qualityDelta\n      };\n      const recoveryConfidence = anomalyRecovery === "recovered"
         ? recoveryConfidenceMultiplier(recoveryEvidenceScore) * recoveryQuality
         : 1;
       const windowAdjustment = windows && anomaly !== "halt"
@@ -157,7 +157,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore, recoveryEpisodeId, recoveryEpisodeMetrics }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore, recoveryEpisodeId, recoveryEpisodeMetrics, recoveryPolicy }] as const;
     }));
     return new Map(entries);
   }
