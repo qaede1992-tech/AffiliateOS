@@ -3,7 +3,7 @@ import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOff
 import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
 import { DrizzlePublicationOperationRepository } from "./publication-operation-repository.js";
-import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
+import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
 
 type DatabaseExecutor = any;
 const toAffiliate = (row: typeof affiliates.$inferSelect): Affiliate => ({ id: row.id, name: row.name, email: row.email, status: row.status as Affiliate["status"], createdAt: row.createdAt });
