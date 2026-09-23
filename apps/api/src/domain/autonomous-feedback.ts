@@ -4,6 +4,7 @@ import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } f
 export type PerformanceWindow = { clickCount:number; conversionCount:number; conversionRate:number; confidence:number; };
 export type PerformanceRegime = "rising" | "stable" | "declining" | "volatile";
 export type PerformanceAnomaly = "none" | "watch" | "halt";
+export type AnomalyRecoveryState = "none" | "recovering" | "recovered";
 
 
 export type OpportunityPerformanceSignal = {
@@ -21,6 +22,7 @@ export type OpportunityPerformanceSignal = {
   regimeConfidence?: number;
   anomaly?: PerformanceAnomaly;
   anomalyScore?: number;
+  anomalyRecovery?: AnomalyRecoveryState;
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -78,6 +80,9 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
       const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && recoveryClicks < ANOMALY_RECOVERY_CLICKS;
       const anomaly = recentHalt || recoveryGate ? "halt" : classifyAnomaly(anomalyScore);
+      const anomalyRecovery: AnomalyRecoveryState = recoveryAnchor
+        ? (recentHalt ? "recovering" : recoveryGate ? "recovering" : "recovered")
+        : "none";
       const windowAdjustment = windows && anomaly !== "halt"
         ? calculateWindowAdjustment(windows, regime) * regimeConfidence * (anomaly === "watch" ? 0.35 : 1)
         : 0;
@@ -99,7 +104,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery }] as const;
     }));
     return new Map(entries);
   }
