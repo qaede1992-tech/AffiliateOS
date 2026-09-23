@@ -99,6 +99,31 @@ describe("autonomous opportunity selection", () => {
     assert.equal(result.selected[0]?.breakdown.performanceAdjustment, -8);
   });
 
+  it("reserves controlled exploration slots for candidates without enough product evidence", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("proven"), offers: [offer("proven")] },
+      { product: product("new-a"), offers: [offer("new-a")] },
+      { product: product("new-b"), offers: [offer("new-b")] }
+    ], { minimumScore: 0, maximumResults: 2, explorationRate: 0.5 }, new Map([
+      ["market-1:proven", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 8, trendAdjustment: 0 }]
+    ]));
+    assert.equal(result.selected.length, 2);
+    assert.ok(result.selected.some((item) => item.product.id === "new-a"));
+    assert.ok(result.selected.some((item) => item.product.id === "proven"));
+    assert.ok(result.audit.find((item) => item.productId === "new-a")?.reasons.includes("Selected for controlled exploration"));
+  });
+
+  it("does not force exploration when every eligible product has enough evidence", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("a"), offers: [offer("a")] },
+      { product: product("b"), offers: [offer("b")] }
+    ], { minimumScore: 0, maximumResults: 1, explorationRate: 1 }, new Map([
+      ["market-1:a", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 2, trendAdjustment: 0 }],
+      ["market-1:b", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 1, trendAdjustment: 0 }]
+    ]));
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["a"]);
+  });
+
   it("selects only active, offer-backed opportunities above the policy threshold", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("good"), offers: [offer("good")] },
