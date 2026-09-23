@@ -6,6 +6,7 @@ export type AutonomousFeedbackSnapshot = {
   clickCount: number;
   conversionCount: number;
   attributedCommissionCents: number;
+  commissionPerClickCents: number;
   conversionRate: number;
   adjustment: number;
   observedAt: string;
