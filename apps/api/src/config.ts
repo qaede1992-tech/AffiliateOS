@@ -20,6 +20,10 @@ const environmentSchema = z.object({
   API_AUTH_OPERATOR_ROLE: z.enum(["admin", "operator", "viewer"]).default("admin"),
   AUTONOMOUS_CYCLE_ENABLED: booleanEnvironment,
   AUTONOMOUS_CYCLE_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000),
+  AUTONOMOUS_MINIMUM_SCORE: z.coerce.number().min(0).max(100).default(60),
+  AUTONOMOUS_MAXIMUM_RESULTS: z.coerce.number().int().min(1).max(1000).default(10),
+  AUTONOMOUS_MINIMUM_COMMISSION_BPS: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  AUTONOMOUS_MINIMUM_DEMAND_SCORE: z.coerce.number().min(0).max(100).default(0),
   PROVIDER_EVENT_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).default(60_000)
 });
 
