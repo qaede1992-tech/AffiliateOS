@@ -17,6 +17,7 @@ export interface AutonomousFeedbackMemoryRepository {
   saveIfAbsent?(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot>;
   latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
   latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
+  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;
 }
 
 export class InMemoryAutonomousFeedbackMemoryRepository implements AutonomousFeedbackMemoryRepository {
