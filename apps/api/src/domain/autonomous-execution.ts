@@ -51,9 +51,12 @@ export class AutonomousExecutionService {
     }
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const selection = this.selector.select(input.candidates, input.policy, performance, input.policiesByMarketplace);
+    const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
-      await this.decisionAudits.saveMany(selection.audit.map((audit) => ({ ...audit, cycleId: namespace, createdAt })));
+      const audits = selection.audit.map((audit) => ({ ...audit, cycleId: namespace, createdAt }));
+      await this.decisionAudits.saveMany(audits);
+      for (const audit of audits) auditByProductId.set(audit.productId, audit);
     }
     const candidatesByOpportunity = new Map(
       input.candidates.flatMap((candidate) =>
@@ -69,12 +72,23 @@ export class AutonomousExecutionService {
         : undefined;
       const candidate = resolved?.candidate;
       const offer = resolved?.offer;
-      if (!offer) { outcomes.push({ productId: opportunity.product.id, offerId: opportunity.offerId, score: opportunity.score, status: "failed", idempotencyKey, error: "Selected opportunity has no matching affiliate offer." }); continue; }
+      if (!offer) {
+        const error = "Selected opportunity has no matching affiliate offer.";
+        outcomes.push({ productId: opportunity.product.id, offerId: opportunity.offerId, score: opportunity.score, status: "failed", idempotencyKey, error });
+        const audit = auditByProductId.get(opportunity.product.id);
+        if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: opportunity.offerId, status: "failed", error, observedAt: new Date().toISOString() });
+        continue;
+      }
       try {
         const result = await this.orchestrator.execute({ opportunity, offer, product: opportunity.product, audience: input.audience, platforms: input.platforms, scheduledAt: input.scheduledAt, idempotencyKey });
         outcomes.push({ productId: opportunity.product.id, offerId: offer.id, score: opportunity.score, status: "completed", idempotencyKey, result });
+        const audit = auditByProductId.get(opportunity.product.id);
+        if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: offer.id, status: "completed", campaignId: result.campaign.id, observedAt: new Date().toISOString() });
       } catch (error) {
-        outcomes.push({ productId: opportunity.product.id, offerId: offer.id, score: opportunity.score, status: "failed", idempotencyKey, error: error instanceof Error ? error.message : String(error) });
+        const message = error instanceof Error ? error.message : String(error);
+        outcomes.push({ productId: opportunity.product.id, offerId: offer.id, score: opportunity.score, status: "failed", idempotencyKey, error: message });
+        const audit = auditByProductId.get(opportunity.product.id);
+        if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: offer.id, status: "failed", error: message, observedAt: new Date().toISOString() });
       }
     }
     return { selected: selection.selected, rejected: selection.rejected, audit: selection.audit, outcomes, recoveredRunCount };

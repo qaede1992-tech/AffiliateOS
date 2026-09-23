@@ -13,13 +13,13 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
     const limit = Math.min(Math.max(1, query.limit ?? 100), 500);
     const filters = [query.cycleId ? eq(autonomousDecisionAudits.cycleId, query.cycleId) : undefined, query.marketplaceId ? eq(autonomousDecisionAudits.marketplaceId, query.marketplaceId) : undefined, query.productId ? eq(autonomousDecisionAudits.productId, query.productId) : undefined, query.selected === undefined ? undefined : eq(autonomousDecisionAudits.selected, query.selected)].filter(Boolean) as any[];
     const rows = await this.db.select().from(autonomousDecisionAudits).where(filters.length ? and(...filters) : undefined).orderBy(desc(autonomousDecisionAudits.createdAt)).limit(limit);
-    return rows.map((row: any) => ({ cycleId: row.cycleId, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, score: row.score, policy: row.policy, reasons: row.reasons, createdAt: row.createdAt }));
+    return rows.map((row: any) => ({ cycleId: row.cycleId, auditId: row.id, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, score: row.score, policy: row.policy, reasons: row.reasons, createdAt: row.createdAt, outcome: row.outcomeStatus ? { offerId: row.outcomeOfferId ?? undefined, status: row.outcomeStatus, campaignId: row.outcomeCampaignId ?? undefined, error: row.outcomeError ?? undefined, observedAt: row.outcomeObservedAt } : undefined }));
   }
 
   async saveMany(audits: AutonomousDecisionAudit[]): Promise<void> {
     if (!audits.length) return;
     await this.db.insert(autonomousDecisionAudits).values(audits.map((audit) => ({
-      id: randomUUID(),
+      id: audit.auditId,
       cycleId: audit.cycleId,
       productId: audit.productId,
       marketplaceId: audit.marketplaceId,
@@ -29,5 +29,15 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
       reasons: audit.reasons,
       createdAt: audit.createdAt
     })));
+  }
+
+  async updateOutcome(auditId: string, outcome: { offerId?: string; status: "completed" | "failed"; campaignId?: string; error?: string; observedAt: string }): Promise<void> {
+    await this.db.update(autonomousDecisionAudits).set({
+      outcomeOfferId: outcome.offerId ?? null,
+      outcomeStatus: outcome.status,
+      outcomeCampaignId: outcome.campaignId ?? null,
+      outcomeError: outcome.error ?? null,
+      outcomeObservedAt: outcome.observedAt
+    }).where(eq(autonomousDecisionAudits.id, auditId));
   }
 }
