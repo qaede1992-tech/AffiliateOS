@@ -233,15 +233,22 @@ async function hasStableRecoveryWindow(
   return recent.every((snapshot) => snapshot.recoveryEvidenceScore >= 0.75 && snapshot.anomaly !== "halt");
 }
 
-async function latestHaltSnapshot(
+async function activeRecoveryEpisode(
   reader:(productId:string,marketplaceId:string,since:string)=>Promise<AutonomousFeedbackSnapshot[]>,
   productId:string, marketplaceId:string, observedAt:string
 ):Promise<AutonomousFeedbackSnapshot|undefined> {
   const since = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
   const snapshots = await reader(productId, marketplaceId, since);
-  return snapshots
-    .filter((snapshot) => snapshot.anomaly === "halt" && Date.parse(snapshot.observedAt) <= Date.parse(observedAt))
-    .sort((a,b) => b.observedAt.localeCompare(a.observedAt))[0];
+  const ordered = snapshots
+    .filter((snapshot) => Date.parse(snapshot.observedAt) <= Date.parse(observedAt))
+    .sort((a,b) => a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id));
+  const haltIndex = ordered.map((snapshot) => snapshot.anomaly).lastIndexOf("halt");
+  if (haltIndex < 0) return undefined;
+  const halt = ordered[haltIndex];
+  const closed = ordered.slice(haltIndex + 1).some((snapshot) =>
+    snapshot.recoveryEpisodeId === halt.id && snapshot.recoveryState === "recovered"
+  );
+  return closed ? undefined : halt;
 }
 
 async function buildWindows(
