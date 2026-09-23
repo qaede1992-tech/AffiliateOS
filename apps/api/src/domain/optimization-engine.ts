@@ -19,6 +19,7 @@ export type OptimizationPolicy = {
   scaleConversionRate?: number;
   pauseConversionRate?: number;
   pauseAfterClicks?: number;
+  minimumCommissionPerClickCents?: number;
 };
 
 export type OptimizationState = {
@@ -39,6 +40,7 @@ export class OptimizationEngine {
     const pauseRate = this.policy.pauseConversionRate ?? 0.01;
     const pauseAfterClicks = this.policy.pauseAfterClicks ?? 100;
     const cooldownMs = this.policy.cooldownMs ?? 60 * 60_000;
+    const minimumCommissionPerClick = this.policy.minimumCommissionPerClickCents ?? 0;
 
     return campaigns.map((campaign) => {
       const previous = state.get(campaign.campaignId);
@@ -58,13 +60,15 @@ export class OptimizationEngine {
           reasons: ["Insufficient click volume for a reliable optimization decision."]
         };
       }
-      if (campaign.conversionRate >= scaleRate) {
+      const commissionPerClick = campaign.clickCount === 0 ? 0 : campaign.attributedCommissionCents / campaign.clickCount;
+      if (campaign.conversionRate >= scaleRate && commissionPerClick >= minimumCommissionPerClick) {
         return {
           campaignId: campaign.campaignId,
           action: "scale",
           confidence: Math.min(1, campaign.conversionRate / Math.max(scaleRate, Number.EPSILON)),
           reasons: [
             "Conversion rate is at or above the scale threshold.",
+            ...(minimumCommissionPerClick > 0 ? ["Commission per click meets the efficiency threshold."] : []),
             "Continue distributing this campaign while preserving measurement."
           ]
         };
@@ -76,6 +80,7 @@ export class OptimizationEngine {
           confidence: 0.8,
           reasons: [
             "High click volume has not produced sufficient attributed conversions.",
+            ...(commissionPerClick < minimumCommissionPerClick && minimumCommissionPerClick > 0 ? ["Commission per click is below the efficiency threshold."] : []),
             "Pause additional distribution and feed the campaign into content or opportunity revision."
           ]
         };
@@ -85,7 +90,7 @@ export class OptimizationEngine {
         action: "revise-content",
         confidence: 0.6,
         reasons: [
-          "Traffic exists but conversion performance is below the scale threshold.",
+          "Traffic exists but conversion performance is below the scale threshold or commission efficiency is below the configured scale threshold.",
           "Test new creative, audience framing, or offer positioning before increasing distribution."
         ]
       };
