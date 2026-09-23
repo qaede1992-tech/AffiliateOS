@@ -68,6 +68,22 @@ export class AutonomousExecutionService {
     );
     const outcomes: AutonomousExecutionOutcome[] = [];
     for (const opportunity of selection.selected) {
+      const performanceSignal = performance.get(opportunity.product.marketplaceId + ":" + opportunity.product.id) ?? performance.get(opportunity.product.id);
+      if (performanceSignal?.anomaly === "halt") {
+        const idempotencyKey = executionKey(namespace, opportunity);
+        const error = "Autonomous execution blocked by active performance anomaly cooldown.";
+        outcomes.push({ productId: opportunity.product.id, offerId: opportunity.offerId, score: opportunity.score, status: "failed", idempotencyKey, error });
+        const audit = auditByProductId.get(opportunity.product.id);
+        if (audit && this.decisionAudits) {
+          await this.decisionAudits.updateOutcome(audit.auditId, {
+            offerId: opportunity.offerId,
+            status: "failed",
+            error,
+            observedAt: new Date().toISOString()
+          });
+        }
+        continue;
+      }
       const idempotencyKey = executionKey(namespace, opportunity);
       if (recoveredKeys.has(idempotencyKey)) continue;
       const resolved = opportunity.offerId
