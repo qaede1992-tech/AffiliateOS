@@ -9,7 +9,7 @@ const normalize=(v:string)=>v.trim().toLowerCase();
 const key=(m:string,d:"marketplace"|"category"|"audience",v:string)=>`${m}:${d}:${normalize(v)}`;
 export class AdaptiveExplorationPolicyProvider {
  constructor(private readonly reader:AutonomousDecisionAuditReader,private readonly policy:AdaptiveExplorationPolicy={},private readonly stateRepository?:AutonomousExplorationStateRepository){}
- async getRates(candidates:OpportunityCandidateSource[],basePolicy:OpportunitySelectionPolicy,policiesByMarketplace:OpportunitySelectionPoliciesByMarketplace={}):Promise<Map<string,number>>{
+ async getRates(candidates:OpportunityCandidateSource[],basePolicy:OpportunitySelectionPolicy,policiesByMarketplace:OpportunitySelectionPoliciesByMarketplace={},performance:Map<string,OpportunityPerformanceSignal>=new Map()):Promise<Map<string,number>>{
   if(this.policy.enabled===false)return new Map();
   const minSamples=Math.max(1,this.policy.minimumSamples??5),promote=clamp(this.policy.promotionRateForReduction??0.6,0,1),deprioritize=clamp(this.policy.deprioritizationRateForIncrease??0.5,0,1),minRate=clamp(this.policy.minimumRate??0,0,1),maxRate=clamp(this.policy.maximumRate??0.5,minRate,1),reduce=Math.max(0,this.policy.reductionMultiplier??0.5),increase=Math.max(0,this.policy.increaseMultiplier??1.5);
   const audits=await this.reader.list({selected:true,limit:500});
@@ -20,7 +20,9 @@ export class AdaptiveExplorationPolicyProvider {
   const rates=new Map<string,number>();
   for(const c of candidates){const p={...basePolicy,...(policiesByMarketplace[c.product.marketplaceId]??{})};let rate=clamp(p.explorationRate??0.2,minRate,maxRate);let specific=false;
   const exact=performance.get(c.product.marketplaceId + ":" + c.product.id) ?? performance.get(c.product.id);
-  if(exact?.regime && (exact.regimeConfidence ?? 0) >= 0.5) {
+  if(exact?.anomalyRecovery === "recovering") {
+    rate=clamp(Math.max(rate, Math.min(maxRate, 0.35)), minRate, maxRate);
+  } else if(exact?.regime && (exact.regimeConfidence ?? 0) >= 0.5) {
     if(exact.regime === "rising") rate=clamp(rate*0.8,minRate,maxRate);
     else if(exact.regime === "declining") rate=clamp(rate*1.25,minRate,maxRate);
     else if(exact.regime === "volatile") rate=clamp(rate*1.1,minRate,maxRate);
