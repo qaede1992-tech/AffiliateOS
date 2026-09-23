@@ -10,11 +10,11 @@ export type OpportunityPerformanceSignal = {
   trendAdjustment: number;
 };
 
-export type AutonomousFeedbackContext = {
-  observationKey?: string;
-};
+export type AutonomousFeedbackContext = { observationKey?: string; };
 
-export interface AutonomousFeedbackProvider { getSignals(context?: AutonomousFeedbackContext): Promise<Map<string, OpportunityPerformanceSignal>>; }
+export interface AutonomousFeedbackProvider {
+  getSignals(context?: AutonomousFeedbackContext): Promise<Map<string, OpportunityPerformanceSignal>>;
+}
 
 const MINIMUM_EVIDENCE_CLICKS = 20;
 const BASELINE_CONVERSION_RATE = 0.02;
@@ -33,16 +33,20 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
     if (!this.memory) return current;
     const observedAt = this.now().toISOString();
     const observationNamespace = context.observationKey?.trim() || observedAt;
-    const entries = await Promise.all([...current.entries()].map(async ([productId, signal]) => {
-      const previous = await this.memory!.latestByProduct(productId);
+    const entries = await Promise.all([...current.entries()].map(async ([key, signal]) => {
+      const [marketplaceId, productId] = splitSignalKey(key);
+      const previous = marketplaceId
+        ? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
+        : await this.memory!.latestByProduct(productId);
       const trendAdjustment = previous && signal.clickCount > previous.clickCount
         ? calculateTrendAdjustment(signal, previous)
         : 0;
       const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
-        observationKey: `${observationNamespace}:${productId}`,
+        observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
         productId,
+        marketplaceId: marketplaceId ?? previous?.marketplaceId ?? "unknown",
         clickCount: signal.clickCount,
         conversionCount: signal.conversionCount,
         attributedCommissionCents: signal.attributedCommissionCents,
@@ -52,7 +56,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [productId, { ...signal, adjustment, trendAdjustment: Math.round(trendAdjustment * 100) / 100 }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round(trendAdjustment * 100) / 100 }] as const;
     }));
     return new Map(entries);
   }
@@ -62,12 +66,13 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
   const grouped = new Map<string, CampaignAnalytics[]>();
   for (const campaign of overview.campaigns) {
     if (!campaign.productId) continue;
-    const current = grouped.get(campaign.productId) ?? [];
+    const key = campaign.marketplaceId ? signalKey(campaign.marketplaceId, campaign.productId) : campaign.productId;
+    const current = grouped.get(key) ?? [];
     current.push(campaign);
-    grouped.set(campaign.productId, current);
+    grouped.set(key, current);
   }
   const signals = new Map<string, OpportunityPerformanceSignal>();
-  for (const [productId, campaigns] of grouped) {
+  for (const [key, campaigns] of grouped) {
     const clicks = campaigns.reduce((sum, item) => sum + item.clickCount, 0);
     const conversions = campaigns.reduce((sum, item) => sum + item.attributedConversionCount, 0);
     const commission = campaigns.reduce((sum, item) => sum + item.attributedCommissionCents, 0);
@@ -75,7 +80,7 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
     const adjustment = clicks < MINIMUM_EVIDENCE_CLICKS
       ? 0
       : clamp(((conversionRate - BASELINE_CONVERSION_RATE) / BASELINE_CONVERSION_RATE) * MAX_ADJUSTMENT, -MAX_ADJUSTMENT, MAX_ADJUSTMENT);
-    signals.set(productId, {
+    signals.set(key, {
       clickCount: clicks,
       conversionCount: conversions,
       conversionRate,
@@ -85,6 +90,15 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
     });
   }
   return signals;
+}
+
+function signalKey(marketplaceId: string, productId: string): string {
+  return marketplaceId + ":" + productId;
+}
+
+function splitSignalKey(key: string): [string | undefined, string] {
+  const separator = key.indexOf(":");
+  return separator < 0 ? [undefined, key] : [key.slice(0, separator), key.slice(separator + 1)];
 }
 
 function calculateTrendAdjustment(current: OpportunityPerformanceSignal, previous: { clickCount: number; conversionCount: number; conversionRate: number }): number {

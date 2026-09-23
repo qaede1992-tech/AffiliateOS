@@ -3,13 +3,36 @@ import assert from "node:assert/strict";
 import { buildSignals, AutonomousAnalyticsFeedbackProvider } from "../../src/domain/autonomous-feedback.js";
 import { InMemoryAutonomousFeedbackMemoryRepository } from "../../src/domain/autonomous-feedback-memory.js";
 
-const campaign = (productId: string, clicks: number, conversions: number, commission = 0) => ({
-  campaignId: `${productId}-campaign`, productId, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
+const campaign = (productId: string, clicks: number, conversions: number, commission = 0, marketplaceId?: string) => ({
+  campaignId: `${productId}-campaign`, productId, marketplaceId, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
   publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: conversions,
   attributedRevenueCents: conversions * 10000, attributedCommissionCents: commission, conversionRate: clicks ? conversions / clicks : 0
 });
 
 describe("Autonomous analytics feedback", () => {
+  it("keeps feedback isolated by marketplace for the same product id", async () => {
+    const overview = {
+      clickCount: 200, trackingLinkCount: 2, campaignCount: 2, contentCount: 2,
+      publishedContentCount: 2, scheduledContentCount: 0, attributedConversionCount: 12,
+      attributedRevenueCents: 120000, attributedCommissionCents: 12000, conversionRate: 0.06,
+      campaigns: [
+        campaign("p1", 100, 10, 10000, "market-1"),
+        campaign("p1", 100, 2, 2000, "market-2")
+      ]
+    };
+    const signals = buildSignals(overview);
+    assert.equal(signals.get("market-1:p1")?.adjustment, 8);
+    assert.equal(signals.get("market-2:p1")?.adjustment, 0);
+    assert.equal(signals.get("p1"), undefined);
+
+    const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+    const provider = new AutonomousAnalyticsFeedbackProvider({ overview: async () => overview }, memory, () => new Date("2026-09-21T02:00:00.000Z"));
+    await provider.getSignals({ observationKey: "cycle-1" });
+    assert.equal((await memory.latestByProductAndMarketplace("p1", "market-1"))?.adjustment, 8);
+    assert.equal((await memory.latestByProductAndMarketplace("p1", "market-2"))?.adjustment, 0);
+  });
+
+
   it("does not adjust products without enough click evidence", () => {
     const signals = buildSignals({ clickCount: 10, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 10000, attributedCommissionCents: 500, conversionRate: 0.1, campaigns: [campaign("p1", 10, 1, 500)] });
     assert.equal(signals.get("p1")?.adjustment, 0);
