@@ -1,6 +1,9 @@
 import type { AnalyticsOverview, CampaignAnalytics } from "./analytics.js";
 import type { AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
 
+export type PerformanceWindow = { clickCount:number; conversionCount:number; conversionRate:number; confidence:number; };
+export type PerformanceRegime = "rising" | "stable" | "declining" | "volatile";
+
 export type OpportunityPerformanceSignal = {
   clickCount: number;
   conversionCount: number;
@@ -11,6 +14,8 @@ export type OpportunityPerformanceSignal = {
   trendAdjustment: number;
   confidence?: number;
   scope?: "marketplace" | "global";
+  windows?: { "24h": PerformanceWindow; "7d": PerformanceWindow; "30d": PerformanceWindow };
+  regime?: PerformanceRegime;
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -49,7 +54,12 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous)
         : 0;
-      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
+      const windows = this.memory!.recentByProductAndMarketplace
+        ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, signal, observedAt)
+        : undefined;
+      const regime = windows ? classifyWindowRegime(windows) : "stable";
+      const windowAdjustment = windows ? calculateWindowAdjustment(windows, regime) : 0;
+      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
         observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
@@ -65,7 +75,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100 }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime }] as const;
     }));
     return new Map(entries);
   }
@@ -152,6 +162,44 @@ function signalKey(marketplaceId: string, productId: string): string {
 function splitSignalKey(key: string): [string | undefined, string] {
   const separator = key.indexOf(":");
   return separator < 0 ? [undefined, key] : [key.slice(0, separator), key.slice(separator + 1)];
+}
+
+async function buildWindows(
+  reader:(productId:string,marketplaceId:string,since:string)=>Promise<AutonomousFeedbackSnapshot[]>,
+  productId:string, marketplaceId:string, current:OpportunityPerformanceSignal, observedAt:string
+):Promise<{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow }> {
+  const now=Date.parse(observedAt);
+  const snapshots=await reader(productId,marketplaceId,new Date(now-30*24*60*60*1000).toISOString());
+  const make=(ms:number):PerformanceWindow=>{
+    const since=new Date(now-ms).getTime();
+    const base=[...snapshots].filter(s=>Date.parse(s.observedAt)>=since).sort((a,b)=>a.observedAt.localeCompare(b.observedAt))[0];
+    if(!base)return {clickCount:0,conversionCount:0,conversionRate:0,confidence:0};
+    const clicks=Math.max(0,current.clickCount-base.clickCount);
+    const conversions=Math.max(0,current.conversionCount-base.conversionCount);
+    return {clickCount:clicks,conversionCount:conversions,conversionRate:clicks?conversions/clicks:0,confidence:confidenceForClicks(clicks)};
+  };
+  return {"24h":make(24*60*60*1000),"7d":make(7*24*60*60*1000),"30d":make(30*24*60*60*1000)};
+}
+function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow;"30d":PerformanceWindow }):PerformanceRegime {
+  const a=w["24h"], b=w["7d"], c=w["30d"];
+  const usable=[a,b,c].filter(x=>x.clickCount>=MINIMUM_EVIDENCE_CLICKS);
+  if(!usable.length)return "stable";
+  const evidence24=a.confidence;
+  if(evidence24<0.5)return "stable";
+  const short=a.conversionRate, medium=b.conversionRate, long=c.conversionRate;
+  const max=Math.max(short,medium,long), min=Math.min(short,medium,long);
+  if(max-min>=0.04 && Math.abs(short-long)>=0.04)return short>long ? "rising" : "declining";
+  if(a.confidence>=0.75 && b.confidence>=0.75 && Math.abs(short-medium)>=0.05)return short>medium ? "rising" : "declining";
+  if(Math.max(short,medium,long)-Math.min(short,medium,long)>=0.06)return "volatile";
+  return "stable";
+}
+function calculateWindowAdjustment(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow;"30d":PerformanceWindow },regime:PerformanceRegime):number {
+  const weighted=[["24h",0.5],["7d",0.3],["30d",0.2]] as const;
+  let total=0,weight=0;
+  for(const [name,wgt] of weighted){const x=w[name];if(x.clickCount<MINIMUM_EVIDENCE_CLICKS)continue;const effective=wgt*x.confidence;total+=((x.conversionRate-BASELINE_CONVERSION_RATE)/BASELINE_CONVERSION_RATE)*effective;weight+=effective;}
+  if(!weight)return 0;
+  const base=clamp((total/weight)*2,-2,2);
+  return regime==="volatile"?base*0.5:base;
 }
 
 function confidenceForClicks(clicks: number): number { return Math.min(1, Math.sqrt(Math.max(0, clicks) / MINIMUM_EVIDENCE_CLICKS)); }
