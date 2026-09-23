@@ -198,4 +198,97 @@ describe("AutonomousExecutionService", () => {
     assert.equal(result.outcomes[0]?.status, "failed");
     assert.equal(result.outcomes[0]?.error, "Selected opportunity has no matching affiliate offer.");
   });
+
+  it("persists recovery policy context into the decision audit", async () => {
+    const saved: Array<Record<string, unknown>> = [];
+    const decisionAudits = {
+      async saveMany(audits: Array<Record<string, unknown>>) {
+        saved.push(...audits);
+      },
+      async updateOutcome() {}
+    };
+    const selector = {
+      select: () => ({
+        selected: [opportunity],
+        rejected: [],
+        audit: [{
+          auditId: "audit-1",
+          productId: product.id,
+          marketplaceId: product.marketplaceId,
+          selected: true,
+          score: opportunity.score,
+          policy: { maximumResults: 1 },
+          reasons: ["Selected"],
+          selectionMode: "exploration" as const
+        }]
+      })
+    } as unknown as AutonomousOpportunitySelector;
+    const feedback = {
+      async getSignals() {
+        return new Map([[product.marketplaceId + ":" + product.id, {
+          clickCount: 30,
+          conversionCount: 0,
+          conversionRate: 0,
+          attributedCommissionCents: 0,
+          commissionPerClickCents: 0,
+          adjustment: 0,
+          confidence: 0.8,
+          anomaly: "watch" as const,
+          anomalyRecovery: "recovering" as const,
+          recoveryClicks: 25,
+          recoveryEvidenceScore: 0.6,
+          recoveryEpisodeId: "episode-1",
+          recoveryEpisodeMetrics: {
+            recoveryDurationMs: 60000,
+            recoveryClicks: 25,
+            conversionDelta: -0.02,
+            commissionDeltaCents: -100,
+            qualityScore: 0.2,
+            qualityDelta: -0.2
+          },
+          recoveryPolicy: {
+            explorationFloor: 0.35,
+            direction: "hold-exploration" as const,
+            qualityDelta: -0.2
+          }
+        } as never]]);
+      }
+    };
+    const orchestrator = {
+      execute: async () => orchestrationResult
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(
+      selector,
+      orchestrator,
+      feedback as never,
+      undefined,
+      decisionAudits as never
+    );
+
+    await service.runOnce({ candidates: [{ product, offers: [offer] }], idempotencyNamespace: "cycle-recovery" });
+
+    assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0]?.recovery, {
+      anomaly: "watch",
+      recoveryState: "recovering",
+      recoveryClicks: 25,
+      recoveryEvidenceScore: 0.6,
+      recoveryEpisodeId: "episode-1",
+      episodeMetrics: {
+        recoveryDurationMs: 60000,
+        recoveryClicks: 25,
+        conversionDelta: -0.02,
+        commissionDeltaCents: -100,
+        qualityScore: 0.2,
+        qualityDelta: -0.2
+      },
+      policy: {
+        explorationFloor: 0.35,
+        direction: "hold-exploration",
+        qualityDelta: -0.2
+      }
+    });
+    assert.equal(saved[0]?.cycleId, "cycle-recovery");
+  });
+
 });
