@@ -84,6 +84,33 @@ describe("autonomous opportunity selection", () => {
     assert.equal(result.selected.find((item) => item.product.id === "duplicate")?.offerId, "offer-high");
   });
 
+  it("enforces a minimum commission rate", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("low-commission"), offers: [offer("low-commission", { commissionRateBps: 500 })] },
+      { product: product("high-commission"), offers: [offer("high-commission", { commissionRateBps: 1500 })] }
+    ], { minimumScore: 0, minimumCommissionRateBps: 1000 });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["high-commission"]);
+    assert.ok(result.rejected.find((item) => item.productId === "low-commission")?.reasons.includes("Commission rate is below the minimum"));
+  });
+
+  it("enforces a minimum demand score", () => {
+    const lowDemand = product("low-demand", { soldCount: 0, reviewCount: 0 });
+    const result = new AutonomousOpportunitySelector().select([
+      { product: lowDemand, offers: [offer("low-demand")] },
+      { product: product("high-demand"), offers: [offer("high-demand")] }
+    ], { minimumScore: 0, minimumDemandScore: 10 });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["high-demand"]);
+    assert.ok(result.rejected.find((item) => item.productId === "low-demand")?.reasons.includes("Demand score is below the minimum"));
+  });
+
+  it("clamps invalid policy guard values to safe bounds", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("guarded"), offers: [offer("guarded")] }
+    ], { minimumScore: 0, minimumCommissionRateBps: -100, minimumDemandScore: 200 });
+    assert.equal(result.selected.length, 0);
+    assert.ok(result.rejected[0]?.reasons.includes("Demand score is below the minimum"));
+  });
+
   it("does not select a product that misses a required audience", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }
