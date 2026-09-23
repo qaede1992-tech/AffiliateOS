@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AutonomousDecisionAudit, AutonomousDecisionAuditRepository } from "../domain/autonomous-decision-audit.js";
 import { autonomousDecisionAudits } from "./schema.js";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import type { AutonomousDecisionAuditAnalytics, AutonomousDecisionAuditQuery, AutonomousDecisionAuditReader } from "../domain/autonomous-decision-audit.js";
+import type { AutonomousDecisionAuditAnalytics, AutonomousDecisionAuditQuery, AutonomousDecisionAuditReader, AutonomousDecisionOutcome } from "../domain/autonomous-decision-audit.js";
 
 type DatabaseExecutor = any;
 
@@ -44,7 +44,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
         });
       }
     }
-    return rows.map((row: any) => ({ cycleId: row.cycleId, auditId: row.id, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, selectionMode: row.selectionMode ?? undefined, score: row.score, policy: row.policy, reasons: row.reasons, createdAt: row.createdAt, outcome: row.outcomeStatus ? { offerId: row.outcomeOfferId ?? undefined, status: row.outcomeStatus, campaignId: row.outcomeCampaignId ?? undefined, error: row.outcomeError ?? undefined, observedAt: row.outcomeObservedAt, analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined } : undefined }));
+    return rows.map((row: any) => ({ cycleId: row.cycleId, auditId: row.id, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, selectionMode: row.selectionMode ?? undefined, score: row.score, policy: row.policy, reasons: row.reasons, createdAt: row.createdAt, outcome: row.outcomeStatus ? { offerId: row.outcomeOfferId ?? undefined, status: row.outcomeStatus, campaignId: row.outcomeCampaignId ?? undefined, error: row.outcomeError ?? undefined, observedAt: row.outcomeObservedAt, analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined, explorationEvaluation: row.explorationEvaluation ?? undefined } : undefined } : undefined }));
   }
 
   async saveMany(audits: AutonomousDecisionAudit[]): Promise<void> {
@@ -63,13 +63,14 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
     })));
   }
 
-  async updateOutcome(auditId: string, outcome: { offerId?: string; status: "completed" | "failed"; campaignId?: string; error?: string; observedAt: string }): Promise<void> {
+  async updateOutcome(auditId: string, outcome: AutonomousDecisionOutcome): Promise<void> {
     await this.db.update(autonomousDecisionAudits).set({
       outcomeOfferId: outcome.offerId ?? null,
       outcomeStatus: outcome.status,
       outcomeCampaignId: outcome.campaignId ?? null,
       outcomeError: outcome.error ?? null,
-      outcomeObservedAt: outcome.observedAt
+      outcomeObservedAt: outcome.observedAt,
+      explorationEvaluation: outcome.explorationEvaluation ?? null
     }).where(eq(autonomousDecisionAudits.id, auditId));
   }
 }

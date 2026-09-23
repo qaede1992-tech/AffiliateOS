@@ -1,3 +1,4 @@
+import type { ExplorationEvaluation } from "./exploration-evaluator.js";
 import type { OpportunitySelectionAudit } from "./autonomous-opportunity.js";
 
 export type AutonomousDecisionAudit = OpportunitySelectionAudit & {
@@ -13,6 +14,7 @@ export type AutonomousDecisionOutcome = {
   error?: string;
   observedAt: string;
   analytics?: AutonomousDecisionOutcomeAnalytics;
+  explorationEvaluation?: ExplorationEvaluation;
 };
 
 export type AutonomousDecisionOutcomeAnalytics = {
