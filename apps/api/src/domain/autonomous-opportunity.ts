@@ -223,12 +223,14 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
 
 function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPerformanceSignal): ScoredOpportunity {
   if (!signal || signal.adjustment === 0) return item;
-  const score = Math.round(Math.min(100, Math.max(0, item.score + signal.adjustment)) * 100) / 100;
-  const direction = signal.adjustment > 0 ? "positive" : "negative";
+  const regimeConfidence = signal.regimeConfidence ?? 1;
+  const guardedAdjustment = signal.regime === "volatile" ? signal.adjustment * Math.min(0.5, regimeConfidence) : signal.adjustment * regimeConfidence;
+  const score = Math.round(Math.min(100, Math.max(0, item.score + guardedAdjustment)) * 100) / 100;
+  const direction = guardedAdjustment > 0 ? "positive" : "negative";
   return {
     ...item,
     score,
-    reasons: [...item.reasons, `Historical conversion feedback applied (${direction}, ${signal.adjustment} points)`],
-    breakdown: { ...item.breakdown, total: score, performanceAdjustment: signal.adjustment }
+    reasons: [...item.reasons, `Historical conversion feedback applied (${direction}, ${guardedAdjustment} points)`],
+    breakdown: { ...item.breakdown, total: score, performanceAdjustment: guardedAdjustment }
   };
 }
