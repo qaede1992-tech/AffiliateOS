@@ -35,7 +35,7 @@ const rejectionReasons = (
   if (item.score < minimumScore) reasons.push(`Score ${item.score} is below minimum ${minimumScore}`);
   if (!item.offerId) reasons.push("No eligible affiliate offer");
   if (requiredAudience.length > 0 && item.breakdown.audienceFit <= 0) reasons.push("Does not match the required audience");
-  if ((item.offerId ? 1 : 0) && (item.breakdown.commission * 2_000) < minimumCommissionRateBps) reasons.push(`Commission rate is below minimum ${minimumCommissionRateBps} bps`);
+  if ((item.offerId ? 1 : 0) && (item.breakdown.commission * 20) < minimumCommissionRateBps) reasons.push(`Commission rate is below minimum ${minimumCommissionRateBps} bps`);
   if (item.breakdown.demand < minimumDemandScore) reasons.push(`Demand score ${item.breakdown.demand} is below minimum ${minimumDemandScore}`);
   return unique(reasons);
 };
@@ -77,7 +77,7 @@ export class AutonomousOpportunitySelector {
 
     const eligible = ranked.filter((item) => item.score >= minimumScore && Boolean(item.offerId) &&
       (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
-      item.breakdown.commission * 2_000 >= minimumCommissionRateBps &&
+      item.breakdown.commission * 20 >= minimumCommissionRateBps &&
       item.breakdown.demand >= minimumDemandScore &&
       item.product.status === "active");
     const selected = eligible.slice(0, Math.max(0, maximumResults));
