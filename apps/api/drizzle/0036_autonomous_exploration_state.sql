@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS "autonomous_exploration_states" ("id" uuid PRIMARY KEY,"marketplace_id" uuid NOT NULL REFERENCES "marketplaces"("id"),"dimension" varchar(20) NOT NULL,"dimension_key" varchar(500) NOT NULL,"sample_count" integer NOT NULL DEFAULT 0,"promoted_count" integer NOT NULL DEFAULT 0,"deprioritized_count" integer NOT NULL DEFAULT 0,"observed_at" timestamptz NOT NULL,"created_at" timestamptz NOT NULL,"updated_at" timestamptz NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS "autonomous_exploration_states_scope_unique" ON "autonomous_exploration_states" ("marketplace_id","dimension","dimension_key");
+CREATE INDEX IF NOT EXISTS "autonomous_exploration_states_marketplace_dimension_idx" ON "autonomous_exploration_states" ("marketplace_id","dimension");
+CREATE TABLE IF NOT EXISTS "autonomous_exploration_state_events" ("id" uuid PRIMARY KEY,"state_id" uuid NOT NULL REFERENCES "autonomous_exploration_states"("id"),"audit_id" uuid NOT NULL REFERENCES "autonomous_decision_audits"("id"),"status" varchar(40) NOT NULL,"created_at" timestamptz NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS "autonomous_exploration_state_events_state_audit_unique" ON "autonomous_exploration_state_events" ("state_id","audit_id");
+CREATE INDEX IF NOT EXISTS "autonomous_exploration_state_events_audit_idx" ON "autonomous_exploration_state_events" ("audit_id");
+ALTER TABLE "autonomous_decision_audits" ADD COLUMN IF NOT EXISTS "category" varchar(255);
+ALTER TABLE "autonomous_decision_audits" ADD COLUMN IF NOT EXISTS "audience_segments" jsonb;
