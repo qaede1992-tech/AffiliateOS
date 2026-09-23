@@ -3,6 +3,7 @@ import { Pool } from "pg";
 import { createPostgresRepositories, DrizzleTransactionManager } from "./repositories.js";
 import { ProviderEventStore } from "./provider-events.js";
 import { DrizzleOptimizationStateReader } from "./autonomous-optimization-state.js";
+import { DrizzleAutonomousDecisionAuditRepository } from "./autonomous-decision-audit-repository.js";
 import type { RepositorySet, TransactionManager } from "../domain/repository.js";
 
 export interface DatabasePersistence {
@@ -10,6 +11,7 @@ export interface DatabasePersistence {
   transactionManager: TransactionManager;
   providerEvents: ProviderEventStore;
   optimizationState: DrizzleOptimizationStateReader;
+  autonomousDecisionAudits: DrizzleAutonomousDecisionAuditRepository;
   db: ReturnType<typeof drizzle>;
   pool: Pool;
   close(): Promise<void>;
@@ -23,6 +25,7 @@ export function createDatabasePersistence(connectionString: string): DatabasePer
     transactionManager: new DrizzleTransactionManager(db),
     providerEvents: new ProviderEventStore(db),
     optimizationState: new DrizzleOptimizationStateReader(db),
+    autonomousDecisionAudits: new DrizzleAutonomousDecisionAuditRepository(db),
     db,
     pool,
     close: () => pool.end()
