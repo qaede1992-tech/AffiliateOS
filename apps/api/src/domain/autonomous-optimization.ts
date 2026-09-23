@@ -70,16 +70,29 @@ export class AutonomousOptimizationService {
       const signal = campaign?.productId && campaign.marketplaceId
         ? performance.get(campaign.marketplaceId + ":" + campaign.productId) ?? performance.get(campaign.productId)
         : undefined;
-      if (signal?.anomaly !== "halt") return recommendation;
-      return {
-        ...recommendation,
-        action: "maintain" as const,
-        confidence: Math.min(recommendation.confidence, 0.5),
-        reasons: [
-          "Optimization action held because the associated product is under an active performance anomaly halt.",
-          "Wait for the anomaly cooldown and fresh evidence before changing campaign distribution or content."
-        ]
-      };
+      if (signal?.anomaly === "halt") {
+        return {
+          ...recommendation,
+          action: "maintain" as const,
+          confidence: Math.min(recommendation.confidence, 0.5),
+          reasons: [
+            "Optimization action held because the associated product is under an active performance anomaly halt.",
+            "Wait for the anomaly cooldown and fresh evidence before changing campaign distribution or content."
+          ]
+        };
+      }
+      if (signal?.anomalyRecovery === "recovering") {
+        return {
+          ...recommendation,
+          action: "maintain" as const,
+          confidence: Math.min(recommendation.confidence, 0.5),
+          reasons: [
+            "Optimization action held while the associated product is recovering from a performance anomaly.",
+            "Scale, pause, and content changes remain blocked until the recovery evidence gate is satisfied."
+          ]
+        };
+      }
+      return recommendation;
     });
 
     return { campaigns: overview.campaigns, recommendations: guardedRecommendations };
