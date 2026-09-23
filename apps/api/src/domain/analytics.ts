@@ -9,6 +9,7 @@ export interface CampaignAnalytics {
   campaignId: string;
   productId?: string;
   marketplaceId?: string;
+  category?: string;
   clickCount: number;
   trackingLinkCount: number;
   contentCount: number;
