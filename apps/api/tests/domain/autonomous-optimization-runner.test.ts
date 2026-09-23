@@ -180,3 +180,28 @@ describe("AutonomousOptimizationRunner", () => {
     assert.equal(savedState.action, "revise-content");
   });
 });
+
+
+describe("recovery-aware action evidence", () => {
+  it("stamps executed outcomes with the recovery state at action time", async () => {
+    const campaign = metrics("c1", 100, 8);
+    let recovery: any;
+    const analytics = { async overview() { return overview(campaign); }, async campaign() { return campaign; } };
+    const outcomeWriter: AutonomousActionOutcomeWriter = {
+      async save(outcome) { return outcome; },
+      async updateRecovery(_id, value) { recovery = value; return undefined; }
+    };
+    const runner = new AutonomousOptimizationRunner(
+      analytics,
+      { async get() { return undefined; } },
+      { async save() {} },
+      executorFor("recovery-outcome"),
+      outcomeWriter,
+      {},
+      60 * 60_000,
+      { async getSignals() { return new Map([["m:p", { clickCount: 30, conversionCount: 1, conversionRate: .033, attributedCommissionCents: 100, commissionPerClickCents: 3.3, adjustment: 0, trendAdjustment: 0, anomaly: "watch", anomalyScore: .5, anomalyRecovery: "recovering", recoveryClicks: 30, recoveryEvidenceScore: .6 } as any]]); } }
+    );
+    await runner.run(new Date("2026-09-23T02:00:00.000Z"));
+    assert.deepEqual(recovery, { state: "recovering", evidenceScore: .6 });
+  });
+});

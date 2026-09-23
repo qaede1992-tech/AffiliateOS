@@ -2,6 +2,7 @@ import type { AnalyticsService, CampaignAnalytics } from "./analytics.js";
 import type { AutonomousCampaignActionResult, AutonomousCampaignActionExecutor } from "./autonomous-campaign-action-executor.js";
 import type { OptimizationStateReader, OptimizationStateWriter } from "./autonomous-optimization.js";
 import type { AutonomousActionMetrics, AutonomousActionOutcomeWriter } from "./autonomous-action-outcome.js";
+import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import { OptimizationEngine, type OptimizationPolicy, type OptimizationRecommendation, type OptimizationState } from "./optimization-engine.js";
 
 export type AutonomousOptimizationRunResult = {
@@ -20,7 +21,8 @@ export class AutonomousOptimizationRunner {
     private readonly executor: AutonomousCampaignActionExecutor,
     private readonly outcomeWriter?: AutonomousActionOutcomeWriter,
     policy: OptimizationPolicy = {},
-    private readonly actionOutcomeEvaluationDelayMs = 24 * 60 * 60_000
+    private readonly actionOutcomeEvaluationDelayMs = 24 * 60 * 60_000,
+    private readonly feedback?: AutonomousFeedbackProvider
   ) {
     this.engine = new OptimizationEngine(policy);
   }
@@ -40,12 +42,29 @@ export class AutonomousOptimizationRunner {
     }
 
     const recommendations = this.engine.recommend(overview.campaigns, state, now);
+    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: "autonomous-optimization-actions" }) : undefined;
     const actions: AutonomousCampaignActionResult[] = [];
     for (const recommendation of recommendations) {
       if (recommendation.action === "maintain") continue;
       const baseline = toActionMetrics(overview.campaigns.find((campaign) => campaign.campaignId === recommendation.campaignId));
       const result = await this.executor.execute(recommendation);
       actions.push(result);
+      if (result.outcomeId && this.outcomeWriter?.updateRecovery && performance) {
+        const campaign = overview.campaigns.find((item) => item.campaignId === recommendation.campaignId);
+        const signal = campaign?.productId && campaign.marketplaceId
+          ? performance.get(campaign.marketplaceId + ":" + campaign.productId) ?? performance.get(campaign.productId)
+          : undefined;
+        if (signal) {
+          try {
+            await this.outcomeWriter.updateRecovery(result.outcomeId, {
+              state: signal.anomalyRecovery ?? "none",
+              evidenceScore: signal.recoveryEvidenceScore ?? 0
+            });
+          } catch {
+            // Recovery context is advisory enrichment; the action outcome remains durable.
+          }
+        }
+      }
       if (result.outcomeId && this.outcomeWriter?.updateMetrics) {
         try {
           const observed = toActionMetrics(await this.analytics.campaign(recommendation.campaignId));
