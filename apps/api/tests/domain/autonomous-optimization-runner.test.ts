@@ -151,4 +151,32 @@ describe("AutonomousOptimizationRunner", () => {
     await runner.run(new Date("2026-09-23T02:00:00.000Z"));
     assert.equal(evaluated, false);
   });
+  it("feeds delayed evaluation into the next optimization recommendation", async () => {
+    const campaign = metrics("c1", 200, 16);
+    let savedState: any;
+    const analytics = { async overview() { return overview(campaign); }, async campaign() { return campaign; } };
+    const outcomeWriter: AutonomousActionOutcomeWriter = {
+      async save(outcome) { return outcome; },
+      async latestByCampaign() {
+        return {
+          id: "outcome-feedback", campaignId: "c1", action: "scale", status: "mutated", mutated: true,
+          observedAt: "2026-09-21T00:00:00.000Z",
+          baseline: { clickCount: 100, attributedConversionCount: 10, attributedRevenueCents: 10000, attributedCommissionCents: 500, conversionRate: 0.1 }
+        };
+      },
+      async updateEvaluation() { return undefined; }
+    };
+    const runner = new AutonomousOptimizationRunner(
+      analytics,
+      { async get() { return { action: "scale", appliedAt: "2026-09-21T00:00:00.000Z" }; } },
+      { async save(_id, state) { savedState = state; } },
+      executorFor("new-action"),
+      outcomeWriter,
+      {},
+      60 * 60_000
+    );
+    const result = await runner.run(new Date("2026-09-23T02:00:00.000Z"));
+    assert.equal(result.recommendations[0].action, "revise-content");
+    assert.equal(savedState.action, "revise-content");
+  });
 });
