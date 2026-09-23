@@ -11,9 +11,11 @@ export type OpportunityPerformanceSignal = {
   trendAdjustment: number;
   confidence?: number;
   scope?: "marketplace" | "global";
+  windows?: { "24h": PerformanceWindow; "7d": PerformanceWindow; "30d": PerformanceWindow };
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
+export type PerformanceWindow = { clickCount: number; conversionCount: number; conversionRate: number; freshness: number; };
 
 export interface AutonomousFeedbackProvider {
   getSignals(context?: AutonomousFeedbackContext): Promise<Map<string, OpportunityPerformanceSignal>>;
@@ -25,6 +27,7 @@ const MAX_ADJUSTMENT = 8;
 const MAX_TREND_ADJUSTMENT = 2;
 const MAX_EFFICIENCY_ADJUSTMENT = 2;
 const MIN_EFFICIENCY_EVIDENCE_CLICKS = 20;
+const LEARNING_WINDOWS = { "24h": 24 * 60 * 60 * 1000, "7d": 7 * 24 * 60 * 60 * 1000, "30d": 30 * 24 * 60 * 60 * 1000 } as const;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
   constructor(
@@ -46,10 +49,14 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const trendAdjustment = previous && signal.clickCount > previous.clickCount
         ? calculateTrendAdjustment(signal, previous)
         : 0;
+      const windows = this.memory!.recentByProductAndMarketplace
+        ? await buildPerformanceWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, signal, observedAt)
+        : emptyWindows();
+      const windowAdjustment = calculateMultiWindowAdjustment(windows);
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous)
         : 0;
-      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
+      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
         observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
@@ -65,7 +72,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100 }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment + windowAdjustment) * 100) / 100, windows }] as const;
     }));
     return new Map(entries);
   }
@@ -152,6 +159,34 @@ function signalKey(marketplaceId: string, productId: string): string {
 function splitSignalKey(key: string): [string | undefined, string] {
   const separator = key.indexOf(":");
   return separator < 0 ? [undefined, key] : [key.slice(0, separator), key.slice(separator + 1)];
+}
+
+function emptyWindows() { return { "24h": { clickCount: 0, conversionCount: 0, conversionRate: 0, freshness: 0 }, "7d": { clickCount: 0, conversionCount: 0, conversionRate: 0, freshness: 0 }, "30d": { clickCount: 0, conversionCount: 0, conversionRate: 0, freshness: 0 } } as { "24h": PerformanceWindow; "7d": PerformanceWindow; "30d": PerformanceWindow }; }
+
+async function buildPerformanceWindows(
+  reader: (productId: string, marketplaceId: string, since: string) => Promise<AutonomousFeedbackSnapshot[]>,
+  productId: string, marketplaceId: string, current: OpportunityPerformanceSignal, nowIso: string
+) {
+  const now = Date.parse(nowIso);
+  const result = emptyWindows();
+  for (const [name, duration] of Object.entries(LEARNING_WINDOWS) as Array<["24h"|"7d"|"30d", number]>) {
+    const snapshots = await reader(productId, marketplaceId, new Date(now - duration).toISOString());
+    const base = snapshots[0];
+    if (!base) continue;
+    const clicks = Math.max(0, current.clickCount - base.clickCount);
+    const conversions = Math.max(0, current.conversionCount - base.conversionCount);
+    result[name] = { clickCount: clicks, conversionCount: conversions, conversionRate: clicks ? conversions / clicks : 0, freshness: 1 };
+  }
+  return result;
+}
+
+function calculateMultiWindowAdjustment(windows: { "24h": PerformanceWindow; "7d": PerformanceWindow; "30d": PerformanceWindow }): number {
+  const weights = [["24h", 0.5], ["7d", 0.3], ["30d", 0.2] ] as const;
+  const usable = weights.filter(([name]) => windows[name].clickCount >= MINIMUM_EVIDENCE_CLICKS);
+  if (!usable.length) return 0;
+  const total = usable.reduce((sum, [, weight]) => sum + weight, 0);
+  const rate = usable.reduce((sum, [name, weight]) => sum + windows[name].conversionRate * weight, 0) / total;
+  return clamp(((rate - BASELINE_CONVERSION_RATE) / BASELINE_CONVERSION_RATE) * 2, -2, 2);
 }
 
 function confidenceForClicks(clicks: number): number { return Math.min(1, Math.sqrt(Math.max(0, clicks) / MINIMUM_EVIDENCE_CLICKS)); }
