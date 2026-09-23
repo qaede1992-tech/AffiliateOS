@@ -54,7 +54,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous)
         : 0;
-      const windows = this.memory!.recentByProductAndMarketplace
+      const isProductSignal = !key.startsWith("global:") && !key.includes(":category:") && !key.includes(":audience:");
+      const windows = isProductSignal && this.memory!.recentByProductAndMarketplace
         ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, signal, observedAt)
         : undefined;
       const regime = windows ? classifyWindowRegime(windows) : "stable";
