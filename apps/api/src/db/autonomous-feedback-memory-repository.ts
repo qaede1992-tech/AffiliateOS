@@ -13,6 +13,7 @@ const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   clickCount: row.clickCount,
   conversionCount: row.conversionCount,
   attributedCommissionCents: row.attributedCommissionCents,
+  commissionPerClickCents: row.commissionPerClickCents,
   conversionRate: row.conversionRate,
   adjustment: row.adjustment,
   observedAt: row.observedAt
@@ -30,6 +31,7 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       clickCount: snapshot.clickCount,
       conversionCount: snapshot.conversionCount,
       attributedCommissionCents: snapshot.attributedCommissionCents,
+      commissionPerClickCents: snapshot.commissionPerClickCents,
       conversionRate: snapshot.conversionRate,
       adjustment: snapshot.adjustment,
       observedAt: snapshot.observedAt
