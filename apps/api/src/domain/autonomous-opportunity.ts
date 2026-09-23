@@ -31,6 +31,8 @@ export type OpportunitySelectionAudit = {
   policy: OpportunitySelectionPolicy;
   reasons: string[];
   selectionMode?: "exploration" | "exploitation";
+  category?: string;
+  audienceSegments?: AudienceSegment[];
 };
 
 export type OpportunitySelectionResult = {
@@ -159,7 +161,9 @@ export class AutonomousOpportunitySelector {
         score: item.score,
         policy: { ...candidatePolicy },
         reasons,
-        selectionMode: selectedIds.has(item.product.id) ? (exploration ? "exploration" : "exploitation") : undefined
+        selectionMode: selectedIds.has(item.product.id) ? (exploration ? "exploration" : "exploitation") : undefined,
+        category: item.product.category?.trim() || undefined,
+        audienceSegments: requiredAudience.length ? requiredAudience : undefined
       };
     });
     return { selected, rejected, audit };
