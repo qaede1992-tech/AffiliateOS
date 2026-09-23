@@ -10,6 +10,7 @@ export interface CampaignAnalytics {
   productId?: string;
   marketplaceId?: string;
   category?: string;
+  audienceSegments?: string[];
   clickCount: number;
   trackingLinkCount: number;
   contentCount: number;
@@ -98,6 +99,7 @@ export class AnalyticsService {
     const clickCount = allClicks.filter((click) => trackingLinks.some((link) => link.id === click.trackingLinkId)).length;
     const productId = typeof campaign.audience.productId === "string" ? campaign.audience.productId : undefined;
     const marketplaceId = typeof campaign.audience.marketplaceId === "string" ? campaign.audience.marketplaceId : undefined;
+    const audienceSegments = Array.isArray(campaign.audience.audience) ? campaign.audience.audience.filter((item): item is string => typeof item === "string") : undefined;
     return {
       campaignId: campaign.id,
       productId,
