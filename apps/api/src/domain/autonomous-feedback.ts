@@ -44,10 +44,10 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const previous = marketplaceId
         ? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
         : await this.memory!.latestByProduct(productId);
+      const freshness = previous ? learningFreshness(previous.observedAt, observedAt) : 0;
       const trendAdjustment = previous && signal.clickCount > previous.clickCount
         ? calculateTrendAdjustment(signal, previous) * freshness
         : 0;
-      const freshness = previous ? learningFreshness(previous.observedAt, observedAt) : 0;
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous) * freshness
         : 0;
