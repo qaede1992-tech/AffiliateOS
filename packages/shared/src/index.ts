@@ -5,7 +5,7 @@ export type IsoTimestamp = string;
 export type AffiliateStatus = "active" | "paused" | "pending";
 export type OfferStatus = "draft" | "active" | "inactive" | "archived";
 export type ConversionStatus = "pending" | "approved" | "rejected";
-export type CommissionStatus = "pending" | "approved" | "paid";
+export type CommissionStatus = "pending" | "approved" | "rejected" | "paid";
 
 export interface Affiliate { id: EntityId; name: string; email: string; status: AffiliateStatus; createdAt: IsoTimestamp; }
 export interface Offer { id: EntityId; name: string; status: OfferStatus; commissionRateBps: number; createdAt: IsoTimestamp; }
