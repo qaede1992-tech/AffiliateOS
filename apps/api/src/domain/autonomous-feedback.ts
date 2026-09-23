@@ -25,6 +25,7 @@ export type OpportunityPerformanceSignal = {
   anomalyRecovery?: AnomalyRecoveryState;
   recoveryClicks?: number;
   recoveryEvidenceScore?: number;
+  recoveryEpisodeId?: string;
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -101,6 +102,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
             ? "recovered"
             : stableRecovery ? "recovered" : "recovering")
         : "none";
+      const recoveryEpisodeId = recoveryAnchor ? recoveryAnchor.id : undefined;
       const recoveryConfidence = anomalyRecovery === "recovered"
         ? recoveryConfidenceMultiplier(recoveryEvidenceScore)
         : 1;
@@ -128,7 +130,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore, recoveryEpisodeId }] as const;
     }));
     return new Map(entries);
   }
