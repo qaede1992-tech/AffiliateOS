@@ -18,9 +18,19 @@ export type OpportunityCandidateSource = {
   offers: AffiliateOffer[];
 };
 
+export type OpportunitySelectionAudit = {
+  productId: string;
+  marketplaceId: string;
+  selected: boolean;
+  score: number;
+  policy: OpportunitySelectionPolicy;
+  reasons: string[];
+};
+
 export type OpportunitySelectionResult = {
   selected: ScoredOpportunity[];
   rejected: Array<{ productId: string; score: number; reasons: string[] }>;
+  audit: OpportunitySelectionAudit[];
 };
 
 const unique = <T>(items: T[]): T[] => [...new Set(items)];
@@ -109,7 +119,25 @@ export class AutonomousOpportunitySelector {
           : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore)
       };
     });
-    return { selected, rejected };
+    const audit = ranked.map((item) => {
+      const candidatePolicy = effectivePolicy({ product: item.product, offers: [] });
+      const minimumScore = candidatePolicy.minimumScore ?? 60;
+      const requiredAudience = unique(candidatePolicy.requiredAudience ?? []);
+      const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
+      const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
+      const reasons = selectedIds.has(item.product.id)
+        ? ["Selected"]
+        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore);
+      return {
+        productId: item.product.id,
+        marketplaceId: item.product.marketplaceId,
+        selected: selectedIds.has(item.product.id),
+        score: item.score,
+        policy: { ...candidatePolicy },
+        reasons
+      };
+    });
+    return { selected, rejected, audit };
   }
 }
 
