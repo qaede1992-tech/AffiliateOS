@@ -1,7 +1,7 @@
 import type { AffiliateOffer, AudienceSegment, Product } from "@affiliateos/shared";
 import { rankOpportunities, type ScoredOpportunity } from "./opportunity-scoring.js";
 import type { OpportunityPerformanceSignal } from "./autonomous-feedback.js";
-import crypto from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 export type OpportunitySelectionPolicy = {
   minimumScore?: number;
@@ -131,7 +131,7 @@ export class AutonomousOpportunitySelector {
         ? ["Selected"]
         : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumDemandScore);
       return {
-        auditId: crypto.randomUUID(),
+        auditId: randomUUID(),
         productId: item.product.id,
         marketplaceId: item.product.marketplaceId,
         selected: selectedIds.has(item.product.id),
