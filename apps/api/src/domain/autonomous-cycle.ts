@@ -2,6 +2,7 @@ import type { AudienceSegment, ContentPlatform } from "@affiliateos/shared";
 import type { AutonomousExecutionCandidate, AutonomousExecutionInput, AutonomousExecutionResult, AutonomousExecutionService } from "./autonomous-execution.js";
 import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
 import type { AutonomousOptimizationRunResult, AutonomousOptimizationRunner } from "./autonomous-optimization-runner.js";
+import type { AutonomousExplorationEvaluationRunner, ExplorationEvaluationRunResult } from "./autonomous-exploration-evaluation-runner.js";
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 
 export interface AutonomousCandidateProvider {
@@ -24,6 +25,7 @@ export type AutonomousCycleResult = {
   candidateCount: number;
   execution: AutonomousExecutionResult;
   optimization?: AutonomousOptimizationRunResult;
+  explorationEvaluation?: ExplorationEvaluationRunResult;
 };
 
 export class AutonomousCycleService {
@@ -35,7 +37,8 @@ export class AutonomousCycleService {
     private readonly execution: AutonomousExecutionService,
     lock?: AutonomousCycleLock,
     private readonly lockKey = "affiliateos:autonomous-cycle",
-    private readonly optimization?: AutonomousOptimizationRunner
+    private readonly optimization?: AutonomousOptimizationRunner,
+    private readonly explorationEvaluation?: AutonomousExplorationEvaluationRunner
   ) {
     this.lock = lock ?? new InMemoryAutonomousCycleLock();
   }
@@ -55,13 +58,15 @@ export class AutonomousCycleService {
         candidates: candidateList
       };
       const result = await this.execution.runOnce(executionInput);
+      const explorationEvaluation = this.explorationEvaluation ? await this.explorationEvaluation.run() : undefined;
       const optimization = this.optimization ? await this.optimization.run(new Date()) : undefined;
       return {
         startedAt,
         completedAt: new Date().toISOString(),
         candidateCount: candidateList.length,
         execution: result,
-        optimization
+        optimization,
+        explorationEvaluation
       };
     } finally {
       this.running = false;

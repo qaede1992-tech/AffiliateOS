@@ -28,6 +28,7 @@ export type AutonomousDecisionOutcomeAnalytics = {
 export interface AutonomousDecisionAuditRepository {
   saveMany(audits: AutonomousDecisionAudit[]): Promise<void>;
   updateOutcome(auditId: string, outcome: AutonomousDecisionOutcome): Promise<void>;
+  updateExplorationEvaluation?(auditId: string, evaluation: import("./exploration-evaluator.js").ExplorationEvaluation): Promise<void>;
 }
 
 export type AutonomousDecisionAuditQuery = { cycleId?: string; marketplaceId?: string; productId?: string; selected?: boolean; limit?: number };
