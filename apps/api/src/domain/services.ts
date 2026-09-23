@@ -76,7 +76,7 @@ export class ConversionService {
     await this.conversions.save(updated);
     const commission = await this.commissions.findByConversionId(id);
     if (commission) {
-      await this.commissions.save({ ...commission, amountCents: commissionCents ?? commission.amountCents, status: status === "pending" ? "pending" : "approved" });
+      await this.commissions.save({ ...commission, amountCents: commissionCents ?? commission.amountCents, status });
     }
     return updated;
   }
