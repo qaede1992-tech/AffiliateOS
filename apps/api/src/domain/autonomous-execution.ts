@@ -1,5 +1,5 @@
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
-import { AutonomousOpportunitySelector, type OpportunityCandidateSource, type OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
+import { AutonomousOpportunitySelector, type OpportunityCandidateSource, type OpportunitySelectionPolicy, type OpportunitySelectionPoliciesByMarketplace } from "./autonomous-opportunity.js";
 import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import type { CampaignOrchestrator, CampaignOrchestrationResult } from "./campaign-orchestrator.js";
 import { scoreOpportunity, type ScoredOpportunity } from "./opportunity-scoring.js";
@@ -8,6 +8,7 @@ import type { AutonomousRunService } from "./autonomous-run-service.js";
 export type AutonomousExecutionInput = {
   candidates: OpportunityCandidateSource[];
   policy?: OpportunitySelectionPolicy;
+  policiesByMarketplace?: OpportunitySelectionPoliciesByMarketplace;
   audience?: AudienceSegment[];
   platforms?: ContentPlatform[];
   scheduledAt?: string;
@@ -48,7 +49,7 @@ export class AutonomousExecutionService {
       }
     }
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
-    const selection = this.selector.select(input.candidates, input.policy, performance);
+    const selection = this.selector.select(input.candidates, input.policy, performance, input.policiesByMarketplace);
     const candidatesByOpportunity = new Map(
       input.candidates.flatMap((candidate) =>
         candidate.offers.map((offer) => [`${candidate.product.id}:${offer.id}`, { candidate, offer }] as const)
