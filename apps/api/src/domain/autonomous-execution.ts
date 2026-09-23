@@ -4,7 +4,7 @@ import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import type { CampaignOrchestrator, CampaignOrchestrationResult } from "./campaign-orchestrator.js";
 import { scoreOpportunity, type ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
-import type { AutonomousDecisionAuditRepository } from "./autonomous-decision-audit.js";
+import type { AutonomousDecisionAuditRepository } from "./autonomous-decision-audit.js";\nimport { AdaptiveExplorationPolicyProvider, type AdaptiveExplorationPolicy } from "./adaptive-exploration-policy.js";
 
 export type AutonomousExecutionInput = {
   candidates: OpportunityCandidateSource[];
@@ -20,7 +20,7 @@ export type AutonomousExecutionResult = { selected: ScoredOpportunity[]; rejecte
 const executionKey = (namespace: string, opportunity: ScoredOpportunity): string => `${namespace}:${opportunity.product.id}:${opportunity.offerId ?? "no-offer"}`;
 
 export class AutonomousExecutionService {
-  constructor(private readonly selector: AutonomousOpportunitySelector, private readonly orchestrator: CampaignOrchestrator, private readonly feedback?: AutonomousFeedbackProvider, private readonly autonomousRuns?: AutonomousRunService, private readonly decisionAudits?: AutonomousDecisionAuditRepository) {}
+  constructor(private readonly selector: AutonomousOpportunitySelector, private readonly orchestrator: CampaignOrchestrator, private readonly feedback?: AutonomousFeedbackProvider, private readonly autonomousRuns?: AutonomousRunService, private readonly decisionAudits?: AutonomousDecisionAuditRepository, private readonly adaptiveExploration?: AdaptiveExplorationPolicyProvider) {}
 
   async runOnce(input: AutonomousExecutionInput): Promise<AutonomousExecutionResult> {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
