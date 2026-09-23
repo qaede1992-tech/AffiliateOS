@@ -15,7 +15,7 @@ const toDomain = (row: AutonomousRunRow): AutonomousRun => ({
   attemptCount: row.attemptCount,
   nextAttemptAt: row.nextAttemptAt ?? undefined,
   lastError: row.lastError ?? undefined,
-  executionContext: row.executionContext as AutonomousRun["executionContext"],
+  executionContext: row.executionContext == null ? undefined : row.executionContext as unknown as AutonomousRun["executionContext"],
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 });
