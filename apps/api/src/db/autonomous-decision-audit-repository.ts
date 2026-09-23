@@ -44,7 +44,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
         });
       }
     }
-    return rows.map((row: any) => ({ cycleId: row.cycleId, auditId: row.id, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, selectionMode: row.selectionMode ?? undefined, score: row.score, policy: row.policy, reasons: row.reasons, createdAt: row.createdAt, outcome: row.outcomeStatus ? { offerId: row.outcomeOfferId ?? undefined, status: row.outcomeStatus, campaignId: row.outcomeCampaignId ?? undefined, error: row.outcomeError ?? undefined, observedAt: row.outcomeObservedAt, analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined, explorationEvaluation: row.explorationEvaluation ?? undefined } : undefined } : undefined }));
+    return rows.map((row: any) => ({ cycleId: row.cycleId, auditId: row.id, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, selectionMode: row.selectionMode ?? undefined, score: row.score, policy: row.policy, reasons: row.reasons, category: row.category ?? undefined, audienceSegments: row.audienceSegments ?? undefined, createdAt: row.createdAt, outcome: row.outcomeStatus ? { offerId: row.outcomeOfferId ?? undefined, status: row.outcomeStatus, campaignId: row.outcomeCampaignId ?? undefined, error: row.outcomeError ?? undefined, observedAt: row.outcomeObservedAt, analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined, explorationEvaluation: row.explorationEvaluation ?? undefined } : undefined } : undefined }));
   }
 
   async saveMany(audits: AutonomousDecisionAudit[]): Promise<void> {
@@ -59,6 +59,8 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
       score: audit.score,
       policy: audit.policy,
       reasons: audit.reasons,
+      category: audit.category ?? null,
+      audienceSegments: audit.audienceSegments ?? null,
       createdAt: audit.createdAt
     })));
   }

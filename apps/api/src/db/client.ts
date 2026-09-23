@@ -5,6 +5,7 @@ import { ProviderEventStore } from "./provider-events.js";
 import { DrizzleOptimizationStateReader } from "./autonomous-optimization-state.js";
 import { DrizzleAutonomousDecisionAuditRepository } from "./autonomous-decision-audit-repository.js";
 import { DrizzleAutonomousActionOutcomeRepository } from "./autonomous-action-outcome-repository.js";
+import { DrizzleAutonomousExplorationStateRepository } from "./autonomous-exploration-state-repository.js";
 import type { RepositorySet, TransactionManager } from "../domain/repository.js";
 
 export interface DatabasePersistence {
@@ -14,6 +15,7 @@ export interface DatabasePersistence {
   optimizationState: DrizzleOptimizationStateReader;
   autonomousDecisionAudits: DrizzleAutonomousDecisionAuditRepository;
   autonomousActionOutcomes: DrizzleAutonomousActionOutcomeRepository;
+  autonomousExplorationStates: DrizzleAutonomousExplorationStateRepository;
   db: ReturnType<typeof drizzle>;
   pool: Pool;
   close(): Promise<void>;
@@ -29,6 +31,7 @@ export function createDatabasePersistence(connectionString: string): DatabasePer
     optimizationState: new DrizzleOptimizationStateReader(db),
     autonomousDecisionAudits: new DrizzleAutonomousDecisionAuditRepository(db),
     autonomousActionOutcomes: new DrizzleAutonomousActionOutcomeRepository(db),
+    autonomousExplorationStates: new DrizzleAutonomousExplorationStateRepository(db),
     db,
     pool,
     close: () => pool.end()
