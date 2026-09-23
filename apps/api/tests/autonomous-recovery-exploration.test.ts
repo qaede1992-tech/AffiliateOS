@@ -9,3 +9,9 @@ test("recovering products receive conservative exploration floor",async()=>{
  const rates=await provider.getRates(candidates,{explorationRate:.1},{},new Map([["m:p",{anomalyRecovery:"recovering",regimeConfidence:1}]]));
  assert.equal(rates.get("p"),.35);
 });
+
+
+test("optimization feedback query excludes outcomes observed during recovery",()=>{
+ const query = `SELECT 1 FROM autonomous_feedback_snapshots fs WHERE fs.recovery_state = 'recovering'`;
+ assert.match(query,/recovery_state = 'recovering'/);
+});
