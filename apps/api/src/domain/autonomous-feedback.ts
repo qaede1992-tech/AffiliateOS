@@ -3,6 +3,8 @@ import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } f
 
 export type PerformanceWindow = { clickCount:number; conversionCount:number; conversionRate:number; confidence:number; };
 export type PerformanceRegime = "rising" | "stable" | "declining" | "volatile";
+export type PerformanceAnomaly = "none" | "watch" | "halt";
+
 
 export type OpportunityPerformanceSignal = {
   clickCount: number;
@@ -17,6 +19,8 @@ export type OpportunityPerformanceSignal = {
   windows?: { "24h": PerformanceWindow; "7d": PerformanceWindow; "30d": PerformanceWindow };
   regime?: PerformanceRegime;
   regimeConfidence?: number;
+  anomaly?: PerformanceAnomaly;
+  anomalyScore?: number;
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
@@ -63,7 +67,11 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         : undefined;
       const regime = windows ? classifyWindowRegime(windows) : "stable";
       const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
-      const windowAdjustment = windows ? calculateWindowAdjustment(windows, regime) * regimeConfidence : 0;
+      const anomalyScore = windows ? calculateAnomalyScore(windows) : 0;
+      const anomaly = classifyAnomaly(anomalyScore);
+      const windowAdjustment = windows && anomaly !== "halt"
+        ? calculateWindowAdjustment(windows, regime) * regimeConfidence * (anomaly === "watch" ? 0.35 : 1)
+        : 0;
       const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
@@ -80,7 +88,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
       else await this.memory!.save(snapshot);
-      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence }] as const;
+      return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore }] as const;
     }));
     return new Map(entries);
   }
@@ -198,6 +206,19 @@ function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow
   if(Math.max(short,medium,long)-Math.min(short,medium,long)>=0.06)return "volatile";
   return "stable";
 }
+function calculateAnomalyScore(w:{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow }):number {
+  const a=w["24h"], b=w["7d"], c=w["30d"];
+  if (a.clickCount < MINIMUM_EVIDENCE_CLICKS || b.clickCount < MINIMUM_EVIDENCE_CLICKS || c.clickCount < MINIMUM_EVIDENCE_CLICKS) return 0;
+  const rateJump=Math.min(1,Math.abs(a.conversionRate-c.conversionRate)/0.10);
+  const evidence=Math.min(1,(a.confidence+b.confidence+c.confidence)/3);
+  return Math.round(rateJump*evidence*100)/100;
+}
+function classifyAnomaly(score:number):PerformanceAnomaly {
+  if(score>=0.75)return "halt";
+  if(score>=0.45)return "watch";
+  return "none";
+}
+
 function calculateRegimeConfidence(w:{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow }, regime:PerformanceRegime):number {
   const short=w["24h"], medium=w["7d"], long=w["30d"];
   const evidence=Math.min(1,(short.confidence*0.5)+(medium.confidence*0.3)+(long.confidence*0.2));
