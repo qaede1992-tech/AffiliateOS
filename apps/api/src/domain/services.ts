@@ -10,7 +10,7 @@ import type {
   Offer
 } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
-import type { ConversionRepository, Repository, TransactionManager } from "./repository.js";
+import type { CommissionRepository, ConversionRepository, Repository, TransactionManager } from "./repository.js";
 
 const now = () => new Date().toISOString();
 
@@ -59,7 +59,7 @@ export class OfferService {
 export class ConversionService {
   constructor(
     private readonly conversions: ConversionRepository,
-    private readonly commissions: import("./repository.js").CommissionRepository,
+    private readonly commissions: CommissionRepository,
     private readonly affiliates: Repository<Affiliate>,
     private readonly offers: Repository<Offer>,
     private readonly transactionManager: TransactionManager
@@ -74,8 +74,7 @@ export class ConversionService {
     if (!conversion) throw new DomainError("CONVERSION_NOT_FOUND", "The conversion does not exist.", 404);
     const updated: Conversion = { ...conversion, status };
     await this.conversions.save(updated);
-    const commissions = await this.commissions.list();
-    const commission = commissions.find((item) => item.conversionId === id);
+    const commission = await this.commissions.findByConversionId(id);
     if (commission) {
       await this.commissions.save({ ...commission, amountCents: commissionCents ?? commission.amountCents, status: status === "pending" ? "pending" : "approved" });
     }
