@@ -89,7 +89,7 @@ export class AutonomousScheduler {
       .then(async (result) => {
         this.lastResult = result;
         this.lastCompletedAt = this.now().toISOString();
-        if (this.onResult) await this.onResult(result);
+        if (result !== undefined && this.onResult) await this.onResult(result);
         return result;
       })
       .catch(async (error) => {
