@@ -253,6 +253,20 @@
       "when": 1794050400000,
       "tag": "0037_autonomous_exploration_optimization_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790134261000,
+      "tag": "0039_autonomous_anomaly_cooldown",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790134262000,
+      "tag": "0040_autonomous_anomaly_recovery_state",
+      "breakpoints": true
     }
   ]
 }

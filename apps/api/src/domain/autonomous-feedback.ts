@@ -81,9 +81,10 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         ? await latestHaltSnapshot(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
         : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
-      const recoveryEvidence = windows
-        ? hasRecoveryEvidence(windows, recoveryClicks, anomalyScore)
-        : recoveryClicks >= ANOMALY_RECOVERY_CLICKS;
+      const recoveryEvidenceScore = windows
+        ? calculateRecoveryEvidenceScore(windows, recoveryClicks, anomalyScore)
+        : recoveryClicks >= ANOMALY_RECOVERY_CLICKS ? 1 : 0;
+      const recoveryEvidence = recoveryEvidenceScore >= 0.75;
       const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
       const anomaly = recentHalt || recoveryGate ? "halt" : classifyAnomaly(anomalyScore);
       const anomalyRecovery: AnomalyRecoveryState = recoveryAnchor
@@ -106,6 +107,9 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         adjustment,
         anomaly,
         anomalyScore,
+        recoveryState: recoveryAnchor ? (recentHalt || recoveryGate ? "recovering" : "recovered") : "none",
+        recoveryClicks,
+        recoveryEvidenceScore,
         observedAt
       };
       if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
@@ -251,18 +255,18 @@ function classifyAnomaly(score:number):PerformanceAnomaly {
   if(score>=0.45)return "watch";
   return "none";
 }
-function hasRecoveryEvidence(
+function calculateRecoveryEvidenceScore(
   windows:{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow },
   recoveryClicks:number,
   anomalyScore:number
-):boolean {
-  if (recoveryClicks < ANOMALY_RECOVERY_CLICKS || anomalyScore >= ANOMALY_RECOVERY_MAX_SCORE) return false;
-  const short = windows["24h"];
-  const medium = windows["7d"];
-  const long = windows["30d"];
-  if (short.confidence < ANOMALY_RECOVERY_MIN_CONFIDENCE || medium.confidence < ANOMALY_RECOVERY_MIN_CONFIDENCE) return false;
-  if (Math.abs(short.conversionRate - long.conversionRate) > ANOMALY_RECOVERY_MAX_RATE_DIVERGENCE) return false;
-  return true;
+):number {
+  const clickEvidence = Math.min(1, recoveryClicks / ANOMALY_RECOVERY_CLICKS);
+  const anomalyEvidence = anomalyScore >= ANOMALY_RECOVERY_MAX_SCORE ? 0 : 1 - (anomalyScore / ANOMALY_RECOVERY_MAX_SCORE);
+  const short = windows["24h"], medium = windows["7d"], long = windows["30d"];
+  const confidenceEvidence = Math.min(1, short.confidence, medium.confidence);
+  const divergence = Math.abs(short.conversionRate - long.conversionRate);
+  const stabilityEvidence = Math.max(0, 1 - (divergence / ANOMALY_RECOVERY_MAX_RATE_DIVERGENCE));
+  return Math.round((clickEvidence * 0.25 + anomalyEvidence * 0.25 + confidenceEvidence * 0.25 + stabilityEvidence * 0.25) * 100) / 100;
 }
 
 

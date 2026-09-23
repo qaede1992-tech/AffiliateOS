@@ -18,6 +18,9 @@ const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   adjustment: row.adjustment,
   anomaly: (row.anomaly ?? "none") as "none" | "watch" | "halt",
   anomalyScore: row.anomalyScore ?? 0,
+  recoveryState: (row.recoveryState ?? "none") as "none" | "recovering" | "recovered",
+  recoveryClicks: row.recoveryClicks ?? 0,
+  recoveryEvidenceScore: row.recoveryEvidenceScore ?? 0,
   observedAt: row.observedAt
 });
 
@@ -53,8 +56,14 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
         clickCount: snapshot.clickCount,
         conversionCount: snapshot.conversionCount,
         attributedCommissionCents: snapshot.attributedCommissionCents,
+        commissionPerClickCents: snapshot.commissionPerClickCents,
         conversionRate: snapshot.conversionRate,
         adjustment: snapshot.adjustment,
+        anomaly: snapshot.anomaly,
+        anomalyScore: snapshot.anomalyScore,
+        recoveryState: snapshot.recoveryState,
+        recoveryClicks: snapshot.recoveryClicks,
+        recoveryEvidenceScore: snapshot.recoveryEvidenceScore,
         observedAt: snapshot.observedAt
       })
       .onConflictDoNothing({ target: autonomousFeedbackSnapshots.observationKey })
