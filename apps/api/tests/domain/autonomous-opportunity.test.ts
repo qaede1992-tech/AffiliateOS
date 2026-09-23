@@ -111,6 +111,8 @@ describe("autonomous opportunity selection", () => {
     assert.ok(result.selected.some((item) => item.product.id === "new-a"));
     assert.ok(result.selected.some((item) => item.product.id === "proven"));
     assert.ok(result.audit.find((item) => item.productId === "new-a")?.reasons.includes("Selected for controlled exploration"));
+    assert.equal(result.audit.find((item) => item.productId === "new-a")?.selectionMode, "exploration");
+    assert.equal(result.audit.find((item) => item.productId === "proven")?.selectionMode, "exploitation");
   });
 
   it("does not force exploration when every eligible product has enough evidence", () => {
