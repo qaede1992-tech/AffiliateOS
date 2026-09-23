@@ -11,6 +11,9 @@ export type AutonomousFeedbackSnapshot = {
   adjustment: number;
   anomaly: "none" | "watch" | "halt";
   anomalyScore: number;
+  recoveryState: "none" | "recovering" | "recovered";
+  recoveryClicks: number;
+  recoveryEvidenceScore: number;
   observedAt: string;
 };
 
