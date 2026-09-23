@@ -12,6 +12,8 @@ export type AutonomousActionOutcome = {
   error?: string;
   baseline?: AutonomousActionMetrics;
   observed?: AutonomousActionMetrics;
+  evaluation?: AutonomousActionMetrics;
+  evaluatedAt?: string;
 };
 
 export type AutonomousActionMetrics = {
@@ -25,6 +27,8 @@ export type AutonomousActionMetrics = {
 export interface AutonomousActionOutcomeWriter {
   save(outcome: AutonomousActionOutcome): Promise<AutonomousActionOutcome>;
   updateMetrics?(id: string, metrics: { baseline?: AutonomousActionMetrics; observed?: AutonomousActionMetrics }): Promise<AutonomousActionOutcome | undefined>;
+  latestByCampaign?(campaignId: string): Promise<AutonomousActionOutcome | undefined>;
+  updateEvaluation?(id: string, evaluation: AutonomousActionMetrics, evaluatedAt: string): Promise<AutonomousActionOutcome | undefined>;
 }
 
 export class InMemoryAutonomousActionOutcomeRepository implements AutonomousActionOutcomeWriter {
@@ -37,6 +41,16 @@ export class InMemoryAutonomousActionOutcomeRepository implements AutonomousActi
     const item = this.outcomes.find((outcome) => outcome.id === id);
     if (!item) return undefined;
     Object.assign(item, metrics);
+    return item;
+  }
+  async latestByCampaign(campaignId: string) {
+    return [...this.outcomes].filter((outcome) => outcome.campaignId === campaignId).sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+  }
+  async updateEvaluation(id: string, evaluation: AutonomousActionMetrics, evaluatedAt: string) {
+    const item = this.outcomes.find((outcome) => outcome.id === id);
+    if (!item) return undefined;
+    item.evaluation = evaluation;
+    item.evaluatedAt = evaluatedAt;
     return item;
   }
 }
