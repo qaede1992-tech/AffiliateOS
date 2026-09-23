@@ -75,6 +75,30 @@ describe("autonomous opportunity selection", () => {
 
 
 
+  it("composes product, category, and audience feedback with bounded weighted influence", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("composite"), offers: [offer("composite")] }
+    ], { minimumScore: 0, maximumResults: 1, requiredAudience: ["beauty"] }, new Map([
+      ["market-1:composite", { clickCount: 100, conversionRate: 0.08, attributedCommissionCents: 1000, commissionPerClickCents: 10, adjustment: 8, trendAdjustment: 0 }],
+      ["market-1:category:skincare", { clickCount: 100, conversionRate: 0.05, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 4, trendAdjustment: 0 }],
+      ["market-1:audience:beauty", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 400, commissionPerClickCents: 4, adjustment: 2, trendAdjustment: 0 }]
+    ]));
+    assert.equal(result.selected[0]?.breakdown.performanceAdjustment, 6);
+    assert.ok(result.selected[0]?.score !== undefined);
+    assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("Historical conversion feedback applied")));
+  });
+
+  it("does not materially amplify a single weak signal beyond the global cap", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("bounded"), offers: [offer("bounded")] }
+    ], { minimumScore: 0, maximumResults: 1, requiredAudience: ["beauty"] }, new Map([
+      ["market-1:bounded", { clickCount: 100, conversionRate: 0, attributedCommissionCents: 0, commissionPerClickCents: 0, adjustment: -8, trendAdjustment: 0 }],
+      ["market-1:category:skincare", { clickCount: 100, conversionRate: 0, attributedCommissionCents: 0, commissionPerClickCents: 0, adjustment: -8, trendAdjustment: 0 }],
+      ["market-1:audience:beauty", { clickCount: 100, conversionRate: 0, attributedCommissionCents: 0, commissionPerClickCents: 0, adjustment: -8, trendAdjustment: 0 }]
+    ]));
+    assert.equal(result.selected[0]?.breakdown.performanceAdjustment, -8);
+  });
+
   it("selects only active, offer-backed opportunities above the policy threshold", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("good"), offers: [offer("good")] },
