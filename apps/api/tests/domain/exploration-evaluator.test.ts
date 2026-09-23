@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { evaluateExploration } from "../../src/domain/exploration-evaluator.js";
 import type { AutonomousDecisionAudit } from "../../src/domain/autonomous-decision-audit.js";
