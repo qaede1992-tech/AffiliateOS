@@ -44,6 +44,7 @@ const ANOMALY_RECOVERY_CLICKS = 20;
 const ANOMALY_RECOVERY_MIN_CONFIDENCE = 0.5;
 const ANOMALY_RECOVERY_MAX_SCORE = 0.45;
 const ANOMALY_RECOVERY_MAX_RATE_DIVERGENCE = 0.04;
+const ANOMALY_RECOVERY_STABILITY_SNAPSHOTS = 3;
 const LEARNING_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
@@ -88,9 +89,17 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         : recoveryClicks >= ANOMALY_RECOVERY_CLICKS ? 1 : 0;
       const recoveryEvidence = recoveryEvidenceScore >= 0.75;
       const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
-      const anomaly = recentHalt || recoveryGate ? "halt" : classifyAnomaly(anomalyScore);
+      const classifiedAnomaly = classifyAnomaly(anomalyScore);
+      const anomaly = recentHalt || recoveryGate ? "halt" : classifiedAnomaly;
+      const stableRecovery = recoveryAnchor && recoveryEvidence
+        ? await hasStableRecoveryWindow(this.memory!.recentByProductAndMarketplace!.bind(this.memory!), productId, marketplaceId!, recoveryAnchor.observedAt, observedAt)
+        : false;
       const anomalyRecovery: AnomalyRecoveryState = recoveryAnchor
-        ? (recentHalt ? "recovering" : recoveryGate ? "recovering" : "recovered")
+        ? (recentHalt || recoveryGate
+          ? "recovering"
+          : previous?.recoveryState === "recovered" && anomaly !== "halt"
+            ? "recovered"
+            : stableRecovery ? "recovered" : "recovering")
         : "none";
       const recoveryConfidence = anomalyRecovery === "recovered"
         ? recoveryConfidenceMultiplier(recoveryEvidenceScore)
@@ -206,6 +215,19 @@ function signalKey(marketplaceId: string, productId: string): string {
 function splitSignalKey(key: string): [string | undefined, string] {
   const separator = key.indexOf(":");
   return separator < 0 ? [undefined, key] : [key.slice(0, separator), key.slice(separator + 1)];
+}
+
+async function hasStableRecoveryWindow(
+  reader:(productId:string,marketplaceId:string,since:string)=>Promise<AutonomousFeedbackSnapshot[]>,
+  productId:string, marketplaceId:string, haltObservedAt:string, observedAt:string
+):Promise<boolean> {
+  const snapshots = await reader(productId, marketplaceId, haltObservedAt);
+  const eligible = snapshots
+    .filter((snapshot) => Date.parse(snapshot.observedAt) > Date.parse(haltObservedAt) && Date.parse(snapshot.observedAt) <= Date.parse(observedAt))
+    .sort((a,b) => a.observedAt.localeCompare(b.observedAt));
+  if (eligible.length < ANOMALY_RECOVERY_STABILITY_SNAPSHOTS) return false;
+  const recent = eligible.slice(-ANOMALY_RECOVERY_STABILITY_SNAPSHOTS);
+  return recent.every((snapshot) => snapshot.recoveryEvidenceScore >= 0.75 && snapshot.anomaly !== "halt");
 }
 
 async function latestHaltSnapshot(
