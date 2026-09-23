@@ -15,6 +15,13 @@ describe("OptimizationEngine", () => {
     assert.equal(result[0].action, "maintain");
   });
 
+  it("requires commission efficiency for scale when configured", () => {
+    const lowEfficiency = new OptimizationEngine({ minimumCommissionPerClickCents: 10 }).recommend([analytics("c-low", 100, 0.08)]);
+    assert.equal(lowEfficiency[0].action, "revise-content");
+    const efficient = new OptimizationEngine({ minimumCommissionPerClickCents: 4 }).recommend([analytics("c-high", 100, 0.08)]);
+    assert.equal(efficient[0].action, "scale");
+  });
+
   it("recommends scaling campaigns above the conversion threshold", () => {
     const result = new OptimizationEngine().recommend([analytics("c1", 100, 0.08)]);
     assert.equal(result[0].action, "scale");

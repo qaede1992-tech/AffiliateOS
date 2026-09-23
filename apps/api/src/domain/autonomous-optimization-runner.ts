@@ -36,12 +36,10 @@ export class AutonomousOptimizationRunner {
       if (recommendation.action === "maintain") continue;
       const result = await this.executor.execute(recommendation);
       actions.push(result);
-      if (result.mutated) {
-        await this.stateWriter.save(recommendation.campaignId, {
-          action: recommendation.action,
-          appliedAt: now.toISOString()
-        });
-      }
+      await this.stateWriter.save(recommendation.campaignId, {
+        action: recommendation.action,
+        appliedAt: now.toISOString()
+      });
     }
 
     return { campaigns: overview.campaigns, recommendations, actions };
