@@ -42,6 +42,7 @@ const environmentSchema = z.object({
   AUTONOMOUS_MINIMUM_COMMISSION_BPS: z.coerce.number().int().min(0).max(1_000_000).default(0),
   AUTONOMOUS_MINIMUM_COMMISSION_AMOUNT_CENTS: z.coerce.number().int().min(0).default(0),
   AUTONOMOUS_MINIMUM_DEMAND_SCORE: z.coerce.number().min(0).max(100).default(0),
+  AUTONOMOUS_OPTIMIZATION_MIN_COMMISSION_PER_CLICK_CENTS: z.coerce.number().min(0).default(0),
   AUTONOMOUS_MARKETPLACE_POLICIES_JSON: marketplacePoliciesEnvironment.default({}),
   PROVIDER_EVENT_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).default(60_000)
 });
