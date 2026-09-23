@@ -120,3 +120,28 @@ test("confidence-aware feedback exposes global category learning across marketpl
   assert.equal(global?.confidence, 1);
   assert.equal(global?.conversionRate, 0.1);
 });
+
+
+test("adaptive exploration honors recovery hold floor", async () => {
+  const reader = { list: async () => [] };
+  const provider = new AdaptiveExplorationPolicyProvider(reader, { minimumSamples: 5, minimumRate: 0.05, maximumRate: 0.5 });
+  const performance = new Map([["m1:p0", {
+    clickCount: 20, conversionCount: 0, conversionRate: 0, attributedCommissionCents: 0,
+    commissionPerClickCents: 0, adjustment: 0, trendAdjustment: 0,
+    anomalyRecovery: "recovered" as const, recoveryPolicy: { explorationFloor: 0.35, direction: "hold-exploration" as const }
+  }]]);
+  const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.1 }, {}, performance);
+  assert.equal(rates.get("p0"), 0.35);
+});
+
+test("adaptive exploration honors recovery reduce policy", async () => {
+  const reader = { list: async () => [] };
+  const provider = new AdaptiveExplorationPolicyProvider(reader, { minimumSamples: 0.05, maximumRate: 0.5 } as any);
+  const performance = new Map([["m1:p0", {
+    clickCount: 20, conversionCount: 2, conversionRate: 0.1, attributedCommissionCents: 100,
+    commissionPerClickCents: 5, adjustment: 0, trendAdjustment: 0,
+    anomalyRecovery: "recovered" as const, recoveryPolicy: { explorationFloor: 0, direction: "reduce-exploration" as const }
+  }]]);
+  const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.2 }, {}, performance);
+  assert.equal(rates.get("p0"), 0.2);
+});
