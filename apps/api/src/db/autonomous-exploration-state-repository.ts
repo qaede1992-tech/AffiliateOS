@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { autonomousActionOutcomes, autonomousExplorationOptimizationEvents, autonomousExplorationStateEvents, autonomousExplorationStates, campaigns, products } from "./schema.js";
+import { autonomousExplorationOptimizationEvents, autonomousExplorationStateEvents, autonomousExplorationStates } from "./schema.js";
 import type { AutonomousDecisionAudit } from "../domain/autonomous-decision-audit.js";
 import type { AutonomousExplorationDimension, AutonomousExplorationState, AutonomousExplorationStateRepository } from "../domain/autonomous-exploration-state.js";
 type DatabaseExecutor=any;
