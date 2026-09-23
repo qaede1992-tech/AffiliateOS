@@ -7,6 +7,23 @@ const campaign = (productId: string, clicks: number, conversions: number, commis
   campaignId: `${productId}-campaign`, productId, marketplaceId, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
   publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: conversions,
   attributedRevenueCents: conversions * 10000, attributedCommissionCents: commission, conversionRate: clicks ? conversions / clicks : 0
+  it("tracks commission efficiency and adds only a bounded efficiency signal", async () => {
+    const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+    let commission = 1000;
+    const provider = new AutonomousAnalyticsFeedbackProvider(
+      { overview: async () => ({ clickCount: 100, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 2, attributedRevenueCents: 100000, attributedCommissionCents: commission, conversionRate: 0.02, campaigns: [campaign("p1", 100, 2, commission, "market-1")] }) },
+      memory,
+      () => new Date("2026-09-21T03:00:00.000Z")
+    );
+    const first = (await provider.getSignals({ observationKey: "efficiency-1" })).get("market-1:p1");
+    assert.equal(first?.commissionPerClickCents, 10);
+    commission = 2000;
+    const second = (await provider.getSignals({ observationKey: "efficiency-2" })).get("market-1:p1");
+    assert.equal(second?.commissionPerClickCents, 20);
+    assert.ok((second?.adjustment ?? 0) <= 8);
+  });
+
+
 });
 
 describe("Autonomous analytics feedback", () => {
