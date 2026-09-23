@@ -17,6 +17,7 @@ export interface AutonomousFeedbackMemoryRepository {
   saveIfAbsent?(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot>;
   latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
   latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
+  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;
 }
 
 export class InMemoryAutonomousFeedbackMemoryRepository implements AutonomousFeedbackMemoryRepository {
@@ -39,6 +40,12 @@ export class InMemoryAutonomousFeedbackMemoryRepository implements AutonomousFee
     return [...this.snapshots.values()]
       .filter((snapshot) => snapshot.productId === productId)
       .sort((left, right) => right.observedAt.localeCompare(left.observedAt) || right.id.localeCompare(left.id))[0];
+  }
+
+  async recentByProductAndMarketplace(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]> {
+    return [...this.snapshots.values()]
+      .filter((snapshot) => snapshot.productId === productId && snapshot.marketplaceId === marketplaceId && snapshot.observedAt >= since)
+      .sort((left, right) => left.observedAt.localeCompare(right.observedAt) || left.id.localeCompare(right.id));
   }
 
   async latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
