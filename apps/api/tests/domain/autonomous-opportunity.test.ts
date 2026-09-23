@@ -198,4 +198,20 @@ describe("autonomous commission amount guard", () => {
     assert.deepEqual(result.selected.map((item) => item.product.id), ["high-amount"]);
     assert.ok(result.rejected.find((item) => item.productId === "low-amount")?.reasons.includes("Commission amount is below the minimum"));
   });
+  it("uses required audience performance when product and category history are absent", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("audience-a"), offers: [offer("audience-a")] }
+    ], { minimumScore: 0, maximumResults: 1, requiredAudience: ["beauty"] }, new Map([
+      ["market-1:audience:beauty", {
+        clickCount: 100,
+        conversionRate: 0.08,
+        attributedCommissionCents: 1000,
+        commissionPerClickCents: 10,
+        adjustment: 4,
+        trendAdjustment: 0
+      }]
+    ]));
+    assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("Historical conversion feedback")));
+  });
+
 });

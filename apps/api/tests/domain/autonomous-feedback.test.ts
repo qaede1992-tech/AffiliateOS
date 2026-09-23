@@ -1,5 +1,5 @@
-const campaign = (productId: string, clicks: number, conversions: number, commission = 0, marketplaceId?: string) => ({
-  campaignId: productId + "-campaign", productId, marketplaceId, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
+const campaign = (productId: string, clicks: number, conversions: number, commission = 0, marketplaceId?: string, audienceSegments?: string[]) => ({
+  campaignId: productId + "-campaign", productId, marketplaceId, audienceSegments, clickCount: clicks, trackingLinkCount: 1, contentCount: 1,
   publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: conversions,
   attributedRevenueCents: conversions * 10000, attributedCommissionCents: commission, conversionRate: clicks ? conversions / clicks : 0
 });
@@ -90,6 +90,22 @@ describe("Autonomous analytics feedback", () => {
     assert.equal(signal?.conversionCount, 10);
     assert.equal(signal?.conversionRate, 0.05);
     assert.equal(signal?.attributedCommissionCents, 1000);
+  });
+
+  it("aggregates audience performance within a marketplace", () => {
+    const signals = buildSignals({
+      clickCount: 200, trackingLinkCount: 2, campaignCount: 2, contentCount: 2,
+      publishedContentCount: 2, scheduledContentCount: 0, attributedConversionCount: 10,
+      attributedRevenueCents: 10000, attributedCommissionCents: 500, conversionRate: 0.05,
+      campaigns: [
+        campaign("p1", 100, 6, 300, "m1", ["beauty"]),
+        campaign("p2", 100, 4, 200, "m1", ["beauty"])
+      ]
+    });
+    const signal = signals.get("m1:audience:beauty");
+    assert.equal(signal?.clickCount, 200);
+    assert.equal(signal?.conversionCount, 10);
+    assert.equal(signal?.attributedCommissionCents, 500);
   });
 
 });

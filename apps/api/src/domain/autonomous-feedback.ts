@@ -72,6 +72,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
 export function buildSignals(overview: AnalyticsOverview): Map<string, OpportunityPerformanceSignal> {
   const grouped = new Map<string, CampaignAnalytics[]>();
   const categoryGrouped = new Map<string, CampaignAnalytics[]>();
+  const audienceGrouped = new Map<string, CampaignAnalytics[]>();
   for (const campaign of overview.campaigns) {
     if (!campaign.productId) continue;
     const key = campaign.marketplaceId ? signalKey(campaign.marketplaceId, campaign.productId) : campaign.productId;
@@ -84,6 +85,14 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
       const categoryCurrent = categoryGrouped.get(categoryKey) ?? [];
       categoryCurrent.push(campaign);
       categoryGrouped.set(categoryKey, categoryCurrent);
+    }
+    for (const segment of campaign.audienceSegments ?? []) {
+      const normalized = segment.trim().toLowerCase();
+      if (!normalized) continue;
+      const audienceKey = audienceSignalKey(campaign.marketplaceId, normalized);
+      const audienceCurrent = audienceGrouped.get(audienceKey) ?? [];
+      audienceCurrent.push(campaign);
+      audienceGrouped.set(audienceKey, audienceCurrent);
     }
   }
   const signals = new Map<string, OpportunityPerformanceSignal>();
@@ -107,6 +116,7 @@ export function buildSignals(overview: AnalyticsOverview): Map<string, Opportuni
     });
   }
   for (const [key, campaigns] of categoryGrouped) signals.set(key, aggregateSignals(campaigns));
+  for (const [key, campaigns] of audienceGrouped) signals.set(key, aggregateSignals(campaigns));
   return signals;
 }
 
@@ -121,6 +131,7 @@ function aggregateSignals(campaigns: CampaignAnalytics[]): OpportunityPerformanc
 }
 
 function categorySignalKey(marketplaceId: string | undefined, category: string): string { return `${marketplaceId ?? "unknown"}:category:${category}`; }
+function audienceSignalKey(marketplaceId: string | undefined, audience: string): string { return `${marketplaceId ?? "unknown"}:audience:${audience}`; }
 
 function signalKey(marketplaceId: string, productId: string): string {
   return marketplaceId + ":" + productId;
