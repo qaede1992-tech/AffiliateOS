@@ -9,8 +9,8 @@ export type OpportunityPerformanceSignal = {
   commissionPerClickCents: number;
   adjustment: number;
   trendAdjustment: number;
-  confidence: number;
-  scope: "marketplace" | "global";
+  confidence?: number;
+  scope?: "marketplace" | "global";
 };
 
 export type AutonomousFeedbackContext = { observationKey?: string; };
