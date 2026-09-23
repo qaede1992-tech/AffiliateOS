@@ -19,12 +19,12 @@ export type AutonomousFeedbackSnapshot = {
   observedAt: string;
 };
 
-export type RecoveryEpisodeAnalytics = { episodeId: string; startedAt: string; endedAt?: string; durationMs?: number; snapshotCount: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; averageQualityScore: number; closingQualityScore?: number; closed: boolean; };\n\nexport interface AutonomousFeedbackMemoryRepository {
+export type RecoveryEpisodeAnalytics = { episodeId: string; startedAt: string; endedAt?: string; durationMs?: number; snapshotCount: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; averageQualityScore: number; closingQualityScore?: number; closed: boolean; };\nexport type RecoveryEpisodeComparison = { current: RecoveryEpisodeAnalytics; previous?: RecoveryEpisodeAnalytics; qualityDelta?: number; durationDeltaMs?: number; commissionDeltaCentsDelta?: number; conversionDeltaDelta?: number; };\n\nexport interface AutonomousFeedbackMemoryRepository {
   save(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot>;
   saveIfAbsent?(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot>;
   latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
   latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
-  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;\n  recoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
+  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;\n  recoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;\n  previousRecoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
 }
 
 export class InMemoryAutonomousFeedbackMemoryRepository implements AutonomousFeedbackMemoryRepository {
@@ -55,7 +55,15 @@ export class InMemoryAutonomousFeedbackMemoryRepository implements AutonomousFee
       .sort((left, right) => left.observedAt.localeCompare(right.observedAt) || left.id.localeCompare(right.id));
   }
 
-  async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined> {\n    const snapshots = [...this.snapshots.values()].filter(s => s.productId === productId && s.marketplaceId === marketplaceId && s.recoveryEpisodeId === episodeId).sort((a,b)=>a.observedAt.localeCompare(b.observedAt)||a.id.localeCompare(b.id));\n    const start=snapshots[0]; if(!start) return undefined; const end=snapshots.find(s=>s.recoveryState==="recovered");\n    return {episodeId,startedAt:start.observedAt,endedAt:end?.observedAt,durationMs:end?Math.max(0,Date.parse(end.observedAt)-Date.parse(start.observedAt)):undefined,snapshotCount:snapshots.length,recoveryClicks:end?.recoveryClicks??snapshots.at(-1)!.recoveryClicks,conversionDelta:(end??snapshots.at(-1)!).conversionCount-start.conversionCount,commissionDeltaCents:(end??snapshots.at(-1)!).attributedCommissionCents-start.attributedCommissionCents,averageQualityScore:snapshots.reduce((sum,s)=>sum+s.recoveryQualityScore,0)/snapshots.length,closingQualityScore:end?.recoveryQualityScore,closed:Boolean(end)};\n  }\n\n  async latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
+  async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined> {\n    const snapshots = [...this.snapshots.values()].filter(s => s.productId === productId && s.marketplaceId === marketplaceId && s.recoveryEpisodeId === episodeId).sort((a,b)=>a.observedAt.localeCompare(b.observedAt)||a.id.localeCompare(b.id));\n    const start=snapshots[0]; if(!start) return undefined; const end=snapshots.find(s=>s.recoveryState==="recovered");\n    return {episodeId,startedAt:start.observedAt,endedAt:end?.observedAt,durationMs:end?Math.max(0,Date.parse(end.observedAt)-Date.parse(start.observedAt)):undefined,snapshotCount:snapshots.length,recoveryClicks:end?.recoveryClicks??snapshots.at(-1)!.recoveryClicks,conversionDelta:(end??snapshots.at(-1)!).conversionCount-start.conversionCount,commissionDeltaCents:(end??snapshots.at(-1)!).attributedCommissionCents-start.attributedCommissionCents,averageQualityScore:snapshots.reduce((sum,s)=>sum+s.recoveryQualityScore,0)/snapshots.length,closingQualityScore:end?.recoveryQualityScore,closed:Boolean(end)};\n  }\n\n  async previousRecoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined> {
+    const episodes = [...new Set([...this.snapshots.values()].filter(s=>s.productId===productId&&s.marketplaceId===marketplaceId&&s.recoveryEpisodeId).map(s=>s.recoveryEpisodeId!))];
+    const ids = episodes.filter(id=>id!==episodeId).sort();
+    let previous: RecoveryEpisodeAnalytics|undefined;
+    for (const id of ids) { const a=await this.recoveryEpisodeAnalytics(productId,marketplaceId,id); if(a && (!previous || a.startedAt>previous.startedAt)) previous=a; }
+    return previous;
+  }
+
+  async latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
     return [...this.snapshots.values()]
       .filter((snapshot) => snapshot.productId === productId && snapshot.marketplaceId === marketplaceId)
       .sort((left, right) => right.observedAt.localeCompare(left.observedAt) || right.id.localeCompare(left.id))[0];

@@ -29,7 +29,7 @@ export type OpportunityPerformanceSignal = {
   recoveryEpisodeMetrics?: RecoveryEpisodeMetrics;
 };
 
-export type RecoveryEpisodeMetrics = { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; };
+export type RecoveryEpisodeMetrics = { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; previousEpisodeQualityScore?: number; qualityDelta?: number; };
 
 function calculateRecoveryQuality(metrics: RecoveryEpisodeMetrics): number {
   const conversionQuality = metrics.conversionDelta >= ANOMALY_RECOVERY_MIN_CONVERSION_DELTA ? 1 : 0.5;
@@ -128,7 +128,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       } : undefined;
       const recoveryQuality = recoveryAnchor ? calculateRecoveryQuality(recoveryEpisodeMetrics!) : 1;
       if (recoveryEpisodeMetrics) recoveryEpisodeMetrics.qualityScore = recoveryQuality;
-      const recoveryConfidence = anomalyRecovery === "recovered"
+      const previousEpisode = recoveryAnchor && this.memory!.previousRecoveryEpisodeAnalytics\n        ? await this.memory!.previousRecoveryEpisodeAnalytics(productId, marketplaceId!, recoveryAnchor.id)\n        : undefined;\n      if (recoveryEpisodeMetrics && previousEpisode) { recoveryEpisodeMetrics.previousEpisodeQualityScore = previousEpisode.closingQualityScore ?? previousEpisode.averageQualityScore; recoveryEpisodeMetrics.qualityDelta = (recoveryEpisodeMetrics.qualityScore ?? 0) - recoveryEpisodeMetrics.previousEpisodeQualityScore; }\n      const recoveryConfidence = anomalyRecovery === "recovered"
         ? recoveryConfidenceMultiplier(recoveryEvidenceScore) * recoveryQuality
         : 1;
       const windowAdjustment = windows && anomaly !== "halt"
