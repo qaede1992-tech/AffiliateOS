@@ -25,6 +25,7 @@
     {"idx": 20, "version": "7", "when": 1790680801000, "tag": "0022_affiliate_link_expiry", "breakpoints": true},
     {"idx": 21, "version": "7", "when": 1790767200000, "tag": "0023_click_idempotency_unique", "breakpoints": true},
     {"idx": 22, "version": "7", "when": 1790853600000, "tag": "0024_provider_event_processing_lease", "breakpoints": true},
-    {"idx": 23, "version": "7", "when": 1790940000000, "tag": "0025_autonomous_optimization_states", "breakpoints": true}
+    {"idx": 23, "version": "7", "when": 1790940000000, "tag": "0025_autonomous_optimization_states", "breakpoints": true},
+    {"idx": 24, "version": "7", "when": 1791026400000, "tag": "0026_autonomous_decision_audits", "breakpoints": true}
   ]
 }
