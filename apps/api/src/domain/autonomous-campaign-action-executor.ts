@@ -12,6 +12,7 @@ export type AutonomousCampaignActionResult = {
   action: OptimizationRecommendation["action"];
   campaign: Campaign;
   mutated: boolean;
+  outcomeId?: string;
 };
 
 /**
@@ -28,10 +29,11 @@ export class AutonomousCampaignActionExecutor {
     private readonly outcomes?: AutonomousActionOutcomeWriter
   ) {}
 
-  private async record(recommendation: OptimizationRecommendation, result: AutonomousCampaignActionResult, error?: unknown): Promise<void> {
-    if (!this.outcomes) return;
+  private async record(recommendation: OptimizationRecommendation, result: AutonomousCampaignActionResult, error?: unknown): Promise<string | undefined> {
+    if (!this.outcomes) return undefined;
     const outcome: AutonomousActionOutcome = { id: randomUUID(), campaignId: result.campaignId, action: recommendation.action, status: error ? "failed" : result.mutated ? "mutated" : "skipped", mutated: result.mutated, observedAt: new Date().toISOString(), ...(error ? { error: error instanceof Error ? error.message : String(error) } : {}) };
-    await this.outcomes.save(outcome);
+    const saved = await this.outcomes.save(outcome);
+    return saved.id;
   }
 
   async execute(recommendation: OptimizationRecommendation): Promise<AutonomousCampaignActionResult> {
@@ -39,8 +41,8 @@ export class AutonomousCampaignActionExecutor {
       const campaign = await this.campaigns.get(recommendation.campaignId);
 
       const result = await this.executeInternal(recommendation, campaign);
-      await this.record(recommendation, result);
-      return result;
+      const outcomeId = await this.record(recommendation, result);
+      return outcomeId ? { ...result, outcomeId } : result;
     } catch (error) {
       if (this.outcomes) await this.outcomes.save({ id: randomUUID(), campaignId: recommendation.campaignId, action: recommendation.action, status: "failed", mutated: false, observedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) });
       throw error;

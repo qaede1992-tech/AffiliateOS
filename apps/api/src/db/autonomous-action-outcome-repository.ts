@@ -12,7 +12,9 @@ const toDomain = (row: OutcomeRow): AutonomousActionOutcome => ({
   status: row.status as AutonomousActionOutcome["status"],
   mutated: row.mutated,
   observedAt: row.observedAt,
-  ...(row.error ? { error: row.error } : {})
+  ...(row.error ? { error: row.error } : {}),
+  ...(row.baselineMetrics ? { baseline: row.baselineMetrics } : {}),
+  ...(row.observedMetrics ? { observed: row.observedMetrics } : {})
 });
 
 export class DrizzleAutonomousActionOutcomeRepository implements AutonomousActionOutcomeWriter {
@@ -24,6 +26,11 @@ export class DrizzleAutonomousActionOutcomeRepository implements AutonomousActio
     }).returning();
     return toDomain(rows[0]);
   }
+  async updateMetrics(id: string, metrics: { baseline?: import("../domain/autonomous-action-outcome.js").AutonomousActionMetrics; observed?: import("../domain/autonomous-action-outcome.js").AutonomousActionMetrics }) {
+    const rows = await this.db.update(autonomousActionOutcomes).set({ ...(metrics.baseline ? { baselineMetrics: metrics.baseline } : {}), ...(metrics.observed ? { observedMetrics: metrics.observed } : {}) }).where(eq(autonomousActionOutcomes.id, id)).returning();
+    return rows[0] ? toDomain(rows[0]) : undefined;
+  }
+
   async latestByCampaign(campaignId: string): Promise<AutonomousActionOutcome | undefined> {
     const rows = await this.db.select().from(autonomousActionOutcomes)
       .where(eq(autonomousActionOutcomes.campaignId, campaignId))
