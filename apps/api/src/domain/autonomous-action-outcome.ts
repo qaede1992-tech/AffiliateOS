@@ -16,7 +16,8 @@ export type AutonomousActionOutcome = {
   evaluatedAt?: string;
   recoveryState?: "none" | "recovering" | "recovered";
   recoveryEvidenceScore?: number;
-  recoveryEpisodeId?: string;\n  recoveryPolicy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
+  recoveryEpisodeId?: string;
+  recoveryPolicy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
 };
 
 export type AutonomousActionMetrics = {
@@ -57,12 +58,13 @@ export class InMemoryAutonomousActionOutcomeRepository implements AutonomousActi
     item.evaluatedAt = evaluatedAt;
     return item;
   }
-  async updateRecovery(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number; episodeId?: string }) {
+  async updateRecovery(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number; episodeId?: string; policy?: AutonomousActionOutcome["recoveryPolicy"] }) {
     const item = this.outcomes.find((outcome) => outcome.id === id);
     if (!item) return undefined;
     item.recoveryState = recovery.state;
     item.recoveryEvidenceScore = recovery.evidenceScore ?? 0;
-    item.recoveryEpisodeId = recovery.episodeId;\n    item.recoveryPolicy = recovery.policy;
+    item.recoveryEpisodeId = recovery.episodeId;
+    item.recoveryPolicy = recovery.policy;
     return item;
   }
 }
