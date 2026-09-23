@@ -1,5 +1,5 @@
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
-import { AutonomousOpportunitySelector, type OpportunityCandidateSource, type OpportunitySelectionPolicy, type OpportunitySelectionPoliciesByMarketplace } from "./autonomous-opportunity.js";
+import { AutonomousOpportunitySelector, type OpportunityCandidateSource, type OpportunitySelectionPolicy, type OpportunitySelectionPoliciesByMarketplace, type OpportunitySelectionAudit } from "./autonomous-opportunity.js";
 import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import type { CampaignOrchestrator, CampaignOrchestrationResult } from "./campaign-orchestrator.js";
 import { scoreOpportunity, type ScoredOpportunity } from "./opportunity-scoring.js";
@@ -15,7 +15,7 @@ export type AutonomousExecutionInput = {
   idempotencyNamespace?: string;
 };
 export type AutonomousExecutionOutcome = { productId: string; offerId?: string; score: number; status: "completed" | "failed"; idempotencyKey: string; result?: CampaignOrchestrationResult; error?: string };
-export type AutonomousExecutionResult = { selected: ScoredOpportunity[]; rejected: Array<{ productId: string; score: number; reasons: string[] }>; outcomes: AutonomousExecutionOutcome[]; recoveredRunCount?: number };
+export type AutonomousExecutionResult = { selected: ScoredOpportunity[]; rejected: Array<{ productId: string; score: number; reasons: string[] }>; audit: OpportunitySelectionAudit[]; outcomes: AutonomousExecutionOutcome[]; recoveredRunCount?: number };
 const executionKey = (namespace: string, opportunity: ScoredOpportunity): string => `${namespace}:${opportunity.product.id}:${opportunity.offerId ?? "no-offer"}`;
 
 export class AutonomousExecutionService {
@@ -72,7 +72,7 @@ export class AutonomousExecutionService {
         outcomes.push({ productId: opportunity.product.id, offerId: offer.id, score: opportunity.score, status: "failed", idempotencyKey, error: error instanceof Error ? error.message : String(error) });
       }
     }
-    return { selected: selection.selected, rejected: selection.rejected, outcomes, recoveredRunCount };
+    return { selected: selection.selected, rejected: selection.rejected, audit: selection.audit, outcomes, recoveredRunCount };
   }
 }
 export type AutonomousExecutionCandidate = OpportunityCandidateSource & { product: Product; offers: AffiliateOffer[] };
