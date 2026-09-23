@@ -100,7 +100,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const elapsedSincePrevious = previous ? Date.parse(observedAt) - Date.parse(previous.observedAt) : Number.POSITIVE_INFINITY;
       const recentHalt = previous?.anomaly === "halt" && elapsedSincePrevious < ANOMALY_COOLDOWN_MS;
       const recoveryAnchor = isProductSignal && this.memory!.recentByProductAndMarketplace
-        ? await latestHaltSnapshot(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
+        ? await activeRecoveryEpisode(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
         : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
       const recoveryEvidenceScore = windows
