@@ -9,6 +9,8 @@ export type AutonomousFeedbackSnapshot = {
   commissionPerClickCents: number;
   conversionRate: number;
   adjustment: number;
+  anomaly: "none" | "watch" | "halt";
+  anomalyScore: number;
   observedAt: string;
 };
 
