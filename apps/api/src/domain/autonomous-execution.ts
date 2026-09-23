@@ -50,7 +50,10 @@ export class AutonomousExecutionService {
       }
     }
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
-    const selection = this.selector.select(input.candidates, input.policy, performance, input.policiesByMarketplace);
+    const adaptiveExplorationRates = this.adaptiveExploration
+      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      : new Map();
+    const selection = this.selector.select(input.candidates, input.policy, performance, input.policiesByMarketplace, adaptiveExplorationRates);
     const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
