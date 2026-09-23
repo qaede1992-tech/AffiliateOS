@@ -13,6 +13,7 @@ export type AutonomousDecisionRecovery = {
   recoveryState: "none" | "recovering" | "recovered";
   recoveryClicks: number;
   recoveryEvidenceScore: number;
+  recoveryEpisodeId?: string;
 };
 
 export type AutonomousDecisionOutcome = {
