@@ -25,6 +25,12 @@ export type OptimizationPolicy = {
 export type OptimizationState = {
   action: OptimizationAction;
   appliedAt: string;
+  evaluation?: {
+    outcomeId: string;
+    evaluatedAt: string;
+    conversionRateDelta: number;
+    commissionPerClickDeltaCents: number;
+  };
 };
 
 export class OptimizationEngine {
@@ -51,6 +57,17 @@ export class OptimizationEngine {
           confidence: 0.5,
           reasons: [`Optimization cooldown active after ${previous.action}.`]
         };
+      }
+      if (previous?.evaluation) {
+        const { conversionRateDelta, commissionPerClickDeltaCents } = previous.evaluation;
+        if (previous.action === "scale" && conversionRateDelta < 0 && commissionPerClickDeltaCents < 0) {
+          return {
+            campaignId: campaign.campaignId,
+            action: "revise-content",
+            confidence: Math.min(0.9, 0.6 + Math.abs(conversionRateDelta) + Math.min(0.2, Math.abs(commissionPerClickDeltaCents) / 100)),
+            reasons: ["The previous scale action was followed by lower conversion and commission efficiency.", "Revise the campaign before applying another scale action."]
+          };
+        }
       }
       if (campaign.clickCount < minClicks) {
         return {
