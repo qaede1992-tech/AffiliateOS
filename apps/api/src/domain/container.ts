@@ -73,7 +73,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
   const stateReader = optimizationStateReader ?? defaultOptimizationState;
   const stateWriter = optimizationStateWriter ?? defaultOptimizationState;
-  const autonomousOptimization = new AutonomousOptimizationRunner(analytics, stateReader, stateWriter, new AutonomousCampaignActionExecutor(campaigns), autonomousOptimizationPolicy);
+  const autonomousOptimization = new AutonomousOptimizationRunner(analytics, stateReader, stateWriter, new AutonomousCampaignActionExecutor(campaigns, content, distribution), autonomousOptimizationPolicy);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies }, { intervalMs: autonomousSchedulerIntervalMs });
   return {
