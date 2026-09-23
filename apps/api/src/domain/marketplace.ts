@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AffiliateAccount, AffiliateOffer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, Product, UpdateMarketplaceConnectionRequest } from "@affiliateos/shared";
+import type { AffiliateAccount, AffiliateOffer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, MarketplaceOfferInput, Product, UpdateMarketplaceConnectionRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import { MARKETPLACE_ENABLE_CONFIRMATION } from "./marketplace-confirmation.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository } from "./repository.js";
