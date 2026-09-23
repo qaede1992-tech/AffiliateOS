@@ -20,9 +20,17 @@ export class AdaptiveExplorationPolicyProvider {
   const rates=new Map<string,number>();
   for(const c of candidates){const p={...basePolicy,...(policiesByMarketplace[c.product.marketplaceId]??{})};let rate=clamp(p.explorationRate??0.2,minRate,maxRate);let specific=false;
   const exact=performance.get(c.product.marketplaceId + ":" + c.product.id) ?? performance.get(c.product.id);
+  if (exact?.recoveryPolicy) {
+    const floor = clamp(exact.recoveryPolicy.explorationFloor, minRate, maxRate);
+    if (exact.recoveryPolicy.direction === "hold-exploration") rate = Math.max(rate, floor);
+    else if (exact.recoveryPolicy.direction === "reduce-exploration") rate = Math.min(rate, Math.max(minRate, floor));
+  }
   if(exact?.anomalyRecovery === "recovering") {
     rate=clamp(Math.max(rate, Math.min(maxRate, 0.35)), minRate, maxRate);
-  } else if(exact?.anomalyRecovery === "recovered") {\n    const qualityDelta = exact.recoveryEpisodeMetrics?.qualityDelta ?? 0;\n    if (qualityDelta < -0.15) rate=clamp(Math.max(rate, 0.35), minRate, maxRate);\n    else if (qualityDelta > 0.15) rate=clamp(rate * 0.9, minRate, maxRate);
+  } else if(exact?.anomalyRecovery === "recovered") {
+    const qualityDelta = exact.recoveryEpisodeMetrics?.qualityDelta ?? 0;
+    if (qualityDelta < -0.15) rate=clamp(Math.max(rate, 0.35), minRate, maxRate);
+    else if (qualityDelta > 0.15) rate=clamp(rate * 0.9, minRate, maxRate);
     const recoveryEvidence = Math.max(0, Math.min(1, exact.recoveryEvidenceScore ?? 0));
     const recoveryConfidence = 0.5 + 0.5 * recoveryEvidence;
     if(exact.regime === "rising") rate=clamp(rate * (1 - 0.2 * recoveryConfidence), minRate, maxRate);
