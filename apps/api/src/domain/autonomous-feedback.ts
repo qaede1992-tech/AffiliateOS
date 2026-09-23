@@ -30,6 +30,7 @@ const MAX_ADJUSTMENT = 8;
 const MAX_TREND_ADJUSTMENT = 2;
 const MAX_EFFICIENCY_ADJUSTMENT = 2;
 const MIN_EFFICIENCY_EVIDENCE_CLICKS = 20;
+const LEARNING_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
   constructor(
@@ -48,11 +49,12 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const previous = marketplaceId
         ? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
         : await this.memory!.latestByProduct(productId);
+      const freshness = previous ? learningFreshness(previous.observedAt, observedAt) : 0;
       const trendAdjustment = previous && signal.clickCount > previous.clickCount
-        ? calculateTrendAdjustment(signal, previous)
+        ? calculateTrendAdjustment(signal, previous) * freshness
         : 0;
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
-        ? calculateEfficiencyAdjustment(signal, previous)
+        ? calculateEfficiencyAdjustment(signal, previous) * freshness
         : 0;
       const isProductSignal = !key.startsWith("global:") && !key.includes(":category:") && !key.includes(":audience:");
       const windows = isProductSignal && this.memory!.recentByProductAndMarketplace
@@ -204,6 +206,14 @@ function calculateWindowAdjustment(w:{ "24h":PerformanceWindow;"7d":PerformanceW
 }
 
 function confidenceForClicks(clicks: number): number { return Math.min(1, Math.sqrt(Math.max(0, clicks) / MINIMUM_EVIDENCE_CLICKS)); }
+
+function learningFreshness(observedAt: string, nowIso: string): number {
+  const observedMs = Date.parse(observedAt);
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(observedMs) || !Number.isFinite(nowMs) || nowMs <= observedMs) return 1;
+  const ageMs = nowMs - observedMs;
+  return Math.max(0, Math.min(1, Math.pow(0.5, ageMs / LEARNING_HALF_LIFE_MS)));
+}
 
 function calculateEfficiencyAdjustment(current: OpportunityPerformanceSignal, previous: { clickCount: number; commissionPerClickCents: number }): number {
   if (previous.clickCount < MIN_EFFICIENCY_EVIDENCE_CLICKS || previous.commissionPerClickCents <= 0) return 0;
