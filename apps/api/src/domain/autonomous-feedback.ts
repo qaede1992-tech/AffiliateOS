@@ -151,6 +151,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         recoveryState: recoveryAnchor ? (recentHalt || recoveryGate ? "recovering" : "recovered") : "none",
         recoveryClicks,
         recoveryEvidenceScore,
+        recoveryQualityScore: recoveryEpisodeMetrics?.qualityScore ?? 0,
         recoveryEpisodeId,
         observedAt
       };
