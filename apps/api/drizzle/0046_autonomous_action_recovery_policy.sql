@@ -1,0 +1,1 @@
+ALTER TABLE "autonomous_action_outcomes" ADD COLUMN IF NOT EXISTS "recovery_policy" jsonb;

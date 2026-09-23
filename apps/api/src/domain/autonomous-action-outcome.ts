@@ -16,7 +16,7 @@ export type AutonomousActionOutcome = {
   evaluatedAt?: string;
   recoveryState?: "none" | "recovering" | "recovered";
   recoveryEvidenceScore?: number;
-  recoveryEpisodeId?: string;
+  recoveryEpisodeId?: string;\n  recoveryPolicy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
 };
 
 export type AutonomousActionMetrics = {
@@ -32,7 +32,7 @@ export interface AutonomousActionOutcomeWriter {
   updateMetrics?(id: string, metrics: { baseline?: AutonomousActionMetrics; observed?: AutonomousActionMetrics }): Promise<AutonomousActionOutcome | undefined>;
   latestByCampaign?(campaignId: string): Promise<AutonomousActionOutcome | undefined>;
   updateEvaluation?(id: string, evaluation: AutonomousActionMetrics, evaluatedAt: string): Promise<AutonomousActionOutcome | undefined>;
-  updateRecovery?(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number; episodeId?: string }): Promise<AutonomousActionOutcome | undefined>;
+  updateRecovery?(id: string, recovery: { state: "none" | "recovering" | "recovered"; evidenceScore?: number; episodeId?: string; policy?: AutonomousActionOutcome["recoveryPolicy"] }): Promise<AutonomousActionOutcome | undefined>;
 }
 
 export class InMemoryAutonomousActionOutcomeRepository implements AutonomousActionOutcomeWriter {
@@ -62,7 +62,7 @@ export class InMemoryAutonomousActionOutcomeRepository implements AutonomousActi
     if (!item) return undefined;
     item.recoveryState = recovery.state;
     item.recoveryEvidenceScore = recovery.evidenceScore ?? 0;
-    item.recoveryEpisodeId = recovery.episodeId;
+    item.recoveryEpisodeId = recovery.episodeId;\n    item.recoveryPolicy = recovery.policy;
     return item;
   }
 }
