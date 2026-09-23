@@ -56,3 +56,33 @@ test("adaptive exploration preserves base rate when evidence is insufficient", a
   const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.2 });
   assert.equal(rates.get("p0"), 0.2);
 });
+
+test("adaptive exploration prefers persistent category state and applies it without replaying history", async () => {
+  let applied = 0;
+  const reader = { list: async () => [] };
+  const stateRepository = {
+    applyEvaluatedAudits: async () => { applied += 1; },
+    listByMarketplaces: async () => [{
+      id: "s1", marketplaceId: "m1", dimension: "category", dimensionKey: "electronics",
+      sampleCount: 5, promotedCount: 5, deprioritizedCount: 0, observedAt: new Date().toISOString()
+    }]
+  };
+  const provider = new AdaptiveExplorationPolicyProvider(reader, { minimumSamples: 5 }, stateRepository);
+  const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.2 });
+  assert.equal(applied, 1);
+  assert.equal(rates.get("p0"), 0.1);
+});
+
+test("adaptive exploration falls back to marketplace state when category and audience evidence are unavailable", async () => {
+  const reader = { list: async () => [] };
+  const stateRepository = {
+    applyEvaluatedAudits: async () => {},
+    listByMarketplaces: async () => [{
+      id: "s1", marketplaceId: "m1", dimension: "marketplace", dimensionKey: "m1",
+      sampleCount: 5, promotedCount: 5, deprioritizedCount: 0, observedAt: new Date().toISOString()
+    }]
+  };
+  const provider = new AdaptiveExplorationPolicyProvider(reader, { minimumSamples: 5 }, stateRepository);
+  const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.2 });
+  assert.equal(rates.get("p0"), 0.1);
+});
