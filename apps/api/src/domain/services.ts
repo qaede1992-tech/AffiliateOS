@@ -3,6 +3,7 @@ import type {
   Affiliate,
   Commission,
   Conversion,
+  ConversionStatus,
   CreateAffiliateRequest,
   CreateConversionRequest,
   CreateOfferRequest,
