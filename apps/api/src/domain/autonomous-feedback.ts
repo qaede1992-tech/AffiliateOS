@@ -111,7 +111,10 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const recoveredHysteresis = Boolean(recoveryAnchor && previous?.recoveryState === "recovered");
       const recoveryGate = Boolean(recoveryAnchor) && !recoveredHysteresis && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
       const classifiedAnomaly = classifyAnomaly(anomalyScore);
-      const anomaly = recentHalt || recoveryGate ? "halt" : classifiedAnomaly;
+      // A recovered episode gets one bounded hysteresis step: a single new
+      // anomaly signal is watched rather than immediately reopening a halt.
+      const hysteresisAnomaly = recoveredHysteresis && classifiedAnomaly === "halt" ? "watch" : classifiedAnomaly;
+      const anomaly = recentHalt || recoveryGate ? "halt" : hysteresisAnomaly;
       const stableRecovery = recoveryAnchor && recoveryEvidence
         ? await hasStableRecoveryWindow(this.memory!.recentByProductAndMarketplace!.bind(this.memory!), productId, marketplaceId!, recoveryAnchor.observedAt, observedAt)
         : false;
