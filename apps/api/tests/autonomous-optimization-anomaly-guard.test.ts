@@ -8,7 +8,7 @@ test("halt anomaly forces autonomous optimization to maintain",async()=>{
  const service=new AutonomousOptimizationService(analytics,{minClicksForDecision:20,scaleConversionRate:.05},undefined,feedback);
  const result=await service.recommend();
  assert.equal(result.recommendations[0].action,"maintain");
- assert.match(result.recommendations[0].reasons[0],"anomaly");
+ assert.match(result.recommendations[0].reasons[0],/anomaly/);
 });
 
 
@@ -18,6 +18,6 @@ test("recovering anomaly blocks autonomous optimization changes",async()=>{
  const service=new AutonomousOptimizationService(analytics,{minClicksForDecision:20,scaleConversionRate:.05},undefined,feedback);
  const result=await service.recommend();
  assert.equal(result.recommendations[0].action,"maintain");
- assert.match(result.recommendations[0].reasons[0],"recovering");
- assert.match(result.recommendations[0].reasons[1],"blocked");
+ assert.match(result.recommendations[0].reasons[0],/recovering/);
+ assert.match(result.recommendations[0].reasons[1],/blocked/);
 });
