@@ -94,13 +94,14 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const windows = isProductSignal && this.memory!.recentByProductAndMarketplace
         ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, signal, observedAt)
         : undefined;
-      const regime = windows ? classifyWindowRegime(windows) : "stable";
+      const regime = windows ? classifyWindowRegime(windows, signal.conversionRate) : "stable";
       const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
       const anomalyScore = windows ? calculateAnomalyScore(windows) : 0;
       const elapsedSincePrevious = previous ? Date.parse(observedAt) - Date.parse(previous.observedAt) : Number.POSITIVE_INFINITY;
       const recentHalt = previous?.anomaly === "halt" && elapsedSincePrevious < ANOMALY_COOLDOWN_MS;
       const recoveryAnchor = isProductSignal && this.memory!.recentByProductAndMarketplace
-        ? await activeRecoveryEpisode(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
+        ? (await activeRecoveryEpisode(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
+          ?? (previous?.anomaly === "halt" ? previous : undefined))
         : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
       const recoveryEvidenceScore = windows
@@ -304,7 +305,7 @@ async function buildWindows(
   };
   return {"24h":make(24*60*60*1000),"7d":make(7*24*60*60*1000),"30d":make(30*24*60*60*1000)};
 }
-function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow;"30d":PerformanceWindow }):PerformanceRegime {
+function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow;"30d":PerformanceWindow }, currentRate?: number):PerformanceRegime {
   const a=w["24h"], b=w["7d"], c=w["30d"];
   const usable=[a,b,c].filter(x=>x.clickCount>=MINIMUM_EVIDENCE_CLICKS);
   if(!usable.length)return "stable";
@@ -312,6 +313,8 @@ function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow
   if(evidence24<0.5)return "stable";
   const short=a.conversionRate, medium=b.conversionRate, long=c.conversionRate;
   const max=Math.max(short,medium,long), min=Math.min(short,medium,long);
+  if (currentRate !== undefined && a.confidence >= 0.75 && short - currentRate >= 0.05) return "rising";
+  if (currentRate !== undefined && a.confidence >= 0.75 && currentRate - short >= 0.05) return "declining";
   if(max-min>=0.04 && Math.abs(short-long)>=0.04)return short>long ? "rising" : "declining";
   if(a.confidence>=0.75 && b.confidence>=0.75 && Math.abs(short-medium)>=0.05)return short>medium ? "rising" : "declining";
   if(Math.max(short,medium,long)-Math.min(short,medium,long)>=0.06)return "volatile";
