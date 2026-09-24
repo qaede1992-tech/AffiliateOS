@@ -13,7 +13,7 @@ test("halt anomaly blocks campaign orchestration",async()=>{
  const result=await service.runOnce({candidates:[candidate],idempotencyNamespace:"test"});
  assert.equal(executed,0);
  assert.equal(result.outcomes[0].status,"failed");
- assert.match(result.outcomes[0].error,"anomaly");
+ assert.match(result.outcomes[0].error, /anomaly/);
 });
 
 
