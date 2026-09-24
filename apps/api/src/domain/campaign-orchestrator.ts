@@ -85,7 +85,7 @@ export class CampaignOrchestrator {
     if (input.offer.productId !== input.product.id) throw new Error("Affiliate offer must belong to the selected product.");
     if (input.offer.affiliateLinkStatus !== "active" || input.offer.status !== "active") throw new Error("Campaign orchestration requires an active affiliate offer and affiliate link.");
     if (!input.offer.affiliateUrl) throw new Error("Campaign orchestration requires an affiliate URL.");
-    if (input.offer.affiliateLinkExpiresAt && new Date(input.offer.affiliateLinkExpiresAt).getTime() <= Date.now()) throw new Error("Campaign orchestration requires a non-expired affiliate link.");
+    if (input.offer.affiliateLinkExpiresAt) { const expiresAt = Date.parse(input.offer.affiliateLinkExpiresAt); if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new Error("Campaign orchestration requires a non-expired affiliate link."); }
     const liveOffer = await this.campaigns.validateOfferForExecution(input.offer.id);
     if (liveOffer.productId !== input.product.id) throw new Error("Live affiliate offer must belong to the selected product.");
     const executionOffer = liveOffer;
