@@ -285,7 +285,7 @@ async function activeRecoveryEpisode(
   const haltIndex = ordered.map((snapshot) => snapshot.anomaly).lastIndexOf("halt");
   if (haltIndex < 0) return undefined;
   const halt = ordered[haltIndex];
-  const closed = ordered.slice(haltIndex + 1).some((snapshot) =>
+  const closed = halt.recoveryState === "recovering" && ordered.slice(haltIndex + 1).some((snapshot) =>
     snapshot.recoveryEpisodeId === halt.id && snapshot.recoveryState === "recovered"
   );
   return closed ? undefined : halt;
