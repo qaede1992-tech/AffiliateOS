@@ -23,7 +23,10 @@ describe("exploration evaluator", () => {
     assert.equal(result?.status, "deprioritize");
   });
   it("keeps mixed results in exploration", () => {
-    const result = evaluateExploration(audit({ clickCount: 100, attributedConversionCount: 2, attributedRevenueCents: 500, attributedCommissionCents: 20, conversionRate: 0.02 }));
+    const result = evaluateExploration(
+      audit({ clickCount: 100, attributedConversionCount: 2, attributedRevenueCents: 500, attributedCommissionCents: 20, conversionRate: 0.02 }),
+      { promotionConversionRate: 0.025, minimumCommissionPerClickCents: 0 }
+    );
     assert.equal(result?.status, "continue-exploration");
   });
   it("ignores non-exploration decisions", () => {
@@ -32,11 +35,10 @@ describe("exploration evaluator", () => {
   });
 });
 
-
 test("recovery-phase exploration evidence is isolated from learning",()=>{
  const audit:any={selectionMode:"exploration",recovery:{anomaly:"none",recoveryState:"recovering",recoveryClicks:25,recoveryEvidenceScore:.4},outcome:{analytics:{clickCount:100,attributedConversionCount:10,attributedRevenueCents:1000,attributedCommissionCents:100,conversionRate:.1}}};
  const result=evaluateExploration(audit);
  assert.equal(result?.status,"continue-exploration");
  assert.equal(result?.confidence,.25);
- assert.match(result?.reason??"","isolated");
+ assert.match(result?.reason??"",/isolated/i);
 });
