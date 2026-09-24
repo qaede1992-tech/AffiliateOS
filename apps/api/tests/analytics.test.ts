@@ -16,7 +16,7 @@ test("analytics aggregates campaign clicks, links, and content", async () => {
   const analytics = new AnalyticsService(campaigns, links, clicks, contents);
   const campaign = await (new (class { constructor(private readonly c: InMemoryRepository<import("@affiliateos/shared").Campaign>) {} async create() { const now = new Date().toISOString(); const item = { id: "00000000-0000-0000-0000-000000000101", name: "Launch", objective: "sales", status: "active" as const, audience: {}, createdAt: now, updatedAt: now }; return this.c.save(item); } })(campaigns)).create();
   const offerId = "00000000-0000-0000-0000-000000000102";
-  await affiliateOffers.save({ id: offerId, productId: "00000000-0000-0000-0000-000000000103", affiliateAccountId: "00000000-0000-0000-0000-000000000104", availability: "in_stock", availabilityMetadata: {}, affiliateLinkStatus: "active", status: "active", createdAt: campaign.createdAt, updatedAt: campaign.updatedAt });
+  await affiliateOffers.save({ id: offerId, productId: "00000000-0000-0000-0000-000000000103", affiliateAccountId: "00000000-0000-0000-0000-000000000104", availability: "in_stock", availabilityMetadata: {}, affiliateLinkStatus: "active", affiliateUrl: "https://example.com", status: "active", createdAt: campaign.createdAt, updatedAt: campaign.updatedAt });
   await campaignOffers.save({ campaignId: campaign.id, affiliateOfferId: offerId, createdAt: campaign.createdAt });
   const link = await tracking.create({ affiliateOfferId: offerId, campaignId: campaign.id, destinationUrl: "https://example.com" });
   await tracking.recordClick(link.id, {});
