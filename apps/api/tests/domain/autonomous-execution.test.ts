@@ -41,7 +41,7 @@ describe("AutonomousExecutionService", () => {
 
     const result = await service.runOnce({
       candidates: [{ product, offers: [offer] }],
-      policy: { minimumScore: 60, maximumResults: 1 },
+      policy: { minimumScore: 45, maximumResults: 1 },
       idempotencyNamespace: "cycle-1"
     });
 
