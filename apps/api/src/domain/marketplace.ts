@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AffiliateAccount, AffiliateOffer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, Product, UpdateMarketplaceConnectionRequest } from "@affiliateos/shared";
+import type { AffiliateAccount, AffiliateOffer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, MarketplaceOfferInput, Product, UpdateMarketplaceConnectionRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import { MARKETPLACE_ENABLE_CONFIRMATION } from "./marketplace-confirmation.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository } from "./repository.js";
@@ -84,7 +84,7 @@ function validateMarketplaceUrl(value: string, label: string): void {
     throw new DomainError("INVALID_MARKETPLACE_PRODUCT", `Marketplace ${label} URL must use HTTP or HTTPS.`, 400);
   }
 }
-function validateimport("@affiliateos/shared").MarketplaceOfferInput(input: MarketplaceOfferInput): void {
+function validateMarketplaceOfferInput(input: MarketplaceOfferInput): void {
   if (!input.externalOfferId.trim()) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Marketplace offers require an external offer id.", 400);
   for (const [label, value] of [["price", input.priceCents], ["commission amount", input.commissionAmountCents]] as const) {
     if (value !== undefined && (!Number.isInteger(value) || value < 0)) throw new DomainError("INVALID_MARKETPLACE_OFFER", `Marketplace ${label} must be a non-negative integer.`, 400);
