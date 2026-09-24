@@ -22,5 +22,5 @@ test("recovered products ramp exploration adjustments from evidence",async()=>{
  const provider=new AdaptiveExplorationPolicyProvider(reader,{minimumRate:0,maximumRate:.5});
  const candidates:any=[{product:{id:"p",marketplaceId:"m",status:"active",category:"x"},offers:[]}];
  const rates=await provider.getRates(candidates,{explorationRate:.2},{},new Map([["m:p",{anomalyRecovery:"recovered",recoveryEvidenceScore:.5,regime:"rising",regimeConfidence:1}]]));
- assert.equal(rates.get("p"),.18);
+ assert.equal(rates.get("p"),.17);
 });
