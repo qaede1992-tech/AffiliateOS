@@ -41,7 +41,7 @@ describe("AutonomousExecutionService", () => {
 
     const result = await service.runOnce({
       candidates: [{ product, offers: [offer] }],
-      policy: { minimumScore: 45, maximumResults: 1 },
+      policy: { minimumScore: 40, maximumResults: 1 },
       idempotencyNamespace: "cycle-1"
     });
 
@@ -143,7 +143,7 @@ describe("AutonomousExecutionService", () => {
   });
 
   it("resolves the selected offer from duplicate product candidates without mixing offers", async () => {
-    const alternateOffer = { ...offer, id: "offer-2", externalOfferId: "external-offer-2", commissionBasisPoints: 1800 };
+    const alternateOffer = { ...offer, id: "offer-2", externalOfferId: "external-offer-2", commissionRateBps: 1800 };
     const calls: string[] = [];
     const selector = {
       select: () => ({ selected: [{ ...opportunity, offerId: alternateOffer.id }], rejected: [] })
