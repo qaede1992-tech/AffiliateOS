@@ -95,9 +95,18 @@ describe("autonomous cycle", () => {
       })
     } as unknown as AutonomousExecutionService;
 
-    const service = new AutonomousCycleService(candidates, execution);
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { started = resolve; });
+    const executionWithSignal = {
+      runOnce: () => new Promise<{ selected: never[]; rejected: never[]; outcomes: never[] }>((resolve) => {
+        started();
+        release = () => resolve({ selected: [], rejected: [], outcomes: [] });
+      })
+    } as unknown as AutonomousExecutionService;
+
+    const service = new AutonomousCycleService(candidates, executionWithSignal);
     const first = service.runOnce();
-    await new Promise((resolve) => setImmediate(resolve));
+    await startedPromise;
     const overlapping = await service.runOnce();
     assert.equal(overlapping, undefined);
 
