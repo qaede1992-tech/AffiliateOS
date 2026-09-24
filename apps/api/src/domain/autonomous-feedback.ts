@@ -286,8 +286,7 @@ async function activeRecoveryEpisode(
   if (haltIndex < 0) return undefined;
   const halt = ordered[haltIndex];
   const closed = ordered.slice(haltIndex + 1).some((snapshot) =>
-    snapshot.recoveryState === "recovered" &&
-    (snapshot.recoveryEpisodeId === halt.id || snapshot.recoveryEpisodeId === undefined)
+    snapshot.recoveryEpisodeId === halt.id && snapshot.recoveryState === "recovered"
   );
   return closed ? undefined : halt;
 }
