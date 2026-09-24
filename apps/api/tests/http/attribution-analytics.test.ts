@@ -48,8 +48,8 @@ test("HTTP attribution flow feeds campaign analytics without implicit legacy att
   await repositories.trackingLinks.save({ id: linkId, affiliateOfferId: offerId, campaignId, code: "httpattr", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
   await repositories.clicks.save({ id: "00000000-0000-4000-8000-000000000408", trackingLinkId: linkId, occurredAt: now, metadata: {} });
   await repositories.affiliates.save({ id: affiliateId, name: "HTTP Partner", email: "http@example.com", status: "active", createdAt: now });
-  await repositories.offers.save({ id: "00000000-0000-4000-8000-000000000409", name: "Legacy offer", status: "active", commissionRateBps: 1000, createdAt: now });
-  await repositories.conversions.save({ id: conversionId, affiliateId, offerId: "00000000-0000-4000-8000-000000000409", amountCents: 25000, status: "approved", occurredAt: now });
+  await repositories.offers.save({ id: offerId, name: "Attributed offer", status: "active", commissionRateBps: 1000, createdAt: now });
+  await repositories.conversions.save({ id: conversionId, affiliateId, offerId, amountCents: 25000, status: "approved", occurredAt: now });
   await repositories.commissions.save({ id: "00000000-0000-4000-8000-000000000410", conversionId, affiliateId, amountCents: 2500, status: "approved", createdAt: now });
 
   const attributionResponse = await app.inject({
