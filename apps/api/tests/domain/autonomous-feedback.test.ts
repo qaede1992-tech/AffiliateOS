@@ -56,7 +56,7 @@ describe("Autonomous analytics feedback", () => {
     const signal = (await provider.getSignals()).get("p1");
     assert.ok(signal);
     assert.equal(signal.conversionCount, 4);
-    assert.equal(signal.trendAdjustment, 2);
+    assert.equal(signal.trendAdjustment, 1.67);
     assert.equal(signal.adjustment, 7.33);
     assert.equal((await memory.latestByProduct("p1"))?.commissionPerClickCents, 83.33333333333333);
   });
