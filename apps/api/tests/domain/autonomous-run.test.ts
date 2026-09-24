@@ -87,8 +87,8 @@ describe("autonomous run", () => {
     const service = new AutonomousRunService(repository);
     const accepted = await service.accept({ idempotencyKey: "run-retry", productId: "product-1", offerId: "offer-1", now: new Date("2026-09-20T10:00:00.000Z") });
     const processing = await service.transition(accepted.id, "processing");
-    const failed = await service.transition(processing.id, "failed", { campaignId: "campaign-1", error: "temporary distribution failure" });
-    const retry = await service.claimProcessing(failed.id, new Date("2026-09-20T11:00:00.000Z"));
+    const failed = await service.transition(processing.id, "failed", { campaignId: "campaign-1", error: "temporary distribution failure" }, new Date("2026-09-20T10:00:00.000Z"));
+    const retry = await service.claimProcessing(failed.id, new Date("2026-09-20T10:01:00.000Z"));
     assert.equal(retry.acquired, true);
     assert.equal(retry.run.status, "processing");
     assert.equal(retry.run.campaignId, "campaign-1");
