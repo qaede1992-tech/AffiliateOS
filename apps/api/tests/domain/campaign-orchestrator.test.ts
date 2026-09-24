@@ -207,13 +207,14 @@ describe("campaign orchestrator", () => {
   it("does not mark an unavailable autonomous run failed", async () => {
     const runs = new InMemoryAutonomousRunRepository();
     const autonomousRuns = new AutonomousRunService(runs);
+    const now = new Date();
     const accepted = await autonomousRuns.accept({
       idempotencyKey: "busy-run",
       productId: product.id,
       offerId: offer.id,
-      now: new Date("2026-09-21T01:00:00.000Z")
+      now
     });
-    await autonomousRuns.claimProcessing(accepted.id, new Date("2026-09-21T01:00:00.000Z"));
+    await autonomousRuns.claimProcessing(accepted.id, now);
 
     const orchestrator = new CampaignOrchestrator(
       new StubCampaigns() as never,
