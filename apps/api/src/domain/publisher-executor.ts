@@ -52,6 +52,7 @@ export class PublisherExecutor {
 
   async check(operation: PublicationOperation): Promise<{ content: Content; account: SocialAccount; result: PublicationCheckResult }> {
     const content = await this.contentService.get(operation.contentId);
+    await this.contentService.validatePublicationEligibility(content);
     const account = await this.findAccount(content);
     const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content) && (candidate.provider ?? content.platform) === operation.provider);
     if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
