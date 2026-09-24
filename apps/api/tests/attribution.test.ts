@@ -12,7 +12,7 @@ test("conversion attribution is explicit and one-to-one", async () => {
   const linkId = "00000000-0000-0000-0000-000000000302";
   const otherLinkId = "00000000-0000-0000-0000-000000000306";
   await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000303", offerId: "00000000-0000-0000-0000-000000000304", amountCents: 1000, status: "approved", occurredAt: now });
-  await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000305", code: "attr2", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
+  await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000304", code: "attr2", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
   await links.save({ id: otherLinkId, affiliateOfferId: "00000000-0000-0000-0000-000000000307", code: "attr4", destinationUrl: "https://example.com/other", status: "active", createdAt: now, updatedAt: now });
   const service = new ConversionAttributionService(conversions, links, attributions);
   const created = await service.create(conversionId, { trackingLinkId: linkId });
