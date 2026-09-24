@@ -108,7 +108,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
         ? calculateRecoveryEvidenceScore(windows, recoveryClicks, anomalyScore)
         : recoveryClicks >= ANOMALY_RECOVERY_CLICKS ? 1 : 0;
       const recoveryEvidence = recoveryClicks >= ANOMALY_RECOVERY_CLICKS && recoveryEvidenceScore >= 0.75;
-      const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
+      const recoveredHysteresis = Boolean(recoveryAnchor && previous?.recoveryState === "recovered");
+      const recoveryGate = Boolean(recoveryAnchor) && !recoveredHysteresis && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
       const classifiedAnomaly = classifyAnomaly(anomalyScore);
       const anomaly = recentHalt || recoveryGate ? "halt" : classifiedAnomaly;
       const stableRecovery = recoveryAnchor && recoveryEvidence
