@@ -66,10 +66,12 @@ export class AutonomousOpportunitySelector {
   select(
     candidates: OpportunityCandidateSource[],
     policy: OpportunitySelectionPolicy = {},
-    performance: Map<string, OpportunityPerformanceSignal> = new Map(),
+    performanceOrPolicies: Map<string, OpportunityPerformanceSignal> | OpportunitySelectionPoliciesByMarketplace = new Map(),
     policiesByMarketplace: OpportunitySelectionPoliciesByMarketplace = {},
     adaptiveExplorationRates: Map<string, number> = new Map()
   ): OpportunitySelectionResult {
+    const performance = performanceOrPolicies instanceof Map ? performanceOrPolicies : new Map<string, OpportunityPerformanceSignal>();
+    const effectivePoliciesByMarketplace = performanceOrPolicies instanceof Map ? policiesByMarketplace : performanceOrPolicies;
     const maximumResults = policy.maximumResults ?? 10;
     const mergedCandidates = new Map<string, OpportunityCandidateSource>();
     for (const candidate of candidates) {
@@ -87,7 +89,7 @@ export class AutonomousOpportunitySelector {
     }
     const effectivePolicy = (candidate: OpportunityCandidateSource): OpportunitySelectionPolicy => ({
       ...policy,
-      ...(policiesByMarketplace[candidate.product.marketplaceId] ?? {})
+      ...(effectivePoliciesByMarketplace[candidate.product.marketplaceId] ?? {})
     });
     const scored = [...mergedCandidates.values()].map((candidate) => {
       const candidatePolicy = effectivePolicy(candidate);
@@ -219,7 +221,7 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
   if (!weighted.length) return undefined;
   const totalWeight = weighted.reduce((sum, [signal, weight]) => sum + weight * Math.max(0.1, signal.confidence ?? 0.25), 0);
   const adjustment = weighted.reduce((sum, [signal, weight]) => sum + signal.adjustment * weight * Math.max(0.1, signal.confidence ?? 0.25), 0) / totalWeight;
-  const evidence = weighted.reduce((sum, [signal, weight]) => sum + signal.clickCount * weight * Math.max(0.1, signal.confidence), 0) / totalWeight;
+  const evidence = weighted.reduce((sum, [signal, weight]) => sum + signal.clickCount * weight * Math.max(0.1, signal.confidence ?? 0.25), 0) / totalWeight;
   const confidence = Math.min(1, weighted.reduce((sum, [signal, weight]) => sum + (signal.confidence ?? 0.25) * weight, 0) / weighted.reduce((sum, [, weight]) => sum + weight, 0));
   return { ...weighted[0][0], clickCount: evidence, confidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
 }
@@ -232,7 +234,9 @@ export function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPe
     : signal.anomalyRecovery === "recovered"
       ? 0.5 + 0.5 * Math.max(0, Math.min(1, signal.recoveryEvidenceScore ?? 0))
       : 1;
-  const guardedAdjustment = (signal.regime === "volatile" ? signal.adjustment * Math.min(0.5, regimeConfidence) : signal.adjustment * regimeConfidence) * recoveryMultiplier;
+  const recoveryQualityMultiplier = signal.anomalyRecovery === "recovered" && signal.recoveryEpisodeMetrics
+    && (signal.recoveryEpisodeMetrics.conversionDelta < 0 || signal.recoveryEpisodeMetrics.commissionDeltaCents < 0) ? 0.5 : 1;
+  const guardedAdjustment = (signal.regime === "volatile" ? signal.adjustment * Math.min(0.5, regimeConfidence) : signal.adjustment * regimeConfidence) * recoveryMultiplier * recoveryQualityMultiplier;
   const score = Math.round(Math.min(100, Math.max(0, item.score + guardedAdjustment)) * 100) / 100;
   const direction = guardedAdjustment > 0 ? "positive" : "negative";
   return {
