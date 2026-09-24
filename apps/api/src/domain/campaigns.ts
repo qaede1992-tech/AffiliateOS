@@ -116,7 +116,7 @@ export class TrackingService {
       throw error;
     }
   }
-  async get(id: string) { const link = await this.links.findById(id); if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404); return link; }
+  async get(id: string) { const link = await this.links.findById(id); if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404); return link; }\n  async redirect(code: string, metadata: Record<string, unknown> = {}) {\n    const link = await this.links.findByCode(code);\n    if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404);\n    if (link.status !== "active") throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Clicks require an active tracking link.");\n    await this.recordClick(link.id, { metadata });\n    return link.destinationUrl;\n  }
   async recordClick(id: string, input: RecordClickRequest) {
     const link = await this.get(id);
     if (link.status !== "active") throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Clicks require an active tracking link.");
