@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
-import { getRawBody } from "./raw-body.js";
+import { captureRawBody, getRawBody } from "./raw-body.js";
 import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, createContentSchema, updateContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
@@ -26,7 +26,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     auditSecurityEvent(request.log, request, "autonomous_cycle_triggered", { executed: Boolean(result), active: status.active });
     return reply.status(result ? 200 : status.active ? 202 : 500).send(result ? { status: "completed", result } : status.active ? { status: "already_running" } : { status: "failed", error: status.lastError ?? "Autonomous cycle failed." });
   });
-  app.post("/api/v1/marketplaces/:connectionSlug/events", async (request, reply) => {
+  app.post("/api/v1/marketplaces/:connectionSlug/events", { preParsing: captureRawBody }, async (request, reply) => {
     if (!providerEvents) return reply.status(503).send({ error: "PROVIDER_EVENT_STORE_UNAVAILABLE", message: "Provider event persistence is unavailable." });
     const { connectionSlug } = marketplaceSlugSchema.parse(request.params); const rawBody = getRawBody(request); if (!rawBody) return reply.status(400).send({ error: "RAW_BODY_UNAVAILABLE", message: "The provider event body could not be verified." });
     const verification = await services.marketplace.verifyProviderEvent(connectionSlug, rawBody, { signature: request.headers["x-provider-signature"] as string | undefined, timestamp: request.headers["x-provider-timestamp"] as string | undefined });
