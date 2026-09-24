@@ -112,7 +112,9 @@ describe("autonomous cycle", () => {
 
     release();
     assert.ok(await first);
-    assert.ok(await service.runOnce());
+    const second = service.runOnce();
+    release();
+    assert.ok(await second);
   });
 
   it("does not enter a cycle when a shared lock is already held", async () => {
