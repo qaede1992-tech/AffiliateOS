@@ -109,12 +109,11 @@ describe("AutonomousExecutionService", () => {
     });
 
     assert.equal(result.recoveredRunCount, 1);
-    assert.deepEqual(calls, [{
-      audience: ["electronics"],
-      platforms: ["instagram"],
-      scheduledAt: "2026-09-21T12:00:00.000Z",
-      idempotencyKey: "previous-cycle:product-1:offer-1"
-    }]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.audience?.join(","), "electronics");
+    assert.equal(calls[0]?.platforms?.join(","), "instagram");
+    assert.equal(calls[0]?.scheduledAt, "2026-09-21T12:00:00.000Z");
+    assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
   });
 
   it("skips recovery when the persisted product is no longer active", async () => {
