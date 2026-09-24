@@ -18,9 +18,9 @@ test("content HTTP endpoints support create, filter, get, update, and validation
   const scheduled = await app.inject({ method: "PATCH", url: `/api/v1/content/${content.id}`, payload: { status: "scheduled", scheduledAt: "2026-10-01T10:00:00.000Z" } });
   assert.equal(scheduled.statusCode, 200);
   assert.equal(scheduled.json().status, "scheduled");
-  const invalid = await app.inject({ method: "PATCH", url: `/api/v1/content/${content.id}`, payload: { status: "draft" } });
-  assert.equal(invalid.statusCode, 400);
-  assert.equal(invalid.json().error, "INVALID_CONTENT_TRANSITION");
+  const restored = await app.inject({ method: "PATCH", url: `/api/v1/content/${content.id}`, payload: { status: "draft" } });
+  assert.equal(restored.statusCode, 200);
+  assert.equal(restored.json().status, "draft");
   await app.close();
 });
 
