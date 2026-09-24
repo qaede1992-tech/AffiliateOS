@@ -218,7 +218,7 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
   if (globalAudience.length && !audience.length) weighted.push([globalAudience.reduce((best, signal) => Math.abs(signal.adjustment) > Math.abs(best.adjustment) ? signal : best), 0.1]);
   if (!weighted.length) return undefined;
   const totalWeight = weighted.reduce((sum, [signal, weight]) => sum + weight * Math.max(0.1, signal.confidence ?? 0.25), 0);
-  const adjustment = weighted.reduce((sum, [signal, weight]) => sum + signal.adjustment * weight * Math.max(0.1, signal.confidence), 0) / totalWeight;
+  const adjustment = weighted.reduce((sum, [signal, weight]) => sum + signal.adjustment * weight * Math.max(0.1, signal.confidence ?? 0.25), 0) / totalWeight;
   const evidence = weighted.reduce((sum, [signal, weight]) => sum + signal.clickCount * weight * Math.max(0.1, signal.confidence), 0) / totalWeight;
   const confidence = Math.min(1, weighted.reduce((sum, [signal, weight]) => sum + (signal.confidence ?? 0.25) * weight, 0) / weighted.reduce((sum, [, weight]) => sum + weight, 0));
   return { ...weighted[0][0], clickCount: evidence, confidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
