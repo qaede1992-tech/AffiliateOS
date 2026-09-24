@@ -22,6 +22,8 @@ export function captureRawBody(request: FastifyRequest, _reply: unknown, payload
 
   stream.on("data", (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
   stream.on("end", () => rawBodies.set(request, Buffer.concat(chunks).toString("utf8")));
+  const contentLength = request.headers["content-length"];
+  if (contentLength) (passthrough as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength = Number(contentLength);
   stream.pipe(passthrough);
 
   return passthrough;
