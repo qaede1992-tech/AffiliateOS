@@ -238,7 +238,7 @@ export function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPe
   return {
     ...item,
     score,
-    reasons: [...item.reasons, `Historical conversion feedback applied (${direction}, ${guardedAdjustment} points)`, ...(signal.anomalyRecovery === "recovering" ? ["Anomaly recovery in progress; performance influence is heavily damped."] : [])],
+    reasons: [...(item.reasons ?? []), `Historical conversion feedback applied (${direction}, ${guardedAdjustment} points)`, ...(signal.anomalyRecovery === "recovering" ? ["Anomaly recovery in progress; performance influence is heavily damped."] : [])],
     breakdown: { ...item.breakdown, total: score, performanceAdjustment: guardedAdjustment }
   };
 }
