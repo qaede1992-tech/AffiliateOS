@@ -146,7 +146,9 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const windowAdjustment = windows && anomaly !== "halt"
         ? calculateWindowAdjustment(windows, regime) * regimeConfidence * recoveryConfidence * (anomaly === "watch" ? 0.35 : 1)
         : 0;
-      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
+      const adjustment = anomaly === "halt"
+        ? 0
+        : Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
       const snapshot = {
         id: crypto.randomUUID(),
         observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
@@ -284,7 +286,8 @@ async function activeRecoveryEpisode(
   if (haltIndex < 0) return undefined;
   const halt = ordered[haltIndex];
   const closed = ordered.slice(haltIndex + 1).some((snapshot) =>
-    snapshot.recoveryEpisodeId === halt.id && snapshot.recoveryState === "recovered"
+    snapshot.recoveryState === "recovered" &&
+    (snapshot.recoveryEpisodeId === halt.id || snapshot.recoveryEpisodeId === undefined)
   );
   return closed ? undefined : halt;
 }
