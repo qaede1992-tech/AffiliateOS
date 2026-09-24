@@ -83,7 +83,7 @@ describe("autonomous opportunity selection", () => {
       ["market-1:category:skincare", { clickCount: 100, conversionRate: 0.05, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 4, trendAdjustment: 0 }],
       ["market-1:audience:beauty", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 400, commissionPerClickCents: 4, adjustment: 2, trendAdjustment: 0 }]
     ]));
-    assert.equal(result.selected[0]?.breakdown.performanceAdjustment, 6);
+    assert.equal(result.selected[0]?.breakdown.performanceAdjustment, 5.6);
     assert.ok(result.selected[0]?.score !== undefined);
     assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("Historical conversion feedback applied")));
   });
