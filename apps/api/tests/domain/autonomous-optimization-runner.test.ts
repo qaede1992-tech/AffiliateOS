@@ -170,7 +170,7 @@ describe("recovery-aware action evidence", () => {
       outcomeWriter,
       {},
       60 * 60_000,
-      { async getSignals() { return new Map([["m:p", { clickCount: 30, conversionCount: 1, conversionRate: .033, attributedCommissionCents: 100, commissionPerClickCents: 3.3, adjustment: 0, trendAdjustment: 0, anomaly: "watch", anomalyScore: .5, anomalyRecovery: "recovering", recoveryClicks: 30, recoveryEvidenceScore: .6 } as any]]); } }
+      { async getSignals() { return new Map([["c1", { clickCount: 30, conversionCount: 1, conversionRate: .033, attributedCommissionCents: 100, commissionPerClickCents: 3.3, adjustment: 0, trendAdjustment: 0, anomaly: "watch", anomalyScore: .5, anomalyRecovery: "recovering", recoveryClicks: 30, recoveryEvidenceScore: .6 } as any]]); } }
     );
     await runner.run(new Date("2026-09-23T02:00:00.000Z"));
     assert.deepEqual(recovery, { state: "recovering", evidenceScore: .6 });
