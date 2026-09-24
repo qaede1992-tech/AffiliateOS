@@ -68,7 +68,7 @@ test("analytics excludes commissions belonging to rejected attributed conversion
   const conversionId = "00000000-0000-0000-0000-000000000303";
   await campaigns.save({ id: campaignId, name: "Rejected", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
   await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000304", campaignId, code: "reject1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
-  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", offerId: "00000000-0000-0000-0000-000000000306", amountCents: 5000, status: "rejected", occurredAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", offerId: "00000000-0000-0000-0000-000000000304", amountCents: 5000, status: "rejected", occurredAt: now });
   await commissions.save({ id: "00000000-0000-0000-0000-000000000307", conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", amountCents: 500, status: "rejected", createdAt: now });
   await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
 
