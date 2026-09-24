@@ -90,19 +90,21 @@ describe("autonomous cycle", () => {
     };
 
     const releases: Array<() => void> = [];
-    const startedPromises: Array<Promise<void>> = [];
+    let callCount = 0;
+    let resolveSecondStarted!: () => void;
+    const secondStarted = new Promise<void>((resolve) => { resolveSecondStarted = resolve; });
     const execution = {
-      runOnce: () => new Promise<{ selected: never[]; rejected: never[]; outcomes: never[] }>((resolve) => {
-        let started!: () => void;
-        startedPromises.push(new Promise<void>((resolveStarted) => { started = resolveStarted; }));
-        started();
-        releases.push(() => resolve({ selected: [], rejected: [], outcomes: [] }));
-      })
+      runOnce: () => {
+        callCount += 1;
+        if (callCount === 2) resolveSecondStarted();
+        return new Promise<{ selected: never[]; rejected: never[]; outcomes: never[] }>((resolve) => {
+          releases.push(() => resolve({ selected: [], rejected: [], outcomes: [] }));
+        });
+      }
     } as unknown as AutonomousExecutionService;
 
     const service = new AutonomousCycleService(candidates, execution);
     const first = service.runOnce();
-    await startedPromises[0];
 
     const overlapping = await service.runOnce();
     assert.equal(overlapping, undefined);
@@ -111,7 +113,7 @@ describe("autonomous cycle", () => {
     assert.ok(await first);
 
     const second = service.runOnce();
-    await startedPromises[1];
+    await secondStarted;
     releases[1]();
     assert.ok(await second);
   });
