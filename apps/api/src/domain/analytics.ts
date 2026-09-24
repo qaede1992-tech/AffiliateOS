@@ -102,8 +102,8 @@ export class AnalyticsService {
     const audienceSegments = Array.isArray(campaign.audience.audience) ? campaign.audience.audience.filter((item): item is string => typeof item === "string") : undefined;
     return {
       campaignId: campaign.id,
-      productId,
-      marketplaceId,
+      ...(productId ? { productId } : {}),
+      ...(marketplaceId ? { marketplaceId } : {}),
       clickCount,
       trackingLinkCount: trackingLinks.length,
       contentCount: contents.length,
