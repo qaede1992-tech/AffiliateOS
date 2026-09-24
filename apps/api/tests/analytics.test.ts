@@ -44,7 +44,7 @@ test("analytics includes explicitly attributed conversion revenue and commission
   const linkId = "00000000-0000-0000-0000-000000000202";
   const conversionId = "00000000-0000-0000-0000-000000000203";
   await campaigns.save({ id: campaignId, name: "Attributed", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
-  await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000204", campaignId, code: "attr1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
+  await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000207", campaignId, code: "attr1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
   await clicks.save({ id: "00000000-0000-0000-0000-000000000205", trackingLinkId: linkId, occurredAt: now, metadata: {} });
   await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000206", offerId: "00000000-0000-0000-0000-000000000207", amountCents: 12500, status: "approved", occurredAt: now });
   await commissions.save({ id: "00000000-0000-0000-0000-000000000208", conversionId, affiliateId: "00000000-0000-0000-0000-000000000206", amountCents: 1250, status: "approved", createdAt: now });
