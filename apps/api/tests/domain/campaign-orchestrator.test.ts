@@ -45,9 +45,11 @@ class StubContent {
   async list() { return this.created; }
   async validateProductForPublication() { return product; }
   async create(input: Record<string, unknown>) { const item = { id: `content-${this.created.length + 1}`, ...input } as unknown as Content; this.created.push(item); return item; }
+  async update(id: string, input: Record<string, unknown>) { const current = this.created.find((item) => item.id === id); if (!current) throw new Error("content not found"); const next = { ...current, ...input } as Content; this.created[this.created.indexOf(current)] = next; return next; }
 }
 class StubDistribution {
   scheduled: Content[] = [];
+  listPublishers() { return [{ provider: "test", supports: () => true }]; }
   async validateBatch() {}
   async schedule(input: { content: Content; scheduledAt: string }) { this.scheduled.push(input.content); return { content: { ...input.content, status: "scheduled", scheduledAt: input.scheduledAt, socialAccountId: "social-1" }, account: { id: "social-1" }, scheduledAt: input.scheduledAt, publishable: false } as never; }
 }
