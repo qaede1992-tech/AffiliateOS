@@ -51,9 +51,9 @@ describe("Autonomous analytics feedback", () => {
       { overview: async () => ({ ...current, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: current.conversions, attributedRevenueCents: 100000, attributedCommissionCents: 10000, conversionRate: current.conversions / current.clickCount, campaigns: [campaign("p1", current.clickCount, current.conversions, 10000)] }) },
       memory, () => new Date("2026-09-21T01:00:00.000Z")
     );
-    await provider.getSignals();
+    await provider.getSignals({ observationKey: "trend-1" });
     current = { clickCount: 120, conversions: 4 };
-    const signal = (await provider.getSignals()).get("p1");
+    const signal = (await provider.getSignals({ observationKey: "trend-2" })).get("p1");
     assert.ok(signal);
     assert.equal(signal.conversionCount, 4);
     assert.equal(signal.trendAdjustment, 1.67);
