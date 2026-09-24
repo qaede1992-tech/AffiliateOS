@@ -23,7 +23,10 @@ export type OpportunityScoreBreakdown = {
 export type ScoredOpportunity = ProductOpportunity & { breakdown: OpportunityScoreBreakdown; offerId?: string };
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
-const logScore = (value: number, scale: number) => clamp((Math.log10(Math.max(0, value) + 1) / scale) * 100);
+const logScore = (value: number, scale: number) => {
+  const numeric = Number.isFinite(value) ? Math.max(0, value) : 0;
+  return clamp((Math.log10(numeric + 1) / scale) * 100);
+};
 const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty", "makeup", "cosmetic", "skincare"], skincare: ["skincare", "skin", "serum", "moisturizer", "cosmetic"], baby: ["baby", "infant", "newborn", "diaper"], parenting: ["parent", "parenting", "baby", "family"], fashion: ["fashion", "clothing", "apparel", "shoes", "dress"], home: ["home", "decor", "furniture", "storage"], kitchen: ["kitchen", "cook", "cooking", "bake", "utensil"], electronics: ["electronic", "phone", "laptop", "gadget", "computer"], lifestyle: ["lifestyle", "wellness", "fitness", "travel"], "deal-hunters": ["deal", "discount", "sale", "promo", "bundle"] };
 function textFor(product: Product): string { return `${product.name} ${product.description ?? ""} ${product.category ?? ""}`.toLowerCase(); }
 function audienceFit(product: Product, audience: AudienceSegment[]): { score: number; matched: AudienceSegment[] } { if (audience.length === 0) return { score: 50, matched: [] }; const text = textFor(product); const matched = audience.filter((segment) => audienceCategories[segment].some((term) => text.includes(term))); return { score: clamp((matched.length / audience.length) * 100), matched }; }
