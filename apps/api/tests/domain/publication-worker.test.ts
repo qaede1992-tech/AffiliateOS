@@ -165,7 +165,8 @@ describe("PublicationWorker", () => {
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
     const job = await jobService.enqueue(content);
-    const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const testNow = new Date("2026-09-20T11:00:00.000Z");
+    const first = await worker.runOnce(testNow);
     assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date(testNow.getTime() + 59_999));
     const second = await worker.runOnce(new Date(testNow.getTime() + 60_000));
