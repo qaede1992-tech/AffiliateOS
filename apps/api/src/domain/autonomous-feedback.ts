@@ -340,10 +340,15 @@ function calculateRecoveryEvidenceScore(
   anomalyScore:number
 ):number {
   const clickEvidence = Math.min(1, recoveryClicks / ANOMALY_RECOVERY_CLICKS);
-  const anomalyEvidence = anomalyScore >= ANOMALY_RECOVERY_MAX_SCORE ? 0 : 1 - (anomalyScore / ANOMALY_RECOVERY_MAX_SCORE);
+  // Fresh recovery evidence should not be penalized by the historical halt
+  // still present in the long window. Once the recovery sample has enough
+  // clicks, judge the evidence from current recovery stability instead.
+  const anomalyEvidence = recoveryClicks >= ANOMALY_RECOVERY_CLICKS
+    ? 1
+    : anomalyScore >= ANOMALY_RECOVERY_MAX_SCORE ? 0 : 1 - (anomalyScore / ANOMALY_RECOVERY_MAX_SCORE);
   const short = windows["24h"], medium = windows["7d"], long = windows["30d"];
   const confidenceEvidence = Math.min(1, short.confidence, medium.confidence);
-  const divergence = Math.abs(short.conversionRate - long.conversionRate);
+  const divergence = Math.abs(medium.conversionRate - long.conversionRate);
   const stabilityEvidence = Math.max(0, 1 - (divergence / ANOMALY_RECOVERY_MAX_RATE_DIVERGENCE));
   return Math.round((clickEvidence * 0.25 + anomalyEvidence * 0.25 + confidenceEvidence * 0.25 + stabilityEvidence * 0.25) * 100) / 100;
 }
