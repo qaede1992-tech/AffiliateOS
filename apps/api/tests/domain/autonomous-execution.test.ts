@@ -14,7 +14,7 @@ const product: Product = {
 
 const offer: AffiliateOffer = {
   id: "offer-1", affiliateAccountId: "affiliate-account-1", productId: product.id, externalOfferId: "external-offer-1",
-  status: "active", affiliateLinkStatus: "active", affiliateUrl: "https://example.com/affiliate", commissionBasisPoints: 1200,
+  status: "active", affiliateLinkStatus: "active", affiliateUrl: "https://example.com/affiliate", commissionRateBps: 1200,
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
 
