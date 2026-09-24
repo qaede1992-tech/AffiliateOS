@@ -20,7 +20,7 @@ test("anomaly recovery requires stable post-halt performance evidence",async()=>
  const followUp={...halt,id:"f",clickCount:120,conversionCount:16,conversionRate:16/120,anomaly:"none",anomalyScore:0,recoveryEvidenceScore:0.8,observedAt:"2026-01-01T12:00:00.000Z"};
  const followUp2={...followUp,id:"f2",clickCount:130,conversionCount:18,conversionRate:18/130,observedAt:"2026-01-01T18:00:00.000Z"};
  const followUp3={...followUp,id:"f3",clickCount:135,conversionCount:20,conversionRate:20/135,observedAt:"2026-01-01T23:00:00.000Z"};
- const memory:any={latestByProductAndMarketplace:async()=>halt,recentByProductAndMarketplace:async()=>[halt,followUp,followUp2,followUp3]};
+ const memory:any={latestByProductAndMarketplace:async()=>halt,recentByProductAndMarketplace:async()=>[halt,followUp,followUp2,followUp3],saveIfAbsent:async(s:any)=>s};
  const provider=new AutonomousAnalyticsFeedbackProvider(analytics,memory,()=>now);
  const signals=await provider.getSignals({observationKey:"recovery-stable"});
  assert.equal(signals.get("m:p")?.anomaly,"none");
