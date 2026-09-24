@@ -20,7 +20,8 @@ test("orchestrates inbox claim, normalization, and conversion processing", async
   const store = inbox();
   store.add("account-a", "evt-1", { conversion_id: "conv-1", affiliate_reference: "aff-1", offer_reference: "offer-1", amount_cents: 1250, occurred_at: "2026-09-20T00:00:00.000Z", status: "approved", tracking_reference: "track-1" });
 
-  const created: unknown[] = [];\n  const reconciled: unknown[] = [];\n  const attributed: unknown[] = [];
+  const created: unknown[] = [];
+  const reconciled: unknown[] = [];\n  const attributed: unknown[] = [];
   const conversionProcessor = new ProviderConversionProcessor({
     async create(input) { created.push(input); return { id: "conversion-1", affiliateId: input.affiliateId, offerId: input.offerId, amountCents: input.amountCents, status: "pending", occurredAt: input.occurredAt, idempotencyKey: input.idempotencyKey }; }
     async reconcileProviderState(conversionId: string, status: "pending" | "approved" | "rejected", commissionCents?: number) { reconciled.push({ conversionId, status, commissionCents }); return { id: conversionId, affiliateId: "affiliate-1", offerId: "offer-1", amountCents: 1250, status, occurredAt: "2026-09-20T00:00:00.000Z" }; }\n  } as any, {
