@@ -64,6 +64,8 @@ export class AutonomousExecutionService {
           ...audit,
           cycleId: namespace,
           createdAt,
+          performanceRegime: signal?.regime,
+          performanceRegimeConfidence: signal?.regimeConfidence,
           recovery: signal ? {
             anomaly: signal.anomaly ?? "none",
             recoveryState: signal.anomalyRecovery ?? "none",
