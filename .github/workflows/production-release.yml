@@ -87,12 +87,18 @@ jobs:
             --env NODE_ENV=production \
             --env API_HOST=0.0.0.0 \
             --env API_PORT=3001 \
-            --env DATABASE_URL=postgresql://release:release@127.0.0.1:5432/release \
+            --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
             --env API_AUTH_TOKEN=12345678901234567890123456789012 \
             --env API_CORS_ORIGIN=https://dashboard.example.com \
             affiliateos-api:${{ github.sha }}
           for attempt in $(seq 1 30); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/health; then
+              break
+            fi
+            sleep 2
+          done
+          for attempt in $(seq 1 30); do
+            if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/ready; then
               exit 0
             fi
             sleep 2
@@ -113,7 +119,7 @@ jobs:
       - name: Cleanup release smoke containers
         if: always()
         run: |
-          docker rm -f affiliateos-api-smoke affiliateos-web-smoke 2>/dev/null || true
+          docker rm -f affiliateos-api-smoke affiliateos-web-smoke affiliateos-postgres-smoke 2>/dev/null || true
           docker network rm affiliateos-release-smoke 2>/dev/null || true
 
   release-gate:
