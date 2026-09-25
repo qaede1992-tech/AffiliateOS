@@ -75,7 +75,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
   const stateReader = optimizationStateReader ?? defaultOptimizationState;
   const stateWriter = optimizationStateWriter ?? defaultOptimizationState;
-  const autonomousOptimization = new AutonomousOptimizationRunner(analytics, stateReader, stateWriter, new AutonomousCampaignActionExecutor(campaigns, content, distribution, autonomousActionOutcomeWriter), autonomousActionOutcomeWriter, autonomousOptimizationPolicy);
+  const autonomousOptimization = new AutonomousOptimizationRunner(analytics, stateReader, stateWriter, new AutonomousCampaignActionExecutor(campaigns, content, distribution, autonomousActionOutcomeWriter), autonomousActionOutcomeWriter, autonomousOptimizationPolicy, 24 * 60 * 60_000, feedback);
   const explorationEvaluation = autonomousDecisionAuditRepository ? new AutonomousExplorationEvaluationRunner(autonomousDecisionAuditRepository, autonomousDecisionAuditRepository, explorationEvaluationPolicy) : undefined;
   const adaptiveExploration = autonomousDecisionAuditRepository ? new AdaptiveExplorationPolicyProvider(autonomousDecisionAuditRepository, adaptiveExplorationPolicy, autonomousExplorationStateRepository) : undefined;
   const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback, autonomousRuns, autonomousDecisionAuditRepository, adaptiveExploration);
