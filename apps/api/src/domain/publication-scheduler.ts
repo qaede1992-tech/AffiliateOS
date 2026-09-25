@@ -53,15 +53,33 @@ export class PublicationScheduler {
     if (this.activeRun) return this.activeRun;
     this.activeRun = this.worker.runOnce(now)
       .then(async (results) => {
-        if (results.length > 0 && this.onResults) await this.onResults(results);
+        if (results.length > 0) await this.notifyResults(results);
       })
       .catch(async (error) => {
-        if (this.onError) await this.onError(error);
+        await this.notifyError(error);
       })
       .finally(() => {
         this.activeRun = undefined;
       });
     return this.activeRun;
+  }
+
+  private async notifyResults(results: PublicationWorkerResult[]): Promise<void> {
+    if (!this.onResults) return;
+    try {
+      await this.onResults(results);
+    } catch (error) {
+      await this.notifyError(error);
+    }
+  }
+
+  private async notifyError(error: unknown): Promise<void> {
+    if (!this.onError) return;
+    try {
+      await this.onError(error);
+    } catch {
+      // Observer failures must not escape the scheduler lifecycle.
+    }
   }
 
   private async runAndSchedule(): Promise<void> {
