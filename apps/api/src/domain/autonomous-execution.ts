@@ -4,7 +4,8 @@ import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import type { CampaignOrchestrator, CampaignOrchestrationResult } from "./campaign-orchestrator.js";
 import { scoreOpportunity, type ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
-import type { AutonomousDecisionAuditRepository } from "./autonomous-decision-audit.js";\nimport { AdaptiveExplorationPolicyProvider, type AdaptiveExplorationPolicy } from "./adaptive-exploration-policy.js";
+import type { AutonomousDecisionAuditRepository } from "./autonomous-decision-audit.js";
+import { AdaptiveExplorationPolicyProvider, type AdaptiveExplorationPolicy } from "./adaptive-exploration-policy.js";
 
 export type AutonomousExecutionInput = {
   candidates: OpportunityCandidateSource[];
@@ -69,7 +70,8 @@ export class AutonomousExecutionService {
             recoveryClicks: signal.recoveryClicks ?? 0,
             recoveryEvidenceScore: signal.recoveryEvidenceScore ?? 0,
             recoveryEpisodeId: signal.recoveryEpisodeId,
-            episodeMetrics: signal.recoveryEpisodeMetrics,\n            policy: signal.recoveryPolicy
+            episodeMetrics: signal.recoveryEpisodeMetrics,
+            policy: signal.recoveryPolicy
           } : undefined
         };
       });

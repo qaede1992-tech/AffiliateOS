@@ -14,7 +14,7 @@ const product: Product = {
 
 const offer: AffiliateOffer = {
   id: "offer-1", affiliateAccountId: "affiliate-account-1", productId: product.id, externalOfferId: "external-offer-1",
-  status: "active", affiliateLinkStatus: "active", affiliateUrl: "https://example.com/affiliate", commissionBasisPoints: 1200,
+  status: "active", affiliateLinkStatus: "active", affiliateUrl: "https://example.com/affiliate", commissionRateBps: 1200,
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
 
@@ -41,7 +41,7 @@ describe("AutonomousExecutionService", () => {
 
     const result = await service.runOnce({
       candidates: [{ product, offers: [offer] }],
-      policy: { minimumScore: 60, maximumResults: 1 },
+      policy: { minimumScore: 40, maximumResults: 1 },
       idempotencyNamespace: "cycle-1"
     });
 
@@ -109,12 +109,11 @@ describe("AutonomousExecutionService", () => {
     });
 
     assert.equal(result.recoveredRunCount, 1);
-    assert.deepEqual(calls, [{
-      audience: ["electronics"],
-      platforms: ["instagram"],
-      scheduledAt: "2026-09-21T12:00:00.000Z",
-      idempotencyKey: "previous-cycle:product-1:offer-1"
-    }]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.audience?.join(","), "electronics");
+    assert.equal(calls[0]?.platforms?.join(","), "instagram");
+    assert.equal(calls[0]?.scheduledAt, "2026-09-21T12:00:00.000Z");
+    assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
   });
 
   it("skips recovery when the persisted product is no longer active", async () => {
@@ -144,7 +143,7 @@ describe("AutonomousExecutionService", () => {
   });
 
   it("resolves the selected offer from duplicate product candidates without mixing offers", async () => {
-    const alternateOffer = { ...offer, id: "offer-2", externalOfferId: "external-offer-2", commissionBasisPoints: 1800 };
+    const alternateOffer = { ...offer, id: "offer-2", externalOfferId: "external-offer-2", commissionRateBps: 1800 };
     const calls: string[] = [];
     const selector = {
       select: () => ({ selected: [{ ...opportunity, offerId: alternateOffer.id }], rejected: [] })

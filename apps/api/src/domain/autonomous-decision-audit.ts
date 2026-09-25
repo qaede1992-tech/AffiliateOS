@@ -14,8 +14,20 @@ export type AutonomousDecisionRecovery = {
   recoveryClicks: number;
   recoveryEvidenceScore: number;
   recoveryEpisodeId?: string;
-  episodeMetrics?: { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; previousEpisodeQualityScore?: number; qualityDelta?: number };
-  policy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
+  episodeMetrics?: {
+    recoveryDurationMs: number;
+    recoveryClicks: number;
+    conversionDelta: number;
+    commissionDeltaCents: number;
+    qualityScore?: number;
+    previousEpisodeQualityScore?: number;
+    qualityDelta?: number;
+  };
+  policy?: {
+    explorationFloor: number;
+    direction: "hold-exploration" | "reduce-exploration" | "neutral";
+    qualityDelta?: number;
+  };
 };
 
 export type AutonomousDecisionOutcome = {
@@ -36,11 +48,24 @@ export type AutonomousDecisionOutcomeAnalytics = {
   conversionRate: number;
 };
 
-export interface AutonomousDecisionAuditRepository {
-  saveMany(audits: AutonomousDecisionAudit[]): Promise<void>;
-  updateOutcome(auditId: string, outcome: AutonomousDecisionOutcome): Promise<void>;
-  updateExplorationEvaluation?(auditId: string, evaluation: import("./exploration-evaluator.js").ExplorationEvaluation): Promise<void>;
+export interface AutonomousDecisionAuditQuery {
+  cycleId?: string;
+  marketplaceId?: string;
+  productId?: string;
+  recoveryEpisodeId?: string;
+  selected?: boolean;
+  limit?: number;
 }
 
-export type AutonomousDecisionAuditQuery = { cycleId?: string; marketplaceId?: string; productId?: string; recoveryEpisodeId?: string; selected?: boolean; limit?: number };
-export interface AutonomousDecisionAuditReader { list(query?: AutonomousDecisionAuditQuery): Promise<AutonomousDecisionAudit[]>; }
+export interface AutonomousDecisionAuditReader {
+  list(query?: AutonomousDecisionAuditQuery): Promise<AutonomousDecisionAudit[]>;
+}
+
+export interface AutonomousDecisionAuditRepository extends AutonomousDecisionAuditReader {
+  saveMany(audits: AutonomousDecisionAudit[]): Promise<void>;
+  updateOutcome(auditId: string, outcome: AutonomousDecisionOutcome): Promise<void>;
+  updateExplorationEvaluation?(
+    auditId: string,
+    evaluation: ExplorationEvaluation
+  ): Promise<void>;
+}

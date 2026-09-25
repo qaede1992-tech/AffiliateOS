@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
-import { getRawBody } from "./raw-body.js";
+import { captureRawBody, getRawBody } from "./raw-body.js";
 import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, createContentSchema, updateContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
@@ -19,18 +19,18 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   });
   app.get("/api/v1/autonomous/runs", writeGuard, async (request) => { const query = autonomousRunQuerySchema.parse(request.query); return list(await services.autonomousRuns.list(query)); });
   app.get("/api/v1/autonomous/runs/:runId", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); return services.autonomousRuns.findById(runId); });
-  app.post("/api/v1/autonomous/runs/:runId/retry", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); const run = await services.autonomousRuns.retry(runId); auditSecurityEvent(request.log, request, "autonomous_run_retry_requested", { runId, status: run.status, attemptCount: run.attemptCount }); return run; });
+  app.post("/api/v1/autonomous/runs/:runId/retry", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); const run = await services.autonomousRuns.retry(runId); auditSecurityEvent(request.log, request, "autonomous_run_retry_requested", { runId, status: run.status, attemptCount: String(run.attemptCount) }); return run; });
   app.post("/api/v1/autonomous/cycles/run", writeGuard, async (request, reply) => {
     const result = await services.autonomousScheduler.runNow();
     const status = services.autonomousScheduler.status;
     auditSecurityEvent(request.log, request, "autonomous_cycle_triggered", { executed: Boolean(result), active: status.active });
     return reply.status(result ? 200 : status.active ? 202 : 500).send(result ? { status: "completed", result } : status.active ? { status: "already_running" } : { status: "failed", error: status.lastError ?? "Autonomous cycle failed." });
   });
-  app.post("/api/v1/marketplaces/:connectionSlug/events", async (request, reply) => {
+  app.post("/api/v1/marketplaces/:connectionSlug/events", { preParsing: captureRawBody }, async (request, reply) => {
     if (!providerEvents) return reply.status(503).send({ error: "PROVIDER_EVENT_STORE_UNAVAILABLE", message: "Provider event persistence is unavailable." });
     const { connectionSlug } = marketplaceSlugSchema.parse(request.params); const rawBody = getRawBody(request); if (!rawBody) return reply.status(400).send({ error: "RAW_BODY_UNAVAILABLE", message: "The provider event body could not be verified." });
     const verification = await services.marketplace.verifyProviderEvent(connectionSlug, rawBody, { signature: request.headers["x-provider-signature"] as string | undefined, timestamp: request.headers["x-provider-timestamp"] as string | undefined });
-    if (!verification.valid) return reply.status(401).send({ error: "INVALID_PROVIDER_SIGNATURE", message: "The provider event signature is invalid or expired." });
+    if (!verification.valid) return reply.status(400).send({ error: "INVALID_PROVIDER_EVENT_SIGNATURE", message: "The provider event signature is invalid or expired." });
     const payload = request.body as Record<string, unknown>; const externalEventId = typeof payload.id === "string" ? payload.id.trim() : ""; const eventType = typeof payload.type === "string" ? payload.type.trim() : "";
     if (!externalEventId || externalEventId.length > 255 || !eventType || eventType.length > 100) return reply.status(400).send({ error: "INVALID_PROVIDER_EVENT", message: "Provider events require valid id and type fields." });
     const account = await services.marketplace.getAffiliateAccount(connectionSlug); const inserted = await providerEvents.insertIfNew({ id: randomUUID(), affiliateAccountId: account.id, externalEventId, eventType, payload, signatureVersion: verification.version, receivedAt: new Date().toISOString() }); return reply.status(inserted ? 202 : 200).send({ accepted: true, duplicate: !inserted, externalEventId });

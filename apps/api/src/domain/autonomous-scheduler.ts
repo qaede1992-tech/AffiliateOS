@@ -85,8 +85,9 @@ export class AutonomousScheduler {
     };
     this.lastStartedAt = this.now().toISOString();
     this.lastError = undefined;
-    this.activeRun = this.cycle.runOnce(effectiveInput)
+    const run = this.cycle.runOnce(effectiveInput)
       .then(async (result) => {
+        if (!result) return undefined;
         this.lastResult = result;
         this.lastCompletedAt = this.now().toISOString();
         if (this.onResult) await this.onResult(result);
@@ -101,7 +102,8 @@ export class AutonomousScheduler {
       .finally(() => {
         this.activeRun = undefined;
       });
-    return this.activeRun;
+    this.activeRun = run;
+    return run;
   }
 
   private async runAndSchedule(): Promise<void> {

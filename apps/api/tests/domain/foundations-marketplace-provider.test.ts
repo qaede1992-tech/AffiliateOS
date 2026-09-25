@@ -7,7 +7,7 @@ test("marketplace provider registry rejects declared capabilities without implem
   const provider = {
     ...new MockMarketplaceProvider(),
     slug: "broken-provider",
-    capabilities: ["discoverProducts", "generateAffiliateLink"] as const,
+    capabilities: ["generateAffiliateLink", "discoverProducts"] as const,
     generateAffiliateLink: undefined
   };
   assert.throws(() => registry.register(provider), /declares capability generateAffiliateLink but does not implement it/i);

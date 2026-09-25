@@ -5,7 +5,8 @@ export type ExplorationEvaluation = {
   reason: string;
   confidence: number;
   recoveryEpisodeId?: string;
-  episodeMetrics?: { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; previousEpisodeQualityScore?: number; qualityDelta?: number };\n  policy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
+  episodeMetrics?: { recoveryDurationMs: number; recoveryClicks: number; conversionDelta: number; commissionDeltaCents: number; qualityScore?: number; previousEpisodeQualityScore?: number; qualityDelta?: number };
+  policy?: { explorationFloor: number; direction: "hold-exploration" | "reduce-exploration" | "neutral"; qualityDelta?: number };
 };
 
 export type ExplorationEvaluationPolicy = {
@@ -41,7 +42,7 @@ export function evaluateExploration(
   if (analytics.conversionRate >= promotionConversionRate && commissionPerClick >= minimumCommissionPerClickCents) {
     return { status: "promote-to-exploitation", reason: `Conversion rate ${analytics.conversionRate.toFixed(4)} and commission/click ${commissionPerClick.toFixed(2)} meet promotion thresholds`, confidence: confidenceFromEvidence(analytics.clickCount, minimumClicks) };
   }
-  if (analytics.conversionRate <= deprioritizeConversionRate && commissionPerClick < minimumCommissionPerClickCents) {
+  if (analytics.conversionRate <= deprioritizeConversionRate && commissionPerClick <= minimumCommissionPerClickCents) {
     return { status: "deprioritize", reason: `Conversion rate ${analytics.conversionRate.toFixed(4)} and commission/click ${commissionPerClick.toFixed(2)} are below exploration thresholds`, confidence: confidenceFromEvidence(analytics.clickCount, minimumClicks) };
   }
   return { status: "continue-exploration", reason: `Evidence is sufficient but performance is between promotion and deprioritization thresholds`, confidence: confidenceFromEvidence(analytics.clickCount, minimumClicks) };

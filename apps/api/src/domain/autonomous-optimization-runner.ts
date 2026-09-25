@@ -53,7 +53,7 @@ export class AutonomousOptimizationRunner {
         const campaign = overview.campaigns.find((item) => item.campaignId === recommendation.campaignId);
         const signal = campaign?.productId && campaign.marketplaceId
           ? performance.get(campaign.marketplaceId + ":" + campaign.productId) ?? performance.get(campaign.productId)
-          : undefined;
+          : performance.get(recommendation.campaignId);
         if (signal) {
           try {
             await this.outcomeWriter.updateRecovery(result.outcomeId, {

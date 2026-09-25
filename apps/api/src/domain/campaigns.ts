@@ -108,15 +108,18 @@ export class TrackingService {
     try {
       return await this.links.save(link);
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        const raced = await this.links.findByCode(link.code);
-        if (raced && raced.affiliateOfferId === link.affiliateOfferId && raced.campaignId === link.campaignId && raced.destinationUrl === link.destinationUrl) return raced;
-        throw new DomainError("TRACKING_CODE_EXISTS", "The tracking code is already in use.", 409);
-      }
+      if (isUniqueViolation(error)) throw new DomainError("TRACKING_CODE_EXISTS", "The tracking code is already in use.", 409);
       throw error;
     }
   }
   async get(id: string) { const link = await this.links.findById(id); if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404); return link; }
+  async redirect(code: string, metadata: Record<string, unknown> = {}) {
+    const link = await this.links.findByCode(code);
+    if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404);
+    if (link.status !== "active") throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Clicks require an active tracking link.");
+    await this.recordClick(link.id, { metadata });
+    return link.destinationUrl;
+  }
   async recordClick(id: string, input: RecordClickRequest) {
     const link = await this.get(id);
     if (link.status !== "active") throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Clicks require an active tracking link.");

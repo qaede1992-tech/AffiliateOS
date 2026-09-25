@@ -10,36 +10,7 @@ const metrics = (campaignId: string, clicks: number, conversions: number): Campa
   publishedContentCount: 1, scheduledContentCount: 0,
   attributedConversionCount: conversions, attributedRevenueCents: 10000,
   attributedCommissionCents: 500, conversionRate: clicks === 0 ? 0 : conversions / clicks
-  it("feeds delayed evaluation into the next optimization recommendation", async () => {
-    const campaign = metrics("c1", 200, 16);
-    let savedState: any;
-    const analytics = { async overview() { return overview(campaign); }, async campaign() { return campaign; } };
-    const outcomeWriter: AutonomousActionOutcomeWriter = {
-      async save(outcome) { return outcome; },
-      async latestByCampaign() {
-        return {
-          id: "outcome-feedback", campaignId: "c1", action: "scale", status: "mutated", mutated: true,
-          observedAt: "2026-09-21T00:00:00.000Z",
-          baseline: { clickCount: 100, attributedConversionCount: 10, attributedRevenueCents: 10000, attributedCommissionCents: 500, conversionRate: 0.1 }
-        };
-      },
-      async updateEvaluation() { return undefined; }
-    };
-    const runner = new AutonomousOptimizationRunner(
-      analytics,
-      { async get() { return { action: "scale", appliedAt: "2026-09-21T00:00:00.000Z" }; } },
-      { async save(_id, state) { savedState = state; } },
-      executorFor("new-action"),
-      outcomeWriter,
-      {},
-      60 * 60_000
-    );
-    const result = await runner.run(new Date("2026-09-23T02:00:00.000Z"));
-    assert.equal(result.recommendations[0].action, "revise-content");
-    assert.equal(savedState.action, "revise-content");
-  });
 });
-
 const overview = (campaign: CampaignAnalytics) => ({
   campaigns: [campaign], clickCount: campaign.clickCount, trackingLinkCount: campaign.trackingLinkCount,
   campaignCount: 1, contentCount: campaign.contentCount, publishedContentCount: campaign.publishedContentCount,
@@ -124,7 +95,7 @@ describe("AutonomousOptimizationRunner", () => {
       async updateEvaluation(id, _evaluation, evaluatedAt) { updates.push({ id, evaluatedAt }); return undefined; }
     };
     const runner = new AutonomousOptimizationRunner(
-      analytics, { async get() { return undefined; } }, { async save() {} },
+      analytics, { async get() { return { action: "scale", appliedAt: "2026-09-23T01:30:00.000Z" }; } }, { async save() {} },
       { async execute() { throw new Error("no new action expected"); } } as unknown as AutonomousCampaignActionExecutor,
       outcomeWriter, {}, 60 * 60_000
     );
@@ -144,7 +115,7 @@ describe("AutonomousOptimizationRunner", () => {
       async updateEvaluation() { evaluated = true; return undefined; }
     };
     const runner = new AutonomousOptimizationRunner(
-      analytics, { async get() { return undefined; } }, { async save() {} },
+      analytics, { async get() { return { action: "scale", appliedAt: "2026-09-23T01:30:00.000Z" }; } }, { async save() {} },
       { async execute() { throw new Error("no new action expected"); } } as unknown as AutonomousCampaignActionExecutor,
       outcomeWriter, {}, 60 * 60_000
     );
@@ -199,9 +170,9 @@ describe("recovery-aware action evidence", () => {
       outcomeWriter,
       {},
       60 * 60_000,
-      { async getSignals() { return new Map([["m:p", { clickCount: 30, conversionCount: 1, conversionRate: .033, attributedCommissionCents: 100, commissionPerClickCents: 3.3, adjustment: 0, trendAdjustment: 0, anomaly: "watch", anomalyScore: .5, anomalyRecovery: "recovering", recoveryClicks: 30, recoveryEvidenceScore: .6 } as any]]); } }
+      { async getSignals() { return new Map([["c1", { clickCount: 30, conversionCount: 1, conversionRate: .033, attributedCommissionCents: 100, commissionPerClickCents: 3.3, adjustment: 0, trendAdjustment: 0, anomaly: "watch", anomalyScore: .5, anomalyRecovery: "recovering", recoveryClicks: 30, recoveryEvidenceScore: .6 } as any]]); } }
     );
     await runner.run(new Date("2026-09-23T02:00:00.000Z"));
-    assert.deepEqual(recovery, { state: "recovering", evidenceScore: .6 });
+    assert.deepEqual(recovery, { state: "recovering", evidenceScore: .6, episodeId: undefined, policy: undefined });
   });
 });

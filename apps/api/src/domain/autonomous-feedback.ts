@@ -94,22 +94,27 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const windows = isProductSignal && this.memory!.recentByProductAndMarketplace
         ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, signal, observedAt)
         : undefined;
-      const regime = windows ? classifyWindowRegime(windows) : "stable";
+      const regime = windows ? classifyWindowRegime(windows, signal.conversionRate) : "stable";
       const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
       const anomalyScore = windows ? calculateAnomalyScore(windows) : 0;
       const elapsedSincePrevious = previous ? Date.parse(observedAt) - Date.parse(previous.observedAt) : Number.POSITIVE_INFINITY;
       const recentHalt = previous?.anomaly === "halt" && elapsedSincePrevious < ANOMALY_COOLDOWN_MS;
       const recoveryAnchor = isProductSignal && this.memory!.recentByProductAndMarketplace
-        ? await latestHaltSnapshot(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
+        ? (await activeRecoveryEpisode(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
+          ?? (previous?.anomaly === "halt" ? previous : undefined))
         : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
       const recoveryEvidenceScore = windows
         ? calculateRecoveryEvidenceScore(windows, recoveryClicks, anomalyScore)
         : recoveryClicks >= ANOMALY_RECOVERY_CLICKS ? 1 : 0;
-      const recoveryEvidence = recoveryEvidenceScore >= 0.75;
-      const recoveryGate = Boolean(recoveryAnchor) && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
+      const recoveryEvidence = recoveryClicks >= ANOMALY_RECOVERY_CLICKS && recoveryEvidenceScore >= 0.75;
+      const recoveredHysteresis = Boolean(recoveryAnchor && previous?.recoveryState === "recovered");
+      const recoveryGate = Boolean(recoveryAnchor) && !recoveredHysteresis && elapsedSincePrevious >= ANOMALY_COOLDOWN_MS && !recoveryEvidence;
       const classifiedAnomaly = classifyAnomaly(anomalyScore);
-      const anomaly = recentHalt || recoveryGate ? "halt" : classifiedAnomaly;
+      // A recovered episode gets one bounded hysteresis step: a single new
+      // anomaly signal is watched rather than immediately reopening a halt.
+      const hysteresisAnomaly = recoveredHysteresis && classifiedAnomaly === "halt" ? "watch" : classifiedAnomaly;
+      const anomaly = recentHalt || recoveryGate ? "halt" : hysteresisAnomaly;
       const stableRecovery = recoveryAnchor && recoveryEvidence
         ? await hasStableRecoveryWindow(this.memory!.recentByProductAndMarketplace!.bind(this.memory!), productId, marketplaceId!, recoveryAnchor.observedAt, observedAt)
         : false;
@@ -121,7 +126,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
             : stableRecovery ? "recovered" : "recovering")
         : "none";
       const recoveryEpisodeId = recoveryAnchor ? recoveryAnchor.id : undefined;
-      const recoveryEpisodeMetrics = recoveryAnchor ? {
+      const recoveryEpisodeMetrics: RecoveryEpisodeMetrics | undefined = recoveryAnchor ? {
         recoveryDurationMs: Math.max(0, Date.parse(observedAt) - Date.parse(recoveryAnchor.observedAt)),
         recoveryClicks,
         conversionDelta: signal.conversionCount - recoveryAnchor.conversionCount,
@@ -145,8 +150,10 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const windowAdjustment = windows && anomaly !== "halt"
         ? calculateWindowAdjustment(windows, regime) * regimeConfidence * recoveryConfidence * (anomaly === "watch" ? 0.35 : 1)
         : 0;
-      const adjustment = Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
-      const snapshot = {
+      const adjustment = anomaly === "halt"
+        ? 0
+        : Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
+      const snapshot: AutonomousFeedbackSnapshot = {
         id: crypto.randomUUID(),
         observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
         productId,
@@ -282,7 +289,8 @@ async function activeRecoveryEpisode(
   const haltIndex = ordered.map((snapshot) => snapshot.anomaly).lastIndexOf("halt");
   if (haltIndex < 0) return undefined;
   const halt = ordered[haltIndex];
-  const closed = ordered.slice(haltIndex + 1).some((snapshot) =>
+  if (!halt) return undefined;
+  const closed = halt.recoveryState === "recovering" && ordered.slice(haltIndex + 1).some((snapshot) =>
     snapshot.recoveryEpisodeId === halt.id && snapshot.recoveryState === "recovered"
   );
   return closed ? undefined : halt;
@@ -304,7 +312,7 @@ async function buildWindows(
   };
   return {"24h":make(24*60*60*1000),"7d":make(7*24*60*60*1000),"30d":make(30*24*60*60*1000)};
 }
-function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow;"30d":PerformanceWindow }):PerformanceRegime {
+function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow;"30d":PerformanceWindow }, currentRate?: number):PerformanceRegime {
   const a=w["24h"], b=w["7d"], c=w["30d"];
   const usable=[a,b,c].filter(x=>x.clickCount>=MINIMUM_EVIDENCE_CLICKS);
   if(!usable.length)return "stable";
@@ -312,6 +320,8 @@ function classifyWindowRegime(w:{ "24h":PerformanceWindow;"7d":PerformanceWindow
   if(evidence24<0.5)return "stable";
   const short=a.conversionRate, medium=b.conversionRate, long=c.conversionRate;
   const max=Math.max(short,medium,long), min=Math.min(short,medium,long);
+  if (currentRate !== undefined && a.confidence >= 0.75 && short - currentRate >= 0.05) return "rising";
+  if (currentRate !== undefined && a.confidence >= 0.75 && currentRate - short >= 0.05) return "declining";
   if(max-min>=0.04 && Math.abs(short-long)>=0.04)return short>long ? "rising" : "declining";
   if(a.confidence>=0.75 && b.confidence>=0.75 && Math.abs(short-medium)>=0.05)return short>medium ? "rising" : "declining";
   if(Math.max(short,medium,long)-Math.min(short,medium,long)>=0.06)return "volatile";
@@ -335,10 +345,15 @@ function calculateRecoveryEvidenceScore(
   anomalyScore:number
 ):number {
   const clickEvidence = Math.min(1, recoveryClicks / ANOMALY_RECOVERY_CLICKS);
-  const anomalyEvidence = anomalyScore >= ANOMALY_RECOVERY_MAX_SCORE ? 0 : 1 - (anomalyScore / ANOMALY_RECOVERY_MAX_SCORE);
+  // Fresh recovery evidence should not be penalized by the historical halt
+  // still present in the long window. Once the recovery sample has enough
+  // clicks, judge the evidence from current recovery stability instead.
+  const anomalyEvidence = recoveryClicks >= ANOMALY_RECOVERY_CLICKS
+    ? 1
+    : anomalyScore >= ANOMALY_RECOVERY_MAX_SCORE ? 0 : 1 - (anomalyScore / ANOMALY_RECOVERY_MAX_SCORE);
   const short = windows["24h"], medium = windows["7d"], long = windows["30d"];
   const confidenceEvidence = Math.min(1, short.confidence, medium.confidence);
-  const divergence = Math.abs(short.conversionRate - long.conversionRate);
+  const divergence = Math.abs(medium.conversionRate - long.conversionRate);
   const stabilityEvidence = Math.max(0, 1 - (divergence / ANOMALY_RECOVERY_MAX_RATE_DIVERGENCE));
   return Math.round((clickEvidence * 0.25 + anomalyEvidence * 0.25 + confidenceEvidence * 0.25 + stabilityEvidence * 0.25) * 100) / 100;
 }

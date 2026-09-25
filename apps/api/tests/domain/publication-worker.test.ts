@@ -43,6 +43,7 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let publishes = 0;
     const publisher: SocialPublisher = {
+      provider: "tiktok",
       supports: (platform) => platform === "tiktok",
       publish: async () => { publishes += 1; return { externalPostId: "external-post-1", status: "published" }; }
     };
@@ -65,6 +66,7 @@ describe("PublicationWorker", () => {
     const content = await contentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: bound.id });
     let selectedAccount: string | undefined;
     const publisher: SocialPublisher = {
+      provider: "tiktok",
       supports: () => true,
       publish: async ({ account: selected }) => {
         selectedAccount = selected.id;
@@ -113,16 +115,17 @@ describe("PublicationWorker", () => {
     const operations = new InMemoryPublicationOperationRepository();
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
     const job = await jobService.enqueue(content);
-    const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const testNow = new Date("2026-09-20T11:00:00.000Z");
+    const first = await worker.runOnce(testNow);
     assert.equal(first.at(-1)?.status, "awaiting_confirmation");
     assert.equal((await jobs.findById(job.id))?.status, "awaiting_confirmation");
     assert.equal((await contentService.get(content.id)).status, "scheduled");
-    const blocked = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    const blocked = await worker.runOnce(new Date(testNow.getTime() + 60_000));
     assert.deepEqual(blocked, []);
     assert.equal(checks, 0);
-    const second = await worker.runOnce(new Date("2026-09-20T11:30:00.000Z"));
+    const second = await worker.runOnce(new Date(testNow.getTime() + 30 * 60_000));
     assert.equal(second[0]?.status, "processing");
-    const third = await worker.runOnce(new Date("2026-09-20T13:30:00.000Z"));
+    const third = await worker.runOnce(new Date(testNow.getTime() + 150 * 60_000));
     assert.deepEqual(third[0], { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "external-post-async" });
     assert.equal((await jobs.findById(job.id))?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
@@ -156,15 +159,17 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
     const publisher: SocialPublisher = {
+      provider: "tiktok",
       supports: () => true,
       publish: async () => { attempts += 1; if (attempts === 1) throw new Error("temporary provider failure"); return { externalPostId: "external-post-2", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
     const job = await jobService.enqueue(content);
-    const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    const testNow = new Date("2026-09-20T11:00:00.000Z");
+    const first = await worker.runOnce(testNow);
     assert.equal((await contentService.get(content.id)).status, "failed");
-    const blocked = await worker.runOnce(new Date("2026-09-20T11:00:59.999Z"));
-    const second = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    const blocked = await worker.runOnce(new Date(testNow.getTime() + 59_999));
+    const second = await worker.runOnce(new Date(testNow.getTime() + 60_000));
     const stored = await jobs.findById(job.id);
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
@@ -187,6 +192,7 @@ describe("PublicationWorker", () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let publishes = 0;
     const publisher: SocialPublisher = {
+      provider: "tiktok",
       supports: () => true,
       publish: async () => { publishes += 1; return { externalPostId: "external-post-recovered", status: "published" }; }
     };

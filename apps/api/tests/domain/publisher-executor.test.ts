@@ -52,7 +52,8 @@ describe("PublisherExecutor", () => {
     const contents = new InMemoryRepository<Content>();
     const campaigns = new InMemoryRepository<any>();
     const isolatedContentService = new ContentService(contents, campaigns, products);
-    const scheduled = await isolatedContentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z" });
+    const scheduled: Content = { id: "content-inactive", productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z" };
+    await contents.save(scheduled);
     let published = false;
     const publisher: SocialPublisher = {
       provider: "test-publisher",

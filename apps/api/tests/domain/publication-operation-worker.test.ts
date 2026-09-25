@@ -67,7 +67,8 @@ describe("Publication operation lifecycle", () => {
     await products.save({ ...product, status: "inactive" });
     const isolatedContents = new InMemoryRepository<Content>();
     const isolatedContentService = new ContentService(isolatedContents, new InMemoryRepository<any>(), products);
-    const scheduled = await isolatedContentService.create({ productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: account.id });
+    const scheduled: Content = { id: "content-terminal", productId: product.id, platform: "tiktok", contentType: "affiliate-promotion", status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: account.id, createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z" };
+    await isolatedContents.save(scheduled);
     await jobs.save({ id: "job-terminal", contentId: scheduled.id, idempotencyKey: "content:terminal", attemptCount: 1, scheduledAt: "2026-09-20T10:00:00.000Z", status: "awaiting_confirmation", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
     await operations.save({ id: "operation-terminal", contentId: scheduled.id, jobId: "job-terminal", provider: "tiktok", providerOperationId: "publish-terminal", status: "accepted", createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z" });
     const publisher: SocialPublisher = {
@@ -102,7 +103,7 @@ describe("Publication operation lifecycle", () => {
     const job = await jobService.enqueue(content);
 
     await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
-    const results = await worker.runOnce(new Date("2026-09-20T11:01:00.000Z"));
+    const results = await worker.runOnce(new Date("2026-09-20T11:03:00.000Z"));
     const storedJob = await jobs.findById(job.id);
     const storedOperation = (await operations.list())[0];
     const storedContent = await contentService.get(content.id);

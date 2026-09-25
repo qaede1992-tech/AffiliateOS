@@ -83,27 +83,39 @@ describe("autonomous cycle", () => {
   });
 
   it("prevents overlapping cycles and releases the guard after completion", async () => {
-    let release!: () => void;
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
         return [{ product: { id: "product-1" } as never, offers: [] }];
       }
     };
+
+    const releases: Array<() => void> = [];
+    let callCount = 0;
+    let resolveSecondStarted!: () => void;
+    const secondStarted = new Promise<void>((resolve) => { resolveSecondStarted = resolve; });
     const execution = {
-      runOnce: () => new Promise<{ selected: never[]; rejected: never[]; outcomes: never[] }>((resolve) => {
-        release = () => resolve({ selected: [], rejected: [], outcomes: [] });
-      })
+      runOnce: () => {
+        callCount += 1;
+        if (callCount === 2) resolveSecondStarted();
+        return new Promise<{ selected: never[]; rejected: never[]; outcomes: never[] }>((resolve) => {
+          releases.push(() => resolve({ selected: [], rejected: [], outcomes: [] }));
+        });
+      }
     } as unknown as AutonomousExecutionService;
 
     const service = new AutonomousCycleService(candidates, execution);
     const first = service.runOnce();
-    await new Promise((resolve) => setImmediate(resolve));
+
     const overlapping = await service.runOnce();
     assert.equal(overlapping, undefined);
 
-    release();
+    releases[0]();
     assert.ok(await first);
-    assert.ok(await service.runOnce());
+
+    const second = service.runOnce();
+    await secondStarted;
+    releases[1]();
+    assert.ok(await second);
   });
 
   it("does not enter a cycle when a shared lock is already held", async () => {

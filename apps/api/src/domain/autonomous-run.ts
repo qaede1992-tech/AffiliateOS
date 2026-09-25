@@ -31,6 +31,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
       ...current,
       status: run.status,
       campaignId: run.campaignId,
+      executionContext: run.executionContext,
       attemptCount: run.attemptCount,
       nextAttemptAt: run.nextAttemptAt,
       lastError: run.lastError,

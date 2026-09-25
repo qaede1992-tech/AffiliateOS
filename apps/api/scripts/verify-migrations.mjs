@@ -63,7 +63,7 @@ try {
   }
   const migrationSchema = migrationTableRows[0].table_schema;
   const { rows: migrationRows } = await client.query(
-    `SELECT hash FROM "${migrationSchema.replaceAll('"', '""')}"."__drizzle_migrations" ORDER BY created_at ASC, id ASC`
+    `SELECT id, hash FROM "${migrationSchema.replaceAll('"', '""')}"."__drizzle_migrations" ORDER BY id ASC`
   );
   const appliedMigrationHashes = migrationRows.map((row) => row.hash);
   if (appliedMigrationHashes.length !== trackedMigrationHashes.length) {

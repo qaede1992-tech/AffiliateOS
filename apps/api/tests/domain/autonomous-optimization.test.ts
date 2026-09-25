@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { AutonomousOptimizationService, InMemoryOptimizationStateReader } from "../../src/domain/autonomous-optimization.js";
 import type { AnalyticsOverview } from "../../src/domain/analytics.js";
 
@@ -24,10 +25,10 @@ describe("AutonomousOptimizationService", () => {
 
     const result = await service.recommend(new Date("2026-09-22T00:00:00.000Z"));
 
-    expect(result.campaigns).toEqual([campaign]);
-    expect(result.recommendations).toEqual([
-      expect.objectContaining({ campaignId: "campaign-1", action: "scale" })
-    ]);
+    assert.deepEqual(result.campaigns, [campaign]);
+    assert.equal(result.recommendations.length, 1);
+    assert.equal(result.recommendations[0].campaignId, "campaign-1");
+    assert.equal(result.recommendations[0].action, "scale");
   });
 
   it("honors existing optimization state through the decision boundary", async () => {
@@ -42,9 +43,8 @@ describe("AutonomousOptimizationService", () => {
 
     const result = await service.recommend(new Date("2026-09-22T00:30:00.000Z"));
 
-    expect(result.recommendations[0]).toEqual(
-      expect.objectContaining({ campaignId: "campaign-1", action: "maintain" })
-    );
+    assert.equal(result.recommendations[0].campaignId, "campaign-1");
+    assert.equal(result.recommendations[0].action, "maintain");
   });
 
   it("keeps empty analytics safe and decision-only", async () => {
@@ -52,7 +52,7 @@ describe("AutonomousOptimizationService", () => {
 
     const result = await service.recommend();
 
-    expect(result.campaigns).toEqual([]);
-    expect(result.recommendations).toEqual([]);
+    assert.deepEqual(result.campaigns, []);
+    assert.deepEqual(result.recommendations, []);
   });
 });

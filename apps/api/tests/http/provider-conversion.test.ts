@@ -37,9 +37,8 @@ test("normalizes a provider conversion into canonical cents and timestamps", () 
   });
 });
 
-test("defaults unknown conversion status to pending", () => {
-  const result = normalizer.normalize({ eventId: "evt_201", eventType: "conversion.created", payload: { id: "conv_201", amount_cents: 500, occurred_at: "2026-09-20T10:00:00Z", status: "new" } });
-  assert.equal(result.status, "pending");
+test("rejects unknown conversion status", () => {
+  assert.throws(() => normalizer.normalize({ eventId: "evt_201", eventType: "conversion.created", payload: { id: "conv_201", amount_cents: 500, occurred_at: "2026-09-20T10:00:00Z", status: "new" } }), /status is invalid/);
 });
 
 test("rejects malformed monetary and timestamp fields", () => {

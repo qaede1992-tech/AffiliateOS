@@ -16,10 +16,12 @@ test("multi-window regime confidence is bounded",async()=>{
 
 test("recovered evidence does not regain full influence immediately",async()=>{
  const memory:any={
-  latestByProductAndMarketplace:async()=>({clickCount:20,conversionCount:1,attributedCommissionCents:20,commissionPerClickCents:1,observedAt:"2026-09-20T00:00:00Z",anomaly:"halt"}),
+  latestByProductAndMarketplace:async()=>({id:"h",clickCount:20,conversionCount:1,attributedCommissionCents:20,commissionPerClickCents:1,observedAt:"2026-09-20T00:00:00Z",anomaly:"halt"}),
   recentByProductAndMarketplace:async()=>[
-   {clickCount:20,conversionCount:1,attributedCommissionCents:20,observedAt:"2026-09-20T00:00:00Z",anomaly:"halt"},
-   {clickCount:40,conversionCount:2,attributedCommissionCents:40,observedAt:"2026-09-22T00:00:00Z",anomaly:"none"}
+   {id:"h",clickCount:20,conversionCount:1,attributedCommissionCents:20,observedAt:"2026-09-20T00:00:00Z",anomaly:"halt"},
+   {id:"f1",clickCount:40,conversionCount:2,attributedCommissionCents:40,observedAt:"2026-09-22T00:00:00Z",anomaly:"none",recoveryEpisodeId:"h",recoveryEvidenceScore:.8},
+   {id:"f2",clickCount:50,conversionCount:3,attributedCommissionCents:50,observedAt:"2026-09-22T12:00:00Z",anomaly:"none",recoveryEpisodeId:"h",recoveryEvidenceScore:.8},
+   {id:"f3",clickCount:55,conversionCount:4,attributedCommissionCents:60,observedAt:"2026-09-22T18:00:00Z",anomaly:"none",recoveryEpisodeId:"h",recoveryEvidenceScore:.8}
   ],saveIfAbsent:async(s:any)=>s
  };
  const overview:any={campaigns:[{campaignId:"c",productId:"p",marketplaceId:"m",clickCount:60,trackingLinkCount:1,contentCount:1,publishedContentCount:1,scheduledContentCount:0,attributedConversionCount:6,attributedRevenueCents:1000,attributedCommissionCents:120,conversionRate:.1}]};
