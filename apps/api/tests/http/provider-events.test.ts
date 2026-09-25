@@ -106,7 +106,7 @@ test("rejects event ingestion for an unknown connection", async () => {
 
 test("rejects unsigned provider events", async () => {
   const { app } = await buildHarness();
-  const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/signed-test/events", payload: JSON.stringify({ id: "evt_104", type: "conversion.created" }) });
+  const response = await app.inject({ method: "POST", url: "/api/v1/marketplaces/signed-test/events", headers: { "content-type": "application/json" }, payload: JSON.stringify({ id: "evt_104", type: "conversion.created" }) });
   assert.equal(response.statusCode, 401);
   await app.close();
 });
