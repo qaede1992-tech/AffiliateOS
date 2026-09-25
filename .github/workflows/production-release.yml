@@ -99,10 +99,19 @@ jobs:
           done
           for attempt in $(seq 1 30); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/ready; then
-              exit 0
+              break
             fi
             sleep 2
           done
+          security_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null http://affiliateos-api-smoke:3001/api/v1/health)
+          printf '%s\\n' "$security_headers" | grep -Fi 'X-Content-Type-Options: nosniff' >/dev/null
+          printf '%s\\n' "$security_headers" | grep -Fi 'X-Frame-Options: DENY' >/dev/null
+          printf '%s\\n' "$security_headers" | grep -Fi 'Referrer-Policy: no-referrer' >/dev/null
+          printf '%s\\n' "$security_headers" | grep -Fi 'Permissions-Policy:' >/dev/null
+          printf '%s\\n' "$security_headers" | grep -Fi 'Strict-Transport-Security:' >/dev/null
+          cors_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null -H 'Origin: https://dashboard.example.com' http://affiliateos-api-smoke:3001/api/v1/health)
+          printf '%s\\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Origin: https://dashboard.example.com' >/dev/null
+          printf '%s\\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Credentials: true' >/dev/null
           docker logs affiliateos-api-smoke
           exit 1
       - name: Smoke test web release image
