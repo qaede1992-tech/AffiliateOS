@@ -309,6 +309,13 @@
       "when": 1794050403000,
       "tag": "0046_autonomous_action_recovery_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1790309000000,
+      "tag": "0047_product_discovery_signals",
+      "breakpoints": true
     }
   ]
 }

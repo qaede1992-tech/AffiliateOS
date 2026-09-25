@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AffiliateAccount, AffiliateOffer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, MarketplaceOfferInput, Product, UpdateMarketplaceConnectionRequest } from "@affiliateos/shared";
+import type { AffiliateAccount, AffiliateOffer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, MarketplaceOfferInput, Product, ProductDiscoverySignals, UpdateMarketplaceConnectionRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import { MARKETPLACE_ENABLE_CONFIRMATION } from "./marketplace-confirmation.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository } from "./repository.js";
@@ -39,7 +39,7 @@ export class MarketplaceService {
     const externalProductId = input.externalProductId.trim();
     const existing = await this.products.findByMarketplaceProduct(connection.id, externalProductId);
     const timestamp = now();
-    const product: Product = { id: existing?.id ?? randomUUID(), marketplaceId: connection.id, externalProductId, name: input.name.trim(), description: input.description?.trim(), category: input.category?.trim(), priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp }; try { return await this.products.save(product); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.products.findByMarketplaceProduct(connection.id, externalProductId); if (raced) return this.products.save({ ...raced, name: input.name.trim(), description: input.description?.trim(), category: input.category?.trim(), priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.trim().toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", updatedAt: timestamp }); } throw error; } }
+    const product: Product = { id: existing?.id ?? randomUUID(), marketplaceId: connection.id, externalProductId, name: input.name.trim(), description: input.description?.trim(), category: input.category?.trim(), priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, discoverySignals: normalizeDiscoverySignals(input.metadata), imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp }; try { return await this.products.save(product); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.products.findByMarketplaceProduct(connection.id, externalProductId); if (raced) return this.products.save({ ...raced, name: input.name.trim(), description: input.description?.trim(), category: input.category?.trim(), priceCents: input.priceCents, originalPriceCents: input.originalPriceCents, currency: input.currency.trim().toUpperCase(), ratingMilli: input.ratingMilli, reviewCount: input.reviewCount ?? 0, soldCount: input.soldCount ?? 0, discoverySignals: normalizeDiscoverySignals(input.metadata), imageUrl: input.imageUrl, productUrl: input.productUrl, status: input.availability === "out_of_stock" ? "inactive" : "active", updatedAt: timestamp }); } throw error; } }
   private async accountFor(connection: MarketplaceConnection): Promise<AffiliateAccount> { const existing = await this.accounts.findByMarketplace(connection.id); if (existing) return existing; const timestamp = now(); const account: AffiliateAccount = { id: randomUUID(), marketplaceId: connection.id, name: `${connection.name} affiliate account`, status: "active", credentialReference: connection.credentialReference, configuration: {}, createdAt: timestamp, updatedAt: timestamp }; try { return await this.accounts.save(account); } catch (error) { if (isUniqueViolation(error)) { const raced = await this.accounts.findByMarketplace(connection.id); if (raced) return raced; } throw error; } }
 }
 const secretKey = /(secret|token|password|api[_-]?key|client[_-]?secret|authorization)/i;
@@ -57,6 +57,19 @@ function validateAffiliateUrl(value: string): void {
   }
 }
 
+
+function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined): ProductDiscoverySignals | undefined {
+  if (!metadata) return undefined;
+  const audienceReachScore = numberInRange(metadata.audienceReachScore, 0, 100);
+  const viewCount = nonNegativeInteger(metadata.viewCount);
+  const impressionCount = nonNegativeInteger(metadata.impressionCount);
+  const engagementCount = nonNegativeInteger(metadata.engagementCount);
+  const capturedAt = typeof metadata.capturedAt === "string" && Number.isFinite(Date.parse(metadata.capturedAt)) ? metadata.capturedAt : undefined;
+  if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined) return undefined;
+  return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt };
+}
+function numberInRange(value: unknown, min: number, max: number): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : undefined; }
+function nonNegativeInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined; }
 
 function validateMarketplaceProductInput(input: MarketplaceProductInput): void {
   if (!input.externalProductId.trim() || !input.name.trim()) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace products require an external product id and name.", 400);
