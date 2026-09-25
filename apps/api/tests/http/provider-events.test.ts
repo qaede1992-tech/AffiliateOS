@@ -61,7 +61,7 @@ async function buildHarness() {
 function signedHeaders(body: string, nowMs = Date.now()) {
   const timestamp = Math.floor(nowMs / 1000).toString();
   const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
-  return { "x-provider-timestamp": timestamp, "x-provider-signature": `v1=${signature}` };
+  return { "content-type": "application/json", "x-provider-timestamp": timestamp, "x-provider-signature": `v1=${signature}` };
 }
 
 test("accepts a valid signed provider event and deduplicates retries", async () => {
