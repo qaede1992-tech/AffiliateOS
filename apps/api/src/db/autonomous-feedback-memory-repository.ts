@@ -21,7 +21,8 @@ const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   recoveryState: (row.recoveryState ?? "none") as "none" | "recovering" | "recovered",
   recoveryClicks: row.recoveryClicks ?? 0,
   recoveryEvidenceScore: row.recoveryEvidenceScore ?? 0,
-  recoveryQualityScore: row.recoveryQualityScore ?? 0,\n  recoveryPolicy: row.recoveryPolicy as AutonomousFeedbackSnapshot["recoveryPolicy"],
+  recoveryQualityScore: row.recoveryQualityScore ?? 0,
+  recoveryPolicy: row.recoveryPolicy as AutonomousFeedbackSnapshot["recoveryPolicy"],
   recoveryEpisodeId: row.recoveryEpisodeId ?? undefined,
   observedAt: row.observedAt
 });
@@ -46,8 +47,9 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       recoveryState: snapshot.recoveryState,
       recoveryClicks: snapshot.recoveryClicks,
       recoveryEvidenceScore: snapshot.recoveryEvidenceScore,
-      recoveryQualityScore: snapshot.recoveryQualityScore,\n      recoveryPolicy: snapshot.recoveryPolicy,
-      recoveryQualityScore: snapshot.recoveryQualityScore,\n      recoveryEpisodeId: snapshot.recoveryEpisodeId,
+      recoveryQualityScore: snapshot.recoveryQualityScore,
+      recoveryPolicy: snapshot.recoveryPolicy,
+      recoveryEpisodeId: snapshot.recoveryEpisodeId,
       observedAt: snapshot.observedAt
     });
     return snapshot;
@@ -104,7 +106,13 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
     return rows.map(toDomain);
   }
 
-  async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<import("../domain/autonomous-feedback-memory.js").RecoveryEpisodeAnalytics | undefined> {\n    const snapshots = await this.recentByProductAndMarketplace(productId, marketplaceId, new Date(Date.now()-30*24*60*60*1000).toISOString());\n    const episode = snapshots.filter(s=>s.recoveryEpisodeId===episodeId); const start=episode[0]; if(!start) return undefined; const end=episode.find(s=>s.recoveryState==="recovered"); const last=end??episode.at(-1)!;\n    return {episodeId,startedAt:start.observedAt,endedAt:end?.observedAt,durationMs:end?Math.max(0,Date.parse(end.observedAt)-Date.parse(start.observedAt)):undefined,snapshotCount:episode.length,recoveryClicks:last.recoveryClicks,conversionDelta:last.conversionCount-start.conversionCount,commissionDeltaCents:last.attributedCommissionCents-start.attributedCommissionCents,averageQualityScore:episode.reduce((sum,s)=>sum+s.recoveryQualityScore,0)/episode.length,closingQualityScore:end?.recoveryQualityScore,closed:Boolean(end)};\n  }\n\n  async latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
+  async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<import("../domain/autonomous-feedback-memory.js").RecoveryEpisodeAnalytics | undefined> {
+    const snapshots = await this.recentByProductAndMarketplace(productId, marketplaceId, new Date(Date.now()-30*24*60*60*1000).toISOString());
+    const episode = snapshots.filter(s=>s.recoveryEpisodeId===episodeId); const start=episode[0]; if(!start) return undefined; const end=episode.find(s=>s.recoveryState==="recovered"); const last=end??episode.at(-1)!;
+    return {episodeId,startedAt:start.observedAt,endedAt:end?.observedAt,durationMs:end?Math.max(0,Date.parse(end.observedAt)-Date.parse(start.observedAt)):undefined,snapshotCount:episode.length,recoveryClicks:last.recoveryClicks,conversionDelta:last.conversionCount-start.conversionCount,commissionDeltaCents:last.attributedCommissionCents-start.attributedCommissionCents,averageQualityScore:episode.reduce((sum,s)=>sum+s.recoveryQualityScore,0)/episode.length,closingQualityScore:end?.recoveryQualityScore,closed:Boolean(end)};
+  }
+
+  async latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined> {
     const rows = await this.db.select().from(autonomousFeedbackSnapshots)
       .where(and(eq(autonomousFeedbackSnapshots.productId, productId), eq(autonomousFeedbackSnapshots.marketplaceId, marketplaceId)))
       .orderBy(desc(autonomousFeedbackSnapshots.observedAt), desc(autonomousFeedbackSnapshots.id))
