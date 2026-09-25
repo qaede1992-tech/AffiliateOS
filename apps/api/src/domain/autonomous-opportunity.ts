@@ -217,7 +217,7 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
   if (exact) weighted.push([exact, 0.5]);
   if (category) weighted.push([category, 0.3]);
   if (audience.length) weighted.push([audience.reduce((best, signal) => Math.abs(signal.adjustment) > Math.abs(best.adjustment) ? signal : best), 0.2]);
-  if (globalCategory && (!category || category.confidence < 0.35)) weighted.push([globalCategory, 0.1 * (1 - (category?.confidence ?? 0))]);
+  if (globalCategory && (!category || (category.confidence ?? 0) < 0.35)) weighted.push([globalCategory, 0.1 * (1 - (category?.confidence ?? 0))]);
   if (globalAudience.length && !audience.length) weighted.push([globalAudience.reduce((best, signal) => Math.abs(signal.adjustment) > Math.abs(best.adjustment) ? signal : best), 0.1]);
   if (!weighted.length) return undefined;
   const primary = weighted[0];
