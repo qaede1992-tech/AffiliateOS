@@ -1,4 +1,4 @@
-import type { Conversion, ConversionAttribution, CreateConversionAttributionRequest, TrackingLink } from "@affiliateos/shared";
+import type { Conversion, ConversionAttribution, TrackingLink } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { Repository } from "./repository.js";
 
@@ -32,7 +32,7 @@ export class ConversionAttributionService {
     return this.attributions.findByConversion(conversionId);
   }
 
-  async create(conversionId: string, input: CreateConversionAttributionRequest): Promise<ConversionAttribution> {
+  async create(conversionId: string, input: { trackingLinkId: string }): Promise<ConversionAttribution> {
     const conversion = await this.conversions.findById(conversionId);
     if (!conversion) throw new DomainError("CONVERSION_NOT_FOUND", "The conversion does not exist.", 404);
     const trackingLink = await this.trackingLinks.findById(input.trackingLinkId);
