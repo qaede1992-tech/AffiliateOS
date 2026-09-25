@@ -1,3 +1,4 @@
+import { PassThrough } from "node:stream";
 import type { FastifyRequest } from "fastify";
 
 const rawBodies = new WeakMap<object, string>();
@@ -17,13 +18,22 @@ export function captureRawBody(request: FastifyRequest, _reply: unknown, payload
 
   const stream = payload as NodeJS.ReadableStream;
   const chunks: Buffer[] = [];
+  const passthrough = new PassThrough();
+
   stream.on("data", (chunk: Buffer | string) => {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   });
   stream.on("end", () => {
     rawBodies.set(request, Buffer.concat(chunks).toString("utf8"));
   });
-  return payload;
+
+  const contentLength = request.headers["content-length"];
+  if (contentLength) {
+    (passthrough as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength = Number(contentLength);
+  }
+
+  stream.pipe(passthrough);
+  return passthrough;
 }
 
 export function getRawBody(request: FastifyRequest): string | undefined {
