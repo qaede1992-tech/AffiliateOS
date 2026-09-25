@@ -480,3 +480,33 @@ test("POST /api/v1/autonomous/runs/:runId/retry rejects an unknown run", async (
   assert.equal(response.json().error, "AUTONOMOUS_RUN_NOT_FOUND");
   await app.close();
 });
+
+
+test("GET /api/v1/autonomous/status requires an authorized operator", async () => {
+  const token = "test-token-that-is-long-enough";
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+
+  const viewerApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "viewer", role: "viewer" },
+  });
+  const viewerResponse = await viewerApp.inject({
+    method: "GET",
+    url: "/api/v1/autonomous/status",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(viewerResponse.statusCode, 403);
+  assert.equal(viewerResponse.json().error, "FORBIDDEN");
+  await viewerApp.close();
+
+  const operatorApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator", role: "operator" },
+  });
+  const operatorResponse = await operatorApp.inject({
+    method: "GET",
+    url: "/api/v1/autonomous/status",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(operatorResponse.statusCode, 200);
+  assert.equal(operatorResponse.json().active, false);
+  await operatorApp.close();
+});
