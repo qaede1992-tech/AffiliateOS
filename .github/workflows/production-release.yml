@@ -165,6 +165,12 @@ jobs:
           done
           docker logs affiliateos-web-smoke
           exit 1
+
+      - name: Verify web security headers
+        run: |
+          headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null http://affiliateos-web-smoke/)
+          printf '%s\n' "$headers" | grep -Fi 'X-Content-Type-Options: nosniff' >/dev/null
+          printf '%s\n' "$headers" | grep -Fi 'X-Frame-Options: DENY' >/dev/null
       - name: Cleanup release smoke containers
         if: always()
         run: |
