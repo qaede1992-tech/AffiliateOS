@@ -30,8 +30,10 @@ test("publisher readiness reports ready when adapter and credential resolver are
   const service = new PublisherReadinessService([publisher], true);
   assert.deepEqual(service.get("instagram"), {
     platform: "instagram",
-    status: "ready",
+    status: "unconfigured",
     publisherConfigured: true,
-    credentialResolutionConfigured: true
+    credentialResolutionConfigured: true,
+    activeAccountConfigured: false,
+    credentialReferenceConfigured: false
   });
 });
