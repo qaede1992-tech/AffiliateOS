@@ -20,7 +20,9 @@ test("publisher readiness reports adapter configured but credential resolution u
     platform: "instagram",
     status: "unconfigured",
     publisherConfigured: true,
-    credentialResolutionConfigured: false
+    credentialResolutionConfigured: false,
+    activeAccountConfigured: false,
+    credentialReferenceConfigured: false
   });
 });
 
