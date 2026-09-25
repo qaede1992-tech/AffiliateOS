@@ -62,6 +62,16 @@ describe("opportunity scoring", () => {
     const highValue = scoreOpportunity({ product: product({ id: "high-value" }), offers: [offer({ id: "high-value-offer", productId: "high-value", commissionRateBps: 1400, commissionAmountCents: 2500 })], audience: ["skincare"] });
     assert.ok(highValue.breakdown.commission > lowValue.breakdown.commission);
   });
+  it("uses persisted audience reach signals in demand scoring", () => {
+    const baseline = scoreOpportunity({ product: product(), offers: [offer()], audience: ["skincare"] });
+    const highReach = scoreOpportunity({
+      product: product({ discoverySignals: { audienceReachScore: 100, viewCount: 1000000 } }),
+      offers: [offer()],
+      audience: ["skincare"]
+    });
+    assert.ok(highReach.breakdown.demand > baseline.breakdown.demand);
+    assert.ok(highReach.reasons.includes("Strong demand and audience-reach signals"));
+  });
   it("ranks opportunities deterministically by score and product id", () => {
     const first = product({ id: "product-a" });
     const second = product({ id: "product-b", soldCount: 10, reviewCount: 2, ratingMilli: 3000 });
