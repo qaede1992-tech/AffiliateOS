@@ -55,6 +55,30 @@ describe("PublicationScheduler", () => {
     assert.equal((errors[0] as Error).message, "worker failure");
   });
 
+  it("preserves successful worker completion when the result observer fails", async () => {
+    const errors: unknown[] = [];
+    const results = [{ jobId: "job-1", status: "completed" }];
+    const worker = { runOnce: async () => results } as unknown as PublicationWorker;
+    const scheduler = new PublicationScheduler(worker, {
+      onResults: () => { throw new Error("observer failure"); },
+      onError: (error) => errors.push(error)
+    });
+
+    await scheduler.runNow();
+
+    assert.equal(errors.length, 1);
+    assert.equal((errors[0] as Error).message, "observer failure");
+  });
+
+  it("does not reject when the error observer itself fails", async () => {
+    const worker = { runOnce: async () => { throw new Error("worker failure"); } } as unknown as PublicationWorker;
+    const scheduler = new PublicationScheduler(worker, {
+      onError: () => { throw new Error("error observer failure"); }
+    });
+
+    await scheduler.runNow();
+  });
+
   it("starts an immediate run and stops cleanly while a run is active", async () => {
     const first = deferred<void>();
     let calls = 0;
