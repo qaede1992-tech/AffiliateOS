@@ -126,7 +126,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
             : stableRecovery ? "recovered" : "recovering")
         : "none";
       const recoveryEpisodeId = recoveryAnchor ? recoveryAnchor.id : undefined;
-      const recoveryEpisodeMetrics = recoveryAnchor ? {
+      const recoveryEpisodeMetrics: RecoveryEpisodeMetrics | undefined = recoveryAnchor ? {
         recoveryDurationMs: Math.max(0, Date.parse(observedAt) - Date.parse(recoveryAnchor.observedAt)),
         recoveryClicks,
         conversionDelta: signal.conversionCount - recoveryAnchor.conversionCount,
@@ -153,7 +153,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const adjustment = anomaly === "halt"
         ? 0
         : Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
-      const snapshot = {
+      const snapshot: AutonomousFeedbackSnapshot = {
         id: crypto.randomUUID(),
         observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
         productId,
@@ -289,6 +289,7 @@ async function activeRecoveryEpisode(
   const haltIndex = ordered.map((snapshot) => snapshot.anomaly).lastIndexOf("halt");
   if (haltIndex < 0) return undefined;
   const halt = ordered[haltIndex];
+  if (!halt) return undefined;
   const closed = halt.recoveryState === "recovering" && ordered.slice(haltIndex + 1).some((snapshot) =>
     snapshot.recoveryEpisodeId === halt.id && snapshot.recoveryState === "recovered"
   );
