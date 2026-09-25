@@ -72,7 +72,20 @@ describe("opportunity scoring", () => {
     assert.ok(highReach.breakdown.demand > baseline.breakdown.demand);
     assert.ok(highReach.reasons.includes("Strong demand and audience-reach signals"));
   });
-  it("decays stale discovery reach signals instead of treating them as current", () => {\n    const recent = scoreOpportunity({\n      product: product({ discoverySignals: { audienceReachScore: 100, viewCount: 1000000, capturedAt: new Date().toISOString() } }),\n      offers: [offer()],\n      audience: ["skincare"]\n    });\n    const stale = scoreOpportunity({\n      product: product({ discoverySignals: { audienceReachScore: 100, viewCount: 1000000, capturedAt: "2026-07-01T00:00:00.000Z" } }),\n      offers: [offer()],\n      audience: ["skincare"]\n    });\n    assert.ok(recent.breakdown.demand > stale.breakdown.demand);\n  });\n  it("ranks opportunities deterministically by score and product id", () => {
+  it("decays stale discovery reach signals instead of treating them as current", () => {
+    const recent = scoreOpportunity({
+      product: product({ discoverySignals: { audienceReachScore: 100, viewCount: 1000000, capturedAt: new Date().toISOString() } }),
+      offers: [offer()],
+      audience: ["skincare"]
+    });
+    const stale = scoreOpportunity({
+      product: product({ discoverySignals: { audienceReachScore: 100, viewCount: 1000000, capturedAt: "2026-07-01T00:00:00.000Z" } }),
+      offers: [offer()],
+      audience: ["skincare"]
+    });
+    assert.ok(recent.breakdown.demand > stale.breakdown.demand);
+  });
+  it("ranks opportunities deterministically by score and product id", () => {
     const first = product({ id: "product-a" });
     const second = product({ id: "product-b", soldCount: 10, reviewCount: 2, ratingMilli: 3000 });
     const results = rankOpportunities([
