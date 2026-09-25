@@ -46,7 +46,18 @@ describe("opportunity scoring", () => {
     assert.equal(result.breakdown.availability, 100);
   });
     it("penalizes limited availability", () => { const result = scoreOpportunity({ product: product(), offers: [offer({ availability: "limited" })], audience: ["skincare"] }); assert.equal(result.breakdown.availability, 55); });
-  it("selects the higher commission value when rates alone disagree", () => {\n    const result = scoreOpportunity({\n      product: product(),\n      offers: [\n        offer({ id: "high-rate-low-value", commissionRateBps: 1800, commissionAmountCents: 100 }),\n        offer({ id: "lower-rate-high-value", commissionRateBps: 1400, commissionAmountCents: 2500 })\n      ],\n      audience: ["skincare"]\n    });\n    assert.equal(result.offerId, "lower-rate-high-value");\n  });\n  it("accounts for commission value when commission amounts are provided", () => {
+  it("selects the higher commission value when rates alone disagree", () => {
+    const result = scoreOpportunity({
+      product: product(),
+      offers: [
+        offer({ id: "high-rate-low-value", commissionRateBps: 1800, commissionAmountCents: 100 }),
+        offer({ id: "lower-rate-high-value", commissionRateBps: 1400, commissionAmountCents: 2500 })
+      ],
+      audience: ["skincare"]
+    });
+    assert.equal(result.offerId, "lower-rate-high-value");
+  });
+  it("accounts for commission value when commission amounts are provided", () => {
     const lowValue = scoreOpportunity({ product: product({ id: "low-value" }), offers: [offer({ id: "low-value-offer", productId: "low-value", commissionRateBps: 1800, commissionAmountCents: 100 })], audience: ["skincare"] });
     const highValue = scoreOpportunity({ product: product({ id: "high-value" }), offers: [offer({ id: "high-value-offer", productId: "high-value", commissionRateBps: 1400, commissionAmountCents: 2500 })], audience: ["skincare"] });
     assert.ok(highValue.breakdown.commission > lowValue.breakdown.commission);
