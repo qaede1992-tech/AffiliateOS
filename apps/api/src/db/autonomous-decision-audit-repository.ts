@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { AutonomousDecisionAudit, AutonomousDecisionAuditRepository } from "../domain/autonomous-decision-audit.js";
 import { autonomousDecisionAudits } from "./schema.js";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -44,7 +43,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
         });
       }
     }
-    return rows.map((row: any) => ({ cycleId: row.cycleId, auditId: row.id, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, selectionMode: row.selectionMode ?? undefined, score: row.score, policy: row.policy, reasons: row.reasons, category: row.category ?? undefined, audienceSegments: row.audienceSegments ?? undefined, createdAt: row.createdAt, recovery: row.recovery ?? undefined, outcome: row.outcomeStatus ? { offerId: row.outcomeOfferId ?? undefined, status: row.outcomeStatus, campaignId: row.outcomeCampaignId ?? undefined, error: row.outcomeError ?? undefined, observedAt: row.outcomeObservedAt, analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined, explorationEvaluation: row.explorationEvaluation ?? undefined } : undefined } : undefined }));
+    return rows.map((row: any) => ({ cycleId: row.cycleId, auditId: row.id, productId: row.productId, marketplaceId: row.marketplaceId, selected: row.selected, selectionMode: row.selectionMode ?? undefined, score: row.score, policy: row.policy, reasons: row.reasons, category: row.category ?? undefined, audienceSegments: row.audienceSegments ?? undefined, createdAt: row.createdAt, recovery: row.recovery ?? undefined, outcome: row.outcomeStatus ? { offerId: row.outcomeOfferId ?? undefined, status: row.outcomeStatus, campaignId: row.outcomeCampaignId ?? undefined, error: row.outcomeError ?? undefined, observedAt: row.outcomeObservedAt, analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined, explorationEvaluation: row.explorationEvaluation ?? undefined } : undefined }));
   }
 
   async saveMany(audits: AutonomousDecisionAudit[]): Promise<void> {
