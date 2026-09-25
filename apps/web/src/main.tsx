@@ -39,6 +39,8 @@ function App() {
   const [offerRate, setOfferRate] = useState("");
   const [isCreatingOffer, setIsCreatingOffer] = useState(false);
   const [togglingMarketplaceSlug, setTogglingMarketplaceSlug] = useState<string | null>(null);
+  const [autonomousStatus, setAutonomousStatus] = useState<{ running: boolean; active: boolean; lastStartedAt?: string; lastCompletedAt?: string; lastError?: string } | null>(null);
+  const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
 
   const loadDashboard = async () => {
     const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, analytics] = await Promise.all([
@@ -106,7 +108,9 @@ function App() {
   const handleMarketplaceToggle = async (connection: MarketplaceConnectionView) => {
     const enable = !connection.enabled;
     if (enable) {
-      const confirmed = window.confirm(`Enable marketplace connection “${connection.name}”?\n\nThis will allow AffiliateOS to use this marketplace connection for operational workflows.`);
+      const confirmed = window.confirm(`Enable marketplace connection “${connection.name}”?
+
+This will allow AffiliateOS to use this marketplace connection for operational workflows.`);
       if (!confirmed) return;
     }
 
@@ -119,6 +123,20 @@ function App() {
       setError(requestError instanceof Error ? requestError.message : "Unable to change marketplace connection state.");
     } finally {
       setTogglingMarketplaceSlug(null);
+    }
+  };
+
+  const handleRunAutonomousCycle = async () => {
+    setRunningAutonomousCycle(true);
+    setError(null);
+    try {
+      const response = await api.runAutonomousCycle();
+      if (response.status === "failed") throw new Error(response.error ?? "Autonomous cycle failed.");
+      await loadDashboard();
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to run autonomous cycle.");
+    } finally {
+      setRunningAutonomousCycle(false);
     }
   };
 
@@ -149,6 +167,7 @@ function App() {
           <nav>
             <a className="nav-item active" href="#overview">Overview</a>
             <a className="nav-item" href="#analytics">Analytics</a>
+            <a className="nav-item" href="#autonomous">Autonomous</a>
             <a className="nav-item" href="#workflows">Workflows</a>
             <a className="nav-item" href="#affiliates">Affiliates</a>
             <a className="nav-item" href="#offers">Offers</a>
@@ -174,6 +193,16 @@ function App() {
 
         <section className="metrics-grid" aria-label="Analytics metrics">
           {metrics.map((metric) => <article className="metric-card" key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.detail}</small></article>)}
+        </section>
+
+        <section className="workspace-grid" id="autonomous">
+          <article className="panel">
+            <div className="panel-heading"><div><p className="eyebrow">Automation</p><h3>Autonomous engine</h3></div><span className={`badge ${autonomousStatus?.running ? "active" : "inactive"}`}>{autonomousStatus?.running ? "running" : "stopped"}</span></div>
+            <p>{autonomousStatus?.active ? "A cycle is currently executing." : "Discovery, selection, campaign execution, and optimization are available from the autonomous cycle."}</p>
+            {autonomousStatus?.lastCompletedAt && <small>Last completed: {new Date(autonomousStatus.lastCompletedAt).toLocaleString()}</small>}
+            {autonomousStatus?.lastError && <p className="error-message">{autonomousStatus.lastError}</p>}
+            <div className="affiliate-form"><button type="button" onClick={() => void handleRunAutonomousCycle()} disabled={runningAutonomousCycle || autonomousStatus?.active}>{runningAutonomousCycle ? "Running..." : autonomousStatus?.active ? "Cycle active" : "Run cycle now"}</button></div>
+          </article>
         </section>
 
         <section className="analytics-section" id="analytics">
