@@ -56,7 +56,7 @@ const rejectionReasons = (
   if (item.score < minimumScore) reasons.push(`Score ${item.score} is below minimum ${minimumScore}`);
   if (!item.offerId) reasons.push("No eligible affiliate offer");
   if (requiredAudience.length > 0 && item.breakdown.audienceFit <= 0) reasons.push("Does not match the required audience");
-  if (item.breakdown.commission * 20 < minimumCommissionRateBps) reasons.push("Commission rate is below the minimum");
+  if (item.breakdown.commissionRateBps < minimumCommissionRateBps) reasons.push("Commission rate is below the minimum");
   if ((item.breakdown.commissionAmountCents ?? 0) < minimumCommissionAmountCents) reasons.push("Commission amount is below the minimum");
   if (item.breakdown.demand < minimumDemandScore) reasons.push("Demand score is below the minimum");
   return unique(reasons);
@@ -125,7 +125,7 @@ export class AutonomousOpportunitySelector {
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       return item.score >= minimumScore && Boolean(item.offerId) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
-        item.breakdown.commission * 20 >= minimumCommissionRateBps &&
+        item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
         (item.breakdown.commissionAmountCents ?? 0) >= minimumCommissionAmountCents &&
         item.breakdown.demand >= minimumDemandScore &&
         item.product.status === "active";
