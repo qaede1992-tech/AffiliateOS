@@ -159,7 +159,11 @@ jobs:
           docker run --detach --name affiliateos-web-smoke --network affiliateos-release-smoke affiliateos-web:${{ github.sha }}
           for attempt in $(seq 1 30); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-web-smoke/healthz; then
-              exit 0
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs affiliateos-web-smoke
+              exit 1
             fi
             sleep 2
           done
