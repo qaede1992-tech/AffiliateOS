@@ -119,7 +119,7 @@ describe("autonomous opportunity selection", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("a"), offers: [offer("a")] },
       { product: product("b"), offers: [offer("b")] }
-    ], { minimumScore: 0, maximumResults: 1, explorationRate: 1 }, new Map([
+    ], { minimumScore: 0, maximumResults: 1, explorationRate: 0 }, new Map([
       ["market-1:a", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 2, trendAdjustment: 0 }],
       ["market-1:b", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 1, trendAdjustment: 0 }]
     ]));
