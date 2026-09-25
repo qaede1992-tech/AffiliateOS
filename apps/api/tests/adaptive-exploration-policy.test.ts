@@ -140,3 +140,48 @@ test("adaptive exploration consumes evaluator deprioritization with positive com
   assert.equal(global?.confidence, 1);
   assert.equal(global?.conversionRate, 0.1);
 });
+
+
+test("adaptive exploration gives category evidence precedence over broader marketplace evidence", async () => {
+  const reader = { list: async () => [] };
+  const stateRepository = {
+    applyEvaluatedAudits: async () => {},
+    applyOptimizationFeedback: async () => {},
+    listByMarketplaces: async () => [
+      {
+        id: "category-state",
+        marketplaceId: "m1",
+        dimension: "category",
+        dimensionKey: "electronics",
+        sampleCount: 5,
+        promotedCount: 0,
+        deprioritizedCount: 5,
+        optimizationPositiveCount: 0,
+        optimizationNegativeCount: 0,
+        observedAt: new Date().toISOString()
+      },
+      {
+        id: "marketplace-state",
+        marketplaceId: "m1",
+        dimension: "marketplace",
+        dimensionKey: "m1",
+        sampleCount: 5,
+        promotedCount: 5,
+        deprioritizedCount: 0,
+        optimizationPositiveCount: 0,
+        optimizationNegativeCount: 0,
+        observedAt: new Date().toISOString()
+      }
+    ]
+  };
+  const provider = new AdaptiveExplorationPolicyProvider(
+    reader,
+    { minimumSamples: 5, maximumRate: 0.5 },
+    stateRepository
+  );
+  const rates = await provider.getRates(
+    [candidate("p0", "m1", "electronics")],
+    { explorationRate: 0.2 }
+  );
+  assert.equal(rates.get("p0"), 0.3);
+});
