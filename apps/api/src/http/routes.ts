@@ -19,7 +19,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   });
   app.get("/api/v1/autonomous/runs", writeGuard, async (request) => { const query = autonomousRunQuerySchema.parse(request.query); return list(await services.autonomousRuns.list(query)); });
   app.get("/api/v1/autonomous/runs/:runId", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); return services.autonomousRuns.findById(runId); });
-  app.post("/api/v1/autonomous/runs/:runId/retry", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); const run = await services.autonomousRuns.retry(runId); auditSecurityEvent(request.log, request, "autonomous_run_retry_requested", { runId, status: run.status, attemptCount: run.attemptCount }); return run; });
+  app.post("/api/v1/autonomous/runs/:runId/retry", writeGuard, async (request) => { const { runId } = autonomousRunIdSchema.parse(request.params); const run = await services.autonomousRuns.retry(runId); auditSecurityEvent(request.log, request, "autonomous_run_retry_requested", { runId, status: run.status, attemptCount: String(run.attemptCount) }); return run; });
   app.post("/api/v1/autonomous/cycles/run", writeGuard, async (request, reply) => {
     const result = await services.autonomousScheduler.runNow();
     const status = services.autonomousScheduler.status;
