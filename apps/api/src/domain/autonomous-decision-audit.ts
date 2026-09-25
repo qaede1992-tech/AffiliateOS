@@ -2,6 +2,8 @@ import type { ExplorationEvaluation } from "./exploration-evaluator.js";
 import type { OpportunitySelectionAudit } from "./autonomous-opportunity.js";
 
 export type AutonomousDecisionAudit = OpportunitySelectionAudit & {
+  performanceRegime?: "rising" | "stable" | "declining" | "volatile";
+  performanceRegimeConfidence?: number;
   cycleId: string;
   createdAt: string;
   recovery?: AutonomousDecisionRecovery;
