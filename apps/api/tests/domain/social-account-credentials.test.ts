@@ -30,3 +30,28 @@ test("revoking an already credential-less account is idempotent", async () => {
   assert.equal(result.status, "inactive");
   assert.equal(result.hasCredentialReference, false);
 });
+
+
+test("social account creation rejects raw credential values", async () => {
+  const repository = new InMemorySocialAccountRepository();
+  const service = new SocialAccountService(repository);
+  await assert.rejects(
+    () => service.create({
+      platform: "instagram",
+      accountReference: "creator-raw",
+      credentialReference: "raw-access-token"
+    }),
+    (error: unknown) => error instanceof Error && error.message === "Social credential references must be opaque secret-manager references."
+  );
+});
+
+test("social credential rotation requires an opaque reference", async () => {
+  const account = { id: "account-3", platform: "facebook", accountReference: "creator-3", status: "active" as const, connection: {}, credentialReference: "vault://social/3", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const repository = new InMemorySocialAccountRepository();
+  await repository.save(account);
+  const service = new SocialAccountService(repository);
+  await assert.rejects(
+    () => service.rotateCredential(account.id, "plain-token"),
+    (error: unknown) => error instanceof Error && error.message === "Social credential references must be opaque secret-manager references."
+  );
+});
