@@ -128,13 +128,15 @@ export class CampaignOrchestrator {
       if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "processing", { campaignId: campaign.id });
 
       const offerAttachment = await this.campaigns.attachOffer(campaign.id, executionOffer.id);
+      const affiliateUrl = executionOffer.affiliateUrl;
+      if (!affiliateUrl) throw new Error("Executable affiliate offer is missing an affiliate URL.");
       const existingLinks = await this.tracking.list(campaign.id);
       const trackingLink = existingLinks.find((link) =>
         link.affiliateOfferId === executionOffer.id &&
-        link.destinationUrl === executionOffer.affiliateUrl &&
+        link.destinationUrl === affiliateUrl &&
         link.status === "active"
       ) ??
-        await this.tracking.create({ affiliateOfferId: executionOffer.id, campaignId: campaign.id, destinationUrl: executionOffer.affiliateUrl, code: trackingCodeCandidate(existingLinks, input.idempotencyKey, campaign.id, executionOffer.id) });
+        await this.tracking.create({ affiliateOfferId: executionOffer.id, campaignId: campaign.id, destinationUrl: affiliateUrl, code: trackingCodeCandidate(existingLinks, input.idempotencyKey, campaign.id, executionOffer.id) });
 
       const existingContent = await this.content.list(campaign.id);
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
