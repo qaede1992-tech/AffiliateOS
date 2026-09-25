@@ -311,6 +311,7 @@ describe("campaign orchestrator", () => {
       contentRepository, campaignRepository, products
     );
     const publisher = {
+      provider: "test",
       supports: (platform: string) => platform === "tiktok",
       publish: async () => ({ status: "published" as const, externalPostId: "post-lifecycle-1" })
     };
