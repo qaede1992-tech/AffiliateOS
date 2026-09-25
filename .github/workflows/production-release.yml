@@ -88,7 +88,7 @@ jobs:
             --env API_HOST=0.0.0.0 \
             --env API_PORT=3001 \
             --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
-            --env API_AUTH_TOKEN=12345678901234567890123456789012 \
+            --env API_AUTH_TOKEN=release-smoke-test-token-123456789012345678901234 \
             --env API_CORS_ORIGIN=https://dashboard.example.com \
             affiliateos-api:${{ github.sha }}
           for attempt in $(seq 1 30); do
@@ -99,12 +99,20 @@ jobs:
           done
           for attempt in $(seq 1 30); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/ready; then
-              exit 0
+              break
             fi
             sleep 2
           done
-          docker logs affiliateos-api-smoke
-          exit 1
+          token='release-smoke-test-token-123456789012345678901234'
+          unauthorized_status=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -o /dev/null -w '%{http_code}' http://affiliateos-api-smoke:3001/api/v1/auth/me)
+          test "$unauthorized_status" = '401'
+          authorized_status=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" http://affiliateos-api-smoke:3001/api/v1/auth/me)
+          test "$authorized_status" = '200'
+          login_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null -H 'Content-Type: application/json' --data "{\"token\":\"$token\"}" http://affiliateos-api-smoke:3001/api/v1/auth/login)
+          printf '%s\\n' "$login_headers" | grep -Fi 'Set-Cookie: affiliateos_session=' >/dev/null
+          printf '%s\\n' "$login_headers" | grep -Fi 'HttpOnly' >/dev/null
+          printf '%s\\n' "$login_headers" | grep -Fi 'SameSite=Strict' >/dev/null
+          exit 0
       - name: Smoke test web release image
         run: |
           docker run --detach --name affiliateos-web-smoke --network affiliateos-release-smoke affiliateos-web:${{ github.sha }}
