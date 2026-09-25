@@ -119,7 +119,7 @@ describe("autonomous opportunity selection", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("a"), offers: [offer("a")] },
       { product: product("b"), offers: [offer("b")] }
-    ], { minimumScore: 0, maximumResults: 1, explorationRate: 1 }, new Map([
+    ], { minimumScore: 0, maximumResults: 1, explorationRate: 0 }, new Map([
       ["market-1:a", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 2, trendAdjustment: 0 }],
       ["market-1:b", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 1, trendAdjustment: 0 }]
     ]));
@@ -168,6 +168,45 @@ describe("autonomous opportunity selection", () => {
     assert.equal(result.selected.length, 2);
     assert.equal(result.selected.filter((item) => item.product.id === "duplicate").length, 1);
     assert.equal(result.selected.find((item) => item.product.id === "duplicate")?.offerId, "offer-high");
+  });
+
+  it("honors marketplace-specific maximum results independently", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("market-1-a", { marketplaceId: "market-1" }), offers: [offer("market-1-a")] },
+      { product: product("market-1-b", { marketplaceId: "market-1" }), offers: [offer("market-1-b")] },
+      { product: product("market-2-a", { marketplaceId: "market-2" }), offers: [offer("market-2-a")] },
+      { product: product("market-2-b", { marketplaceId: "market-2" }), offers: [offer("market-2-b")] }
+    ], { minimumScore: 0 }, {
+      "market-1": { maximumResults: 1 },
+      "market-2": { maximumResults: 2 }
+    });
+    assert.equal(result.selected.length, 3);
+    assert.equal(result.selected.filter((item) => item.product.marketplaceId === "market-1").length, 1);
+    assert.equal(result.selected.filter((item) => item.product.marketplaceId === "market-2").length, 2);
+  });
+
+  it("applies an explicit global maximum as a final cap across marketplaces", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("market-1-a", { marketplaceId: "market-1" }), offers: [offer("market-1-a")] },
+      { product: product("market-1-b", { marketplaceId: "market-1" }), offers: [offer("market-1-b")] },
+      { product: product("market-2-a", { marketplaceId: "market-2" }), offers: [offer("market-2-a")] },
+      { product: product("market-2-b", { marketplaceId: "market-2" }), offers: [offer("market-2-b")] }
+    ], { minimumScore: 0, maximumResults: 2 }, {
+      "market-1": { maximumResults: 2 },
+      "market-2": { maximumResults: 2 }
+    });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["market-1-a", "market-1-b"]);
+  });
+
+  it("uses product-level fallback evidence when classifying exploration", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("fallback-evidence"), offers: [offer("fallback-evidence")] },
+      { product: product("new-candidate", { soldCount: 0, reviewCount: 0, ratingMilli: 0, originalPriceCents: 5000 }), offers: [offer("new-candidate")] }
+    ], { minimumScore: 0, maximumResults: 1, explorationRate: 0 }, new Map([
+      ["fallback-evidence", { clickCount: 100, conversionRate: 0.08, attributedCommissionCents: 1000, commissionPerClickCents: 10, adjustment: 8, trendAdjustment: 0 }]
+    ]));
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["fallback-evidence"]);
+    assert.equal(result.audit.find((item) => item.productId === "fallback-evidence")?.selectionMode, "exploitation");
   });
 
   it("enforces a minimum commission rate", () => {
