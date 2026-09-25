@@ -18,6 +18,17 @@ describe("exploration evaluator", () => {
     const result = evaluateExploration(audit({ clickCount: 100, attributedConversionCount: 4, attributedRevenueCents: 1000, attributedCommissionCents: 100, conversionRate: 0.04 }));
     assert.equal(result?.status, "promote-to-exploitation");
   });
+  it("deprioritizes low conversion even when commission is positive and no commission floor is configured", () => {
+    const result = evaluateExploration(audit({
+      clickCount: 100,
+      attributedConversionCount: 0,
+      attributedRevenueCents: 500,
+      attributedCommissionCents: 25,
+      conversionRate: 0
+    }));
+    assert.equal(result?.status, "deprioritize");
+  });
+
   it("deprioritizes weak exploration results", () => {
     const result = evaluateExploration(audit({ clickCount: 100, attributedConversionCount: 0, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0 }));
     assert.equal(result?.status, "deprioritize");
