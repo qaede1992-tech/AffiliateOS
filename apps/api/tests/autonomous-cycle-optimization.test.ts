@@ -8,6 +8,8 @@ import type { CampaignAnalytics } from "../src/domain/analytics.js";
 
 const analyticsCampaign: CampaignAnalytics = {
   campaignId: "00000000-0000-0000-0000-000000000001",
+  productId: "00000000-0000-0000-0000-000000000002",
+  marketplaceId: "00000000-0000-0000-0000-000000000003",
   clickCount: 20,
   trackingLinkCount: 1,
   contentCount: 1,
@@ -68,4 +70,26 @@ test("optimization state cooldown survives repeated cycle evaluation", async () 
 
   assert.equal(executions, 1);
   assert.equal(second.recommendations[0]?.action, "maintain");
+});
+
+
+test("optimization runner blocks actions during anomaly halt", async () => {
+  let executions = 0;
+  const state = new InMemoryOptimizationStateStore();
+  const optimization = new AutonomousOptimizationRunner(
+    { async overview() { return { clickCount: 20, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 1000, attributedCommissionCents: 100, conversionRate: 0.05, campaigns: [analyticsCampaign] }; } },
+    state,
+    state,
+    { async execute() { executions += 1; return actionResult; } } as never,
+    undefined,
+    undefined,
+    undefined,
+    { async getSignals() { return new Map([["00000000-0000-0000-0000-000000000003:00000000-0000-0000-0000-000000000002", { anomaly: "halt" }]]); } } as never
+  );
+
+  const result = await optimization.run();
+
+  assert.equal(executions, 0);
+  assert.equal(result.recommendations[0]?.action, "maintain");
+  assert.match(result.recommendations[0]?.reasons[0] ?? "", /anomaly halt/);
 });
