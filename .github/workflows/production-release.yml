@@ -80,6 +80,41 @@ jobs:
         run: |
           docker image inspect affiliateos-api:${{ github.sha }} >/dev/null
           docker image inspect affiliateos-web:${{ github.sha }} >/dev/null
+      - name: Smoke test API release image
+        run: |
+          docker network create affiliateos-release-smoke
+          docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke \
+            --env NODE_ENV=production \
+            --env API_HOST=0.0.0.0 \
+            --env API_PORT=3001 \
+            --env DATABASE_URL=postgresql://release:release@127.0.0.1:5432/release \
+            --env API_AUTH_TOKEN=12345678901234567890123456789012 \
+            --env API_CORS_ORIGIN=https://dashboard.example.com \
+            affiliateos-api:${{ github.sha }}
+          for attempt in $(seq 1 30); do
+            if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs affiliateos-api-smoke
+          exit 1
+      - name: Smoke test web release image
+        run: |
+          docker run --detach --name affiliateos-web-smoke --network affiliateos-release-smoke affiliateos-web:${{ github.sha }}
+          for attempt in $(seq 1 30); do
+            if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-web-smoke/healthz; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs affiliateos-web-smoke
+          exit 1
+      - name: Cleanup release smoke containers
+        if: always()
+        run: |
+          docker rm -f affiliateos-api-smoke affiliateos-web-smoke 2>/dev/null || true
+          docker network rm affiliateos-release-smoke 2>/dev/null || true
 
   release-gate:
     runs-on: ubuntu-latest
