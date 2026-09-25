@@ -115,6 +115,22 @@ describe("autonomous opportunity selection", () => {
     assert.equal(result.audit.find((item) => item.productId === "proven")?.selectionMode, "exploitation");
   });
 
+  it("does not explore a product whose adaptive exploration rate is zero", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("disabled-exploration"), offers: [offer("disabled-exploration")] },
+      { product: product("allowed-exploration"), offers: [offer("allowed-exploration")] },
+      { product: product("proven", { soldCount: 0, reviewCount: 0 }), offers: [offer("proven")] }
+    ], { minimumScore: 0, maximumResults: 1, explorationRate: 0.5 }, new Map([
+      ["market-1:proven", { clickCount: 100, conversionRate: 0.04, attributedCommissionCents: 500, commissionPerClickCents: 5, adjustment: 0, trendAdjustment: 0 }]
+    ]), {}, new Map([
+      ["disabled-exploration", 0],
+      ["allowed-exploration", 0.5],
+      ["proven", 0.5]
+    ]));
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["allowed-exploration"]);
+    assert.equal(result.audit.find((item) => item.productId === "disabled-exploration")?.selectionMode, undefined);
+  });
+
   it("does not force exploration when every eligible product has enough evidence", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("a"), offers: [offer("a")] },
