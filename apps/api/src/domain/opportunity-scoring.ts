@@ -27,6 +27,7 @@ const logScore = (value: number, scale: number) => {
   const numeric = Number.isFinite(value) ? Math.max(0, value) : 0;
   return clamp((Math.log10(numeric + 1) / scale) * 100);
 };
+const DISCOVERY_SIGNAL_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty", "makeup", "cosmetic", "skincare"], skincare: ["skincare", "skin", "serum", "moisturizer", "cosmetic"], baby: ["baby", "infant", "newborn", "diaper"], parenting: ["parent", "parenting", "baby", "family"], fashion: ["fashion", "clothing", "apparel", "shoes", "dress"], home: ["home", "decor", "furniture", "storage"], kitchen: ["kitchen", "cook", "cooking", "bake", "utensil"], electronics: ["electronic", "phone", "laptop", "gadget", "computer"], lifestyle: ["lifestyle", "wellness", "fitness", "travel"], "deal-hunters": ["deal", "discount", "sale", "promo", "bundle"] };
 function textFor(product: Product): string { return `${product.name} ${product.description ?? ""} ${product.category ?? ""}`.toLowerCase(); }
 function audienceFit(product: Product, audience: AudienceSegment[]): { score: number; matched: AudienceSegment[] } { if (audience.length === 0) return { score: 50, matched: [] }; const text = textFor(product); const matched = audience.filter((segment) => audienceCategories[segment].some((term) => text.includes(term))); return { score: clamp((matched.length / audience.length) * 100), matched }; }
@@ -69,9 +70,12 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   const commission = offer ? (offer.commissionAmountCents === undefined ? commissionRateScore : clamp(commissionRateScore * 0.6 + commissionAmountScore * 0.4)) : 0;
   const catalogDemand = logScore(product.soldCount, 5) * 0.7 + logScore(product.reviewCount, 5) * 0.3;
   const reachSignals = product.discoverySignals;
-  const audienceReach = reachSignals?.audienceReachScore ?? 0;
+  const capturedAtMs = reachSignals?.capturedAt ? Date.parse(reachSignals.capturedAt) : Number.NaN;
+  const signalAgeMs = Number.isFinite(capturedAtMs) ? Math.max(0, Date.now() - capturedAtMs) : 0;
+  const freshness = Number.isFinite(capturedAtMs) ? Math.pow(0.5, signalAgeMs / DISCOVERY_SIGNAL_HALF_LIFE_MS) : 1;
+  const audienceReach = (reachSignals?.audienceReachScore ?? 0) * freshness;
   const observedReach = Math.max(reachSignals?.viewCount ?? 0, reachSignals?.impressionCount ?? 0);
-  const reachEvidence = observedReach > 0 ? logScore(observedReach, 8) : 0;
+  const reachEvidence = observedReach > 0 ? logScore(observedReach, 8) * freshness : 0;
   const demand = clamp(catalogDemand * 0.75 + audienceReach * 0.15 + reachEvidence * 0.10);
   const socialProof = clamp((product.ratingMilli ?? 0) / 50 * 0.7 + logScore(product.reviewCount, 6) * 0.3);
   const discount = product.originalPriceCents && product.originalPriceCents > product.priceCents ? clamp(((product.originalPriceCents - product.priceCents) / product.originalPriceCents) * 100) : 0;
