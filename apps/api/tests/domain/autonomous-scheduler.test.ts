@@ -74,6 +74,29 @@ describe("AutonomousScheduler", () => {
     assert.equal(scheduler.status.active, false);
   });
 
+  it("does not let an error callback failure escape runNow", async () => {
+    const cycle = { runOnce: async () => { throw new Error("cycle failure"); } } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      onError: () => { throw new Error("error observer failure"); },
+      now: () => new Date("2026-09-21T00:00:00.000Z")
+    });
+    assert.equal(await scheduler.runNow(), undefined);
+    assert.equal(scheduler.status.lastError, "error observer failure");
+    assert.equal(scheduler.status.active, false);
+  });
+
+  it("does not let a result callback failure escape runNow", async () => {
+    const cycle = { runOnce: async () => result("success") } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      onResult: () => { throw new Error("result observer failure"); },
+      onError: () => { throw new Error("error observer failure"); },
+      now: () => new Date("2026-09-21T00:00:00.000Z")
+    });
+    assert.equal(await scheduler.runNow(), result("success"));
+    assert.equal(scheduler.status.lastError, "error observer failure");
+    assert.equal(scheduler.status.active, false);
+  });
+
   it("rejects intervals below five minutes", () => {
     const cycle = { runOnce: async () => undefined } as unknown as AutonomousCycleService;
     assert.throws(() => new AutonomousScheduler(cycle, {}, { intervalMs: 299_999 }), /at least 5 minutes/);
