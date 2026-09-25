@@ -58,7 +58,20 @@ function validateAffiliateUrl(value: string): void {
 }
 
 
-function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined): ProductDiscoverySignals | undefined {\n  if (!metadata) return undefined;\n  const audienceReachScore = numberInRange(metadata.audienceReachScore, 0, 100);\n  const viewCount = nonNegativeInteger(metadata.viewCount);\n  const impressionCount = nonNegativeInteger(metadata.impressionCount);\n  const engagementCount = nonNegativeInteger(metadata.engagementCount);\n  const capturedAt = typeof metadata.capturedAt === "string" && Number.isFinite(Date.parse(metadata.capturedAt)) ? metadata.capturedAt : undefined;\n  if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined) return undefined;\n  return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt };\n}\nfunction numberInRange(value: unknown, min: number, max: number): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : undefined; }\nfunction nonNegativeInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined; }\n\nfunction validateMarketplaceProductInput(input: MarketplaceProductInput): void {
+function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined): ProductDiscoverySignals | undefined {
+  if (!metadata) return undefined;
+  const audienceReachScore = numberInRange(metadata.audienceReachScore, 0, 100);
+  const viewCount = nonNegativeInteger(metadata.viewCount);
+  const impressionCount = nonNegativeInteger(metadata.impressionCount);
+  const engagementCount = nonNegativeInteger(metadata.engagementCount);
+  const capturedAt = typeof metadata.capturedAt === "string" && Number.isFinite(Date.parse(metadata.capturedAt)) ? metadata.capturedAt : undefined;
+  if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined) return undefined;
+  return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt };
+}
+function numberInRange(value: unknown, min: number, max: number): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : undefined; }
+function nonNegativeInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined; }
+
+function validateMarketplaceProductInput(input: MarketplaceProductInput): void {
   if (!input.externalProductId.trim() || !input.name.trim()) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace products require an external product id and name.", 400);
   if (!Number.isInteger(input.priceCents) || input.priceCents < 0) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace product price must be a non-negative integer.", 400);
   if (input.originalPriceCents !== undefined && (!Number.isInteger(input.originalPriceCents) || input.originalPriceCents < 0)) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace original price must be a non-negative integer.", 400);
