@@ -234,9 +234,10 @@ function selectWithExploration(
   if (explorationSlots === 0) return eligible.slice(0, limit);
   const exploratory = eligible.filter((item) => {
     const policy = effectivePolicy({ product: item.product, offers: [] });
+    const explorationRate = Math.min(1, Math.max(0, adaptiveExplorationRates.get(item.product.id) ?? policy.explorationRate ?? 0.2));
     const minimumEvidence = Math.max(0, policy.explorationMinimumEvidenceClicks ?? 20);
     const signal = performance.get(item.product.marketplaceId + ":" + item.product.id) ?? performance.get(item.product.id);
-    return !signal || signal.clickCount < minimumEvidence;
+    return explorationRate > 0 && (!signal || signal.clickCount < minimumEvidence);
   });
   if (!exploratory.length) return eligible.slice(0, limit);
   const exploration = exploratory
