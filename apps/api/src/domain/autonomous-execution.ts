@@ -25,6 +25,7 @@ export class AutonomousExecutionService {
 
   async runOnce(input: AutonomousExecutionInput): Promise<AutonomousExecutionResult> {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
+    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const recoveredKeys = new Set<string>();
     let recoveredRunCount = 0;
     if (this.autonomousRuns) {
@@ -34,6 +35,8 @@ export class AutonomousExecutionService {
         const offer = candidate?.offers.find((item) => item.id === run.offerId);
         if (!candidate || !offer) continue;
         if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active") continue;
+        const performanceSignal = performance.get(candidate.product.marketplaceId + ":" + candidate.product.id) ?? performance.get(candidate.product.id);
+        if (performanceSignal?.anomaly === "halt" || performanceSignal?.anomalyRecovery === "recovering") continue;
         const context = run.executionContext;
         // Recovery must honor the offer originally bound to the run. Re-ranking all
         // current offers could silently abandon a valid in-flight execution when a
@@ -50,7 +53,6 @@ export class AutonomousExecutionService {
         }
       }
     }
-    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const adaptiveExplorationRates = this.adaptiveExploration
       ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
