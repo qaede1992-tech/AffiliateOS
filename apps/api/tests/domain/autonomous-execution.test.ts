@@ -116,6 +116,38 @@ describe("AutonomousExecutionService", () => {
     assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
   });
 
+  it("does not recover persisted runs while the product is in anomaly halt or recovery", async () => {
+    for (const anomaly of ["halt", undefined] as const) {
+      const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+      const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+      const accepted = await runService.accept({
+        idempotencyKey: "previous-cycle:product-1:offer-1",
+        productId: product.id,
+        offerId: offer.id,
+        executionContext: { audience: ["electronics"] },
+        now: new Date("2026-09-20T09:00:00.000Z")
+      });
+      await runService.transition(accepted.id, "failed", { error: "worker interrupted" }, new Date("2026-09-20T09:01:00.000Z"));
+
+      const calls: string[] = [];
+      const orchestrator = {
+        execute: async () => { calls.push("executed"); return orchestrationResult; }
+      } as unknown as CampaignOrchestrator;
+      const feedback = {
+        getSignals: async () => new Map([[product.id, {
+          anomaly,
+          anomalyRecovery: anomaly === "halt" ? "none" : "recovering"
+        }]])
+      };
+      const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, feedback, runService);
+
+      const result = await service.runOnce({ candidates: [{ product, offers: [offer] }] });
+
+      assert.equal(result.recoveredRunCount, 0);
+      assert.deepEqual(calls, []);
+    }
+  });
+
   it("skips recovery when the persisted product is no longer active", async () => {
     const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
     const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
