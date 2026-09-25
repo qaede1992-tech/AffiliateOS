@@ -149,6 +149,11 @@ jobs:
           cors_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null -H 'Origin: https://dashboard.example.com' http://affiliateos-api-smoke:3001/api/v1/health)
           printf '%s\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Origin: https://dashboard.example.com' >/dev/null
           printf '%s\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Credentials: true' >/dev/null
+          rejected_cors_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null -H 'Origin: https://unexpected.example.com' http://affiliateos-api-smoke:3001/api/v1/health)
+          if printf '%s\n' "$rejected_cors_headers" | grep -Fi 'Access-Control-Allow-Origin: https://unexpected.example.com' >/dev/null; then
+            echo 'Unexpected CORS origin was allowed'
+            exit 1
+          fi
       - name: Smoke test web release image
         run: |
           docker run --detach --name affiliateos-web-smoke --network affiliateos-release-smoke affiliateos-web:${{ github.sha }}
