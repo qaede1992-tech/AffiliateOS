@@ -17,10 +17,10 @@ const toDomain = (row: OutcomeRow): AutonomousActionOutcome => ({
   ...(row.observedMetrics ? { observed: row.observedMetrics } : {}),
   ...(row.evaluationMetrics ? { evaluation: row.evaluationMetrics } : {}),
   ...(row.evaluatedAt ? { evaluatedAt: row.evaluatedAt } : {}),
-  recoveryState: row.recoveryState as AutonomousActionOutcome["recoveryState"],
-  recoveryEvidenceScore: row.recoveryEvidenceScore,
-  recoveryEpisodeId: row.recoveryEpisodeId ?? undefined,
-  recoveryPolicy: row.recoveryPolicy as AutonomousActionOutcome["recoveryPolicy"]
+  ...(row.recoveryState ? { recoveryState: row.recoveryState as AutonomousActionOutcome["recoveryState"] } : {}),
+  ...(row.recoveryEvidenceScore !== null && row.recoveryEvidenceScore !== undefined ? { recoveryEvidenceScore: row.recoveryEvidenceScore } : {}),
+  ...(row.recoveryEpisodeId ? { recoveryEpisodeId: row.recoveryEpisodeId } : {}),
+  ...(row.recoveryPolicy ? { recoveryPolicy: row.recoveryPolicy as AutonomousActionOutcome["recoveryPolicy"] } : {})
 });
 
 export class DrizzleAutonomousActionOutcomeRepository implements AutonomousActionOutcomeWriter {
