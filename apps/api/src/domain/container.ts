@@ -58,7 +58,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publishers = publisherRegistry.list();
   const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
   const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver);
-  const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver));
+  const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver), repositories.socialAccounts);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   const autonomousRuns = new AutonomousRunService(autonomousRunRepository);
