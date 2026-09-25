@@ -82,7 +82,23 @@ jobs:
           docker image inspect affiliateos-web:${{ github.sha }} >/dev/null
       - name: Smoke test API release image
         run: |
+          set -euo pipefail
           docker network create affiliateos-release-smoke
+          docker run --detach --name affiliateos-postgres-smoke --network affiliateos-release-smoke \
+            --env POSTGRES_DB=release \
+            --env POSTGRES_USER=release \
+            --env POSTGRES_PASSWORD=release \
+            postgres:16-alpine
+          for attempt in $(seq 1 30); do
+            if docker exec affiliateos-postgres-smoke pg_isready -U release -d release >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs affiliateos-postgres-smoke
+              exit 1
+            fi
+            sleep 1
+          done
           docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke \
             --env NODE_ENV=production \
             --env API_HOST=0.0.0.0 \
