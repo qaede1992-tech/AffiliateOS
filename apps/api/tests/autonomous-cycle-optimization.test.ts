@@ -83,6 +83,7 @@ test("optimization runner blocks actions during anomaly halt", async () => {
     { async execute() { executions += 1; return actionResult; } } as never,
     undefined,
     undefined,
+    undefined,
     { async getSignals() { return new Map([["00000000-0000-0000-0000-000000000003:00000000-0000-0000-0000-000000000002", { anomaly: "halt" }]]); } } as never
   );
 
