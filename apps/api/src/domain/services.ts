@@ -68,6 +68,24 @@ export class ConversionService {
     return this.conversions.list();
   }
 
+  async reconcileProviderState(conversionId: string, status: Conversion["status"], commissionCents?: number): Promise<Conversion> {
+    const existing = await this.conversions.findById(conversionId);
+    if (!existing) throw new DomainError("CONVERSION_NOT_FOUND", "The conversion does not exist.", 404);
+    const next: Conversion = { ...existing, status };
+    return this.transactionManager.run(async ({ conversions, commissions }) => {
+      await conversions.save(next);
+      const commission = await commissions.findByConversionId(conversionId);
+      if (commission) {
+        await commissions.save({
+          ...commission,
+          amountCents: commissionCents ?? commission.amountCents,
+          status: status === "approved" ? "approved" : status === "rejected" ? "pending" : commission.status
+        });
+      }
+      return next;
+    });
+  }
+
   async create(input: CreateConversionRequest): Promise<Conversion> {
     const idempotencyKey = input.idempotencyKey?.trim();
     if (idempotencyKey) {
