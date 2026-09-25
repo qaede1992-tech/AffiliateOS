@@ -62,8 +62,10 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
     };
   }
   const offer = bestOffer(product.id, input.offers); const audience = audienceFit(product, input.audience ?? []);
-  const commission = offer?.commissionRateBps !== undefined ? clamp((offer.commissionRateBps / 2_000) * 100) : 0;
+  const commissionRateScore = offer?.commissionRateBps !== undefined ? clamp((offer.commissionRateBps / 2_000) * 100) : 0;
   const commissionAmountCents = Math.max(0, offer?.commissionAmountCents ?? 0);
+  const commissionAmountScore = offer?.commissionAmountCents !== undefined ? logScore(commissionAmountCents, 4) : 0;
+  const commission = offer ? clamp(commissionRateScore * 0.6 + commissionAmountScore * 0.4) : 0;
   const demand = clamp(logScore(product.soldCount, 5) * 0.7 + logScore(product.reviewCount, 5) * 0.3);
   const socialProof = clamp((product.ratingMilli ?? 0) / 50 * 0.7 + logScore(product.reviewCount, 6) * 0.3);
   const discount = product.originalPriceCents && product.originalPriceCents > product.priceCents ? clamp(((product.originalPriceCents - product.priceCents) / product.originalPriceCents) * 100) : 0;
