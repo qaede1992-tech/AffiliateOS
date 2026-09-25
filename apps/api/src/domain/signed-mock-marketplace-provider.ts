@@ -16,7 +16,7 @@ export class SignedMockMarketplaceProvider implements MarketplaceProvider {
   }
 
   validateConfiguration(configuration: Record<string, unknown>): void { this.delegate.validateConfiguration(configuration); }
-  testConnection() { return this.delegate.testConnection!({ configuration: {} }); }
+  testConnection() { return this.delegate.testConnection!(); }
   discoverProducts() { return this.delegate.discoverProducts!(); }
   getProduct(externalProductId: string) { return this.delegate.getProduct!(externalProductId); }
   searchProducts(query: string) { return this.delegate.searchProducts!(query); }
