@@ -90,13 +90,13 @@ export class AutonomousScheduler {
         if (!result) return undefined;
         this.lastResult = result;
         this.lastCompletedAt = this.now().toISOString();
-        if (this.onResult) await this.onResult(result);
+        await this.notifyResult(result);
         return result;
       })
       .catch(async (error) => {
         this.lastError = error instanceof Error ? error.message : String(error);
         this.lastCompletedAt = this.now().toISOString();
-        if (this.onError) await this.onError(error);
+        await this.notifyError(error);
         return undefined;
       })
       .finally(() => {
@@ -104,6 +104,24 @@ export class AutonomousScheduler {
       });
     this.activeRun = run;
     return run;
+  }
+
+  private async notifyResult(result: AutonomousCycleResult): Promise<void> {
+    if (!this.onResult) return;
+    try {
+      await this.onResult(result);
+    } catch (error) {
+      await this.notifyError(error);
+    }
+  }
+
+  private async notifyError(error: unknown): Promise<void> {
+    if (!this.onError) return;
+    try {
+      await this.onError(error);
+    } catch {
+      // Observer failures must not change the scheduler's execution outcome.
+    }
   }
 
   private async runAndSchedule(): Promise<void> {
