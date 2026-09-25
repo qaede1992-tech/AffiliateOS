@@ -1,12 +1,12 @@
-import { PassThrough } from "node:stream";
+import { Readable } from "node:stream";
 import type { FastifyRequest } from "fastify";
 
 const rawBodies = new WeakMap<object, string>();
 
 type RawPayload = NodeJS.ReadableStream | Buffer | string | Uint8Array;
 
-export function captureRawBody(request: FastifyRequest, _reply: unknown, payload: RawPayload) {
-  if (!payload || typeof (payload as NodeJS.ReadableStream).on !== "function") {
+export async function captureRawBody(request: FastifyRequest, _reply: unknown, payload: RawPayload) {
+  if (!payload || typeof (payload as NodeJS.ReadableStream)[Symbol.asyncIterator] !== "function") {
     const body = Buffer.isBuffer(payload)
       ? payload.toString("utf8")
       : typeof payload === "string"
@@ -16,24 +16,19 @@ export function captureRawBody(request: FastifyRequest, _reply: unknown, payload
     return payload;
   }
 
-  const stream = payload as NodeJS.ReadableStream;
+  const stream = payload as NodeJS.ReadableStream & AsyncIterable<Buffer | string | Uint8Array>;
   const chunks: Buffer[] = [];
-  const passthrough = new PassThrough();
-
-  stream.on("data", (chunk: Buffer | string) => {
+  for await (const chunk of stream) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  });
-  stream.on("end", () => {
-    rawBodies.set(request, Buffer.concat(chunks).toString("utf8"));
-  });
-
-  const contentLength = request.headers["content-length"];
-  if (contentLength) {
-    (passthrough as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength = Number(contentLength);
   }
 
-  stream.pipe(passthrough);
-  return passthrough;
+  const body = Buffer.concat(chunks);
+  rawBodies.set(request, body.toString("utf8"));
+
+  const replacement = Readable.from([body]) as Readable & { receivedEncodedLength?: number };
+  const contentLength = request.headers["content-length"];
+  if (contentLength) replacement.receivedEncodedLength = Number(contentLength);
+  return replacement;
 }
 
 export function getRawBody(request: FastifyRequest): string | undefined {
