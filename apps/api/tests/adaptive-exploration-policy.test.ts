@@ -125,7 +125,7 @@ test("adaptive exploration consumes evaluator deprioritization with positive com
   const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.2 });
   assert.equal(rates.get("p0"), 0.3);
 });
-\ntest("confidence-aware feedback exposes global category learning across marketplaces", () => {
+test("confidence-aware feedback exposes global category learning across marketplaces", () => {
   const campaign = (marketplaceId: string, campaignId: string, clicks: number, conversions: number) => ({
     campaignId, productId: campaignId, marketplaceId, category: "electronics", audienceSegments: ["electronics"],
     clickCount: clicks, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0,
