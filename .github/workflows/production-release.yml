@@ -82,18 +82,43 @@ jobs:
           docker image inspect affiliateos-web:${{ github.sha }} >/dev/null
       - name: Smoke test API release image
         run: |
+          set -euo pipefail
           docker network create affiliateos-release-smoke
+          docker run --detach --name affiliateos-postgres-smoke --network affiliateos-release-smoke \
+            --env POSTGRES_DB=release \
+            --env POSTGRES_USER=release \
+            --env POSTGRES_PASSWORD=release \
+            postgres:16-alpine
+          for attempt in $(seq 1 30); do
+            if docker run --rm --network affiliateos-release-smoke postgres:16-alpine pg_isready -h affiliateos-postgres-smoke -U release -d release; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs affiliateos-postgres-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+          docker run --rm --network affiliateos-release-smoke \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
+            node:24-alpine sh -c 'npm ci --ignore-scripts && npm run db:migrate'
           docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke \
             --env NODE_ENV=production \
             --env API_HOST=0.0.0.0 \
             --env API_PORT=3001 \
             --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
-            --env API_AUTH_TOKEN=12345678901234567890123456789012 \
+            --env API_AUTH_TOKEN=release-smoke-test-token-123456789012345678901234 \
             --env API_CORS_ORIGIN=https://dashboard.example.com \
             affiliateos-api:${{ github.sha }}
           for attempt in $(seq 1 30); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/health; then
               break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs affiliateos-api-smoke
+              exit 1
             fi
             sleep 2
           done
@@ -101,19 +126,29 @@ jobs:
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/ready; then
               break
             fi
+            if [ "$attempt" -eq 30 ]; then
+              docker logs affiliateos-api-smoke
+              exit 1
+            fi
             sleep 2
           done
+          unauthorized_status=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}' http://affiliateos-api-smoke:3001/api/v1/auth/me)
+          [ "$unauthorized_status" = "401" ]
+          authorized_status=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer release-smoke-test-token-123456789012345678901234' http://affiliateos-api-smoke:3001/api/v1/auth/me)
+          [ "$authorized_status" = "200" ]
+          login_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null -H 'Content-Type: application/json' --data '{"token":"release-smoke-test-token-123456789012345678901234"}' http://affiliateos-api-smoke:3001/api/v1/auth/login)
+          printf '%s\n' "$login_headers" | grep -Fi 'Set-Cookie: affiliateos_session=' >/dev/null
+          printf '%s\n' "$login_headers" | grep -Fi 'HttpOnly' >/dev/null
+          printf '%s\n' "$login_headers" | grep -Fi 'SameSite=Strict' >/dev/null
           security_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null http://affiliateos-api-smoke:3001/api/v1/health)
-          printf '%s\\n' "$security_headers" | grep -Fi 'X-Content-Type-Options: nosniff' >/dev/null
-          printf '%s\\n' "$security_headers" | grep -Fi 'X-Frame-Options: DENY' >/dev/null
-          printf '%s\\n' "$security_headers" | grep -Fi 'Referrer-Policy: no-referrer' >/dev/null
-          printf '%s\\n' "$security_headers" | grep -Fi 'Permissions-Policy:' >/dev/null
-          printf '%s\\n' "$security_headers" | grep -Fi 'Strict-Transport-Security:' >/dev/null
+          printf '%s\n' "$security_headers" | grep -Fi 'X-Content-Type-Options: nosniff' >/dev/null
+          printf '%s\n' "$security_headers" | grep -Fi 'X-Frame-Options: DENY' >/dev/null
+          printf '%s\n' "$security_headers" | grep -Fi 'Referrer-Policy: no-referrer' >/dev/null
+          printf '%s\n' "$security_headers" | grep -Fi 'Permissions-Policy:' >/dev/null
+          printf '%s\n' "$security_headers" | grep -Fi 'Strict-Transport-Security:' >/dev/null
           cors_headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null -H 'Origin: https://dashboard.example.com' http://affiliateos-api-smoke:3001/api/v1/health)
-          printf '%s\\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Origin: https://dashboard.example.com' >/dev/null
-          printf '%s\\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Credentials: true' >/dev/null
-          docker logs affiliateos-api-smoke
-          exit 1
+          printf '%s\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Origin: https://dashboard.example.com' >/dev/null
+          printf '%s\n' "$cors_headers" | grep -Fi 'Access-Control-Allow-Credentials: true' >/dev/null
       - name: Smoke test web release image
         run: |
           docker run --detach --name affiliateos-web-smoke --network affiliateos-release-smoke affiliateos-web:${{ github.sha }}
