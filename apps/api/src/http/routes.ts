@@ -11,7 +11,7 @@ import { requireOperator } from "./auth.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
-  app.get("/api/v1/publishers/readiness", async () => list(services.publisherReadiness.list()));
+  app.get("/api/v1/publishers/readiness", async () => list(await services.publisherReadiness.list()));
   app.get("/api/v1/autonomous/status", writeGuard, async () => services.autonomousScheduler.status);
   app.get("/api/v1/autonomous/decision-audits", writeGuard, async (request, reply) => {
     if (!services.autonomousDecisionAudits) return reply.status(503).send({ error: "AUTONOMOUS_AUDIT_UNAVAILABLE", message: "Autonomous decision audit persistence is unavailable." });
