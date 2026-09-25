@@ -85,18 +85,18 @@ export class PublicationWorker {
       try {
         const checked = await this.executor.check(operation);
         if (checked.result.status === "processing") {
-          await this.operations.transition(operation.id, "processing", {}, now);
+          await this.operations.transition(operation.id, ["accepted", "processing"], { ...operation, status: "processing", updatedAt: now.toISOString() });
           results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing" });
           continue;
         }
         if (checked.result.status === "published") {
-          await this.operations.transition(operation.id, "published", { externalPostId: checked.result.externalPostId }, now);
+          await this.operations.transition(operation.id, ["accepted", "processing"], { ...operation, status: "published", externalPostId: checked.result.externalPostId, updatedAt: now.toISOString() });
           await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
           await this.jobService.succeed(operation.jobId, checked.result.externalPostId, now);
           results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "succeeded", externalPostId: checked.result.externalPostId });
           continue;
         }
-        await this.operations.transition(operation.id, "failed", { error: checked.result.error }, now);
+        await this.operations.transition(operation.id, ["accepted", "processing"], { ...operation, status: "failed", lastError: checked.result.error, updatedAt: now.toISOString() });
         await this.contentService?.update(operation.contentId, { status: "failed" });
         await this.jobService.fail(operation.jobId, checked.result.error ?? "Publication failed.", now);
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error ?? "Publication failed." });
@@ -111,13 +111,13 @@ export class PublicationWorker {
         const isTerminal = (error: unknown): boolean =>
           Boolean(error && typeof error === "object" && "code" in error && terminalPublicationErrors.has((error as { code?: unknown }).code ?? ""));
         if (message.includes("does not support publication status checks") || isTerminal(error)) {
-          await this.operations.transition(operation.id, "failed", { error: message }, now);
+          await this.operations.transition(operation.id, ["accepted", "processing"], { ...operation, status: "failed", lastError: message, updatedAt: now.toISOString() });
           await this.contentService?.update(operation.contentId, { status: "failed" }).catch(() => undefined);
           await this.jobService.fail(operation.jobId, message, now);
           results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: message });
           continue;
         }
-        await this.operations.transition(operation.id, "processing", { error: message }, now);
+        await this.operations.transition(operation.id, ["accepted", "processing"], { ...operation, status: "processing", lastError: message, updatedAt: now.toISOString() });
         results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing", error: message });
       }
     }
