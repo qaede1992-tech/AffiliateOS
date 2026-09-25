@@ -23,17 +23,10 @@ export class ProviderEventStore {
 
   async insertIfNew(event: ProviderEventRecord): Promise<boolean> {
     const result = await this.db.insert(providerEvents).values({
-      id: event.id,
-      affiliateAccountId: event.affiliateAccountId,
-      externalEventId: event.externalEventId,
-      eventType: event.eventType,
-      payload: event.payload,
-      signatureVersion: event.signatureVersion ?? null,
-      status: event.status ?? "received",
-      receivedAt: event.receivedAt,
-      processedAt: null,
-      processingStartedAt: null,
-      error: null,
+      id: event.id, affiliateAccountId: event.affiliateAccountId, externalEventId: event.externalEventId,
+      eventType: event.eventType, payload: event.payload, signatureVersion: event.signatureVersion ?? null,
+      status: event.status ?? "received", receivedAt: event.receivedAt, processedAt: null,
+      processingStartedAt: null, error: null,
     }).onConflictDoNothing({ target: [providerEvents.affiliateAccountId, providerEvents.externalEventId] });
     return Number(result.rowCount ?? 0) === 1;
   }
@@ -49,37 +42,24 @@ export class ProviderEventStore {
       .where(or(
         eq(providerEvents.status, "received"),
         eq(providerEvents.status, "failed"),
-        and(
-          eq(providerEvents.status, "processing"),
-          lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())
-        )
+        and(eq(providerEvents.status, "processing"),
+          lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString()))
       ))
       .orderBy(asc(providerEvents.receivedAt))
       .limit(Math.min(Math.max(limit, 1), 500));
-    return rows.map((row) => ({
-      id: row.id,
-      affiliateAccountId: row.affiliateAccountId,
-      externalEventId: row.externalEventId,
-      eventType: row.eventType,
-      payload: row.payload as Record<string, unknown>,
-      signatureVersion: row.signatureVersion ?? undefined,
-      status: row.status ?? undefined,
-      receivedAt: row.receivedAt
+    return rows.map((row: typeof providerEvents.$inferSelect) => ({
+      id: row.id, affiliateAccountId: row.affiliateAccountId, externalEventId: row.externalEventId,
+      eventType: row.eventType, payload: row.payload as Record<string, unknown>,
+      signatureVersion: row.signatureVersion ?? undefined, status: row.status ?? undefined, receivedAt: row.receivedAt
     }));
   }
 
   async claimForProcessing(affiliateAccountId: string, externalEventId: string): Promise<boolean> {
     const result = await this.db.update(providerEvents)
       .set({ status: "processing", processingStartedAt: new Date().toISOString(), error: null })
-      .where(and(
-        eq(providerEvents.affiliateAccountId, affiliateAccountId),
-        eq(providerEvents.externalEventId, externalEventId),
-        or(
-          eq(providerEvents.status, "received"),
-          eq(providerEvents.status, "failed"),
-          and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString()))
-        )
-      ));
+      .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId),
+        or(eq(providerEvents.status, "received"), eq(providerEvents.status, "failed"),
+          and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())))));
     return Number(result.rowCount ?? 0) === 1;
   }
 
