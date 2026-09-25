@@ -71,7 +71,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     async resolveAffiliate(reference) { return (await repositories.affiliates.findById(reference))?.id; },
     async resolveOffer(reference) { return (await repositories.offers.findById(reference))?.id; },
     async resolveTrackingLink(reference) { return (await repositories.trackingLinks.findByCode(reference))?.id; }
-  }, attribution);
+  });
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
   const stateReader = optimizationStateReader ?? defaultOptimizationState;
