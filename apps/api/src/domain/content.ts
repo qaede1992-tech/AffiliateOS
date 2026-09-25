@@ -13,7 +13,7 @@ function validateContentTiming(status: Content["status"], scheduledAt: string | 
 function validateContentTransition(current: Content["status"], next: Content["status"] | undefined) { if (next && !contentTransitions[current].includes(next)) throw new DomainError("INVALID_CONTENT_TRANSITION", `Content cannot transition from ${current} to ${next}.`); }
 const sensitiveConnectionKey = /(?:password|passcode|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|private[_-]?key|signing[_-]?key)/i;
 export function redactSensitiveConnectionValues(value: unknown): unknown { if (Array.isArray(value)) return value.map((item) => redactSensitiveConnectionValues(item)); if (!value || typeof value !== "object") return value; return Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, sensitiveConnectionKey.test(key) ? "[REDACTED]" : redactSensitiveConnectionValues(nested)])); }
-function isOpaqueCredentialReference(value: string): boolean { return /^(?:[a-z][a-z0-9+.-]*:\/\/|[A-Z][A-Z0-9_]*:)[A-Za-z0-9._\/-]+$/i.test(value) && !/[\\s]/.test(value); }
+function isOpaqueCredentialReference(value: string): boolean { return /^(?:[a-z][a-z0-9+.-]*:\/\/|[A-Z][A-Z0-9_]*:)[A-Za-z0-9._\/-]+$/i.test(value) && !/\s/.test(value); }
 function validateCredentialReference(value: string | undefined): void { if (value !== undefined && (!value.trim() || !isOpaqueCredentialReference(value.trim()))) throw new DomainError("INVALID_SOCIAL_CREDENTIAL_REFERENCE", "Social credential references must be opaque secret-manager references.", 400); }
 
 export class ContentService {
