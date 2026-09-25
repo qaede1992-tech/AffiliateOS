@@ -156,6 +156,7 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       const exploration = selectedIds.has(item.product.id) && isExplorationSelection(item, performance, candidatePolicy, adaptiveExplorationRates);
+      const selectionMode: OpportunitySelectionAudit["selectionMode"] = selectedIds.has(item.product.id) ? (exploration ? "exploration" : "exploitation") : undefined;
       const reasons = selectedIds.has(item.product.id)
         ? [exploration ? "Selected for controlled exploration" : "Selected"]
         : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore);
@@ -167,7 +168,7 @@ export class AutonomousOpportunitySelector {
         score: item.score,
         policy: { ...candidatePolicy },
         reasons,
-        selectionMode: selectedIds.has(item.product.id) ? (exploration ? "exploration" : "exploitation") : undefined,
+        selectionMode,
         category: item.product.category?.trim() || undefined,
         audienceSegments: requiredAudience.length ? requiredAudience : undefined
       };
@@ -219,11 +220,13 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
   if (globalCategory && (!category || category.confidence < 0.35)) weighted.push([globalCategory, 0.1 * (1 - (category?.confidence ?? 0))]);
   if (globalAudience.length && !audience.length) weighted.push([globalAudience.reduce((best, signal) => Math.abs(signal.adjustment) > Math.abs(best.adjustment) ? signal : best), 0.1]);
   if (!weighted.length) return undefined;
+  const primary = weighted[0];
+  if (!primary) return undefined;
   const totalWeight = weighted.reduce((sum, [signal, weight]) => sum + weight * Math.max(0.1, signal.confidence ?? 0.25), 0);
   const adjustment = weighted.reduce((sum, [signal, weight]) => sum + signal.adjustment * weight * Math.max(0.1, signal.confidence ?? 0.25), 0) / totalWeight;
   const evidence = weighted.reduce((sum, [signal, weight]) => sum + signal.clickCount * weight * Math.max(0.1, signal.confidence ?? 0.25), 0) / totalWeight;
   const confidence = Math.min(1, weighted.reduce((sum, [signal, weight]) => sum + (signal.confidence ?? 0.25) * weight, 0) / weighted.reduce((sum, [, weight]) => sum + weight, 0));
-  return { ...weighted[0][0], clickCount: evidence, confidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
+  return { ...primary[0], clickCount: evidence, confidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
 }
 
 export function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPerformanceSignal): ScoredOpportunity {
