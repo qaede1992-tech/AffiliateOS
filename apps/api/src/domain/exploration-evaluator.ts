@@ -39,10 +39,13 @@ export function evaluateExploration(
     return { status: "insufficient-evidence", reason: `Only ${analytics.clickCount} clicks; minimum evidence is ${minimumClicks}`, confidence: Math.min(1, analytics.clickCount / minimumClicks) };
   }
   const commissionPerClick = analytics.clickCount === 0 ? 0 : analytics.attributedCommissionCents / analytics.clickCount;
-  if (analytics.conversionRate >= promotionConversionRate && commissionPerClick >= minimumCommissionPerClickCents) {
+  const commissionThresholdEnabled = minimumCommissionPerClickCents > 0;
+  const meetsPromotionCommission = !commissionThresholdEnabled || commissionPerClick >= minimumCommissionPerClickCents;
+  const meetsDeprioritizationCommission = !commissionThresholdEnabled || commissionPerClick <= minimumCommissionPerClickCents;
+  if (analytics.conversionRate >= promotionConversionRate && meetsPromotionCommission) {
     return { status: "promote-to-exploitation", reason: `Conversion rate ${analytics.conversionRate.toFixed(4)} and commission/click ${commissionPerClick.toFixed(2)} meet promotion thresholds`, confidence: confidenceFromEvidence(analytics.clickCount, minimumClicks) };
   }
-  if (analytics.conversionRate <= deprioritizeConversionRate && commissionPerClick <= minimumCommissionPerClickCents) {
+  if (analytics.conversionRate <= deprioritizeConversionRate && meetsDeprioritizationCommission) {
     return { status: "deprioritize", reason: `Conversion rate ${analytics.conversionRate.toFixed(4)} and commission/click ${commissionPerClick.toFixed(2)} are below exploration thresholds`, confidence: confidenceFromEvidence(analytics.clickCount, minimumClicks) };
   }
   return { status: "continue-exploration", reason: `Evidence is sufficient but performance is between promotion and deprioritization thresholds`, confidence: confidenceFromEvidence(analytics.clickCount, minimumClicks) };
