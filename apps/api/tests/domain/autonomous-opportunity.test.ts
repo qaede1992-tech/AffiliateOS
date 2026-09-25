@@ -201,8 +201,8 @@ describe("autonomous opportunity selection", () => {
   it("uses product-level fallback evidence when classifying exploration", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("fallback-evidence"), offers: [offer("fallback-evidence")] },
-      { product: product("new-candidate"), offers: [offer("new-candidate")] }
-    ], { minimumScore: 0, maximumResults: 1, explorationRate: 1 }, new Map([
+      { product: product("new-candidate", { soldCount: 0, reviewCount: 0, ratingMilli: 0, originalPriceCents: 5000 }), offers: [offer("new-candidate")] }
+    ], { minimumScore: 0, maximumResults: 1, explorationRate: 0 }, new Map([
       ["fallback-evidence", { clickCount: 100, conversionRate: 0.08, attributedCommissionCents: 1000, commissionPerClickCents: 10, adjustment: 8, trendAdjustment: 0 }]
     ]));
     assert.deepEqual(result.selected.map((item) => item.product.id), ["fallback-evidence"]);
