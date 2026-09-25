@@ -72,7 +72,6 @@ export class AutonomousOpportunitySelector {
   ): OpportunitySelectionResult {
     const performance = performanceOrPolicies instanceof Map ? performanceOrPolicies : new Map<string, OpportunityPerformanceSignal>();
     const effectivePoliciesByMarketplace = performanceOrPolicies instanceof Map ? policiesByMarketplace : performanceOrPolicies;
-    const maximumResults = policy.maximumResults ?? 10;
     const mergedCandidates = new Map<string, OpportunityCandidateSource>();
     for (const candidate of candidates) {
       const existing = mergedCandidates.get(candidate.product.id);
@@ -131,7 +130,15 @@ export class AutonomousOpportunitySelector {
         item.breakdown.demand >= minimumDemandScore &&
         item.product.status === "active";
     });
-    const selected = selectWithExploration(eligible, maximumResults, performance, effectivePolicy, adaptiveExplorationRates);
+
+    const explicitGlobalLimit = policy.maximumResults;
+    const selected = selectByMarketplace(
+      eligible,
+      explicitGlobalLimit,
+      performance,
+      effectivePolicy,
+      adaptiveExplorationRates
+    );
     const selectedIds = new Set(selected.map((item) => item.product.id));
     const rejected = ranked.filter((item) => !selectedIds.has(item.product.id)).map((item) => {
       const candidatePolicy = effectivePolicy({ product: item.product, offers: [] });
@@ -178,9 +185,37 @@ export class AutonomousOpportunitySelector {
 }
 
 function isExplorationSelection(item: ScoredOpportunity, performance: Map<string, OpportunityPerformanceSignal>, policy: OpportunitySelectionPolicy, adaptiveExplorationRates: Map<string, number>): boolean {
-  const signal = performance.get(item.product.marketplaceId + ":" + item.product.id);
+  const signal = performance.get(item.product.marketplaceId + ":" + item.product.id) ?? performance.get(item.product.id);
   const rate = adaptiveExplorationRates.get(item.product.id) ?? policy.explorationRate ?? 0.2;
   return rate > 0 && (!signal || signal.clickCount < (policy.explorationMinimumEvidenceClicks ?? 20));
+}
+
+function selectByMarketplace(
+  eligible: ScoredOpportunity[],
+  globalLimit: number | undefined,
+  performance: Map<string, OpportunityPerformanceSignal>,
+  effectivePolicy: (candidate: OpportunityCandidateSource) => OpportunitySelectionPolicy,
+  adaptiveExplorationRates: Map<string, number>
+): ScoredOpportunity[] {
+  if (eligible.length === 0) return [];
+  const byMarketplace = new Map<string, ScoredOpportunity[]>();
+  for (const item of eligible) {
+    const group = byMarketplace.get(item.product.marketplaceId) ?? [];
+    group.push(item);
+    byMarketplace.set(item.product.marketplaceId, group);
+  }
+  const selections: ScoredOpportunity[] = [];
+  for (const items of byMarketplace.values()) {
+    const first = items[0];
+    if (!first) continue;
+    const marketplaceLimit = effectivePolicy({ product: first.product, offers: [] }).maximumResults;
+    const limit = marketplaceLimit === undefined ? 10 : Math.max(0, marketplaceLimit);
+    selections.push(...selectWithExploration(items, limit, performance, effectivePolicy, adaptiveExplorationRates));
+  }
+  const rankedSelections = selections.sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
+  return globalLimit === undefined
+    ? rankedSelections
+    : rankedSelections.slice(0, Math.max(0, globalLimit));
 }
 
 function selectWithExploration(
@@ -200,7 +235,7 @@ function selectWithExploration(
   const exploratory = eligible.filter((item) => {
     const policy = effectivePolicy({ product: item.product, offers: [] });
     const minimumEvidence = Math.max(0, policy.explorationMinimumEvidenceClicks ?? 20);
-    const signal = performance.get(item.product.marketplaceId + ":" + item.product.id);
+    const signal = performance.get(item.product.marketplaceId + ":" + item.product.id) ?? performance.get(item.product.id);
     return !signal || signal.clickCount < minimumEvidence;
   });
   if (!exploratory.length) return eligible.slice(0, limit);
