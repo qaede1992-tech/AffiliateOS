@@ -42,6 +42,15 @@ jobs:
         run: npm ci
       - name: Test
         run: timeout --signal=TERM --kill-after=30s 15m npm test
+      - name: Validate production configuration contract
+        env:
+          NODE_ENV: production
+          DATABASE_URL: postgresql://release:release@127.0.0.1:5432/release
+          API_AUTH_TOKEN: 12345678901234567890123456789012
+          API_CORS_ORIGIN: https://dashboard.example.com
+          AUTONOMOUS_CYCLE_ENABLED: "false"
+        run: npm run production:preflight --workspace @affiliateos/api
+
       - name: Typecheck
         run: npm run typecheck
       - name: Build
