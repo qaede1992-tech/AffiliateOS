@@ -165,6 +165,7 @@ jobs:
           done
           docker logs affiliateos-web-smoke
           exit 1
+
       # Web runtime smoke also validates the security headers emitted by nginx.\n      - name: Cleanup release smoke containers
         if: always()
         run: |
