@@ -74,6 +74,33 @@ describe("AutonomousScheduler", () => {
     assert.equal(scheduler.status.active, false);
   });
 
+  it("preserves a successful cycle when the result observer fails", async () => {
+    const errors: unknown[] = [];
+    const output = result("observer-failure");
+    const cycle = { runOnce: async () => output } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      onResult: () => { throw new Error("observer failure"); },
+      onError: (error) => errors.push(error)
+    });
+
+    assert.equal(await scheduler.runNow(), output);
+    assert.equal(scheduler.status.lastResult, output);
+    assert.equal(scheduler.status.lastError, undefined);
+    assert.equal(errors.length, 1);
+    assert.equal((errors[0] as Error).message, "observer failure");
+  });
+
+  it("does not reject when the error observer itself fails", async () => {
+    const cycle = { runOnce: async () => { throw new Error("cycle failure"); } } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      onError: () => { throw new Error("error observer failure"); }
+    });
+
+    assert.equal(await scheduler.runNow(), undefined);
+    assert.equal(scheduler.status.lastError, "cycle failure");
+    assert.equal(scheduler.status.active, false);
+  });
+
   it("rejects intervals below five minutes", () => {
     const cycle = { runOnce: async () => undefined } as unknown as AutonomousCycleService;
     assert.throws(() => new AutonomousScheduler(cycle, {}, { intervalMs: 299_999 }), /at least 5 minutes/);
