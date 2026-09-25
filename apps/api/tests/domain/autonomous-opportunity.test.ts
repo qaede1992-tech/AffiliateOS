@@ -209,6 +209,15 @@ describe("autonomous opportunity selection", () => {
     assert.equal(result.audit.find((item) => item.productId === "fallback-evidence")?.selectionMode, "exploitation");
   });
 
+  it("enforces minimum commission rate independently from commission value", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("low-rate-high-value"), offers: [offer("low-rate-high-value", { commissionRateBps: 500, commissionAmountCents: 5000 })] },
+      { product: product("high-rate"), offers: [offer("high-rate", { commissionRateBps: 1000, commissionAmountCents: 100 })] }
+    ], { minimumScore: 0, minimumCommissionRateBps: 1000 });
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["high-rate"]);
+    assert.ok(result.rejected.find((item) => item.productId === "low-rate-high-value")?.reasons.includes("Commission rate is below the minimum"));
+  });
+
   it("enforces a minimum commission rate", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("low-commission"), offers: [offer("low-commission", { commissionRateBps: 500 })] },
