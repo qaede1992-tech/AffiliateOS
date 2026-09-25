@@ -105,7 +105,27 @@ test("adaptive exploration consumes persistent optimization feedback", async () 
 
 import { buildSignals } from "../src/domain/autonomous-feedback.js";
 
-test("confidence-aware feedback exposes global category learning across marketplaces", () => {
+
+import { evaluateExploration } from "../src/domain/exploration-evaluator.js";
+
+test("adaptive exploration consumes evaluator deprioritization with positive commission when no commission floor is configured", async () => {
+  const evaluations = Array.from({ length: 5 }, (_, i) => evaluateExploration({
+    auditId: "audit-" + i, productId: "p" + i, marketplaceId: "m1", selected: true, score: 80,
+    policy: {}, reasons: [], selectionMode: "exploration", cycleId: "cycle", createdAt: new Date().toISOString(),
+    outcome: {
+      status: "completed", observedAt: new Date().toISOString(), analytics: {
+        clickCount: 100, attributedConversionCount: 0, attributedRevenueCents: 500,
+        attributedCommissionCents: 25, conversionRate: 0
+      }
+    }
+  } as any));
+  assert.ok(evaluations.every((evaluation) => evaluation?.status === "deprioritize"));
+  const reader = { list: async () => evaluations.map((evaluation, i) => audit("p" + i, "m1", evaluation!.status)) };
+  const provider = new AdaptiveExplorationPolicyProvider(reader, { minimumSamples: 5, maximumRate: 0.5 });
+  const rates = await provider.getRates([candidate("p0", "m1", "electronics")], { explorationRate: 0.2 });
+  assert.equal(rates.get("p0"), 0.3);
+});
+\ntest("confidence-aware feedback exposes global category learning across marketplaces", () => {
   const campaign = (marketplaceId: string, campaignId: string, clicks: number, conversions: number) => ({
     campaignId, productId: campaignId, marketplaceId, category: "electronics", audienceSegments: ["electronics"],
     clickCount: clicks, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0,
