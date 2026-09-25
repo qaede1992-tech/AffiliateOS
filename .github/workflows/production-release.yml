@@ -1,0 +1,82 @@
+name: Production Release Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: affiliateos
+          POSTGRES_USER: affiliateos
+          POSTGRES_PASSWORD: affiliateos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U affiliateos -d affiliateos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        run: timeout --signal=TERM --kill-after=30s 15m npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Check migrations
+        run: npm run db:check
+      - name: Configure release database
+        run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
+      - name: Apply migrations
+        run: npm run db:migrate
+      - name: Verify migrated database
+        run: npm run db:verify
+      - name: Verify release migration state
+        run: npm run db:verify:applied
+
+  container-images:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build API release image
+        run: docker build --file apps/api/Dockerfile --tag affiliateos-api:${{ github.sha }} .
+      - name: Build web release image
+        run: docker build --file apps/web/Dockerfile --build-arg VITE_API_URL=https://api.example.invalid --tag affiliateos-web:${{ github.sha }} .
+      - name: Inspect release images
+        run: |
+          docker image inspect affiliateos-api:${{ github.sha }} >/dev/null
+          docker image inspect affiliateos-web:${{ github.sha }} >/dev/null
+
+  release-gate:
+    runs-on: ubuntu-latest
+    needs: container-images
+    steps:
+      - name: Release gate
+        run: |
+          echo "AffiliateOS production release candidate validated."
+          echo "External deployment remains gated on approved infrastructure, secret-manager references, official provider credentials/scopes, TLS, and production database controls."
