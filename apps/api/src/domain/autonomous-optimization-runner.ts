@@ -43,8 +43,9 @@ export class AutonomousOptimizationRunner {
 
     const recommendations = this.engine.recommend(overview.campaigns, state, now);
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: "autonomous-optimization-actions" }) : undefined;
+    const guardedRecommendations = recommendations.map((recommendation) => guardRecommendation(recommendation, overview.campaigns, performance));
     const actions: AutonomousCampaignActionResult[] = [];
-    for (const recommendation of recommendations) {
+    for (const recommendation of guardedRecommendations) {
       if (recommendation.action === "maintain") continue;
       const baseline = toActionMetrics(overview.campaigns.find((campaign) => campaign.campaignId === recommendation.campaignId));
       const result = await this.executor.execute(recommendation);
@@ -82,7 +83,7 @@ export class AutonomousOptimizationRunner {
       });
     }
 
-    return { campaigns: overview.campaigns, recommendations, actions };
+    return { campaigns: overview.campaigns, recommendations: guardedRecommendations, actions };
   }
 
   private async evaluateDueActionOutcomes(campaigns: CampaignAnalytics[], now: Date): Promise<Map<string, NonNullable<OptimizationState["evaluation"]>>> {
@@ -128,4 +129,39 @@ function toActionMetrics(campaign?: CampaignAnalytics): AutonomousActionMetrics 
     attributedCommissionCents: campaign.attributedCommissionCents,
     conversionRate: campaign.conversionRate
   };
+}
+
+function guardRecommendation(
+  recommendation: OptimizationRecommendation,
+  campaigns: CampaignAnalytics[],
+  performance?: Map<string, { anomaly?: string; anomalyRecovery?: string }>
+): OptimizationRecommendation {
+  if (!performance) return recommendation;
+  const campaign = campaigns.find((item) => item.campaignId === recommendation.campaignId);
+  const signal = campaign?.productId && campaign.marketplaceId
+    ? performance.get(campaign.marketplaceId + ":" + campaign.productId) ?? performance.get(campaign.productId)
+    : undefined;
+  if (signal?.anomaly === "halt") {
+    return {
+      ...recommendation,
+      action: "maintain",
+      confidence: Math.min(recommendation.confidence, 0.5),
+      reasons: [
+        "Optimization action held because the associated product is under an active performance anomaly halt.",
+        "Wait for the anomaly cooldown and fresh evidence before changing campaign distribution or content."
+      ]
+    };
+  }
+  if (signal?.anomalyRecovery === "recovering") {
+    return {
+      ...recommendation,
+      action: "maintain",
+      confidence: Math.min(recommendation.confidence, 0.5),
+      reasons: [
+        "Optimization action held while the associated product is recovering from a performance anomaly.",
+        "Scale, pause, and content changes remain blocked until the recovery evidence gate is satisfied."
+      ]
+    };
+  }
+  return recommendation;
 }
