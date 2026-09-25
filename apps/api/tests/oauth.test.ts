@@ -4,6 +4,7 @@ import { InMemorySocialAccountRepository } from "../src/domain/repository.js";
 import { InMemoryOAuthStateRepository, InMemorySocialOAuthProviderRegistry, SocialOAuthService, type OAuthStateRepository, type SocialOAuthProvider } from "../src/domain/oauth.js";
 
 const provider: SocialOAuthProvider = { platform: "instagram", authorizationEndpoint: "https://provider.invalid/oauth/authorize", createAuthorizationUrl: ({ state, redirectUri }) => `https://provider.invalid/oauth/authorize?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`, exchangeCode: async ({ code, redirectUri }) => ({ accountReference: `acct-${code}`, credentialReference: "vault://affiliateos/social/instagram/acct", connection: { redirectUri, accessToken: "oauth-secret", refreshToken: "refresh-secret", nested: { clientSecret: "client-secret" } } }) };
+const rawCredentialProvider: SocialOAuthProvider = { ...provider, exchangeCode: async ({ code, redirectUri }) => ({ accountReference: `acct-${code}`, credentialReference: "raw-access-token", connection: { redirectUri } }) };
 function createService(ttl = 600_000, states: OAuthStateRepository = new InMemoryOAuthStateRepository()) { const registry = new InMemorySocialOAuthProviderRegistry(); registry.register(provider); return new SocialOAuthService(registry, new InMemorySocialAccountRepository(), states, ttl); }
 
 test("OAuth start creates a state-bound authorization URL", async () => { const oauthService = createService(); const result = await oauthService.start("instagram", "https://app.example.com/oauth/callback"); assert.match(result.authorizationUrl, /state=/); assert.match(result.authorizationUrl, /redirect_uri=/); assert.equal(result.state.length > 0, true); });
@@ -33,4 +34,13 @@ test("OAuth callback recovers from a concurrent social-account insert", async ()
   assert.equal(account.id, existing.id);
   assert.equal(account.accountReference, existing.accountReference);
   assert.equal(account.hasCredentialReference, true);
+});
+
+
+test("OAuth callback rejects raw credential values from a provider", async () => {
+  const registry = new InMemorySocialOAuthProviderRegistry();
+  registry.register(rawCredentialProvider);
+  const oauthService = new SocialOAuthService(registry, new InMemorySocialAccountRepository());
+  const started = await oauthService.start("instagram", "https://app.example.com/oauth/callback");
+  await assert.rejects(() => oauthService.callback("instagram", "raw", started.state), /Social credential references must be opaque secret-manager references/i);
 });
