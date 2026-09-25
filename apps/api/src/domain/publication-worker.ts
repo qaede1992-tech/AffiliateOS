@@ -108,8 +108,11 @@ export class PublicationWorker {
           "CONTENT_NOT_FOUND",
           "SOCIAL_ACCOUNT_NOT_FOUND"
         ]);
-        const isTerminal = (error: unknown): boolean =>
-          Boolean(error && typeof error === "object" && "code" in error && terminalPublicationErrors.has((error as { code?: unknown }).code ?? ""));
+        const isTerminal = (error: unknown): boolean => {
+          if (!error || typeof error !== "object" || !("code" in error)) return false;
+          const code = (error as { code?: unknown }).code;
+          return typeof code === "string" && terminalPublicationErrors.has(code);
+        };
         if (message.includes("does not support publication status checks") || isTerminal(error)) {
           await this.operations.transition(operation.id, "failed", { error: message }, now);
           await this.contentService?.update(operation.contentId, { status: "failed" }).catch(() => undefined);
