@@ -83,6 +83,11 @@ jobs:
       - name: Smoke test API release image
         run: |
           docker network create affiliateos-release-smoke
+          docker run --rm --network affiliateos-release-smoke \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
+            node:24-alpine sh -c 'npm ci --ignore-scripts && npm run db:migrate'
           docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke \
             --env NODE_ENV=production \
             --env API_HOST=0.0.0.0 \
