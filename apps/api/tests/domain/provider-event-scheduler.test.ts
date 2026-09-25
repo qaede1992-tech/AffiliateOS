@@ -54,3 +54,28 @@ test("provider event scheduler stops future cycles and waits for active work", a
   assert.equal(calls, 1);
   assert.equal(scheduler.isRunning, false);
 });
+
+
+test("provider event scheduler preserves worker success when result observer fails", async () => {
+  const errors: unknown[] = [];
+  const scheduler = new ProviderEventScheduler(
+    { runOnce: async () => ({ scanned: 1, processed: 1, failed: 0 }) },
+    {
+      onResult: () => { throw new Error("result observer failure"); },
+      onError: (error) => errors.push(error)
+    }
+  );
+
+  assert.deepEqual(await scheduler.runNow(), { scanned: 1, processed: 1, failed: 0 });
+  assert.equal(errors.length, 1);
+  assert.equal((errors[0] as Error).message, "result observer failure");
+});
+
+test("provider event scheduler does not reject because error observer fails", async () => {
+  const scheduler = new ProviderEventScheduler(
+    { runOnce: async () => { throw new Error("worker failure"); } },
+    { onError: () => { throw new Error("error observer failure"); } }
+  );
+
+  await assert.rejects(scheduler.runNow(), /worker failure/);
+});
