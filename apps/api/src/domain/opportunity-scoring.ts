@@ -67,7 +67,12 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   const commissionAmountCents = Math.max(0, offer?.commissionAmountCents ?? 0);
   const commissionAmountScore = offer?.commissionAmountCents !== undefined ? logScore(commissionAmountCents, 4) : 0;
   const commission = offer ? (offer.commissionAmountCents === undefined ? commissionRateScore : clamp(commissionRateScore * 0.6 + commissionAmountScore * 0.4)) : 0;
-  const catalogDemand = logScore(product.soldCount, 5) * 0.7 + logScore(product.reviewCount, 5) * 0.3;\n  const reachSignals = product.discoverySignals;\n  const audienceReach = reachSignals?.audienceReachScore ?? 0;\n  const observedReach = Math.max(reachSignals?.viewCount ?? 0, reachSignals?.impressionCount ?? 0);\n  const reachEvidence = observedReach > 0 ? logScore(observedReach, 8) : 0;\n  const demand = clamp(catalogDemand * 0.75 + audienceReach * 0.15 + reachEvidence * 0.10);
+  const catalogDemand = logScore(product.soldCount, 5) * 0.7 + logScore(product.reviewCount, 5) * 0.3;
+  const reachSignals = product.discoverySignals;
+  const audienceReach = reachSignals?.audienceReachScore ?? 0;
+  const observedReach = Math.max(reachSignals?.viewCount ?? 0, reachSignals?.impressionCount ?? 0);
+  const reachEvidence = observedReach > 0 ? logScore(observedReach, 8) : 0;
+  const demand = clamp(catalogDemand * 0.75 + audienceReach * 0.15 + reachEvidence * 0.10);
   const socialProof = clamp((product.ratingMilli ?? 0) / 50 * 0.7 + logScore(product.reviewCount, 6) * 0.3);
   const discount = product.originalPriceCents && product.originalPriceCents > product.priceCents ? clamp(((product.originalPriceCents - product.priceCents) / product.originalPriceCents) * 100) : 0;
   const targetPrice = input.targetPriceMaxCents && input.targetPriceMaxCents > 0 ? clamp((1 - product.priceCents / input.targetPriceMaxCents) * 100) : 50;
