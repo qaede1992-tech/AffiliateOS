@@ -26,6 +26,7 @@ export class ShopeeConversionSyncService {
     const reports = await (provider as ShopeeAffiliateProvider).conversionReportDetailed(since);
     const result: MarketplaceConversionSyncResult = { fetched: reports.length, created: 0, alreadyProcessed: 0, skippedUnattributed: 0, failed: 0 };
     for (const report of reports) {
+      if (!report.utmContent?.trim()) { result.skippedUnattributed += 1; continue; }
       try {
         const amountCents = grossAmountCents(report);
         const commissionCents = report.netCommissionCents ?? report.totalCommissionCents;
@@ -61,8 +62,10 @@ function grossAmountCents(report: ShopeeAffiliateConversionReportItem): number {
 }
 
 function reportStatus(report: ShopeeAffiliateConversionReportItem): "approved" | "pending" | "rejected" {
-  const status = report.orders.some(order => /cancel|refund|reject/i.test(order.orderStatus ?? "")) ? "rejected" : "approved";
-  return status;
+  const statuses = report.orders.map(order => (order.orderStatus ?? "").toLowerCase());
+  if (statuses.some(status => /cancel|refund|reject/.test(status))) return "rejected";
+  if (statuses.length > 0 && statuses.every(status => /complete|completed|approved|success|paid/.test(status))) return "approved";
+  return "pending";
 }
 
 function isAlreadyProcessed(error: unknown): boolean {
