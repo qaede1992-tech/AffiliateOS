@@ -330,6 +330,13 @@
       "when": 1790311000000,
       "tag": "0049_affiliate_account_affiliate_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790410000000,
+      "tag": "0050_affiliate_offer_conversion_mapping",
+      "breakpoints": true
     }
   ]
 }
