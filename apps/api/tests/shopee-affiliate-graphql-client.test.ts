@@ -15,7 +15,9 @@ test("ShopeeAffiliateGraphqlClient signs and maps discovery",async()=>{
 });
 test("ShopeeAffiliateGraphqlClient generates a short link",async()=>{
     const client=new ShopeeAffiliateGraphqlClient({market:"ID",credentials:{appId:"123",secret:"secret"},fetchImpl:async(_i,init)=>{
-      expect(String(init&&init.body)).toContain("GenerateShortLink"); expect(String(init&&init.body)).toContain("originUrl");
+      const body=String(init&&init.body);
+      assert.match(body,/GenerateShortLink/);
+      assert.match(body,/originUrl/);
       return new Response(JSON.stringify({data:{generateShortLink:{shortLink:"https://shope.ee/example"}}}),{status:200});
     }});
     assert.deepEqual(await client.generateShortLink("https://shopee.co.id/product/99"),{url:"https://shope.ee/example"});
