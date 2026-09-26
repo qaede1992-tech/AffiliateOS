@@ -89,6 +89,8 @@ describe("campaign orchestrator", () => {
     const content = new StubContent();
     const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"] });
     assert.equal(result.campaign.id, campaign.id);
+    assert.deepEqual(result.campaign.audience.audience, ["skincare"]);
+    assert.equal(result.campaign.audience.marketplaceId, product.marketplaceId);
     assert.equal(result.offerAttachment.affiliateOfferId, offer.id);
     assert.equal(result.trackingLink.destinationUrl, offer.affiliateUrl);
     assert.equal(result.content.length, 2);
