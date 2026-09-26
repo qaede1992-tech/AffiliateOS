@@ -98,6 +98,7 @@ function validateMarketplaceProductInput(input: MarketplaceProductInput): void {
   }
   validateMarketplaceUrl(input.productUrl, "product");
   if (input.imageUrl) validateMarketplaceUrl(input.imageUrl, "image");
+  if (input.videoUrl) validateMarketplaceUrl(input.videoUrl, "video");
 }
 function validateMarketplaceUrl(value: string, label: string): void {
   try {
