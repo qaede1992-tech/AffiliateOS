@@ -63,6 +63,18 @@ describe("AutonomousScheduler", () => {
     assert.equal(scheduler.status.lastError, undefined);
   });
 
+  it("records completion time when a cycle returns no result", async () => {
+    const cycle = { runOnce: async () => undefined } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      now: () => new Date("2026-09-21T00:00:00.000Z")
+    });
+
+    assert.equal(await scheduler.runNow(), undefined);
+    assert.equal(scheduler.status.lastResult, undefined);
+    assert.equal(scheduler.status.lastCompletedAt, "2026-09-21T00:00:00.000Z");
+    assert.equal(scheduler.status.lastError, undefined);
+  });
+
   it("reports scheduler errors through the error callback and status", async () => {
     const errors: unknown[] = [];
     const cycle = { runOnce: async () => { throw new Error("cycle failure"); } } as unknown as AutonomousCycleService;
