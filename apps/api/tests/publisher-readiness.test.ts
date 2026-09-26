@@ -32,7 +32,9 @@ test("publisher readiness requires an active account and credential reference", 
     publisherConfigured: true,
     credentialResolutionConfigured: true,
     activeAccountConfigured: true,
-    credentialReferenceConfigured: true
+    credentialReferenceConfigured: true,
+    requiredScope: "instagram_business_content_publish",
+    requiredScopeGranted: true
   });
 
   const missingCredential = new PublisherReadinessService([publisher], true, {
@@ -42,4 +44,21 @@ test("publisher readiness requires an active account and credential reference", 
 
   const noAccount = new PublisherReadinessService([publisher], true, { list: async () => [] });
   assert.equal((await noAccount.list()).find((item) => item.platform === "instagram")?.status, "unconfigured");
+});
+
+
+test("Instagram becomes ready only after the publishing scope is granted", () => {
+  const service = new PublisherReadinessService([publisher], true);
+  const result = service.get("instagram", [account({ connection: { grantedScopes: ["instagram_business_basic", "instagram_business_content_publish"] } })]);
+  assert.equal(result.status, "ready");
+  assert.equal(result.requiredScopeGranted, true);
+});
+
+test("TikTok remains unconfigured when the video publishing scope is missing", () => {
+  const tiktokPublisher: SocialPublisher = { provider: "tiktok-provider", supports: (platform) => platform === "tiktok" };
+  const service = new PublisherReadinessService([tiktokPublisher], true);
+  const result = service.get("tiktok", [account({ platform: "tiktok", connection: { grantedScopes: ["user.info.basic"] } })]);
+  assert.equal(result.status, "unconfigured");
+  assert.equal(result.requiredScope, "video.publish");
+  assert.equal(result.requiredScopeGranted, false);
 });

@@ -27,3 +27,34 @@ export class InMemorySocialCredentialResolver implements SocialCredentialResolve
     return this.credentials.get(credentialReference);
   }
 }
+
+
+/**
+ * Resolves opaque social credential references from a deployment-injected JSON
+ * secret. The JSON value should be supplied by the deployment secret manager;
+ * no credential material belongs in source control or database records.
+ */
+export class JsonSocialCredentialResolver implements SocialCredentialResolver {
+  constructor(private readonly credentials: Record<string, unknown>) {}
+
+  static fromJson(value: string): JsonSocialCredentialResolver {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      throw new Error("SOCIAL_CREDENTIALS_JSON must contain valid JSON.");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("SOCIAL_CREDENTIALS_JSON must contain a JSON object.");
+    }
+    return new JsonSocialCredentialResolver(parsed as Record<string, unknown>);
+  }
+
+  async resolve(credentialReference: string): Promise<unknown> {
+    if (!credentialReference.trim()) throw new Error("Social credential reference is required.");
+    if (!(credentialReference in this.credentials)) {
+      throw new Error("Social credential was not found.");
+    }
+    return this.credentials[credentialReference];
+  }
+}
