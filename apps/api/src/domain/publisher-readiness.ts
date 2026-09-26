@@ -17,7 +17,7 @@ export type PublisherReadiness = {
   activeAccountConfigured: boolean;
   credentialReferenceConfigured: boolean;
   requiredScope?: string;
-  requiredScopeGranted: boolean;
+  requiredScopeGranted?: boolean;
 };
 
 const platforms: ContentPlatform[] = ["tiktok", "instagram", "facebook", "youtube-shorts", "x", "threads"];
@@ -40,7 +40,8 @@ export class PublisherReadinessService {
     const activeAccountConfigured = platformAccounts.length > 0;
     const credentialReferenceConfigured = platformAccounts.some((account) => Boolean(account.credentialReference?.trim()));
     const requiredScope = requiredScopesByPlatform[platform];
-    const requiredScopeGranted = !requiredScope || platformAccounts.some((account) => {
+    const scopeEvidenceAvailable = platformAccounts.some((account) => Array.isArray(account.connection?.grantedScopes));
+    const requiredScopeGranted = !requiredScope || !scopeEvidenceAvailable || platformAccounts.some((account) => {
       const grantedScopes = account.connection?.grantedScopes;
       return Array.isArray(grantedScopes) && grantedScopes.some((scope) => scope === requiredScope);
     });
@@ -48,7 +49,7 @@ export class PublisherReadinessService {
       ? "unsupported"
       : !this.credentialResolverConfigured || !activeAccountConfigured || !credentialReferenceConfigured
         ? "unconfigured"
-        : !requiredScopeGranted
+        : scopeEvidenceAvailable && !requiredScopeGranted
           ? "unconfigured"
           : "ready";
 
@@ -59,8 +60,7 @@ export class PublisherReadinessService {
       credentialResolutionConfigured: this.credentialResolverConfigured,
       activeAccountConfigured,
       credentialReferenceConfigured,
-      requiredScope,
-      requiredScopeGranted
+      ...(activeAccountConfigured && requiredScope ? { requiredScope, requiredScopeGranted } : {})
     };
   }
 }
