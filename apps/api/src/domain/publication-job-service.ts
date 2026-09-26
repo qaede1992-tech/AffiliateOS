@@ -1,5 +1,5 @@
 import type { Content, EntityId } from "@affiliateos/shared";
-import type { PublicationJob, PublicationJobRepository } from "./publication-job.js";
+import { publicationRetryEligibleAt, type PublicationJob, type PublicationJobRepository } from "./publication-job.js";
 import { createPublicationJob } from "./publication-job.js";
 
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -21,6 +21,7 @@ export class PublicationJobService {
     if (!job) return undefined;
     const scheduledAt = new Date(job.scheduledAt).getTime();
     if (!Number.isFinite(scheduledAt) || scheduledAt > now.getTime()) return undefined;
+    if (job.status === "failed" && publicationRetryEligibleAt(job) > now.getTime()) return undefined;
     if (job.status === "processing") {
       if (!job.lockedAt) return undefined;
       const lockAge = now.getTime() - new Date(job.lockedAt).getTime();
