@@ -61,3 +61,16 @@ test("marketplace persistence recovers from concurrent unique inserts", async ()
   assert.equal(result[0].productId, racedProduct.id);
   assert.equal(result[0].affiliateAccountId, racedAccount.id);
 });
+
+
+test("marketplace account binding persists the internal affiliate identity", async () => {
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
+  await repos.marketplaceConnections.save(connection);
+  const { MarketplaceProviderRegistry } = await import("../src/domain/foundations.js");
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), repos.marketplaceConnections, repos.products, repos.affiliateAccounts, repos.affiliateOffers);
+  const affiliateId = "00000000-0000-4000-8000-000000000031";
+  const bound = await service.bindAffiliateAccount(connection.slug, affiliateId);
+  assert.equal(bound.affiliateId, affiliateId);
+  assert.equal((await service.getAffiliateAccount(connection.slug)).affiliateId, affiliateId);
+});
