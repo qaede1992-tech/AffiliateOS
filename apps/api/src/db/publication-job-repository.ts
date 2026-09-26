@@ -1,4 +1,4 @@
-import { and, eq, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import type { PublicationJob } from "../domain/publication-job.js";
 import type { PublicationJobRepository } from "../domain/repository.js";
 import { publicationJobs } from "./schema.js";
@@ -31,6 +31,25 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
     return rows.map(toPublicationJob);
   }
 
+  async listClaimable(now: Date, lockTimeoutMs: number, limit: number): Promise<PublicationJob[]> {
+    const nowIso = now.toISOString();
+    const staleCutoff = new Date(now.getTime() - lockTimeoutMs).toISOString();
+    const rows = await this.db.select().from(publicationJobs)
+      .where(and(
+        lte(publicationJobs.scheduledAt, nowIso),
+        or(
+          eq(publicationJobs.status, "pending"),
+          and(
+            eq(publicationJobs.status, "failed"),
+            lte(publicationJobs.updatedAt, sql`\${nowIso}::timestamptz - (\${retryDelaySql(publicationJobs.attemptCount)} * INTERVAL '1 millisecond')`)
+          ),
+          and(eq(publicationJobs.status, "processing"), lte(publicationJobs.lockedAt, staleCutoff))
+        )
+      ))
+      .orderBy(asc(publicationJobs.scheduledAt))
+      .limit(Math.max(0, limit));
+    return rows.map(toPublicationJob);
+  }
   async findById(id: string): Promise<PublicationJob | undefined> {
     const rows = await this.db.select().from(publicationJobs).where(eq(publicationJobs.id, id)).limit(1);
     return rows[0] ? toPublicationJob(rows[0]) : undefined;
