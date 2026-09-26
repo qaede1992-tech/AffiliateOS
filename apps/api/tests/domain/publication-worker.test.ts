@@ -80,6 +80,23 @@ describe("PublicationWorker", () => {
     assert.equal(selectedAccount, bound.id);
   });
 
+  it("uses bounded publication job candidates when the repository provides them", async () => {
+    const { contentService, socialAccounts, jobs, jobService } = await setup();
+    let candidateReads = 0;
+    const boundedJobs = {
+      ...jobs,
+      list: async () => { throw new Error("unbounded job listing should not be used"); },
+      listClaimable: async () => {
+        candidateReads += 1;
+        return [];
+      }
+    } as import("../../src/domain/publication-job.js").PublicationJobRepository;
+    const worker = workerFor(contentService, socialAccounts, boundedJobs, jobService);
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.deepEqual(results, []);
+    assert.equal(candidateReads, 1);
+  });
+
   it("uses bounded reconciliation candidates when the repository provides them", async () => {
     const { contentService, socialAccounts, jobs, jobService } = await setup();
     const operations = new InMemoryPublicationOperationRepository();
