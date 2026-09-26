@@ -72,11 +72,11 @@ test("Instagram video publishing waits for a finished container before media_pub
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
     fetchImpl: async (input, init) => {
-      const url = String(input);
-      calls.push(url);
-      if (url.endsWith("/media")) return new Response(JSON.stringify({ id: "container-2" }), { status: 200 });
-      if (url.endsWith("/container-2")) return new Response(JSON.stringify({ id: "container-2", status_code: status }), { status: 200 });
-      if (url.endsWith("/media_publish")) {
+      const url = new URL(String(input));
+      calls.push(url.toString());
+      if (url.pathname.endsWith("/media")) return new Response(JSON.stringify({ id: "container-2" }), { status: 200 });
+      if (url.pathname.endsWith("/container-2")) return new Response(JSON.stringify({ id: "container-2", status_code: status }), { status: 200 });
+      if (url.pathname.endsWith("/media_publish")) {
         assert.equal(init?.method, "POST");
         assert.match(String(init?.body ?? ""), /creation_id=container-2/);
       }
