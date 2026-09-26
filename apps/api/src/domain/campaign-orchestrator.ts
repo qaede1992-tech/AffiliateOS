@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
 import type { CampaignService, TrackingService } from "./campaigns.js";
 import type { ContentService } from "./content.js";
 import { publisherSupportsContent, type DistributionEngine, type DistributionPlan } from "./distribution-engine.js";
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
+import type { MediaAssetRepository } from "./media-asset.js";
 
 export type CampaignOrchestratorInput = {
   opportunity: ScoredOpportunity;
@@ -26,7 +27,7 @@ export type GeneratedCampaignContent = {
   cta: string;
 };
 
-const defaultPlatforms: ContentPlatform[] = ["tiktok", "instagram", "facebook"];
+const defaultPlatforms: ContentPlatform[] = ["instagram", "tiktok"];
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
 const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string, attempt = 0): string => {
   const seed = `${idempotencyKey ?? campaignId}:${offerId}:${attempt}`;
@@ -76,7 +77,8 @@ export class CampaignOrchestrator {
     private readonly content: ContentService,
     private readonly contentGenerator: CampaignContentGenerator = new DeterministicCampaignContentGenerator(),
     private readonly distribution?: DistributionEngine,
-    private readonly autonomousRuns?: AutonomousRunService
+    private readonly autonomousRuns?: AutonomousRunService,
+    private readonly mediaAssets?: MediaAssetRepository
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
@@ -143,23 +145,26 @@ export class CampaignOrchestrator {
       for (const platform of requestedPlatforms) {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion" && item.status !== "archived");
         if (existing?.status === "failed") {
-          content.push(await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined }));
+          const reset = await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
+          content.push(await this.attachProductImageIfAvailable(reset, liveProduct));
         } else if (existing) {
-          content.push(existing);
+          content.push(await this.attachProductImageIfAvailable(existing, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
-          content.push(await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" }));
+          let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
+          created = await this.attachProductImageIfAvailable(created, liveProduct);
+          content.push(created);
         }
       }
 
       const distribution: DistributionPlan[] = [];
       if (input.scheduledAt) {
-        const requests = content.filter((item) => item.status === "draft").map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
+        const requests = content
+          .filter((item) => item.status === "draft")
+          .filter((item) => this.hasAutopublishableMedia(item))
+          .filter((item) => this.distribution!.listPublishers(item.platform).some((publisher) => publisherSupportsContent(publisher, item)))
+          .map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
         if (requests.length) {
-          const unsupported = requests.find((request) =>
-            !this.distribution!.listPublishers(request.content.platform).some((publisher) => publisherSupportsContent(publisher, request.content))
-          );
-          if (unsupported) throw new Error(`No compatible publisher is available for ${unsupported.content.platform}. Autonomous distribution remains in draft.`);
           await this.distribution!.validateBatch(requests);
           const scheduled = [] as Awaited<ReturnType<DistributionEngine["schedule"]>>[];
           for (const request of requests) scheduled.push(await this.distribution!.schedule(request));
