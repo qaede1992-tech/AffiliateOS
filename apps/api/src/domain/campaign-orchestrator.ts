@@ -180,6 +180,8 @@ export class CampaignOrchestrator {
       if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: currentCampaignId, error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
+  }
+
   private async attachProductImageIfAvailable(
     content: Awaited<ReturnType<ContentService["create"]>>,
     product: Product
