@@ -3,6 +3,7 @@ import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, I
 import { AffiliateService, CommissionService, ConversionService, OfferService } from "./services.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
 import { MarketplaceService } from "./marketplace.js";
+import { ShopeeConversionSyncService } from "./shopee-conversion-sync.js";
 import { CampaignService, TrackingService } from "./campaigns.js";
 import { ContentService, SocialAccountService } from "./content.js";
 import { AnalyticsService } from "./analytics.js";
@@ -40,7 +41,7 @@ import { AdaptiveExplorationPolicyProvider, type AdaptiveExplorationPolicy } fro
 import type { AutonomousExplorationStateRepository } from "./autonomous-exploration-state.js";
 
 export interface Services {
-  affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService;
+  affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor;
 }
@@ -85,6 +86,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
       await attribution.create(conversionId, { trackingLinkId }, { allowInactiveTrackingLink: true });
     }
   });
+  const shopeeConversionSync = new ShopeeConversionSyncService(marketplace, conversions, providerConversions);
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
   const stateReader = optimizationStateReader ?? defaultOptimizationState;
@@ -97,7 +99,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies }, { intervalMs: autonomousSchedulerIntervalMs });
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
-    autonomousDecisionAudits: autonomousDecisionAuditRepository,
+    shopeeConversionSync, autonomousDecisionAudits: autonomousDecisionAuditRepository,
     socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository), analytics, attribution, publicationJobs, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
 }
