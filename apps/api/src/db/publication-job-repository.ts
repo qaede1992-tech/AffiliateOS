@@ -120,7 +120,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
             eq(publicationJobs.status, "failed"),
             lte(
               publicationJobs.updatedAt,
-              sql`NOW() - (${retryDelaySql(publicationJobs.attemptCount)} * INTERVAL '1 millisecond')`
+              sql`${nowIso}::timestamptz - (${retryDelaySql(publicationJobs.attemptCount)} * INTERVAL '1 millisecond')`
             )
           ),
           and(eq(publicationJobs.status, "processing"), lte(publicationJobs.lockedAt, staleCutoff))
