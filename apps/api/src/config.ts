@@ -44,7 +44,12 @@ const environmentSchema = z.object({
   AUTONOMOUS_MINIMUM_DEMAND_SCORE: z.coerce.number().min(0).max(100).default(0),
   AUTONOMOUS_OPTIMIZATION_MIN_COMMISSION_PER_CLICK_CENTS: z.coerce.number().min(0).default(0),
   AUTONOMOUS_MARKETPLACE_POLICIES_JSON: marketplacePoliciesEnvironment.default({}),
-  PROVIDER_EVENT_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).default(60_000)
+  PROVIDER_EVENT_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).default(60_000),
+  SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE: z.string().trim().optional(),
+  SHOPEE_AFFILIATE_APP_ID: z.string().trim().optional(),
+  SHOPEE_AFFILIATE_APP_SECRET: z.string().optional(),
+  SHOPEE_AFFILIATE_MARKET: z.string().trim().regex(/^[A-Za-z]{2}$/).default("ID"),
+  SHOPEE_AFFILIATE_API_VERSION: z.string().trim().regex(/^v\d+$/).default("v2")
 });
 
 export const environment = environmentSchema.parse(process.env);

@@ -15,8 +15,19 @@ import { ProviderEventScheduler } from "./domain/provider-event-scheduler.js";
 import { ProviderEventProcessor } from "./domain/provider-event-processor.js";
 import { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./domain/provider-event-conversion-processor.js";
 import { GenericProviderConversionNormalizer } from "./domain/provider-conversion.js";
+import { MarketplaceProviderRegistry } from "./domain/foundations.js";
+import { createShopeeAffiliateProvider } from "./domain/shopee-affiliate-runtime.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
+const marketplaceRegistry = new MarketplaceProviderRegistry();
+const shopeeProvider = createShopeeAffiliateProvider({
+  credentialReference: environment.SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE,
+  appId: environment.SHOPEE_AFFILIATE_APP_ID,
+  appSecret: environment.SHOPEE_AFFILIATE_APP_SECRET,
+  market: environment.SHOPEE_AFFILIATE_MARKET,
+  apiVersion: environment.SHOPEE_AFFILIATE_API_VERSION
+});
+if (shopeeProvider) marketplaceRegistry.register(shopeeProvider);
 const autonomousCycleLock = new PostgresAutonomousCycleLock(persistence.pool);
 const services = createServices(
   persistence.repositories,
