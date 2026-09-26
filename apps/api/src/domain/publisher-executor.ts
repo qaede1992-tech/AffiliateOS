@@ -1,5 +1,6 @@
 import type { Content, SocialAccount } from "@affiliateos/shared";
 import type { ContentService } from "./content.js";
+import type { MediaAssetRepository } from "./media-asset.js";
 import { publisherSupportsContent, type PublicationCheckResult, type SocialPublisher } from "./distribution-engine.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { SocialAccountRepository } from "./repository.js";
@@ -20,7 +21,8 @@ export class PublisherExecutor {
     private readonly contentService: ContentService,
     private readonly socialAccounts: SocialAccountRepository,
     private readonly publishers: SocialPublisher[],
-    private readonly credentialResolver?: SocialCredentialResolver
+    private readonly credentialResolver?: SocialCredentialResolver,
+    private readonly mediaAssets?: MediaAssetRepository
   ) {}
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`): Promise<PublishExecutionResult> {
@@ -38,7 +40,8 @@ export class PublisherExecutor {
 
     try {
       const credential = await this.resolveCredential(account);
-      const result = await publisher.publish({ content, account, credential, idempotencyKey });
+      const mediaAssets = await this.resolveMediaAssets(content);
+      const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey });
       if (result.status === "accepted") {
         return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
       }
@@ -58,7 +61,8 @@ export class PublisherExecutor {
     if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
     if (!publisher.checkPublication) throw new Error(`Publisher ${operation.provider} does not support publication status checks.`);
     const credential = await this.resolveCredential(account);
-    const result = await publisher.checkPublication({ content, account, credential, operation });
+    const mediaAssets = await this.resolveMediaAssets(content);
+    const result = await publisher.checkPublication({ content, account, credential, mediaAssets, operation });
     return { content, account, result };
   }
 
@@ -66,6 +70,15 @@ export class PublisherExecutor {
     if (!account.credentialReference) return undefined;
     if (!this.credentialResolver) throw new Error("Social credential resolution is not configured.");
     return this.credentialResolver.resolve(account.credentialReference);
+  }
+
+  private async resolveMediaAssets(content: Content) {
+    if (!this.mediaAssets || !content.mediaAssetIds?.length) return [];
+    const assets = await Promise.all(content.mediaAssetIds.map((id) => this.mediaAssets?.findById(id)));
+    if (assets.some((asset) => !asset)) throw new Error("One or more configured media assets do not exist.");
+    const resolved = assets as NonNullable<(typeof assets)[number]>[];
+    if (resolved.some((asset) => asset.contentId !== content.id)) throw new Error("A configured media asset does not belong to the content.");
+    return resolved;
   }
 
   private async findAccount(content: Content): Promise<SocialAccount> {

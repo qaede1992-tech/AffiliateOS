@@ -1,4 +1,5 @@
 import type { Content, ContentPlatform, SocialAccount } from "@affiliateos/shared";
+import type { MediaAsset } from "./media-asset.js";
 import type { ContentService } from "./content.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { SocialAccountRepository } from "./repository.js";
@@ -19,8 +20,8 @@ export interface SocialPublisher {
   supports(platform: string): boolean;
   supportsContent?(content: Content): boolean;
   provider?: string;
-  publish(input: { content: Content; account: SocialAccount; credential?: unknown; idempotencyKey: string }): Promise<PublishOutcome>;
-  checkPublication?(input: { content: Content; account: SocialAccount; credential?: unknown; operation: PublicationOperation }): Promise<PublicationCheckResult>;
+  publish(input: { content: Content; account: SocialAccount; credential?: unknown; mediaAssets?: MediaAsset[]; idempotencyKey: string }): Promise<PublishOutcome>;
+  checkPublication?(input: { content: Content; account: SocialAccount; credential?: unknown; mediaAssets?: MediaAsset[]; operation: PublicationOperation }): Promise<PublicationCheckResult>;
 }
 
 export const publisherSupportsContent = (publisher: SocialPublisher, content: Content): boolean =>
