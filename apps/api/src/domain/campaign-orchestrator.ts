@@ -185,24 +185,44 @@ export class CampaignOrchestrator {
   private async attachProductMediaIfAvailable(
     content: Awaited<ReturnType<ContentService["create"]>>,
     product: Product
-  ): Promise<Awaited<ReturnType<ContentService["create"]>>> {
-    if (content.platform !== "instagram" || !product.imageUrl || !this.mediaAssets) return content;
-    let imageUrl: URL;
-    try { imageUrl = new URL(product.imageUrl); } catch { return content; }
-    if (imageUrl.protocol !== "https:") return content;
+  ) {
+    if (!this.mediaAssets) return content;
+
+    const media = content.platform === "instagram"
+      ? { kind: "image" as const, reference: product.imageUrl }
+      : content.platform === "tiktok"
+        ? { kind: "video" as const, reference: product.videoUrl }
+        : undefined;
+
+    if (!media?.reference) return content;
+
+    let mediaUrl: URL;
+    try {
+      mediaUrl = new URL(media.reference);
+    } catch {
+      return content;
+    }
+    if (mediaUrl.protocol !== "https:") return content;
+
     const existing = await this.mediaAssets.listByContent(content.id);
-    if (existing.some((asset) => asset.kind === "image" && asset.source === "url" && asset.reference === product.imageUrl)) return content;
+    if (existing.some((asset) => asset.kind === media.kind && asset.source === "url" && asset.reference === media.reference)) {
+      return content;
+    }
+
     const now = new Date().toISOString();
     const asset = await this.mediaAssets.save({
       id: randomUUID(),
       contentId: content.id,
-      kind: "image",
+      kind: media.kind,
       source: "url",
-      reference: product.imageUrl,
+      reference: media.reference,
       createdAt: now,
       updatedAt: now
     });
-    return this.content.update(content.id, { mediaAssetIds: [...(content.mediaAssetIds ?? []), asset.id] });
+
+    return this.content.update(content.id, {
+      mediaAssetIds: [...(content.mediaAssetIds ?? []), asset.id]
+    });
   }
 
   private hasAutopublishableMedia(content: Awaited<ReturnType<ContentService["create"]>>): boolean {
