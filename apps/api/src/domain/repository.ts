@@ -1,7 +1,7 @@
 import type { EntityId } from "@affiliateos/shared";
 import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, Offer, Product, TrackingLink, SocialAccount } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
-import type { PublicationJob } from "./publication-job.js";
+import { publicationRetryEligibleAt, type PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
 
@@ -42,6 +42,22 @@ export class InMemoryPublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
   async findById(id: EntityId) { return this.jobs.get(id); }
+  async listClaimable(nowDate: Date, lockTimeoutMs: number, limit: number) {
+    return [...this.jobs.values()]
+      .filter((job) => {
+        const scheduled = new Date(job.scheduledAt).getTime();
+        const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
+        const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
+        return scheduled <= nowDate.getTime() &&
+          !lockFresh &&
+          (job.status === "pending" ||
+            (job.status === "failed" && publicationRetryEligibleAt(job) <= nowDate.getTime()) ||
+            job.status === "processing");
+      })
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      .slice(0, Math.max(0, limit));
+  }
+
   async findByIdempotencyKey(key: string) { for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job; return undefined; }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
   async saveIfAbsent(job: PublicationJob) { const existing = this.findByIdempotencyKeySync(job.idempotencyKey); if (existing) return existing; this.jobs.set(job.id, job); return job; }
