@@ -110,7 +110,7 @@ export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
+  contents: Repository<Content>; mediaAssets: MediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface CommissionRepository extends Repository<Commission> { findByConversionId(conversionId: EntityId): Promise<Commission | undefined>; }
