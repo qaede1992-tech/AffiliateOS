@@ -91,7 +91,7 @@ export class ConversionService {
     if (idempotencyKey) {
       const existing = await this.conversions.findByIdempotencyKey(idempotencyKey);
       if (existing) {
-        if (existing.affiliateId !== input.affiliateId || existing.offerId !== input.offerId || existing.amountCents !== input.amountCents) {
+        if (existing.affiliateId !== input.affiliateId || existing.offerId !== input.offerId || existing.affiliateOfferId !== input.affiliateOfferId || existing.amountCents !== input.amountCents) {
           throw new DomainError("IDEMPOTENCY_KEY_CONFLICT", "The idempotency key was already used for a different conversion.", 409);
         }
         return existing;
@@ -115,6 +115,7 @@ export class ConversionService {
       id: randomUUID(),
       affiliateId: input.affiliateId,
       offerId: input.offerId,
+      affiliateOfferId: input.affiliateOfferId,
       amountCents: input.amountCents,
       status: "pending",
       occurredAt: input.occurredAt ?? now(),
@@ -137,7 +138,7 @@ export class ConversionService {
       if (idempotencyKey && isUniqueViolation(error)) {
         const raced = await this.conversions.findByIdempotencyKey(idempotencyKey);
         if (raced) {
-          if (raced.affiliateId !== input.affiliateId || raced.offerId !== input.offerId || raced.amountCents !== input.amountCents) {
+          if (raced.affiliateId !== input.affiliateId || raced.offerId !== input.offerId || raced.affiliateOfferId !== input.affiliateOfferId || raced.amountCents !== input.amountCents) {
             throw new DomainError("IDEMPOTENCY_KEY_CONFLICT", "The idempotency key was already used for a different conversion.", 409);
           }
           return raced;
