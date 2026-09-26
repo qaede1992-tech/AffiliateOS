@@ -209,6 +209,4 @@ export class CampaignOrchestrator {
     if (!content.mediaAssetIds?.length) return false;
     return content.platform === "instagram";
   }
-
-  }
 }
