@@ -12,6 +12,7 @@ const PROCESSING_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
 import { publicationRetryDelayMs } from "./publication-job.js";
+export { publicationRetryDelayMs } from "./publication-job.js";
 const retryEligibleAt = (job: PublicationJob): number =>
   new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
 
