@@ -13,7 +13,7 @@ export interface AutonomousRunRepository {
   findById?(id: EntityId): Promise<AutonomousRun | undefined>;
   save(run: AutonomousRun): Promise<AutonomousRun>;
   saveIfAbsent?(run: AutonomousRun): Promise<AutonomousRun>;
-  transition?(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun): Promise<AutonomousRun | undefined>;
+  transition?(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun, expectedAttemptCount?: number): Promise<AutonomousRun | undefined>;
   claimProcessing?(id: EntityId, now: Date, staleAfterMs: number, maxAttempts: number): Promise<AutonomousRun | undefined>;
   list?(options?: { status?: AutonomousRunStatus; limit?: number }): Promise<AutonomousRun[]>;
   listRecoverable?(staleBefore: Date, now?: Date, limit?: number, maxAttempts?: number): Promise<AutonomousRun[]>;
@@ -24,9 +24,9 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   async findById(id: EntityId) { return [...this.runs.values()].find((run) => run.id === id); }
   async save(run: AutonomousRun) { this.runs.set(run.idempotencyKey, run); return run; }
   async saveIfAbsent(run: AutonomousRun) { const existing = this.runs.get(run.idempotencyKey); if (existing) return existing; this.runs.set(run.idempotencyKey, run); return run; }
-  async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) {
+  async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun, expectedAttemptCount = run.attemptCount) {
     const current = [...this.runs.values()].find((candidate) => candidate.id === id);
-    if (!current || !expected.includes(current.status) || current.attemptCount !== run.attemptCount) return undefined;
+    if (!current || !expected.includes(current.status) || current.attemptCount !== expectedAttemptCount) return undefined;
     const next: AutonomousRun = {
       ...current,
       status: run.status,
