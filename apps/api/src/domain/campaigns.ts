@@ -99,8 +99,12 @@ export class TrackingService {
     validateRedirectDestination(input.destinationUrl);
     if (input.destinationUrl !== offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_DESTINATION_MISMATCH", "Tracking links must target the active affiliate URL for the offer.");
     if (input.campaignId) {
-      await this.getCampaign(input.campaignId);
+      const campaign = await this.getCampaign(input.campaignId);
       if (!(await this.campaignOffers.find(input.campaignId, input.affiliateOfferId))) throw new DomainError("OFFER_NOT_ATTACHED", "The affiliate offer must be attached to the campaign first.");
+      const campaignProductId = typeof campaign.audience.productId === "string" ? campaign.audience.productId.trim() : "";
+      if (campaignProductId && campaignProductId !== offer.productId) {
+        throw new DomainError("CAMPAIGN_PRODUCT_MISMATCH", "The tracking link offer must belong to the campaign's selected product.", 409);
+      }
     }
     const createdAt = now();
     const link: TrackingLink = { id: randomUUID(), affiliateOfferId: input.affiliateOfferId, campaignId: input.campaignId, code: input.code ?? code(), destinationUrl: input.destinationUrl, status: "active", createdAt, updatedAt: createdAt };
