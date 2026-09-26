@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "Public API origin embedded in the production web bundle"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      VITE_API_URL: ${{ inputs.api_url || vars.PRODUCTION_API_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          test "${RELEASE_TAG}" = "v${version}" || {
+            echo "Release tag ${RELEASE_TAG} must match package.json version v${version}."
+            exit 1
+          }
+
+      - name: Validate production web origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${VITE_API_URL}" || {
+            echo "VITE_API_URL is required. Set repository variable PRODUCTION_API_URL or provide the workflow_dispatch api_url input."
+            exit 1
+          }
+          case "${VITE_API_URL}" in
+            https://*) ;;
+            *) echo "VITE_API_URL must use HTTPS for a production release."; exit 1 ;;
+          esac
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29d8e6a7c9f6f8e0d8e1 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@263435318d0b3f3b7a3f8a3d5f4b4f2c0f7f7a6 # v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/affiliateos-api:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/affiliateos-api:${{ github.ref_name }}
+          provenance: true
+          sbom: true
+
+      - name: Build and push web image
+        uses: docker/build-push-action@263435318d0b3f3b7a3f8a3d5f4b4f2c0f7f7a6 # v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          build-args: |
+            VITE_API_URL=${{ env.VITE_API_URL }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/affiliateos-web:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/affiliateos-web:${{ github.ref_name }}
+          provenance: true
+          sbom: true
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${RELEASE_TAG}" --generate-notes --verify-tag
