@@ -10,7 +10,7 @@ describe("ShopeeAffiliateGraphqlClient",()=>{
     }});
     const products=await client.productOfferV2();
     expect(products[0]).toMatchObject({externalProductId:"99",name:"Test product",priceCents:12500000,soldCount:321,ratingMilli:4700,productUrl:"https://shopee.co.id/product/99"});
-    expect(requests).toHaveLength(1); expect(String(requests[0].headers)).toContain("Credential=123"); expect(String(requests[0].body)).toContain('"query"');
+    expect(requests).toHaveLength(1); expect((requests[0].headers as Record<string,string>).authorization).toContain("Credential=123"); expect(String(requests[0].body)).toContain('"query"');
   });
   it("generates a short link from an offer URL",async()=>{
     const client=new ShopeeAffiliateGraphqlClient({market:"ID",credentials:{appId:"123",secret:"secret"},fetchImpl:async(_i,init)=>{
