@@ -68,7 +68,7 @@ test("TikTok client queries creator info and initializes a URL publication", asy
 });
 
 test("TikTok client fails closed without explicit consent", async () => {
-  const noConsent = { ...account, connection: { tiktokPrivacyLevel: "SELF_ONLY" } };
+  const noConsent = { ...account, connection: { tiktokPrivacyLevel: "SELF_ONLY", tiktokPublishingConsentAt: undefined } };
   let called = false;
   const client = new TikTokContentPostingClient({
     accessTokenResolver: async () => "secret-token",
