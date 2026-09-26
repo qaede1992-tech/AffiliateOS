@@ -75,3 +75,25 @@ test("marketplace account binding persists the internal affiliate identity", asy
   assert.equal(bound.affiliateId, affiliateId);
   assert.equal((await service.getAffiliateAccount(connection.slug)).affiliateId, affiliateId);
 });
+
+
+test("marketplace product ingestion rejects unsafe video media URLs", async () => {
+  const registry = new MarketplaceProviderRegistry();
+  registry.register(new MockMarketplaceProvider([{
+    externalProductId: "sku-video-invalid",
+    name: "Video product",
+    priceCents: 4299,
+    currency: "USD",
+    productUrl: "https://catalog.example.test/products/sku-video-invalid",
+    videoUrl: "javascript:alert(1)",
+    availability: "in_stock"
+  }]));
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
+  await repos.marketplaceConnections.save(connection);
+  const service = new MarketplaceService(registry, repos.marketplaceConnections, repos.products, repos.affiliateAccounts, repos.affiliateOffers, repos.offers);
+  await assert.rejects(() => service.discoverProducts(connection.slug), (error: unknown) => {
+    assert.equal((error as { code?: string }).code, "INVALID_MARKETPLACE_PRODUCT");
+    return true;
+  });
+});
