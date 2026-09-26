@@ -14,17 +14,18 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/publishers/readiness", async () => list(await services.publisherReadiness.list()));
   app.get("/api/v1/autonomous/status", writeGuard, async () => services.autonomousScheduler.status);
   app.get("/api/v1/autonomous/health", writeGuard, async () => {
-    const [accepted, processing, failed, publishers] = await Promise.all([
+    const [accepted, processing, failed, recoverable, publishers] = await Promise.all([
       services.autonomousRuns.list({ status: "accepted", limit: 100 }),
       services.autonomousRuns.list({ status: "processing", limit: 100 }),
       services.autonomousRuns.list({ status: "failed", limit: 100 }),
+      services.autonomousRuns.listRecoverable(),
       services.publisherReadiness.list()
     ]);
     const scheduler = services.autonomousScheduler.status;
     const blockedPublishers = publishers.filter((publisher) => publisher.status !== "ready");
     const status = !scheduler.running
       ? "disabled"
-      : scheduler.lastError || blockedPublishers.length || failed.length
+      : scheduler.lastError || blockedPublishers.length || recoverable.length
         ? "degraded"
         : "healthy";
     return {
@@ -40,7 +41,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       runs: {
         accepted: accepted.length,
         processing: processing.length,
-        failed: failed.length
+        failed: failed.length,
+        recoverable: recoverable.length
       }
     };
   });
