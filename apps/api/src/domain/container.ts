@@ -69,7 +69,21 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const attribution = new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository);
   const providerConversions = new ProviderConversionProcessor(conversions, {
     async resolveAffiliate(reference) { return (await repositories.affiliates.findById(reference))?.id; },
-    async resolveOffer(reference: string) { return (await repositories.offers.findById(reference))?.id; }
+    async resolveOffer(reference: string) { return (await repositories.offers.findById(reference))?.id; },
+    async resolveTracking(accountScope: string, reference: string) {
+      const link = await repositories.trackingLinks.findByCode(reference);
+      if (!link) return undefined;
+      const account = await repositories.affiliateAccounts.findById(accountScope);
+      const affiliateOffer = await repositories.affiliateOffers.findById(link.affiliateOfferId);
+      if (!account?.affiliateId || !affiliateOffer || affiliateOffer.affiliateAccountId !== account.id || !affiliateOffer.conversionOfferId) return undefined;
+      const conversionOffer = await repositories.offers.findById(affiliateOffer.conversionOfferId);
+      if (!conversionOffer || conversionOffer.status !== "active") return undefined;
+      return { affiliateId: account.affiliateId, offerId: conversionOffer.id, affiliateOfferId: affiliateOffer.id, trackingLinkId: link.id };
+    }
+  }, {
+    async attribute(conversionId, trackingLinkId) {
+      await attribution.create(conversionId, { trackingLinkId }, { allowInactiveTrackingLink: true });
+    }
   });
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
