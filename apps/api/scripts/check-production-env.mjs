@@ -54,10 +54,16 @@ console.log("Production configuration preflight passed.");
 function isJsonObject(value) {
   try {
     const parsed = JSON.parse(value);
-    return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed);
+    return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed) && Object.keys(parsed).length > 0 && Object.entries(parsed).every(([key, credential]) => key.trim() && isConfiguredCredential(credential));
   } catch {
     return false;
   }
+}
+
+function isConfiguredCredential(value) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return typeof value.accessToken === "string" && value.accessToken.trim().length > 0;
 }
 
 function isOpaqueCredentialReference(value) {
