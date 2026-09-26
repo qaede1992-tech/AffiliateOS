@@ -53,7 +53,7 @@ export class AutonomousRunService {
     }
     const next: AutonomousRun = { ...run, status: "processing", attemptCount: run.attemptCount + 1, nextAttemptAt: undefined, lastError: undefined, updatedAt: now.toISOString() };
     if (this.runs.transition) {
-      const transitioned = await this.runs.transition(id, [run.status], next);
+      const transitioned = await this.runs.transition(id, [run.status], next, run.attemptCount);
       if (transitioned) return { run: transitioned, acquired: true };
       const current = this.runs.findById ? await this.runs.findById(id) : undefined; return { run: current ?? run, acquired: false };
     }
