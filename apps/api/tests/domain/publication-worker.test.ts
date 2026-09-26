@@ -190,6 +190,54 @@ describe("PublicationWorker", () => {
     assert.equal((await operations.findByProviderOperation("restart-safe-provider", "restart-safe-operation"))?.status, "published");
   });
 
+  it("does not regress a published operation when concurrent reconciliation has a stale failed check", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const operations = new InMemoryPublicationOperationRepository();
+    const job = await jobService.enqueue(content);
+    await jobService.claim(job.id, new Date("2026-09-20T11:00:00.000Z"));
+    await jobService.awaitConfirmation(job.id, new Date("2026-09-20T11:00:00.000Z"));
+    const operation = await operations.save({
+      id: "race-operation",
+      contentId: content.id,
+      jobId: job.id,
+      provider: "race-provider",
+      providerOperationId: "race-provider-operation",
+      status: "accepted",
+      createdAt: "2026-09-20T10:00:00.000Z",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+
+    let checks = 0;
+    let releaseChecks!: () => void;
+    const checksReady = new Promise<void>((resolve) => { releaseChecks = resolve; });
+    const publisher: SocialPublisher = {
+      provider: "race-provider",
+      supports: () => true,
+      publish: async () => ({ status: "accepted", providerOperationId: operation.providerOperationId }),
+      checkPublication: async () => {
+        const checkNumber = ++checks;
+        if (checkNumber === 2) releaseChecks();
+        await checksReady;
+        return checkNumber === 2
+          ? { status: "failed", error: "stale provider failure" }
+          : { status: "published", externalPostId: "race-post" };
+      }
+    };
+
+    const workerA = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const workerB = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const [resultA, resultB] = await Promise.all([
+      workerA.runOnce(new Date("2026-09-20T11:03:00.000Z")),
+      workerB.runOnce(new Date("2026-09-20T11:03:00.000Z"))
+    ]);
+
+    assert.equal(checks, 2);
+    assert.ok([...resultA, ...resultB].some((result) => result.status === "succeeded"));
+    assert.equal((await operations.findById(operation.id))?.status, "published");
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+    assert.equal((await contentService.get(content.id)).status, "published");
+  });
+
   it("records adapter failures and restores failed content before retrying after backoff", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;

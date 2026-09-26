@@ -86,22 +86,31 @@ export class PublicationWorker {
       if (reconciliationEligibleAt(operation) > now.getTime()) continue;
       try {
         const checked = await this.executor.check(operation);
-        if (checked.result.status === "processing") {
-          await this.operations.transition(operation.id, "processing", {}, now);
-          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing" });
-          continue;
-        }
-        if (checked.result.status === "published") {
-          await this.operations.transition(operation.id, "published", { externalPostId: checked.result.externalPostId }, now);
+        const transitionTo = checked.result.status === "processing"
+          ? { status: "processing" as const }
+          : checked.result.status === "published"
+            ? { status: "published" as const, externalPostId: checked.result.externalPostId }
+            : { status: "failed" as const, error: checked.result.error };
+        const transitioned = await this.operations.transition(operation.id, transitionTo.status, {
+          externalPostId: transitionTo.status === "published" ? transitionTo.externalPostId : undefined,
+          error: transitionTo.status === "failed" ? transitionTo.error : undefined
+        }, now);
+
+        const effectiveStatus = transitioned.status;
+        if (effectiveStatus === "published" && transitioned.externalPostId) {
           await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
-          await this.jobService.succeed(operation.jobId, checked.result.externalPostId, now);
-          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "succeeded", externalPostId: checked.result.externalPostId });
+          await this.jobService.succeed(operation.jobId, transitioned.externalPostId, now);
+          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "succeeded", externalPostId: transitioned.externalPostId });
           continue;
         }
-        await this.operations.transition(operation.id, "failed", { error: checked.result.error }, now);
-        await this.contentService?.update(operation.contentId, { status: "failed" });
-        await this.jobService.fail(operation.jobId, checked.result.error ?? "Publication failed.", now);
-        results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: checked.result.error ?? "Publication failed." });
+        if (effectiveStatus === "failed") {
+          const error = transitioned.lastError ?? "Publication failed.";
+          await this.contentService?.update(operation.contentId, { status: "failed" });
+          await this.jobService.fail(operation.jobId, error, now);
+          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error });
+          continue;
+        }
+        results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "processing" });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const terminalPublicationErrors = new Set([
