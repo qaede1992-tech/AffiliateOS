@@ -4,8 +4,8 @@ import type { PublicationOperation } from "./publication-operation.js";
 import type { PublicationCheckResult, PublishOutcome, SocialPublisher } from "./distribution-engine.js";
 
 export interface TikTokContentPublisherClient {
-  async publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string }): Promise<PublishOutcome>;
-  async checkPublication(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }): Promise<PublicationCheckResult>;
+  publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string }): Promise<PublishOutcome>;
+  checkPublication(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }): Promise<PublicationCheckResult>;
 }
 
 /**
