@@ -20,7 +20,7 @@ export interface ShopeeAffiliateConversionReportItem {
   device?: string;
   referrer?: string;
   orders: Array<{ orderId: string; orderStatus?: string; items: Array<{ itemId: string; itemName?: string; itemPriceCents?: number; actualAmountCents?: number; qty?: number; itemTotalCommissionCents?: number; shopId?: string; shopName?: string; completeTime?: string }> }>;
-} }
+}
 
 const ENDPOINTS:Record<string,string>={ID:"https://open-api.affiliate.shopee.co.id/graphql",MY:"https://open-api.affiliate.shopee.com.my/graphql",SG:"https://open-api.affiliate.shopee.sg/graphql",TH:"https://open-api.affiliate.shopee.co.th/graphql",VN:"https://open-api.affiliate.shopee.vn/graphql",PH:"https://open-api.affiliate.shopee.ph/graphql",TW:"https://open-api.affiliate.shopee.tw/graphql",BR:"https://open-api.affiliate.shopee.com.br/graphql"};
 const PRODUCT_FIELDS="itemId productName productLink offerLink imageUrl priceMin priceMax priceDiscountRate sales ratingStar commissionRate sellerCommissionRate shopeeCommissionRate commission shopId shopName shopType periodStartTime periodEndTime productCatIds";
