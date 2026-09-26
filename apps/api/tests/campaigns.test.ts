@@ -79,6 +79,28 @@ test("tracking links reject non-web redirect destinations", async () => {
   await assert.rejects(() => tracking.create({ affiliateOfferId: offerId, destinationUrl: "javascript:alert(1)" }), /HTTP or HTTPS destination/i);
 });
 
+test("tracking links reject an offer from a different campaign product", async () => {
+  const { affiliateOffers, campaignOffers, campaigns, tracking } = trackingFixture();
+  const matchingProductId = "00000000-0000-0000-0000-000000000091";
+  const otherProductId = "00000000-0000-0000-0000-000000000092";
+  const offerId = "00000000-0000-0000-0000-000000000093";
+  await affiliateOffers.save({ ...activeOffer(offerId), productId: otherProductId });
+  const campaign = await campaigns.save({
+    id: "00000000-0000-0000-0000-000000000094",
+    name: "Product-bound campaign",
+    objective: "sales",
+    status: "active",
+    audience: { productId: matchingProductId },
+    createdAt: "2026-09-18T00:00:00.000Z",
+    updatedAt: "2026-09-18T00:00:00.000Z"
+  });
+  await campaignOffers.save({ campaignId: campaign.id, affiliateOfferId: offerId, createdAt: campaign.createdAt });
+  await assert.rejects(
+    () => tracking.create({ affiliateOfferId: offerId, campaignId: campaign.id, destinationUrl: "https://example.com/affiliate" }),
+    /campaign's selected product/i
+  );
+});
+
 test("tracking links reject expired affiliate links and destination mismatches", async () => {
   const { affiliateOffers, tracking } = trackingFixture();
   const expiredId = "00000000-0000-0000-0000-000000000070";
