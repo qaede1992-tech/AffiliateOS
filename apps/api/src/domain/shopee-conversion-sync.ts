@@ -1,5 +1,3 @@
-import type { Conversion } from "@affiliateos/shared";
-import type { MarketplaceProvider } from "./foundations.js";
 import type { ConversionService } from "./services.js";
 import type { MarketplaceService } from "./marketplace.js";
 import type { ProviderConversionProcessor } from "./provider-conversion-processor.js";
