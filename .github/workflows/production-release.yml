@@ -89,9 +89,6 @@ jobs:
             --env POSTGRES_PASSWORD=release \
             postgres:16-alpine
           for attempt in $(seq 1 30); do
-            if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-postgres-smoke:5432 >/dev/null 2>&1; then
-              break
-            fi
             if docker run --rm --network affiliateos-release-smoke postgres:16-alpine pg_isready -h affiliateos-postgres-smoke -U release -d release; then
               break
             fi
