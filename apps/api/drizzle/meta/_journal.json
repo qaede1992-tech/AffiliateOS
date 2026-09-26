@@ -358,6 +358,13 @@
       "when": 1790424310000,
       "tag": "0053_publication_job_retry_index",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790424311000,
+      "tag": "0054_provider_event_retry_backoff",
+      "breakpoints": true
     }
   ]
 }
