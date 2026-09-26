@@ -87,10 +87,11 @@ export class AutonomousScheduler {
     this.lastError = undefined;
     const run = this.cycle.runOnce(effectiveInput)
       .then(async (result) => {
-        if (!result) return undefined;
-        this.lastResult = result;
+        if (result) {
+          this.lastResult = result;
+          await this.notifyResult(result);
+        }
         this.lastCompletedAt = this.now().toISOString();
-        await this.notifyResult(result);
         return result;
       })
       .catch(async (error) => {
