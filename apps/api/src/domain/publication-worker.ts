@@ -7,17 +7,11 @@ import type { PublicationJobRepository } from "./publication-job.js";
 import { PublicationOperationService } from "./publication-operation-service.js";
 import type { PublicationOperationRepository } from "./publication-operation.js";
 
-const INITIAL_RETRY_DELAY_MS = 60 * 1000;
-const MAX_RETRY_DELAY_MS = 60 * 60 * 1000;
 const ACCEPTED_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 const PROCESSING_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
-export const publicationRetryDelayMs = (attemptCount: number): number => {
-  if (attemptCount <= 0) return 0;
-  return Math.min(MAX_RETRY_DELAY_MS, INITIAL_RETRY_DELAY_MS * 2 ** (attemptCount - 1));
-};
-
+import { publicationRetryDelayMs } from "./publication-job.js";
 const retryEligibleAt = (job: PublicationJob): number =>
   new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
 
