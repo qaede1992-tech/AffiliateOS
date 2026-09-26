@@ -13,6 +13,37 @@ const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   app.get("/api/v1/publishers/readiness", async () => list(await services.publisherReadiness.list()));
   app.get("/api/v1/autonomous/status", writeGuard, async () => services.autonomousScheduler.status);
+  app.get("/api/v1/autonomous/health", writeGuard, async () => {
+    const [accepted, processing, failed, publishers] = await Promise.all([
+      services.autonomousRuns.list({ status: "accepted", limit: 100 }),
+      services.autonomousRuns.list({ status: "processing", limit: 100 }),
+      services.autonomousRuns.list({ status: "failed", limit: 100 }),
+      services.publisherReadiness.list()
+    ]);
+    const scheduler = services.autonomousScheduler.status;
+    const blockedPublishers = publishers.filter((publisher) => publisher.status !== "ready");
+    const status = !scheduler.running
+      ? "disabled"
+      : scheduler.lastError || blockedPublishers.length || failed.length
+        ? "degraded"
+        : "healthy";
+    return {
+      status,
+      scheduler: {
+        running: scheduler.running,
+        active: scheduler.active,
+        lastStartedAt: scheduler.lastStartedAt,
+        lastCompletedAt: scheduler.lastCompletedAt,
+        lastError: scheduler.lastError
+      },
+      publishers,
+      runs: {
+        accepted: accepted.length,
+        processing: processing.length,
+        failed: failed.length
+      }
+    };
+  });
   app.get("/api/v1/autonomous/decision-audits", writeGuard, async (request, reply) => {
     if (!services.autonomousDecisionAudits) return reply.status(503).send({ error: "AUTONOMOUS_AUDIT_UNAVAILABLE", message: "Autonomous decision audit persistence is unavailable." });
     return list(await services.autonomousDecisionAudits.list(autonomousDecisionAuditQuerySchema.parse(request.query)));

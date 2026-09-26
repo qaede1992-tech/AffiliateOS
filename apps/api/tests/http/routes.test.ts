@@ -482,6 +482,48 @@ test("POST /api/v1/autonomous/runs/:runId/retry rejects an unknown run", async (
 });
 
 
+test("GET /api/v1/autonomous/health requires an authorized operator and exposes run/publisher health", async () => {
+  const token = "test-token-that-is-long-enough";
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+
+  const unauthorizedApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "viewer", role: "viewer" },
+  });
+  const unauthorized = await unauthorizedApp.inject({
+    method: "GET",
+    url: "/api/v1/autonomous/health",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(unauthorized.statusCode, 403);
+  await unauthorizedApp.close();
+
+  const operatorApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator", role: "operator" },
+  });
+  const run = await services.autonomousRuns.accept({
+    idempotencyKey: "health-test-run",
+    productId: "11111111-1111-4111-8111-111111111111",
+    offerId: "22222222-2222-4222-8222-222222222222",
+  });
+  await services.autonomousRuns.transition(run.id, "processing");
+  await services.autonomousRuns.transition(run.id, "failed", { error: "health-test-failure" });
+
+  const response = await operatorApp.inject({
+    method: "GET",
+    url: "/api/v1/autonomous/health",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(response.statusCode, 200);
+  const body = response.json();
+  assert.equal(body.status, "disabled");
+  assert.equal(body.scheduler.running, false);
+  assert.equal(body.runs.accepted, 0);
+  assert.equal(body.runs.processing, 0);
+  assert.equal(body.runs.failed, 1);
+  assert.ok(Array.isArray(body.publishers));
+  await operatorApp.close();
+});
+
 test("GET /api/v1/autonomous/status requires an authorized operator", async () => {
   const token = "test-token-that-is-long-enough";
   const services = (await import("../../src/domain/container.js")).createInMemoryServices();
