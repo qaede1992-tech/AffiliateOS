@@ -146,13 +146,13 @@ export class CampaignOrchestrator {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion" && item.status !== "archived");
         if (existing?.status === "failed") {
           const reset = await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
-          content.push(await this.attachProductImageIfAvailable(reset, liveProduct));
+          content.push(await this.attachProductMediaIfAvailable(reset, liveProduct));
         } else if (existing) {
-          content.push(await this.attachProductImageIfAvailable(existing, liveProduct));
+          content.push(await this.attachProductMediaIfAvailable(existing, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
           let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
-          created = await this.attachProductImageIfAvailable(created, liveProduct);
+          created = await this.attachProductMediaIfAvailable(created, liveProduct);
           content.push(created);
         }
       }
