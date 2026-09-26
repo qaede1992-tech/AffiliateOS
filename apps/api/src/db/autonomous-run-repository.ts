@@ -82,7 +82,7 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
       nextAttemptAt: run.nextAttemptAt ?? null,
       lastError: run.lastError ?? null,
       updatedAt: run.updatedAt
-    }).where(and(eq(autonomousRuns.id, id), inArray(autonomousRuns.status, expected))).returning();
+    }).where(and(eq(autonomousRuns.id, id), eq(autonomousRuns.attemptCount, run.attemptCount), inArray(autonomousRuns.status, expected))).returning();
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 
