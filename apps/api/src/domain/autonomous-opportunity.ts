@@ -271,7 +271,7 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
 }
 
 
-function isExecutableAffiliateOffer(productId: string, offer: AffiliateOffer | undefined): boolean {
+export function isExecutableAffiliateOffer(productId: string, offer: AffiliateOffer | undefined): boolean {
   if (!offer || offer.productId !== productId || offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return false;
   try {
     const url = new URL(offer.affiliateUrl);
