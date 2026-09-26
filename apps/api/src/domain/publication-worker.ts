@@ -96,6 +96,10 @@ export class PublicationWorker {
           error: transitionTo.status === "failed" ? transitionTo.error : undefined
         }, now);
 
+        if (!transitioned) {
+          results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "skipped" });
+          continue;
+        }
         const effectiveStatus = transitioned.status;
         if (effectiveStatus === "published" && transitioned.externalPostId) {
           await this.contentService?.update(operation.contentId, { status: "published", publishedAt: now.toISOString() });
