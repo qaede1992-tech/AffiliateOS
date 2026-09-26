@@ -28,6 +28,7 @@ const offer = (productId: string) => ({
 test("applies the per-connection product limit after filtering inactive products", async () => {
   const marketplace = {
     listConnections: async () => [{ slug: "mock", enabled: true, status: "active" }],
+    getAffiliateAccount: async () => ({ affiliateId: "affiliate-1", status: "active" }),
     discoverProducts: async () => [
       product("inactive-1", "inactive"),
       product("inactive-2", "inactive"),
@@ -47,4 +48,24 @@ test("applies the per-connection product limit after filtering inactive products
     candidates.map((candidate) => candidate.product.id),
     ["active-1", "active-2"]
   );
+});
+
+
+test("skips active marketplace connections without a bound active affiliate account", async () => {
+  const marketplace = {
+    listConnections: async () => [
+      { slug: "unbound", enabled: true, status: "active" },
+      { slug: "bound", enabled: true, status: "active" }
+    ],
+    getAffiliateAccount: async (slug: string) => slug === "bound"
+      ? ({ affiliateId: "affiliate-1", status: "active" })
+      : ({ affiliateId: undefined, status: "active" }),
+    discoverProducts: async (_slug: string) => [product("bound-product", "active")],
+    getOffers: async (_slug: string, productId: string) => [offer(productId)]
+  };
+
+  const provider = new AutonomousMarketplaceCandidateProvider(marketplace as any);
+  const candidates = await provider.listCandidates();
+
+  assert.deepEqual(candidates.map((candidate) => candidate.product.id), ["bound-product"]);
 });
