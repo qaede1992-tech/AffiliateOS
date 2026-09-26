@@ -27,15 +27,16 @@ export class ShopeeAffiliateGraphqlClient {
   async getOffers(externalProductId:string):Promise<MarketplaceOfferInput[]>{return (await this.fetchProductNodes({itemId:externalProductId.trim()})).map(n=>this.toOffer(n)).filter((x):x is MarketplaceOfferInput=>Boolean(x));}
   async generateShortLink(externalOfferId:string):Promise<{url:string}>{
     const originUrl=externalOfferId.trim(); if(!/^https?:\/\//i.test(originUrl)) throw new Error("Shopee affiliate offer reference must be the original Shopee URL.");
-    const query="mutation GenerateShortLink($input: GenerateShortLinkInput!) { generateShortLink(input: $input) { shortLink } }";
-    const result=await this.request<{generateShortLink:{shortLink:string}}>(query,{input:{originUrl,subIds:this.subIds}});
+    const subIds=this.subIds.length?"["+this.subIds.map((id)=>JSON.stringify(id)).join(",")+"]":"[]";
+    const query="mutation { generateShortLink(input: { originUrl: "+JSON.stringify(originUrl)+", subIds: "+subIds+" }) { shortLink } }";
+    const result=await this.request<{generateShortLink:{shortLink:string}}>(query);
     const url=result.generateShortLink&&result.generateShortLink.shortLink; if(!url) throw new Error("Shopee did not return an affiliate short link."); return {url};
   }
   async conversionReport(since:string):Promise<{synced:number}>{
     const start=Math.floor(Date.parse(since)/1000); if(!Number.isFinite(start)) throw new Error("Shopee conversion sync requires a valid ISO timestamp.");
-    const end=Math.floor(this.now()/1000); let page=1; let synced=0;
-    const query="query ConversionReport($start: Int!, $end: Int!, $page: Int!, $limit: Int!) { conversionReport(purchaseTimeStart: $start, purchaseTimeEnd: $end, page: $page, limit: $limit) { nodes { conversionId } pageInfo { hasNextPage } } }";
-    while(true){const r=await this.request<{conversionReport:{nodes:unknown[];pageInfo:{hasNextPage:boolean}}}>(query,{start,end,page,limit:this.pageSize}); synced+=r.conversionReport.nodes.length; if(!r.conversionReport.pageInfo.hasNextPage) break; page++;}
+    const end=Math.floor(this.now()/1000); let scrollId:string|undefined; let synced=0;
+    const query="query ConversionReport($start: Int!, $end: Int!, $limit: Int!, $scrollId: String) { conversionReport(purchaseTimeStart: $start, purchaseTimeEnd: $end, limit: $limit, scrollId: $scrollId) { nodes { conversionId } pageInfo { hasNextPage scrollId } } }";
+    while(true){const r=await this.request<{conversionReport:{nodes:unknown[];pageInfo:{hasNextPage:boolean;scrollId?:string}}}>(query,{start,end,limit:this.pageSize,scrollId}); synced+=r.conversionReport.nodes.length; if(!r.conversionReport.pageInfo.hasNextPage) break; scrollId=r.conversionReport.pageInfo.scrollId; if(!scrollId) throw new Error("Shopee conversion report requested another page without a scrollId.");}
     return {synced};
   }
   private async fetchProducts(filters:{keyword?:string;itemId?:string}):Promise<MarketplaceProductInput[]>{return (await this.fetchProductNodes(filters)).map(n=>this.toProduct(n));}
