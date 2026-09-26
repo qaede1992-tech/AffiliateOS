@@ -10,7 +10,7 @@ import type { ScoredOpportunity } from "../../src/domain/opportunity-scoring.js"
 const product: Product = {
   id: "product-1", marketplaceId: "market-1", externalProductId: "external-1", name: "Skincare Serum",
   description: "Daily skincare serum", category: "skincare", priceCents: 5000, currency: "USD", ratingMilli: 4600,
-  reviewCount: 1200, soldCount: 8500, productUrl: "https://example.test/product-1", status: "active",
+  reviewCount: 1200, soldCount: 8500, productUrl: "https://example.test/product-1", imageUrl: "https://cdn.example.test/skincare-serum.jpg", status: "active",
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
 const offer: AffiliateOffer = {
