@@ -496,6 +496,33 @@ test("POST /api/v1/autonomous/runs/:runId/retry rejects an unknown run", async (
 });
 
 
+test("GET /api/v1/publishers/readiness requires an authorized operator", async () => {
+  const token = "test-token-that-is-long-enough";
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+
+  const publicApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "viewer", role: "viewer" },
+  });
+  const publicResponse = await publicApp.inject({
+    method: "GET",
+    url: "/api/v1/publishers/readiness",
+  });
+  assert.equal(publicResponse.statusCode, 401);
+  await publicApp.close();
+
+  const operatorApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator", role: "operator" },
+  });
+  const operatorResponse = await operatorApp.inject({
+    method: "GET",
+    url: "/api/v1/publishers/readiness",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(operatorResponse.statusCode, 200);
+  assert.ok(Array.isArray(operatorResponse.json().data));
+  await operatorApp.close();
+});
+
 test("GET /api/v1/autonomous/health requires an authorized operator and exposes run/publisher health", async () => {
   const token = "test-token-that-is-long-enough";
   const services = (await import("../../src/domain/container.js")).createInMemoryServices();
