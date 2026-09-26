@@ -80,7 +80,7 @@ export class ProviderEventStore {
         .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId), eq(providerEvents.status, "processing")))
         .limit(1);
       if (!rows[0]) return false;
-      const retryCount = rows[0].retryCount + 1;
+      const retryCount = (rows[0].retryCount ?? 0) + 1;
       values.retryCount = retryCount;
       values.nextAttemptAt = retryCount >= PROVIDER_EVENT_MAX_RETRIES
         ? null
