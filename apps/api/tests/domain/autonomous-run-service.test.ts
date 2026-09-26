@@ -25,6 +25,39 @@ describe("AutonomousRunService", () => {
     assert.equal(stored?.attemptCount, 1);
   });
 
+  it("rejects a stale transition from a previous attempt generation", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const run = await service.accept({
+      idempotencyKey: "autonomous:test:attempt-fence",
+      productId: "product-1",
+      offerId: "offer-1",
+      now: new Date("2026-09-20T10:00:00.000Z")
+    });
+
+    const claimedFirst = await service.claimProcessing(run.id, new Date("2026-09-20T10:01:00.000Z"));
+    assert.equal(claimedFirst.acquired, true);
+    const staleSnapshot = claimedFirst.run;
+
+    await service.transition(run.id, "failed", { error: "first attempt failed" }, new Date("2026-09-20T10:02:00.000Z"));
+    const claimedSecond = await service.claimProcessing(run.id, new Date("2026-09-20T10:03:00.000Z"));
+    assert.equal(claimedSecond.acquired, true);
+    assert.equal(claimedSecond.run.attemptCount, 2);
+
+    const staleTransition = await repository.transition(run.id, ["processing"], {
+      ...staleSnapshot,
+      status: "completed",
+      campaignId: "stale-campaign",
+      updatedAt: "2026-09-20T10:04:00.000Z"
+    });
+
+    assert.equal(staleTransition, undefined);
+    const current = await repository.findById(run.id);
+    assert.equal(current?.status, "processing");
+    assert.equal(current?.attemptCount, 2);
+    assert.equal(current?.campaignId, undefined);
+  });
+
   it("does not claim a failed run with an invalid retry timestamp", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
