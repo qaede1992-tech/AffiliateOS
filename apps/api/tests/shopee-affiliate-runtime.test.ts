@@ -18,3 +18,11 @@ test("Shopee runtime factory creates an official provider without exposing crede
 test("Shopee runtime factory rejects unsafe credential references",()=>{
   assert.throws(()=>createShopeeAffiliateProvider({credentialReference:"secret value",appId:"123",appSecret:"secret",market:"ID",apiVersion:"v2"}),/opaque secret-manager reference/);
 });
+
+
+test("Shopee runtime provider rejects a connection bound to another credential reference or runtime market",()=>{
+  const provider=createShopeeAffiliateProvider({credentialReference:"secret://affiliateos/shopee/production",appId:"123",appSecret:"secret",market:"ID",apiVersion:"v2"});
+  assert.ok(provider);
+  assert.throws(()=>provider.validateConfiguration({market:"ID",apiVersion:"v2"},"secret://affiliateos/shopee/other"),/credential reference/);
+  assert.throws(()=>provider.validateConfiguration({market:"MY",apiVersion:"v2"},"secret://affiliateos/shopee/production"),/does not match/);
+});

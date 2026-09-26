@@ -6,7 +6,7 @@ export interface MarketplaceProvider {
   readonly displayName: string;
   readonly connectionMode: "mock" | "official_api";
   readonly capabilities: readonly MarketplaceCapability[];
-  validateConfiguration(configuration: Record<string, unknown>): void;
+  validateConfiguration(configuration: Record<string, unknown>, credentialReference?: string): void;
   testConnection?(input: { credentialReference?: string; configuration: Record<string, unknown> }): Promise<{ metadata?: Record<string, unknown> }>;
   verifyEventSignature?(input: { rawBody: string; headers: ProviderEventSignatureHeaders; credentialReference?: string; configuration: Record<string, unknown> }): Promise<{ valid: boolean; version?: string }>;
   discoverProducts?(): Promise<MarketplaceProductInput[]>;
