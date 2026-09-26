@@ -79,7 +79,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
       if (!account?.affiliateId || !affiliateOffer || affiliateOffer.affiliateAccountId !== account.id || !affiliateOffer.conversionOfferId) return undefined;
       const conversionOffer = await repositories.offers.findById(affiliateOffer.conversionOfferId);
       if (!conversionOffer || conversionOffer.status !== "active") return undefined;
-      return { shopeeConversionSync, affiliateId: account.affiliateId, offerId: conversionOffer.id, affiliateOfferId: affiliateOffer.id, trackingLinkId: link.id };
+      return { affiliateId: account.affiliateId, offerId: conversionOffer.id, affiliateOfferId: affiliateOffer.id, trackingLinkId: link.id };
     }
   }, {
     async attribute(conversionId, trackingLinkId) {
