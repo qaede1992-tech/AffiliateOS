@@ -132,6 +132,17 @@ jobs:
             fi
             sleep 2
           done
+          for attempt in $(seq 1 30); do
+            health_status=$(docker inspect --format '{{.State.Health.Status}}' affiliateos-api-smoke)
+            if [ "$health_status" = "healthy" ]; then
+              break
+            fi
+            if [ "$health_status" = "unhealthy" ] || [ "$attempt" -eq 30 ]; then
+              docker inspect affiliateos-api-smoke
+              exit 1
+            fi
+            sleep 2
+          done
           unauthorized_status=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}' http://affiliateos-api-smoke:3001/api/v1/auth/me)
           [ "$unauthorized_status" = "401" ]
           authorized_status=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer release-smoke-test-token-123456789012345678901234' http://affiliateos-api-smoke:3001/api/v1/auth/me)
@@ -162,7 +173,18 @@ jobs:
               break
             fi
             if [ "$attempt" -eq 30 ]; then
-              docker logs affiliateos-web-smoke
+              for attempt in $(seq 1 30); do
+            health_status=$(docker inspect --format '{{.State.Health.Status}}' affiliateos-web-smoke)
+            if [ "$health_status" = "healthy" ]; then
+              break
+            fi
+            if [ "$health_status" = "unhealthy" ] || [ "$attempt" -eq 30 ]; then
+              docker inspect affiliateos-web-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs affiliateos-web-smoke
               exit 1
             fi
             sleep 2
