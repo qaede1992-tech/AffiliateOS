@@ -90,7 +90,7 @@ export class AutonomousRunService {
     const nextAttemptAt = failed && !exhausted ? new Date(now.getTime() + retryDelayMs(Math.max(1, nextAttemptCount))).toISOString() : undefined;
     const next: AutonomousRun = { ...run, status, attemptCount: nextAttemptCount, campaignId: details.campaignId ?? run.campaignId, lastError: details.error, nextAttemptAt, updatedAt: now.toISOString() };
     if (this.runs.transition) {
-      const transitioned = await this.runs.transition(id, [run.status], next);
+      const transitioned = await this.runs.transition(id, [run.status], next, run.attemptCount);
       return transitioned ?? (this.runs.findById ? (await this.runs.findById(id)) ?? run : run);
     }
     return this.runs.save(next);
