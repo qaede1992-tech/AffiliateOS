@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Affiliate, MarketplaceConnectionView, MarketplaceProviderInfo, SocialAccountView } from "@affiliateos/shared";
-import { api } from "../api/client";
+import { api, socialOAuthRedirectUri } from "../api/client";
 
 type Readiness = { platform: string; status: string; reason?: string };
 
@@ -44,7 +44,7 @@ export function IntegrationSetupPanel() {
   const startOAuth = async (platform: "instagram" | "tiktok") => {
     setBusy(platform); setError(null); setMessage(null);
     try {
-      const redirectUri = new URL("/api/v1/social-accounts/oauth/callback", window.location.origin).toString();
+      const redirectUri = socialOAuthRedirectUri();
       const response = await api.startSocialOAuth({ platform, redirectUri });
       window.location.assign(response.authorizationUrl);
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to start OAuth."); setBusy(null); }
