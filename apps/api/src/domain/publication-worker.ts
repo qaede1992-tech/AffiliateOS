@@ -10,6 +10,7 @@ import type { PublicationOperationRepository } from "./publication-operation.js"
 const ACCEPTED_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 const PROCESSING_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 const RECONCILIATION_BATCH_LIMIT = 100;
+const PUBLICATION_JOB_BATCH_LIMIT = 100;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
 import { publicationRetryDelayMs } from "./publication-job.js";
@@ -56,14 +57,17 @@ export class PublicationWorker {
 
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
     const results = await this.reconcile(now);
-    const candidates = (await this.jobs.list())
-      .filter((job) => {
-        if (!isDue(job, now)) return false;
-        if (job.status === "pending") return true;
-        if (job.status === "failed") return retryEligibleAt(job) <= now.getTime();
-        return isStaleProcessingJob(job, now);
-      })
-      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+    const candidates = this.jobs.listClaimable
+      ? await this.jobs.listClaimable(now, PUBLICATION_JOB_LOCK_TIMEOUT_MS, PUBLICATION_JOB_BATCH_LIMIT)
+      : (await this.jobs.list())
+          .filter((job) => {
+            if (!isDue(job, now)) return false;
+            if (job.status === "pending") return true;
+            if (job.status === "failed") return retryEligibleAt(job) <= now.getTime();
+            return isStaleProcessingJob(job, now);
+          })
+          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+          .slice(0, PUBLICATION_JOB_BATCH_LIMIT);
 
     for (const candidate of candidates) {
       const claimed = await this.jobService.claim(candidate.id, now);
