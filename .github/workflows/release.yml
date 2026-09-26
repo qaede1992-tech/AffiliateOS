@@ -32,6 +32,16 @@ jobs:
             exit 1
           }
 
+      - name: Install dependencies and verify release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test
+          npm run typecheck
+          npm run build
+          npm run db:check
+
       - name: Validate production web origin
         shell: bash
         run: |
