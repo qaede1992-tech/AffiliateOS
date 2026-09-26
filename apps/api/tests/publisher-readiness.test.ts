@@ -28,13 +28,14 @@ test("publisher readiness requires an active account and credential reference", 
   const ready = (await service.list()).find((item) => item.platform === "instagram");
   assert.deepEqual(ready, {
     platform: "instagram",
-    status: "ready",
+    status: "unconfigured",
     publisherConfigured: true,
     credentialResolutionConfigured: true,
     activeAccountConfigured: true,
     credentialReferenceConfigured: true,
     requiredScope: "instagram_business_content_publish",
-    requiredScopeGranted: true
+    requiredScopeGranted: true,
+    credentialResolvable: false
   });
 
   const missingCredential = new PublisherReadinessService([publisher], true, {
