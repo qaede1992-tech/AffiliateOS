@@ -3,6 +3,7 @@ import test from "node:test";
 import { createApp } from "../src/app.js";
 import { MarketplaceProviderRegistry, MockMarketplaceProvider } from "../src/domain/foundations.js";
 import { MarketplaceService } from "../src/domain/marketplace.js";
+import { InMemoryRepository } from "../src/domain/repository.js";
 
 const connection = {
   id: "00000000-0000-4000-8000-000000000011", name: "Test catalog", slug: "test-catalog", providerSlug: "mock", connectionMode: "mock" as const, status: "active" as const, enabled: true,
