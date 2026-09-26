@@ -49,9 +49,6 @@ test("publisher readiness requires an active account and credential reference", 
 
 test("Instagram becomes ready only after the publishing scope is granted", () => {
   const service = new PublisherReadinessService([publisher], true);
-  const repository = {
-    list: async () => [account({ connection: { grantedScopes: ["instagram_business_basic", "instagram_business_content_publish"] } })]
-  };
   const result = service.get("instagram", [account({ connection: { grantedScopes: ["instagram_business_basic", "instagram_business_content_publish"] } })]);
   assert.equal(result.status, "ready");
   assert.equal(result.requiredScopeGranted, true);
