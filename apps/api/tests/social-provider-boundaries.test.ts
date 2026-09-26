@@ -16,7 +16,7 @@ const account = {
   platform: "tiktok",
   accountReference: "account-ref",
   status: "active" as const,
-  connection: {},
+  connection: { tiktokPrivacyLevel: "SELF_ONLY", tiktokPublishingConsentAt: "2026-09-26T06:00:00.000Z" },
   createdAt: "2026-09-26T00:00:00.000Z",
   updatedAt: "2026-09-26T00:00:00.000Z"
 };
