@@ -90,6 +90,7 @@ export class AutonomousOpportunitySelector {
       ...policy,
       ...(effectivePoliciesByMarketplace[candidate.product.marketplaceId] ?? {})
     });
+    const offersByProductId = new Map([...mergedCandidates.values()].map((candidate) => [candidate.product.id, candidate.offers]));
     const scored = [...mergedCandidates.values()].map((candidate) => {
       const candidatePolicy = effectivePolicy(candidate);
       return {
@@ -123,7 +124,8 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
-      return item.score >= minimumScore && Boolean(item.offerId) &&
+      const selectedOffer = item.offerId ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId) : undefined;
+      return item.score >= minimumScore && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
         (item.breakdown.commissionAmountCents ?? 0) >= minimumCommissionAmountCents &&
@@ -152,7 +154,11 @@ export class AutonomousOpportunitySelector {
         score: item.score,
         reasons: selected.length < eligible.length && eligible.some((candidate) => candidate.product.id === item.product.id)
           ? ["Selection limit reached"]
-          : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
+          : [
+            ...(!item.offerId ? ["No affiliate offer selected"] : []),
+            ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId)) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
+            ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
+          ]
       };
     });
     const audit = ranked.map((item) => {
@@ -265,6 +271,19 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
   return { ...primary[0], clickCount: evidence, confidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
 }
 
+
+export function isExecutableAffiliateOffer(productId: string, offer: AffiliateOffer | undefined): boolean {
+  if (!offer || offer.productId !== productId || offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return false;
+  try {
+    const url = new URL(offer.affiliateUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  } catch {
+    return false;
+  }
+  if (!offer.affiliateLinkExpiresAt) return true;
+  const expiry = Date.parse(offer.affiliateLinkExpiresAt);
+  return Number.isFinite(expiry) && expiry > Date.now();
+}
 export function applyPerformance(item: ScoredOpportunity, signal?: OpportunityPerformanceSignal): ScoredOpportunity {
   if (!signal || signal.adjustment === 0) return item;
   const regimeConfidence = signal.regimeConfidence ?? 1;
