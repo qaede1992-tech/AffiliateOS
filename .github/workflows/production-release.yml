@@ -50,7 +50,6 @@ jobs:
           API_CORS_ORIGIN: https://dashboard.example.com
           AUTONOMOUS_CYCLE_ENABLED: "false"
         run: npm run production:preflight --workspace @affiliateos/api
-
       - name: Typecheck
         run: npm run typecheck
       - name: Build
@@ -90,6 +89,9 @@ jobs:
             --env POSTGRES_PASSWORD=release \
             postgres:16-alpine
           for attempt in $(seq 1 30); do
+            if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-postgres-smoke:5432 >/dev/null 2>&1; then
+              break
+            fi
             if docker run --rm --network affiliateos-release-smoke postgres:16-alpine pg_isready -h affiliateos-postgres-smoke -U release -d release; then
               break
             fi
@@ -173,7 +175,12 @@ jobs:
               break
             fi
             if [ "$attempt" -eq 30 ]; then
-              for attempt in $(seq 1 30); do
+              docker logs affiliateos-web-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+          for attempt in $(seq 1 30); do
             health_status=$(docker inspect --format '{{.State.Health.Status}}' affiliateos-web-smoke)
             if [ "$health_status" = "healthy" ]; then
               break
@@ -185,15 +192,9 @@ jobs:
             sleep 2
           done
           docker logs affiliateos-web-smoke
-              exit 1
-            fi
-            sleep 2
-          done
-          docker logs affiliateos-web-smoke
           web_body=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-web-smoke/)
           printf '%s\n' "$web_body" | grep -F '<title>AffiliateOS</title>' >/dev/null
           printf '%s\n' "$web_body" | grep -F 'id="root"' >/dev/null
-
       - name: Verify web security headers
         run: |
           headers=$(docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -sS -D - -o /dev/null http://affiliateos-web-smoke/)
