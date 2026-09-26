@@ -18,4 +18,5 @@ export const socialCredentialRotationSchema = z.object({ credentialReference: z.
 export const socialOAuthStartSchema = z.object({ platform, redirectUri: z.string().url().max(2048) }); export const socialOAuthCallbackSchema = z.object({ platform, code: nonEmptyText.max(4096), state: z.string().uuid() });
 
 export const autonomousDecisionAuditQuerySchema = z.object({ cycleId: z.string().trim().min(1).max(200).optional(), marketplaceId: z.string().uuid().optional(), productId: z.string().uuid().optional(), selected: z.enum(["true","false"]).transform((value) => value === "true").optional(), limit: z.coerce.number().int().min(1).max(500).default(100) });
-\nexport const marketplaceConversionSyncSchema = z.object({ since: isoTimestamp });\n
+
+export const marketplaceConversionSyncSchema = z.object({ since: isoTimestamp });
