@@ -6,6 +6,9 @@ import { publicationJobs } from "./schema.js";
 type DatabaseExecutor = any;
 type PublicationJobRow = typeof publicationJobs.$inferSelect;
 
+const retryDelaySql = (attemptCount: typeof publicationJobs.attemptCount) =>
+  sql`LEAST(3600000, 60000 * POWER(2, GREATEST(0, ${attemptCount} - 1)))`;
+
 const toPublicationJob = (row: PublicationJobRow): PublicationJob => ({
   id: row.id,
   contentId: row.contentId,
@@ -113,7 +116,13 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
         lte(publicationJobs.scheduledAt, nowIso),
         or(
           eq(publicationJobs.status, "pending"),
-          eq(publicationJobs.status, "failed"),
+          and(
+            eq(publicationJobs.status, "failed"),
+            lte(
+              publicationJobs.updatedAt,
+              sql`${nowIso}::timestamptz - (${retryDelaySql(publicationJobs.attemptCount)} * INTERVAL '1 millisecond')`
+            )
+          ),
           and(eq(publicationJobs.status, "processing"), lte(publicationJobs.lockedAt, staleCutoff))
         )
       ))
