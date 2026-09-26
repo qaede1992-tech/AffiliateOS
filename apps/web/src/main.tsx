@@ -11,6 +11,7 @@ import type {
 import { api } from "./api/client";
 import { WorkflowPanel } from "./components/WorkflowPanel";
 import { IntegrationSetupPanel } from "./components/IntegrationSetupPanel";
+import { AutonomousObservabilityPanel } from "./components/AutonomousObservabilityPanel";
 import "./styles.css";
 
 type DashboardData = {
@@ -170,7 +171,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           <nav>
             <a className="nav-item active" href="#overview">Overview</a>
             <a className="nav-item" href="#analytics">Analytics</a>
-            <a className="nav-item" href="#autonomous">Autonomous</a>
+            <a className="nav-item" href="#autonomous">Autonomous</a>\n            <a className="nav-item" href="#autonomous-observability">Decision Trace</a>
             <a className="nav-item" href="#workflows">Workflows</a>
             <a className="nav-item" href="#affiliates">Affiliates</a>
             <a className="nav-item" href="#offers">Offers</a>
@@ -208,7 +209,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           </article>
         </section>
 
-        <section className="analytics-section" id="analytics">
+        <AutonomousObservabilityPanel />\n\n        <section className="analytics-section" id="analytics">
           <div className="section-heading"><div><p className="eyebrow">Performance</p><h2>Campaign analytics</h2></div><span>{data.analytics.campaignCount} campaigns</span></div>
           {data.analytics.campaigns.length === 0 ? <p className="empty">No campaign analytics yet. Create a campaign and attach tracking links to begin measuring it.</p> : (
             <div className="analytics-table-wrap">
