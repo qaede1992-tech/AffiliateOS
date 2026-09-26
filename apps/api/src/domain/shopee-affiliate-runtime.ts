@@ -21,7 +21,7 @@ export function createShopeeAffiliateProvider(configuration: ShopeeRuntimeConfig
     credentials: { appId, secret: appSecret },
     fetchImpl
   });
-  return new ShopeeAffiliateProvider(client, { market: configuration.market.toUpperCase(), apiVersion: configuration.apiVersion });
+  return new ShopeeAffiliateProvider(client, { market: configuration.market.toUpperCase(), apiVersion: configuration.apiVersion, credentialReference: reference });
 }
 
 function isOpaqueCredentialReference(value: string): boolean {
