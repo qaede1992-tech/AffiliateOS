@@ -47,7 +47,7 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     }
 
     const publicationId = await this.publishContainer(accountId, container.id, accessToken);
-    return { status: "published", providerOperationId: publicationId };
+    return { status: "published", externalPostId: publicationId };
   }
 
   async checkPublication(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }): Promise<PublicationCheckResult> {
