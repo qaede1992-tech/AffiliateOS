@@ -30,7 +30,7 @@ const link: TrackingLink = { id: "link-1", affiliateOfferId: offer.id, campaignI
 class StubCampaigns {
   created = 0;
   async list() { return this.created ? [{ ...campaign, audience: { autonomousOrchestrationKey: "run-1" } }] : []; }
-  async create() { this.created += 1; return campaign; }
+  async create(input: { audience: Campaign["audience"] }) { this.created += 1; return { ...campaign, audience: input.audience }; }
   async validateOfferForExecution() { return offer; }
   async attachOffer() { return attachment; }
 }
@@ -89,6 +89,8 @@ describe("campaign orchestrator", () => {
     const content = new StubContent();
     const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"] });
     assert.equal(result.campaign.id, campaign.id);
+    assert.deepEqual(result.campaign.audience.audience, ["skincare"]);
+    assert.equal(result.campaign.audience.marketplaceId, product.marketplaceId);
     assert.equal(result.offerAttachment.affiliateOfferId, offer.id);
     assert.equal(result.trackingLink.destinationUrl, offer.affiliateUrl);
     assert.equal(result.content.length, 2);

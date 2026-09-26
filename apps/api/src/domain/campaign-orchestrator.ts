@@ -123,7 +123,7 @@ export class CampaignOrchestrator {
           name: input.campaignName ?? `Autonomous: ${input.product.name}`,
           objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
           status: "draft",
-          audience: { segments: audience, productId: input.product.id, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: input.idempotencyKey }
+          audience: { audience: audience, productId: input.product.id, marketplaceId: input.product.marketplaceId, opportunityScore: input.opportunity.score, autonomousOrchestrationKey: input.idempotencyKey }
         });
       }
       currentCampaignId = campaign.id;
