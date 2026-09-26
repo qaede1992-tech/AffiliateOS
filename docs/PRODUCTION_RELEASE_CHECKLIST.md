@@ -9,6 +9,7 @@ Use this checklist for every production release of AffiliateOS.
 - [ ] `API_AUTH_TOKEN` is stored in a production secret manager and is at least 32 characters.
 - [ ] Production TLS is terminated and enforced by the deployment infrastructure.
 - [ ] Marketplace/social provider credentials and scopes are configured through approved production secret management.
+- [ ] If Shopee conversion sync is enabled, `SHOPEE_CONVERSION_SYNC_ENABLED=true`, its interval is at least 5 minutes, and provider credentials/attribution have passed end-to-end validation.
 
 ## Database
 
@@ -28,6 +29,12 @@ Use this checklist for every production release of AffiliateOS.
 - [ ] Production rate limiting is appropriate for the deployment topology; shared/edge limiting is used when multiple API replicas are deployed.
 - [ ] Centralized logs, retention, alerting, and deployment tracing/metrics are configured by infrastructure.
 - [ ] Release audit records include the deployed commit SHA and migration state.
+
+## Shopee conversion synchronization
+
+- [ ] Keep `SHOPEE_CONVERSION_SYNC_ENABLED=false` until the Shopee connection is healthy, affiliate-account binding is valid, affiliate links are active, and conversion attribution has been tested.
+- [ ] When enabled, verify the rolling lookback is appropriate for late provider status changes and the sync scheduler reports successful cycles.
+- [ ] Verify only one production API instance performs each sync cycle through the PostgreSQL advisory lock; repeated provider reports must remain idempotent.
 
 ## Release evidence
 

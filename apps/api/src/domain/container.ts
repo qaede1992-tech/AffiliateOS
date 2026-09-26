@@ -4,6 +4,7 @@ import { AffiliateService, CommissionService, ConversionService, OfferService } 
 import { MarketplaceProviderRegistry } from "./foundations.js";
 import { MarketplaceService } from "./marketplace.js";
 import { ShopeeConversionSyncService } from "./shopee-conversion-sync.js";
+import { ShopeeConversionSyncScheduler } from "./shopee-conversion-sync-scheduler.js";
 import { CampaignService, TrackingService } from "./campaigns.js";
 import { ContentService, SocialAccountService } from "./content.js";
 import { AnalyticsService } from "./analytics.js";
@@ -30,7 +31,7 @@ import { AutonomousScheduler } from "./autonomous-scheduler.js";
 import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
 import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
 import { ProviderConversionProcessor } from "./provider-conversion-processor.js";
-import type { AutonomousCycleLock } from "./autonomous-cycle-lock.js";
+import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 import { AutonomousCampaignActionExecutor } from "./autonomous-campaign-action-executor.js";
 import { AutonomousOptimizationRunner } from "./autonomous-optimization-runner.js";
 import { InMemoryOptimizationStateStore, type OptimizationStateReader, type OptimizationStateWriter } from "./autonomous-optimization.js";
@@ -41,12 +42,12 @@ import { AdaptiveExplorationPolicyProvider, type AdaptiveExplorationPolicy } fro
 import type { AutonomousExplorationStateRepository } from "./autonomous-exploration-state.js";
 
 export interface Services {
-  affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService;
+  affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock, optimizationStateReader?: OptimizationStateReader, optimizationStateWriter?: OptimizationStateWriter, autonomousSelectionPolicy: OpportunitySelectionPolicy = {}, autonomousMarketplacePolicies: OpportunitySelectionPoliciesByMarketplace = {}, autonomousDecisionAuditRepository?: AutonomousDecisionAuditRepository, autonomousActionOutcomeWriter?: AutonomousActionOutcomeWriter, autonomousOptimizationPolicy: import("./optimization-engine.js").OptimizationPolicy = {}, explorationEvaluationPolicy: import("./exploration-evaluator.js").ExplorationEvaluationPolicy = {}, adaptiveExplorationPolicy: AdaptiveExplorationPolicy = {}, autonomousExplorationStateRepository?: AutonomousExplorationStateRepository): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, shopeeConversionSyncSchedulerIntervalMs?: number, shopeeConversionSyncLookbackHours?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock, optimizationStateReader?: OptimizationStateReader, optimizationStateWriter?: OptimizationStateWriter, autonomousSelectionPolicy: OpportunitySelectionPolicy = {}, autonomousMarketplacePolicies: OpportunitySelectionPoliciesByMarketplace = {}, autonomousDecisionAuditRepository?: AutonomousDecisionAuditRepository, autonomousActionOutcomeWriter?: AutonomousActionOutcomeWriter, autonomousOptimizationPolicy: import("./optimization-engine.js").OptimizationPolicy = {}, explorationEvaluationPolicy: import("./exploration-evaluator.js").ExplorationEvaluationPolicy = {}, adaptiveExplorationPolicy: AdaptiveExplorationPolicy = {}, autonomousExplorationStateRepository?: AutonomousExplorationStateRepository): Services {
   if (Boolean(optimizationStateReader) !== Boolean(optimizationStateWriter)) {
     throw new Error("Optimization state reader and writer must be supplied together.");
   }
@@ -87,6 +88,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     }
   });
   const shopeeConversionSync = new ShopeeConversionSyncService(marketplace, conversions, providerConversions);
+  const shopeeConversionSyncScheduler = new ShopeeConversionSyncScheduler(marketplace, shopeeConversionSync, autonomousCycleLock ?? new InMemoryAutonomousCycleLock(), { intervalMs: shopeeConversionSyncSchedulerIntervalMs, lookbackHours: shopeeConversionSyncLookbackHours });
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
   const stateReader = optimizationStateReader ?? defaultOptimizationState;
@@ -99,7 +101,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies }, { intervalMs: autonomousSchedulerIntervalMs });
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
-    shopeeConversionSync, autonomousDecisionAudits: autonomousDecisionAuditRepository,
+    shopeeConversionSync, shopeeConversionSyncScheduler, autonomousDecisionAudits: autonomousDecisionAuditRepository,
     socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository), analytics, attribution, publicationJobs, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
 }
