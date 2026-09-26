@@ -126,6 +126,21 @@ npm run db:check
 
 CI validates tests, typechecking, production builds, migration checks, and production container smoke tests. HTTP regression coverage includes CORS behavior, the request-body limit, readiness handling, authentication, browser sessions, operator authorization, and rate limiting.
 
+## Production release artifacts
+
+The repository includes a tag-based release workflow at `.github/workflows/release.yml`. A release tag must exactly match the root `package.json` version (for example, `v0.1.0` for version `0.1.0`).
+
+Before creating a production tag:
+
+1. Configure the GitHub repository variable `PRODUCTION_API_URL` with the public HTTPS origin of the deployed API. This is build-time browser configuration, not a secret.
+2. Confirm the target deployment has its runtime secrets in the approved secret manager; do not place them in GitHub repository variables, source control, or image build arguments.
+3. Apply and verify the release database migrations using the controlled production migration process.
+4. Create the matching version tag and push it to GitHub. The release workflow builds and publishes API/web images to GHCR under both the release tag and commit SHA, with provenance and SBOM attestations, then creates the GitHub release.
+5. Deploy the exact published image digests through the deployment platform. Run health/readiness checks and `npm run db:verify:applied` before enabling traffic.
+6. Keep `AUTONOMOUS_CYCLE_ENABLED=false` until the approved Shopee and social credentials/providers have been configured and production preflight passes.
+
+The release workflow does not configure marketplace/social credentials or deploy them automatically; provider activation remains an explicit deployment responsibility.
+
 ## Production completion checklist
 
 1. Replace the configured single-operator credential with the target deployment's approved identity provider/session mechanism when multiple users or richer account lifecycle is required.
