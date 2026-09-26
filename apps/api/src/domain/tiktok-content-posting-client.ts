@@ -15,7 +15,7 @@ type TikTokInitResponse = {
 };
 
 type TikTokStatusResponse = {
-  data?: { status?: string; publicaly_available?: boolean; fail_reason?: string; post_id?: string };
+  data?: { status?: string; publicaly_available?: boolean; publicaly_available_post_id?: Array<string | number>; fail_reason?: string; post_id?: string };
   error?: { code?: string; message?: string };
 };
 
@@ -78,7 +78,8 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     });
     const status = response.data?.status?.toUpperCase();
     if (status === "PUBLISH_COMPLETE" || status === "PUBLISHED") {
-      return { status: "published", externalPostId: response.data?.post_id ?? input.operation.providerOperationId };
+      const publicPostId = response.data?.publicaly_available_post_id?.[0];
+      return { status: "published", externalPostId: publicPostId != null ? String(publicPostId) : response.data?.post_id ?? input.operation.providerOperationId };
     }
     if (status === "FAILED" || status === "PUBLISH_FAILED") {
       return { status: "failed", error: response.data?.fail_reason ?? response.error?.message ?? "TikTok publication failed." };
