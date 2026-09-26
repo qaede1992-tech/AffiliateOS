@@ -30,7 +30,7 @@ const link: TrackingLink = { id: "link-1", affiliateOfferId: offer.id, campaignI
 class StubCampaigns {
   created = 0;
   async list() { return this.created ? [{ ...campaign, audience: { autonomousOrchestrationKey: "run-1" } }] : []; }
-  async create() { this.created += 1; return campaign; }
+  async create(input: { audience: Campaign["audience"] }) { this.created += 1; return { ...campaign, audience: input.audience }; }
   async validateOfferForExecution() { return offer; }
   async attachOffer() { return attachment; }
 }
