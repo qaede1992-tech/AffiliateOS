@@ -19,6 +19,7 @@ export interface PublicationJob {
 
 export interface PublicationJobRepository {
   list(): Promise<PublicationJob[]>;
+  listClaimable?(now: Date, lockTimeoutMs: number, limit: number): Promise<PublicationJob[]>;
   findById(id: EntityId): Promise<PublicationJob | undefined>;
   findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>;
   save(job: PublicationJob): Promise<PublicationJob>;
@@ -30,6 +31,22 @@ export interface PublicationJobRepository {
 export class InMemoryPublicationJobRepository implements PublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
+  async listClaimable(nowDate: Date, lockTimeoutMs: number, limit: number) {
+    return [...this.jobs.values()]
+      .filter((job) => {
+        const scheduled = new Date(job.scheduledAt).getTime();
+        if (!Number.isFinite(scheduled) || scheduled > nowDate.getTime()) return false;
+        const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
+        const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
+        const claimable = job.status === "pending" ||
+          (job.status === "failed" && publicationRetryEligibleAt(job) <= nowDate.getTime()) ||
+          (job.status === "processing" && !lockFresh);
+        return claimable && !lockFresh;
+      })
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      .slice(0, Math.max(0, limit));
+  }
+
   async findById(id: EntityId) { return this.jobs.get(id); }
   async findByIdempotencyKey(key: string) { return [...this.jobs.values()].find((job) => job.idempotencyKey === key); }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
