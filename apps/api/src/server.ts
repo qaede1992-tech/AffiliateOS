@@ -92,7 +92,6 @@ try {
   await services.autonomousScheduler.stop();
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
-  await services.shopeeConversionSyncScheduler.stop();
   await providerEventScheduler.stop();
   await persistence.close();
   process.exit(1);
@@ -100,6 +99,7 @@ try {
 
 const shutdown = async () => {
   await services.autonomousScheduler.stop();
+  await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
   await providerEventScheduler.stop();
   await app.close();
