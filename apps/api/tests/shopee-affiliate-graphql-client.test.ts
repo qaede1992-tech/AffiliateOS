@@ -26,3 +26,14 @@ test("ShopeeAffiliateGraphqlClient rejects non-URL offer references",async()=>{
     const client=new ShopeeAffiliateGraphqlClient({market:"ID",credentials:{appId:"123",secret:"secret"},fetchImpl:async()=>{throw new Error("network must not be called");}});
     await assert.rejects(client.generateShortLink("offer-99"),/original Shopee URL/);
 });
+
+test("ShopeeAffiliateGraphqlClient maps detailed conversion reports and paginates",async()=>{
+ let calls=0;
+ const client=new ShopeeAffiliateGraphqlClient({market:"ID",credentials:{appId:"123",secret:"secret"},pageSize:2,fetchImpl:async(_i,init)=>{
+   calls++; const body=String(init?.body); assert.match(body,/conversionReport/);
+   const second=calls===2;
+   return new Response(JSON.stringify({data:{conversionReport:{nodes:second?[{conversionId:102,purchaseTime:1700000200,totalCommission:"15000",netCommission:"12000",utmContent:"ig-02",orders:[{orderId:"ord-2",orderStatus:"COMPLETED",items:[{itemId:99,itemName:"Kettle",itemPrice:"125000",actualAmount:"100000",qty:1,itemTotalCommission:"15000",shopId:7,shopName:"Shop",completeTime:1700000300}]}]}]:[{conversionId:101,purchaseTime:1700000100,clickTime:1700000000,totalCommission:"25000",sellerCommission:"20000",shopeeCommissionCapped:"5000",utmContent:"ig-01",buyerType:"New",device:"APP",referrer:"instagram",orders:[]}],pageInfo:second?{hasNextPage:false}:{hasNextPage:true,scrollId:"next-page"}}}}),{status:200});
+ }});
+ const rows=await client.conversionReportDetailed("2023-11-14T00:00:00.000Z");
+ assert.equal(calls,2); assert.equal(rows.length,2); assert.equal(rows[0]?.totalCommissionCents,2500000); assert.equal(rows[0]?.clickTime,"2023-11-14T22:13:20.000Z"); assert.equal(rows[1]?.netCommissionCents,1200000); assert.equal(rows[1]?.orders[0]?.items[0]?.actualAmountCents,10000000);
+});
