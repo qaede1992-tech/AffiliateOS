@@ -80,7 +80,7 @@ describe("ShopeeConversionSyncScheduler", () => {
     const scheduler = new ShopeeConversionSyncScheduler(marketplace, syncService, new InMemoryAutonomousCycleLock(), { intervalMs: 300_000 });
     const first = scheduler.runNow();
     const second = scheduler.runNow();
-    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls, 1);
     release();
     assert.equal(await first, await second);
