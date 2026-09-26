@@ -164,6 +164,9 @@ export class CampaignOrchestrator {
           .filter((item) => this.hasAutopublishableMedia(item))
           .filter((item) => this.distribution!.listPublishers(item.platform).some((publisher) => publisherSupportsContent(publisher, item)))
           .map((item) => ({ content: item, scheduledAt: input.scheduledAt! }));
+        if (!requests.length) {
+          throw new Error("Campaign orchestration requires at least one publishable social destination when scheduledAt is provided.");
+        }
         if (requests.length) {
           await this.distribution!.validateBatch(requests);
           const scheduled = [] as Awaited<ReturnType<DistributionEngine["schedule"]>>[];
