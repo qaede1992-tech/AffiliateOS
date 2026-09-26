@@ -520,6 +520,7 @@ test("GET /api/v1/autonomous/health requires an authorized operator and exposes 
   assert.equal(body.runs.accepted, 0);
   assert.equal(body.runs.processing, 0);
   assert.equal(body.runs.failed, 1);
+  assert.equal(body.runs.recoverable, 1);
   assert.ok(Array.isArray(body.publishers));
   await operatorApp.close();
 });
