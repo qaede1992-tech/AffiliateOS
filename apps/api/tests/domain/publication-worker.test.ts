@@ -215,10 +215,10 @@ describe("PublicationWorker", () => {
       supports: () => true,
       publish: async () => ({ status: "accepted", providerOperationId: operation.providerOperationId }),
       checkPublication: async () => {
-        checks += 1;
-        if (checks === 2) releaseChecks();
+        const checkNumber = ++checks;
+        if (checkNumber === 2) releaseChecks();
         await checksReady;
-        return checks === 2
+        return checkNumber === 2
           ? { status: "failed", error: "stale provider failure" }
           : { status: "published", externalPostId: "race-post" };
       }
