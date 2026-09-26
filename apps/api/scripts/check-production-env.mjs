@@ -36,8 +36,11 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
   if (!process.env.SHOPEE_AFFILIATE_APP_SECRET) {
     autonomousFailures.push("SHOPEE_AFFILIATE_APP_SECRET");
   }
-  if (!process.env.SOCIAL_CREDENTIALS_JSON?.trim()) {
+  const socialCredentialsJson = process.env.SOCIAL_CREDENTIALS_JSON?.trim();
+  if (!socialCredentialsJson) {
     autonomousFailures.push("SOCIAL_CREDENTIALS_JSON");
+  } else if (!isJsonObject(socialCredentialsJson)) {
+    autonomousFailures.push("SOCIAL_CREDENTIALS_JSON(valid JSON object)");
   }
 
   if (autonomousFailures.length > 0) {
@@ -47,6 +50,15 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
 }
 
 console.log("Production configuration preflight passed.");
+
+function isJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
+}
 
 function isOpaqueCredentialReference(value) {
   const reference = value?.trim();
