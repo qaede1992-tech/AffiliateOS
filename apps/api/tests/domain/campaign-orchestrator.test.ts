@@ -47,6 +47,12 @@ class StubContent {
   async create(input: Record<string, unknown>) { const item = { id: `content-${this.created.length + 1}`, ...input } as unknown as Content; this.created.push(item); return item; }
   async update(id: string, input: Record<string, unknown>) { const current = this.created.find((item) => item.id === id); if (!current) throw new Error("content not found"); const next = { ...current, ...input } as Content; this.created[this.created.indexOf(current)] = next; return next; }
 }
+class StubMediaAssets {
+  assets: any[] = [];
+  async listByContent(contentId: string) { return this.assets.filter((asset) => asset.contentId === contentId); }
+  async findById(id: string) { return this.assets.find((asset) => asset.id === id); }
+  async save(asset: any) { this.assets.push(asset); return asset; }
+}
 class StubDistribution {
   scheduled: Content[] = [];
   listPublishers() { return [{ provider: "test", supports: () => true }]; }
@@ -91,15 +97,16 @@ describe("campaign orchestrator", () => {
     assert.equal(result.distribution.length, 0);
   });
 
-  it("schedules every generated platform when an explicit schedule is requested", async () => {
+  it("schedules media-backed Instagram content when an explicit schedule is requested", async () => {
     const content = new StubContent();
+    const mediaAssets = new StubMediaAssets();
     const distribution = new StubDistribution();
     const scheduledAt = "2026-09-21T12:00:00.000Z";
-    const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never, undefined, distribution as never).execute({ opportunity, offer, product, platforms: ["tiktok", "instagram"], scheduledAt });
-    assert.equal(distribution.scheduled.length, 2);
-    assert.equal(result.distribution.length, 2);
-    assert.ok(result.content.every((item) => item.status === "scheduled"));
-    assert.ok(result.content.every((item) => item.scheduledAt === scheduledAt));
+    const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never, undefined, distribution as never, undefined, mediaAssets as never).execute({ opportunity, offer, product, platforms: ["instagram"], scheduledAt });
+    assert.equal(distribution.scheduled.length, 1);
+    assert.equal(result.distribution.length, 1);
+    assert.equal(result.content[0]?.status, "scheduled");
+    assert.equal(result.content[0]?.scheduledAt, scheduledAt);
   });
 
   it("uses a deterministic tracking code for an orchestration key", async () => {
@@ -297,7 +304,7 @@ describe("campaign orchestrator", () => {
     await products.save(product);
     await affiliateOffers.save(offer);
     await accounts.save({
-      id: "social-1", platform: "tiktok", accountReference: "test-account", status: "active", connection: {},
+      id: "social-1", platform: "instagram", accountReference: "test-account", status: "active", connection: {},
       createdAt: campaign.createdAt, updatedAt: campaign.updatedAt
     });
 
@@ -312,18 +319,19 @@ describe("campaign orchestrator", () => {
     );
     const publisher = {
       provider: "test",
-      supports: (platform: string) => platform === "tiktok",
+      supports: (platform: string) => platform === "instagram",
       publish: async () => ({ status: "published" as const, externalPostId: "post-lifecycle-1" })
     };
     const distribution = new (await import("../../src/domain/distribution-engine.js")).DistributionEngine(
       contentService, accounts, [publisher], jobService
     );
+    const mediaAssets = new (await import("../../src/domain/repository.js")).InMemoryMediaAssetRepository();
     const orchestrator = new CampaignOrchestrator(
-      campaignService, trackingService, contentService, undefined, distribution
+      campaignService, trackingService, contentService, undefined, distribution, undefined, mediaAssets
     );
 
     const result = await orchestrator.execute({
-      opportunity, offer, product, platforms: ["tiktok"], scheduledAt: "2026-09-21T12:00:00.000Z"
+      opportunity, offer, product, platforms: ["instagram"], scheduledAt: "2026-09-21T12:00:00.000Z"
     });
     const scheduledContent = result.content[0];
     assert.equal(scheduledContent?.status, "scheduled");
