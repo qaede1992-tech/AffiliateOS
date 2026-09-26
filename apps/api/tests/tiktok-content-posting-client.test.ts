@@ -81,8 +81,8 @@ test("TikTok client fails closed without explicit consent", async () => {
 test("TikTok client reconciles published status", async () => {
   const client = new TikTokContentPostingClient({
     accessTokenResolver: async () => "secret-token",
-    fetchImpl: async () => new Response(JSON.stringify({ data: { status: "PUBLISH_COMPLETE", post_id: "post-123" }, error: { code: "ok" } }), { status: 200 })
+    fetchImpl: async () => new Response(JSON.stringify({ data: { status: "PUBLISH_COMPLETE", publicaly_available_post_id: [123456789] }, error: { code: "ok" } }), { status: 200 })
   });
   const result = await client.checkPublication({ content, account, mediaAssets: [asset], operation });
-  assert.deepEqual(result, { status: "published", externalPostId: "post-123" });
+  assert.deepEqual(result, { status: "published", externalPostId: "123456789" });
 });
