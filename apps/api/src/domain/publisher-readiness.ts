@@ -44,7 +44,7 @@ export class PublisherReadinessService {
     return readiness;
   }
 
-  get(platform: ContentPlatform, accounts: Awaited<ReturnType<SocialAccountRepository["list"]>> = [], credentialResolvable = false): PublisherReadiness {
+  get(platform: ContentPlatform, accounts: Awaited<ReturnType<SocialAccountRepository["list"]>> = [], credentialResolvable = this.credentialResolver === undefined ? this.credentialResolverConfigured : false): PublisherReadiness {
     const publisherConfigured = this.publishers.some((publisher) => publisher.supports(platform));
     const platformAccounts = accounts.filter((account) => account.platform === platform && account.status === "active");
     const activeAccountConfigured = platformAccounts.length > 0;
