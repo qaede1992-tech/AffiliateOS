@@ -76,9 +76,7 @@ export class PublicationWorker {
   private async reconcile(now: Date): Promise<PublicationWorkerResult[]> {
     const results: PublicationWorkerResult[] = [];
     const updatedBefore = new Date(now.getTime() - ACCEPTED_RECONCILIATION_DELAY_MS);
-    const operations = this.operations.listReconciliationCandidates
-      ? await this.operations.listReconciliationCandidates(updatedBefore, RECONCILIATION_BATCH_LIMIT)
-      : await this.operations.list();
+    const operations = await this.operations.listReconciliationCandidates(updatedBefore, RECONCILIATION_BATCH_LIMIT);
     for (const operation of operations) {
       if (operation.status !== "accepted" && operation.status !== "processing") continue;
       if (reconciliationEligibleAt(operation) > now.getTime()) continue;
