@@ -56,7 +56,8 @@ const environmentSchema = z.object({
   TIKTOK_CLIENT_KEY: z.string().trim().optional(),
   TIKTOK_CLIENT_SECRET: z.string().optional(),
   INSTAGRAM_CLIENT_ID: z.string().trim().optional(),
-  INSTAGRAM_CLIENT_SECRET: z.string().optional()
+  INSTAGRAM_CLIENT_SECRET: z.string().optional(),
+  SOCIAL_CREDENTIALS_JSON: z.string().optional()
 });
 
 export const environment = environmentSchema.parse(process.env);
