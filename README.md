@@ -102,6 +102,7 @@ Connection `configuration` rejects secret-like fields. Failed health checks pers
 | `API_RATE_LIMIT_WINDOW_MS` | Rate-limit window length in milliseconds. |
 | `AFFILIATEOS_MARKETPLACE_*_CREDENTIAL_REF` | Deployment-level reference to a secret-manager entry. |
 | `AFFILIATEOS_SOCIAL_*_CREDENTIAL_REF` | Optional OAuth/API credential reference for an approved social adapter. |
+| `SOCIAL_CREDENTIALS_JSON` | Deployment-injected secret payload mapping opaque social credential references to runtime access-token records; source control and database must contain no token values. |
 | `AFFILIATEOS_AI_*_CREDENTIAL_REF` | Optional credential reference for a production content-generator adapter. |
 | `AUTONOMOUS_CYCLE_ENABLED` | Enables the autonomous discovery/selection/execution scheduler; keep disabled until approved provider connections are configured. |
 | `AUTONOMOUS_CYCLE_INTERVAL_MS` | Autonomous cycle interval; minimum 5 minutes, default 15 minutes. |
