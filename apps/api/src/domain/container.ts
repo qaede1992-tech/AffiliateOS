@@ -79,7 +79,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
       if (!account?.affiliateId || !affiliateOffer || affiliateOffer.affiliateAccountId !== account.id || !affiliateOffer.conversionOfferId) return undefined;
       const conversionOffer = await repositories.offers.findById(affiliateOffer.conversionOfferId);
       if (!conversionOffer || conversionOffer.status !== "active") return undefined;
-      return { affiliateId: account.affiliateId, offerId: conversionOffer.id, affiliateOfferId: affiliateOffer.id, trackingLinkId: link.id };
+      return { shopeeConversionSync, affiliateId: account.affiliateId, offerId: conversionOffer.id, affiliateOfferId: affiliateOffer.id, trackingLinkId: link.id };
     }
   }, {
     async attribute(conversionId, trackingLinkId) {
@@ -98,7 +98,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation);
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies }, { intervalMs: autonomousSchedulerIntervalMs });
   return {
-    affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, shopeeConversionSync, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
+    affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
     autonomousDecisionAudits: autonomousDecisionAuditRepository,
     socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository), analytics, attribution, publicationJobs, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
