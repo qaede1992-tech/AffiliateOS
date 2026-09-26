@@ -129,7 +129,11 @@ export class PublicationWorker {
           return typeof code === "string" && terminalPublicationErrors.has(code);
         };
         if (message.includes("does not support publication status checks") || isTerminal(error)) {
-          await this.operations.transition(operation.id, "failed", { error: message }, now);
+          const transitioned = await this.operations.transition(operation.id, "failed", { error: message }, now);
+          if (transitioned.status !== "failed") {
+            results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "skipped" });
+            continue;
+          }
           await this.contentService?.update(operation.contentId, { status: "failed" }).catch(() => undefined);
           await this.jobService.fail(operation.jobId, message, now);
           results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "failed", error: message });
