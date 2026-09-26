@@ -1,5 +1,5 @@
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
-import { AutonomousOpportunitySelector, type OpportunityCandidateSource, type OpportunitySelectionPolicy, type OpportunitySelectionPoliciesByMarketplace, type OpportunitySelectionAudit } from "./autonomous-opportunity.js";
+import { AutonomousOpportunitySelector, isExecutableAffiliateOffer, type OpportunityCandidateSource, type OpportunitySelectionPolicy, type OpportunitySelectionPoliciesByMarketplace, type OpportunitySelectionAudit } from "./autonomous-opportunity.js";
 import type { AutonomousFeedbackProvider } from "./autonomous-feedback.js";
 import type { CampaignOrchestrator, CampaignOrchestrationResult } from "./campaign-orchestrator.js";
 import { scoreOpportunity, type ScoredOpportunity } from "./opportunity-scoring.js";
@@ -34,7 +34,7 @@ export class AutonomousExecutionService {
         const candidate = input.candidates.find((item) => item.product.id === run.opportunityProductId);
         const offer = candidate?.offers.find((item) => item.id === run.offerId);
         if (!candidate || !offer) continue;
-        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active") continue;
+        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active" || !isExecutableAffiliateOffer(candidate.product.id, offer)) continue;
         const performanceSignal = performance.get(candidate.product.marketplaceId + ":" + candidate.product.id) ?? performance.get(candidate.product.id);
         if (performanceSignal?.anomaly === "halt" || performanceSignal?.anomalyRecovery === "recovering") continue;
         const context = run.executionContext;
@@ -112,8 +112,10 @@ export class AutonomousExecutionService {
         : undefined;
       const candidate = resolved?.candidate;
       const offer = resolved?.offer;
-      if (!offer) {
-        const error = "Selected opportunity has no matching affiliate offer.";
+      if (!offer || !isExecutableAffiliateOffer(opportunity.product.id, offer)) {
+        const error = !offer
+          ? "Selected opportunity has no matching affiliate offer."
+          : "Selected affiliate offer is not executable or is not bound to the selected product.";
         outcomes.push({ productId: opportunity.product.id, offerId: opportunity.offerId, score: opportunity.score, status: "failed", idempotencyKey, error });
         const audit = auditByProductId.get(opportunity.product.id);
         if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: opportunity.offerId, status: "failed", error, observedAt: new Date().toISOString() });
