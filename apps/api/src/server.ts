@@ -42,6 +42,8 @@ const services = createServices(
   new DrizzlePublicationOperationRepository(persistence.db),
   new DrizzleAutonomousRunRepository(persistence.db),
   environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
+  environment.SHOPEE_CONVERSION_SYNC_INTERVAL_MS,
+  environment.SHOPEE_CONVERSION_SYNC_LOOKBACK_HOURS,
   new DrizzleAutonomousFeedbackMemoryRepository(persistence.db),
   autonomousCycleLock,
   persistence.optimizationState,
@@ -83,11 +85,14 @@ try {
   await app.listen({ host: environment.API_HOST, port: environment.API_PORT });
   services.publicationScheduler.start();
   providerEventScheduler.start();
+  if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
   app.log.error(error);
   await services.autonomousScheduler.stop();
+  await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
+  await services.shopeeConversionSyncScheduler.stop();
   await providerEventScheduler.stop();
   await persistence.close();
   process.exit(1);
