@@ -34,6 +34,34 @@ test("production preflight rejects autonomous mode without provider readiness", 
   assert.match(result.stderr, /SOCIAL_CREDENTIALS_JSON/);
 });
 
+test("production preflight rejects malformed social credential JSON", () => {
+  const result = runPreflight({
+    ...baseEnvironment,
+    AUTONOMOUS_CYCLE_ENABLED: "true",
+    AUTONOMOUS_CYCLE_INTERVAL_MS: "900000",
+    SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE: "vault://affiliateos/shopee",
+    SHOPEE_AFFILIATE_APP_ID: "production-app-id",
+    SHOPEE_AFFILIATE_APP_SECRET: "runtime-secret",
+    SOCIAL_CREDENTIALS_JSON: "{malformed"
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /SOCIAL_CREDENTIALS_JSON\(valid JSON object\)/);
+});
+
+test("production preflight rejects non-object social credential JSON", () => {
+  const result = runPreflight({
+    ...baseEnvironment,
+    AUTONOMOUS_CYCLE_ENABLED: "true",
+    AUTONOMOUS_CYCLE_INTERVAL_MS: "900000",
+    SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE: "vault://affiliateos/shopee",
+    SHOPEE_AFFILIATE_APP_ID: "production-app-id",
+    SHOPEE_AFFILIATE_APP_SECRET: "runtime-secret",
+    SOCIAL_CREDENTIALS_JSON: "[]"
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /SOCIAL_CREDENTIALS_JSON\(valid JSON object\)/);
+});
+
 test("production preflight accepts autonomous mode with opaque references and runtime credentials", () => {
   const result = runPreflight({
     ...baseEnvironment,
