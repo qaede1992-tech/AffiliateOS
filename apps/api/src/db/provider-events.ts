@@ -82,9 +82,10 @@ export class ProviderEventStore {
       if (!rows[0]) return false;
       const retryCount = (rows[0].retryCount ?? 0) + 1;
       values.retryCount = retryCount;
-      values.nextAttemptAt = retryCount >= PROVIDER_EVENT_MAX_RETRIES
+      const retryDelayMs = RETRY_DELAYS_MS[retryCount - 1];
+      values.nextAttemptAt = retryCount >= PROVIDER_EVENT_MAX_RETRIES || retryDelayMs === undefined
         ? null
-        : new Date(Date.now() + RETRY_DELAYS_MS[retryCount - 1]).toISOString();
+        : new Date(Date.now() + retryDelayMs).toISOString();
       values.processingStartedAt = null;
     }
     if (status === "processing") values.processingStartedAt = new Date().toISOString();
