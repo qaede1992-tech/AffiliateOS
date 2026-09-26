@@ -72,7 +72,7 @@ export class AutonomousRunService {
       updatedAt: now.toISOString()
     };
     if (this.runs.transition) {
-      const transitioned = await this.runs.transition(id, ["failed"], reset);
+      const transitioned = await this.runs.transition(id, ["failed"], reset, run.attemptCount);
       return transitioned ?? (this.runs.findById ? (await this.runs.findById(id)) ?? run : run);
     }
     return this.runs.save(reset);
