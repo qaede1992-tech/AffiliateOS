@@ -55,7 +55,7 @@ test("marketplace persistence recovers from concurrent unique inserts", async ()
   const accounts = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplace() { if (accountLookup) { accountLookup = false; return undefined; } return racedAccount; }, async save(entity: typeof racedAccount) { if (accountSave) { accountSave = false; throw uniqueViolation(); } return entity; } };
   const offers = { async list() { return []; }, async findById() { return undefined; }, async findByAccountOffer() { if (offerLookup) { offerLookup = false; return undefined; } return racedOffer; }, async save(entity: typeof racedOffer) { if (offerSave) { offerSave = false; throw uniqueViolation(); } return entity; } };
   const connections = { async list() { return [connection]; }, async findById() { return connection; }, async findBySlug() { return connection; }, async save(entity: typeof connection) { return entity; } };
-  const service = new MarketplaceService(registry, connections, products, accounts, offers, new InMemoryRepository<import("@affiliateos/shared").Offer>());
+  const service = new MarketplaceService(registry, connections, products, accounts, new InMemoryRepository<import("@affiliateos/shared").Affiliate>(), offers, new InMemoryRepository<import("@affiliateos/shared").Offer>());
   const result = await service.getOffers(connection.slug, "sku-race");
   assert.equal(result.length, 1);
   assert.equal(result[0].id, racedOffer.id);
@@ -69,13 +69,22 @@ test("marketplace account binding persists the internal affiliate identity", asy
   const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
   await repos.marketplaceConnections.save(connection);
   const { MarketplaceProviderRegistry } = await import("../src/domain/foundations.js");
-  const service = new MarketplaceService(new MarketplaceProviderRegistry(), repos.marketplaceConnections, repos.products, repos.affiliateAccounts, repos.affiliateOffers, repos.offers);
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), repos.marketplaceConnections, repos.products, repos.affiliateAccounts, repos.affiliates, repos.affiliateOffers, repos.offers);
   const affiliateId = "00000000-0000-4000-8000-000000000031";
+  await repos.affiliates.save({ id: affiliateId, name: "Bound affiliate", email: "bound@example.test", status: "active", createdAt: "2026-01-01T00:00:00.000Z" });
   const bound = await service.bindAffiliateAccount(connection.slug, affiliateId);
   assert.equal(bound.affiliateId, affiliateId);
   assert.equal((await service.getAffiliateAccount(connection.slug)).affiliateId, affiliateId);
 });
 
+
+test("marketplace account binding rejects an unknown affiliate identity", async () => {
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
+  await repos.marketplaceConnections.save(connection);
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), repos.marketplaceConnections, repos.products, repos.affiliateAccounts, repos.affiliates, repos.affiliateOffers, repos.offers);
+  await assert.rejects(() => service.bindAffiliateAccount(connection.slug, "00000000-0000-4000-8000-000000000099"), (error: any) => error?.code === "AFFILIATE_NOT_FOUND");
+});
 
 test("marketplace product ingestion rejects unsafe video media URLs", async () => {
   const registry = new MarketplaceProviderRegistry();
