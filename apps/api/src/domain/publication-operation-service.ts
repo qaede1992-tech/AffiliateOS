@@ -16,6 +16,19 @@ export class PublicationOperationService {
     return this.operations.list();
   }
 
+  async listReconciliationCandidates(updatedBefore: Date, limit: number): Promise<PublicationOperation[]> {
+    if (this.operations.listReconciliationCandidates) {
+      return this.operations.listReconciliationCandidates(updatedBefore, limit);
+    }
+    return (await this.operations.list())
+      .filter((operation) =>
+        (operation.status === "accepted" || operation.status === "processing") &&
+        new Date(operation.updatedAt).getTime() <= updatedBefore.getTime()
+      )
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
+      .slice(0, Math.max(0, limit));
+  }
+
   async create(input: { contentId: EntityId; jobId: EntityId; provider: string; providerOperationId: string; status?: PublicationOperationStatus }, now = new Date()): Promise<PublicationOperation> {
     const existing = await this.operations.findByProviderOperation(input.provider, input.providerOperationId);
     if (existing) return existing;
