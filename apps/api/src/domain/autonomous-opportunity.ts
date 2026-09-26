@@ -90,6 +90,7 @@ export class AutonomousOpportunitySelector {
       ...policy,
       ...(effectivePoliciesByMarketplace[candidate.product.marketplaceId] ?? {})
     });
+    const offersByProductId = new Map([...mergedCandidates.values()].map((candidate) => [candidate.product.id, candidate.offers]));
     const scored = [...mergedCandidates.values()].map((candidate) => {
       const candidatePolicy = effectivePolicy(candidate);
       return {
@@ -123,7 +124,7 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
-      const selectedOffer = item.offerId ? (item.offers ?? []).find((offer) => offer.id === item.offerId) : undefined;
+      const selectedOffer = item.offerId ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId) : undefined;
       return item.score >= minimumScore && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
@@ -155,7 +156,7 @@ export class AutonomousOpportunitySelector {
           ? ["Selection limit reached"]
           : [
             ...(!item.offerId ? ["No affiliate offer selected"] : []),
-            ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, (item.offers ?? []).find((offer) => offer.id === item.offerId)) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
+            ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId)) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
             ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
           ]
       };
