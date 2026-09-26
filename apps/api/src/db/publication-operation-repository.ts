@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, lte } from "drizzle-orm";
 import type { PublicationOperation } from "../domain/publication-operation.js";
 import type { PublicationOperationRepository } from "../domain/publication-operation.js";
 import { publicationOperations } from "./schema.js";
@@ -37,6 +37,17 @@ export class DrizzlePublicationOperationRepository implements PublicationOperati
 
   async list(): Promise<PublicationOperation[]> {
     return (await this.db.select().from(publicationOperations)).map(toDomain);
+  }
+
+  async listReconciliationCandidates(updatedBefore: Date, limit: number): Promise<PublicationOperation[]> {
+    const rows = await this.db.select().from(publicationOperations)
+      .where(and(
+        inArray(publicationOperations.status, ["accepted", "processing"]),
+        lte(publicationOperations.updatedAt, updatedBefore.toISOString())
+      ))
+      .orderBy(asc(publicationOperations.updatedAt))
+      .limit(Math.max(0, limit));
+    return rows.map(toDomain);
   }
 
   async findById(id: string): Promise<PublicationOperation | undefined> {
