@@ -1,4 +1,4 @@
-import { and, asc, eq, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, lt, or } from "drizzle-orm";
 import { providerEvents } from "./schema.js";
 
 export const PROVIDER_EVENT_PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
@@ -28,7 +28,7 @@ export class ProviderEventStore {
       id: event.id, affiliateAccountId: event.affiliateAccountId, externalEventId: event.externalEventId,
       eventType: event.eventType, payload: event.payload, signatureVersion: event.signatureVersion ?? null,
       status: event.status ?? "received", receivedAt: event.receivedAt, processedAt: null,
-      processingStartedAt: null, error: null,
+      processingStartedAt: null, retryCount: 0, nextAttemptAt: null, error: null,
     }).onConflictDoNothing({ target: [providerEvents.affiliateAccountId, providerEvents.externalEventId] });
     return Number(result.rowCount ?? 0) === 1;
   }
@@ -43,8 +43,8 @@ export class ProviderEventStore {
     const rows = await this.db.select().from(providerEvents)
       .where(or(
         eq(providerEvents.status, "received"),
-        and(eq(providerEvents.status, "failed"), eq(providerEvents.retryCount, 0), eq(providerEvents.nextAttemptAt, null)),
-        and(eq(providerEvents.status, "failed"), lte(providerEvents.nextAttemptAt, new Date().toISOString())),
+        and(eq(providerEvents.status, "failed"), lt(providerEvents.retryCount, PROVIDER_EVENT_MAX_RETRIES),
+          or(isNull(providerEvents.nextAttemptAt), lte(providerEvents.nextAttemptAt, new Date().toISOString()))),
         and(eq(providerEvents.status, "processing"),
           lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString()))
       ))
@@ -62,18 +62,30 @@ export class ProviderEventStore {
       .set({ status: "processing", processingStartedAt: new Date().toISOString(), error: null })
       .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId),
         or(eq(providerEvents.status, "received"),
-          and(eq(providerEvents.status, "failed"), or(eq(providerEvents.retryCount, 0), lte(providerEvents.nextAttemptAt, new Date().toISOString()))),
-          and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())))));
+          and(eq(providerEvents.status, "failed"), lt(providerEvents.retryCount, PROVIDER_EVENT_MAX_RETRIES),
+            or(isNull(providerEvents.nextAttemptAt), lte(providerEvents.nextAttemptAt, new Date().toISOString()))),
+          and(eq(providerEvents.status, "processing"),
+            lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())))));
     return Number(result.rowCount ?? 0) === 1;
   }
 
   async updateStatus(affiliateAccountId: string, externalEventId: string, status: ProviderEventStatus, error?: string): Promise<boolean> {
     const values: Record<string, unknown> = { status, error: error?.slice(0, 1000) ?? null };
-    if (status === "processed") { values.processedAt = new Date().toISOString(); values.nextAttemptAt = null; }
+    if (status === "processed") {
+      values.processedAt = new Date().toISOString();
+      values.nextAttemptAt = null;
+    }
     if (status === "failed") {
+      const rows = await this.db.select({ retryCount: providerEvents.retryCount }).from(providerEvents)
+        .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId), eq(providerEvents.status, "processing")))
+        .limit(1);
+      if (!rows[0]) return false;
+      const retryCount = rows[0].retryCount + 1;
+      values.retryCount = retryCount;
+      values.nextAttemptAt = retryCount >= PROVIDER_EVENT_MAX_RETRIES
+        ? null
+        : new Date(Date.now() + RETRY_DELAYS_MS[retryCount - 1]).toISOString();
       values.processingStartedAt = null;
-      values.retryCount = sql`${providerEvents.retryCount} + 1`;
-      values.nextAttemptAt = sql`CASE WHEN ${providerEvents.retryCount} + 1 >= ${PROVIDER_EVENT_MAX_RETRIES} THEN NULL ELSE NOW() + (${retryDelayExpression()}) * INTERVAL '1 millisecond' END`;
     }
     if (status === "processing") values.processingStartedAt = new Date().toISOString();
     const result = await this.db.update(providerEvents).set(values)
