@@ -48,6 +48,20 @@ test("production preflight rejects malformed social credential JSON", () => {
   assert.match(result.stderr, /SOCIAL_CREDENTIALS_JSON\(valid JSON object\)/);
 });
 
+test("production preflight rejects empty social credential JSON objects", () => {
+  const result = runPreflight({
+    ...baseEnvironment,
+    AUTONOMOUS_CYCLE_ENABLED: "true",
+    AUTONOMOUS_CYCLE_INTERVAL_MS: "900000",
+    SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE: "vault://affiliateos/shopee",
+    SHOPEE_AFFILIATE_APP_ID: "production-app-id",
+    SHOPEE_AFFILIATE_APP_SECRET: "runtime-secret",
+    SOCIAL_CREDENTIALS_JSON: "{}"
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /SOCIAL_CREDENTIALS_JSON\(valid JSON object\)/);
+});
+
 test("production preflight rejects non-object social credential JSON", () => {
   const result = runPreflight({
     ...baseEnvironment,
