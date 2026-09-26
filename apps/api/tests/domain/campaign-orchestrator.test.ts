@@ -109,6 +109,31 @@ describe("campaign orchestrator", () => {
     assert.equal(result.content[0]?.scheduledAt, scheduledAt);
   });
 
+  it("rejects a scheduled campaign when no requested platform is publishable", async () => {
+    const content = new StubContent();
+    const mediaAssets = new StubMediaAssets();
+    const distribution = new StubDistribution();
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        new StubCampaigns() as never,
+        new StubTracking() as never,
+        content as never,
+        undefined,
+        distribution as never,
+        undefined,
+        mediaAssets as never
+      ).execute({
+        opportunity,
+        offer,
+        product,
+        platforms: ["tiktok"],
+        scheduledAt: "2026-09-21T12:00:00.000Z"
+      }),
+      /at least one publishable social destination/
+    );
+    assert.equal(distribution.scheduled.length, 0);
+  });
+
   it("uses a deterministic tracking code for an orchestration key", async () => {
     const tracking = new StubTracking();
     const content = new StubContent();

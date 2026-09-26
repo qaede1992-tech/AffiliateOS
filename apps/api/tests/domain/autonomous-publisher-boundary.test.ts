@@ -54,8 +54,10 @@ describe("autonomous publisher boundary", () => {
     const content = new ContentStore();
     const distribution = new Distribution();
     const orchestrator = new CampaignOrchestrator(new Campaigns() as never, new Tracking() as never, content as never, undefined, distribution as never);
-    const result = await orchestrator.execute({ opportunity, offer, product, platforms: ["tiktok"], scheduledAt: "2026-09-22T12:00:00.000Z" });
-    assert.equal(result.distribution.length, 0);
+    await assert.rejects(
+      () => orchestrator.execute({ opportunity, offer, product, platforms: ["tiktok"], scheduledAt: "2026-09-22T12:00:00.000Z" }),
+      /at least one publishable social destination/
+    );
     assert.equal(distribution.scheduled, 0);
     assert.equal(content.items.length, 1);
     assert.equal(content.items[0]?.status, "draft");
@@ -66,8 +68,11 @@ describe("autonomous publisher boundary", () => {
     const publisher = { supports: (platform: string) => platform === "tiktok", publish: async () => ({ externalPostId: "unused" }) };
     const distribution = new Distribution([publisher]);
     const orchestrator = new CampaignOrchestrator(new Campaigns() as never, new Tracking() as never, content as never, undefined, distribution as never);
-    const result = await orchestrator.execute({ opportunity, offer, product, platforms: ["tiktok"], scheduledAt: "2026-09-22T12:00:00.000Z" });
+    await assert.rejects(
+      () => orchestrator.execute({ opportunity, offer, product, platforms: ["tiktok"], scheduledAt: "2026-09-22T12:00:00.000Z" }),
+      /at least one publishable social destination/
+    );
     assert.equal(distribution.scheduled, 0);
-    assert.equal(result.content[0]?.status, "draft");
+    assert.equal(content.items[0]?.status, "draft");
   });
 });
