@@ -15,7 +15,7 @@ type DecisionAudit = {
   category?: string;
   audienceSegments?: string[];
   createdAt: string;
-  outcome?: {
+  recovery?: { anomaly: "none" | "watch" | "halt"; recoveryState: "none" | "recovering" | "recovered"; recoveryClicks: number; recoveryEvidenceScore: number; recoveryEpisodeId?: string };\n  performanceRegime?: "rising" | "stable" | "declining" | "volatile";\n  outcome?: {
     offerId?: string;
     status: "completed" | "failed";
     campaignId?: string;
@@ -31,7 +31,7 @@ type DecisionAudit = {
   };
 };
 
-type AutonomousStatus = {
+type AutonomousRun = { id: string; idempotencyKey: string; productId: string; offerId: string; status: "accepted" | "processing" | "completed" | "failed"; attemptCount: number; campaignId?: string; lastError?: string; nextAttemptAt?: string; updatedAt: string };\ntype PublisherReadiness = { platform: string; status: string; reason?: string };\ntype AutonomousStatus = {
   running: boolean;
   active: boolean;
   lastStartedAt?: string;
@@ -49,7 +49,7 @@ const formatDate = (value?: string) => value ? new Date(value).toLocaleString() 
 
 export function AutonomousObservabilityPanel() {
   const [audits, setAudits] = useState<DecisionAudit[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);\n  const [runs, setRuns] = useState<AutonomousRun[]>([]);\n  const [readiness, setReadiness] = useState<PublisherReadiness[]>([]);
   const [status, setStatus] = useState<AutonomousStatus | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<"all" | "selected" | "rejected">("all");
   const [loading, setLoading] = useState(true);
@@ -88,10 +88,10 @@ export function AutonomousObservabilityPanel() {
   const selectedCount = audits.filter((audit) => audit.selected).length;
   const rejectedCount = audits.length - selectedCount;
   const completedCount = audits.filter((audit) => audit.outcome?.status === "completed").length;
-  const failedCount = audits.filter((audit) => audit.outcome?.status === "failed").length;
+  const failedCount = audits.filter((audit) => audit.outcome?.status === "failed").length;\n  const recoveryCount = audits.filter((audit) => audit.recovery?.recoveryState === "recovering").length;\n  const haltedCount = audits.filter((audit) => audit.recovery?.anomaly === "halt").length;\n  const pendingRuns = runs.filter((run) => run.status === "accepted" || run.status === "processing").length;\n  const failedRuns = runs.filter((run) => run.status === "failed").length;
 
   if (loading) {
-    return <section className="analytics-section" id="autonomous-observability"><div className="section-heading"><div><p className="eyebrow">Decision trace</p><h2>Autonomous selection</h2></div></div><p className="empty">Loading decision audits...</p></section>;
+    return <section className="analytics-section" id="autonomous-observability"><div className="section-heading"><div><p className="eyebrow">Decision trace</p><h2>Autonomous selection</h2></div></div><p className="empty">Loading autonomous operations...</p></section>;
   }
 
   return (
@@ -111,12 +111,12 @@ export function AutonomousObservabilityPanel() {
         <article className="metric-card"><span>Audits</span><strong>{audits.length}</strong><small>Latest persisted selection decisions</small></article>
         <article className="metric-card"><span>Selected</span><strong>{selectedCount}</strong><small>Products selected for execution</small></article>
         <article className="metric-card"><span>Rejected</span><strong>{rejectedCount}</strong><small>Products retained with rejection reasons</small></article>
-        <article className="metric-card"><span>Outcomes</span><strong>{completedCount}/{failedCount}</strong><small>Completed / failed execution outcomes</small></article>
+        <article className="metric-card"><span>Outcomes</span><strong>{completedCount}/{failedCount}</strong><small>Completed / failed execution outcomes</small></article>\n        <article className="metric-card"><span>Recovery</span><strong>{recoveryCount}</strong><small>{haltedCount} anomaly halt(s) in audit window</small></article>\n        <article className="metric-card"><span>Runs</span><strong>{pendingRuns}</strong><small>{failedRuns} failed persisted run(s)</small></article>
       </div>
 
       {error && <p className="error-message" role="alert">{error}</p>}
 
-      <div className="autonomous-observability-status">
+      <div className="autonomous-observability-status">\n        {readiness.map((item) => <div key={item.platform}><strong>{item.platform} publisher</strong><span>{item.status}{item.reason ? ` · ${item.reason}` : ""}</span></div>)}
         <div><strong>Cycle status</strong><span>{status?.running ? "scheduler running" : "scheduler stopped"}{status?.active ? " · cycle active" : ""}</span></div>
         <div><strong>Last started</strong><span>{formatDate(status?.lastStartedAt)}</span></div>
         <div><strong>Last completed</strong><span>{formatDate(status?.lastCompletedAt)}</span></div>
@@ -136,7 +136,7 @@ export function AutonomousObservabilityPanel() {
       {filtered.length === 0 ? (
         <p className="empty">No persisted autonomous decision audits match this filter. Run a cycle after an eligible marketplace connection and bound affiliate account are configured.</p>
       ) : (
-        <div className="autonomous-audit-list">
+        <div className="autonomous-audit-list">\n          {runs.length > 0 && <div className="autonomous-run-summary"><strong>Execution runs</strong><span>{runs.slice(0, 8).map((run) => `${shortId(run.productId)}:${run.status} (attempt ${run.attemptCount})`).join(" · ")}</span></div>}
           {filtered.map((audit) => {
             const product = productById.get(audit.productId);
             const breakdown = product ? undefined : undefined;
@@ -157,7 +157,7 @@ export function AutonomousObservabilityPanel() {
                   <div><span>Audience</span><strong>{audit.audienceSegments?.join(", ") || "not constrained"}</strong></div>
                   <div><span>Recorded</span><strong>{formatDate(audit.createdAt)}</strong></div>
                   <div><span>Outcome</span><strong>{audit.outcome ? audit.outcome.status : "not executed"}</strong></div>
-                  <div><span>Offer</span><strong>{audit.outcome?.offerId ? shortId(audit.outcome.offerId) : "not bound"}</strong></div>
+                  <div><span>Offer</span><strong>{audit.outcome?.offerId ? shortId(audit.outcome.offerId) : "not bound"}</strong></div>\n                  <div><span>Performance</span><strong>{audit.performanceRegime ?? "not measured"}</strong></div>\n                  <div><span>Recovery</span><strong>{audit.recovery ? `${audit.recovery.anomaly} / ${audit.recovery.recoveryState}` : "none"}</strong></div>
                 </div>
                 <div className="autonomous-reasons">
                   <strong>{audit.selected ? "Selection evidence" : "Rejection reasons"}</strong>
