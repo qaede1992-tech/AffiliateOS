@@ -47,7 +47,7 @@ test("Instagram client creates and publishes a media container", async () => {
     }
   });
   const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-1" });
-  assert.deepEqual(result, { status: "published", providerOperationId: "media-1" });
+  assert.deepEqual(result, { status: "published", externalPostId: "media-1" });
   assert.equal(calls.length, 2);
 });
 
