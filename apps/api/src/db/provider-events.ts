@@ -1,7 +1,9 @@
-import { and, asc, eq, lte, or } from "drizzle-orm";
+import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import { providerEvents } from "./schema.js";
 
 export const PROVIDER_EVENT_PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
+export const PROVIDER_EVENT_MAX_RETRIES = 5;
+const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000] as const;
 
 type DatabaseExecutor = any;
 
@@ -41,7 +43,8 @@ export class ProviderEventStore {
     const rows = await this.db.select().from(providerEvents)
       .where(or(
         eq(providerEvents.status, "received"),
-        eq(providerEvents.status, "failed"),
+        and(eq(providerEvents.status, "failed"), eq(providerEvents.retryCount, 0), eq(providerEvents.nextAttemptAt, null)),
+        and(eq(providerEvents.status, "failed"), lte(providerEvents.nextAttemptAt, new Date().toISOString())),
         and(eq(providerEvents.status, "processing"),
           lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString()))
       ))
@@ -58,17 +61,23 @@ export class ProviderEventStore {
     const result = await this.db.update(providerEvents)
       .set({ status: "processing", processingStartedAt: new Date().toISOString(), error: null })
       .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId),
-        or(eq(providerEvents.status, "received"), eq(providerEvents.status, "failed"),
+        or(eq(providerEvents.status, "received"),
+          and(eq(providerEvents.status, "failed"), or(eq(providerEvents.retryCount, 0), lte(providerEvents.nextAttemptAt, new Date().toISOString()))),
           and(eq(providerEvents.status, "processing"), lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString())))));
     return Number(result.rowCount ?? 0) === 1;
   }
 
   async updateStatus(affiliateAccountId: string, externalEventId: string, status: ProviderEventStatus, error?: string): Promise<boolean> {
     const values: Record<string, unknown> = { status, error: error?.slice(0, 1000) ?? null };
-    if (status === "processed") values.processedAt = new Date().toISOString();
-    if (status !== "processing") values.processingStartedAt = null;
+    if (status === "processed") { values.processedAt = new Date().toISOString(); values.nextAttemptAt = null; }
+    if (status === "failed") {
+      values.processingStartedAt = null;
+      values.retryCount = sql`${providerEvents.retryCount} + 1`;
+      values.nextAttemptAt = sql`CASE WHEN ${providerEvents.retryCount} + 1 >= ${PROVIDER_EVENT_MAX_RETRIES} THEN NULL ELSE NOW() + (${retryDelayExpression()}) * INTERVAL '1 millisecond' END`;
+    }
+    if (status === "processing") values.processingStartedAt = new Date().toISOString();
     const result = await this.db.update(providerEvents).set(values)
-      .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId)));
+      .where(and(eq(providerEvents.affiliateAccountId, affiliateAccountId), eq(providerEvents.externalEventId, externalEventId), eq(providerEvents.status, "processing")));
     return Number(result.rowCount ?? 0) === 1;
   }
 }
