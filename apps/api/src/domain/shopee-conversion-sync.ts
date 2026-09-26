@@ -1,7 +1,8 @@
 import type { ConversionService } from "./services.js";
 import type { MarketplaceService } from "./marketplace.js";
 import type { ProviderConversionProcessor } from "./provider-conversion-processor.js";
-import type { ShopeeAffiliateConversionReportItem, ShopeeAffiliateProvider } from "./shopee-affiliate-provider.js";
+import type { ShopeeAffiliateProvider } from "./shopee-affiliate-provider.js";
+import type { ShopeeAffiliateConversionReportItem } from "./shopee-affiliate-graphql-client.js";
 
 export type MarketplaceConversionSyncResult = {
   fetched: number;
