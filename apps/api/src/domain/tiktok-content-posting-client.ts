@@ -52,7 +52,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
     const response = await this.requestJson<TikTokInitResponse>("/v2/post/publish/video/init/", accessToken, {
       method: "POST",
-      headers: { "content-type": "application/json", "idempotency-key": input.idempotencyKey },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
         post_info: {
           title: input.content.caption ?? input.content.title ?? "",
