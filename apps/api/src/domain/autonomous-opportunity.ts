@@ -155,7 +155,7 @@ export class AutonomousOpportunitySelector {
           ? ["Selection limit reached"]
           : [
             ...(!item.offerId ? ["No affiliate offer selected"] : []),
-            ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, item.offers.find((offer) => offer.id === item.offerId)) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
+            ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, (item.offers ?? []).find((offer) => offer.id === item.offerId)) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
             ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
           ]
       };
