@@ -9,11 +9,11 @@ export type CommissionStatus = "pending" | "approved" | "paid";
 
 export interface Affiliate { id: EntityId; name: string; email: string; status: AffiliateStatus; createdAt: IsoTimestamp; }
 export interface Offer { id: EntityId; name: string; status: OfferStatus; commissionRateBps: number; createdAt: IsoTimestamp; }
-export interface Conversion { id: EntityId; affiliateId: EntityId; offerId: EntityId; amountCents: MoneyCents; status: ConversionStatus; occurredAt: IsoTimestamp; idempotencyKey?: string; }
+export interface Conversion { id: EntityId; affiliateId: EntityId; offerId: EntityId; affiliateOfferId?: EntityId; amountCents: MoneyCents; status: ConversionStatus; occurredAt: IsoTimestamp; idempotencyKey?: string; }
 export interface Commission { id: EntityId; conversionId: EntityId; affiliateId: EntityId; amountCents: MoneyCents; status: CommissionStatus; createdAt: IsoTimestamp; }
 export interface CreateAffiliateRequest { name: string; email: string; }
 export interface CreateOfferRequest { name: string; status: "active" | "inactive"; commissionRateBps: number; }
-export interface CreateConversionRequest { affiliateId: EntityId; offerId: EntityId; amountCents: MoneyCents; occurredAt?: IsoTimestamp; idempotencyKey?: string; }
+export interface CreateConversionRequest { affiliateId: EntityId; offerId: EntityId; affiliateOfferId?: EntityId; amountCents: MoneyCents; occurredAt?: IsoTimestamp; idempotencyKey?: string; }
 export interface ListResponse<T> { data: T[]; }
 export interface ErrorResponse { error: string; status: "active" | "inactive"; message: string; }
 export interface HealthResponse { status: "ok"; service: "affiliateos-api"; timestamp: IsoTimestamp; }
