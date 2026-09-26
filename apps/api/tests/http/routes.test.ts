@@ -38,6 +38,20 @@ test("configured CORS origin accepts an explicit production origin", () => {
   }
 });
 
+test("GET /r/:code is public and returns a tracking-link error without authentication", async () => {
+  const app = createApp();
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/r/missing-tracking-code",
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.json().error, "TRACKING_LINK_NOT_FOUND");
+
+  await app.close();
+});
+
 test("GET /api/v1/health returns health status and configured CORS origin", async () => {
   const app = createApp();
 
