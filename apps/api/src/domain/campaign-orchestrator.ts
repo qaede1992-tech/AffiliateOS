@@ -227,6 +227,6 @@ export class CampaignOrchestrator {
 
   private hasAutopublishableMedia(content: Awaited<ReturnType<ContentService["create"]>>): boolean {
     if (!content.mediaAssetIds?.length) return false;
-    return content.platform === "instagram";
+    return content.platform === "instagram" || content.platform === "tiktok";
   }
 }
