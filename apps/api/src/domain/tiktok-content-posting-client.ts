@@ -36,20 +36,19 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
   async publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string }): Promise<PublishOutcome> {
     const accessToken = await this.configuration.accessTokenResolver(input.account);
+    const privacyLevel = this.readPrivacyLevel(input.account);
+    if (!this.hasExplicitConsent(input.account)) {
+      throw new Error("TikTok publishing requires explicit creator consent before media is sent.");
+    }
     const creator = await this.creatorInfo(accessToken);
     const asset = input.mediaAssets.find((candidate) => candidate.kind === "video");
     if (!asset) throw new Error("TikTok direct video posting requires a video media asset.");
     if (asset.source !== "url") throw new Error("TikTok server-side publishing currently requires a public media URL.");
     if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok media URL must use HTTPS.");
 
-    const privacyLevel = this.readPrivacyLevel(input.account);
     if (!creator.privacy_level_options?.includes(privacyLevel)) {
       throw new Error("TikTok privacy level is not permitted by the latest creator settings.");
     }
-    if (!this.hasExplicitConsent(input.account)) {
-      throw new Error("TikTok publishing requires explicit creator consent before media is sent.");
-    }
-
     const response = await this.requestJson<TikTokInitResponse>("/v2/post/publish/video/init/", accessToken, {
       method: "POST",
       headers: { "content-type": "application/json" },
