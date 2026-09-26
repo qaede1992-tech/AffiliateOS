@@ -60,7 +60,7 @@ export class ShopeeAffiliateGraphqlClient {
     const response=await this.fetchImpl(this.endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"SHA256 Credential="+this.options.credentials.appId+", Timestamp="+timestamp+", Signature="+signature},body});
     const payload=(await response.json()) as GraphqlResponse<T>;
     if(!response.ok)throw new Error("Shopee Affiliate HTTP error: "+response.status);
-    if(payload.errors&&payload.errors.length){const first=payload.errors[0],code=first.extensions&&first.extensions.code?" ["+first.extensions.code+"]":"";throw new Error("Shopee Affiliate GraphQL error"+code+": "+(first.message||"unknown error"));}
+    if(payload.errors&&payload.errors.length){const first=payload.errors[0]; if(!first) throw new Error("Shopee Affiliate GraphQL error: unknown error"); const code=first.extensions&&first.extensions.code?" ["+first.extensions.code+"]":"";throw new Error("Shopee Affiliate GraphQL error"+code+": "+(first.message||"unknown error"));}
     if(!payload.data)throw new Error("Shopee Affiliate returned no GraphQL data."); return payload.data;
   }
 }
