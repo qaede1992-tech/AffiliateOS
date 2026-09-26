@@ -4,6 +4,7 @@ import { DomainError } from "./errors.js";
 import { MARKETPLACE_ENABLE_CONFIRMATION } from "./marketplace-confirmation.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository, Repository } from "./repository.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
+import type { MarketplaceProvider } from "./foundations.js";
 import type { ProviderEventSignatureHeaders } from "./foundations.js";
 const now = () => new Date().toISOString();
 const isUniqueViolation = (error: unknown): boolean => error instanceof Error && "code" in error && (error as { code?: unknown }).code === "23505";
