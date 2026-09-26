@@ -34,7 +34,8 @@ test("publisher readiness requires an active account and credential reference", 
     activeAccountConfigured: true,
     credentialReferenceConfigured: true,
     requiredScope: "instagram_business_content_publish",
-    requiredScopeGranted: true
+    requiredScopeGranted: true,
+    credentialResolvable: false
   });
 
   const missingCredential = new PublisherReadinessService([publisher], true, {
