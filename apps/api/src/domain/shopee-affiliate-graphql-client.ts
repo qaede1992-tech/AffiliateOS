@@ -110,4 +110,5 @@ function parseDecimal(value:string|number|undefined):number|undefined{if(value==
 function toMinorUnits(value:number|undefined):number|undefined{return value===undefined?undefined:Math.max(0,Math.round(value*100));}
 function rateToBps(rate:number|undefined):number|undefined{return rate===undefined?undefined:Math.max(0,Math.min(10000,Math.round(rate*10000)));}
 function discountAdjustedOriginal(price:number|undefined,discountRate:number|undefined):number|undefined{if(price===undefined||discountRate===undefined||discountRate<=0||discountRate>=100)return undefined;return Math.max(toMinorUnits(price)||0,Math.round((price/(1-discountRate/100))*100));}
-\nfunction normalizeItemId(value:string):string{const itemId=value.trim(); if(!/^\\d+$/.test(itemId)||!Number.isSafeInteger(Number(itemId))) throw new Error("Shopee product ID must be a safe integer."); return itemId;}\n
+
+function normalizeItemId(value:string):string{const itemId=value.trim(); if(!/^\d+$/.test(itemId)||!Number.isSafeInteger(Number(itemId))) throw new Error("Shopee product ID must be a safe integer."); return itemId;}
