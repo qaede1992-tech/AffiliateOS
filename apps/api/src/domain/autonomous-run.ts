@@ -26,7 +26,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   async saveIfAbsent(run: AutonomousRun) { const existing = this.runs.get(run.idempotencyKey); if (existing) return existing; this.runs.set(run.idempotencyKey, run); return run; }
   async transition(id: EntityId, expected: AutonomousRunStatus[], run: AutonomousRun) {
     const current = [...this.runs.values()].find((candidate) => candidate.id === id);
-    if (!current || !expected.includes(current.status)) return undefined;
+    if (!current || !expected.includes(current.status) || current.attemptCount !== run.attemptCount) return undefined;
     const next: AutonomousRun = {
       ...current,
       status: run.status,
