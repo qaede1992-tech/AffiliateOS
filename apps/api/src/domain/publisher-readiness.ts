@@ -4,6 +4,11 @@ import type { SocialAccountRepository } from "./repository.js";
 
 export type PublisherReadinessStatus = "ready" | "unconfigured" | "unsupported";
 
+const requiredScopesByPlatform: Partial<Record<ContentPlatform, string>> = {
+  tiktok: "video.publish",
+  instagram: "instagram_business_content_publish"
+};
+
 export type PublisherReadiness = {
   platform: ContentPlatform;
   status: PublisherReadinessStatus;
@@ -11,6 +16,8 @@ export type PublisherReadiness = {
   credentialResolutionConfigured: boolean;
   activeAccountConfigured: boolean;
   credentialReferenceConfigured: boolean;
+  requiredScope?: string;
+  requiredScopeGranted: boolean;
 };
 
 const platforms: ContentPlatform[] = ["tiktok", "instagram", "facebook", "youtube-shorts", "x", "threads"];
@@ -32,11 +39,18 @@ export class PublisherReadinessService {
     const platformAccounts = accounts.filter((account) => account.platform === platform && account.status === "active");
     const activeAccountConfigured = platformAccounts.length > 0;
     const credentialReferenceConfigured = platformAccounts.some((account) => Boolean(account.credentialReference?.trim()));
+    const requiredScope = requiredScopesByPlatform[platform];
+    const requiredScopeGranted = !requiredScope || platformAccounts.some((account) => {
+      const grantedScopes = account.connection?.grantedScopes;
+      return Array.isArray(grantedScopes) && grantedScopes.some((scope) => scope === requiredScope);
+    });
     const status: PublisherReadinessStatus = !publisherConfigured
       ? "unsupported"
       : !this.credentialResolverConfigured || !activeAccountConfigured || !credentialReferenceConfigured
         ? "unconfigured"
-        : "ready";
+        : !requiredScopeGranted
+          ? "unconfigured"
+          : "ready";
 
     return {
       platform,
@@ -44,7 +58,9 @@ export class PublisherReadinessService {
       publisherConfigured,
       credentialResolutionConfigured: this.credentialResolverConfigured,
       activeAccountConfigured,
-      credentialReferenceConfigured
+      credentialReferenceConfigured,
+      requiredScope,
+      requiredScopeGranted
     };
   }
 }
