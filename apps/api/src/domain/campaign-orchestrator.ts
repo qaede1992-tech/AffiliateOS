@@ -180,5 +180,33 @@ export class CampaignOrchestrator {
       if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: currentCampaignId, error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
+  private async attachProductImageIfAvailable(
+    content: Awaited<ReturnType<ContentService["create"]>>,
+    product: Product
+  ): Promise<Awaited<ReturnType<ContentService["create"]>>> {
+    if (content.platform !== "instagram" || !product.imageUrl || !this.mediaAssets) return content;
+    let imageUrl: URL;
+    try { imageUrl = new URL(product.imageUrl); } catch { return content; }
+    if (imageUrl.protocol !== "https:") return content;
+    const existing = await this.mediaAssets.listByContent(content.id);
+    if (existing.some((asset) => asset.kind === "image" && asset.source === "url" && asset.reference === product.imageUrl)) return content;
+    const now = new Date().toISOString();
+    const asset = await this.mediaAssets.save({
+      id: randomUUID(),
+      contentId: content.id,
+      kind: "image",
+      source: "url",
+      reference: product.imageUrl,
+      createdAt: now,
+      updatedAt: now
+    });
+    return this.content.update(content.id, { mediaAssetIds: [...(content.mediaAssetIds ?? []), asset.id] });
+  }
+
+  private hasAutopublishableMedia(content: Awaited<ReturnType<ContentService["create"]>>): boolean {
+    if (!content.mediaAssetIds?.length) return false;
+    return content.platform === "instagram";
+  }
+
   }
 }
