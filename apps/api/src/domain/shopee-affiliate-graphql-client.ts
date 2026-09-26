@@ -29,16 +29,16 @@ export class ShopeeAffiliateGraphqlClient {
   private readonly endpoint:string; private readonly fetchImpl:FetchLike; private readonly now:()=>number; private readonly subIds:string[]; private readonly pageSize:number;
   constructor(private readonly options:ShopeeAffiliateGraphqlClientOptions){
     const market=options.market.trim().toUpperCase();
-    this.endpoint=ENDPOINTS[market] || ("https://open-api.affiliate.shopee."+market.toLowerCase()+"/graphql");
+    this.endpoint=ENDPOINTS[market] || (()=>{ throw new Error("Unsupported Shopee Affiliate market: "+market); })();
     this.fetchImpl=options.fetchImpl || fetch; this.now=options.now || (()=>Date.now()); this.subIds=(options.subIds||[]).slice(0,5); this.pageSize=Math.min(50,Math.max(1,options.pageSize||50));
     if(!options.credentials.appId.trim()||!options.credentials.secret) throw new Error("Shopee Affiliate App ID and secret are required at runtime.");
   }
   async testConnection():Promise<Record<string,unknown>>{ await this.request<{productOfferV2:ProductConnection}>("query { productOfferV2(page: 1, limit: 1) { nodes { itemId } pageInfo { page limit hasNextPage } } }"); return {endpoint:this.endpoint,market:this.options.market.toUpperCase(),authenticated:true}; }
   productOfferV2():Promise<MarketplaceProductInput[]>{return this.fetchProducts({});}
   searchProductOffers(query:string):Promise<MarketplaceProductInput[]>{return this.fetchProducts({keyword:query.trim()});}
-  async getProduct(externalProductId:string):Promise<MarketplaceProductInput|undefined>{return (await this.fetchProducts({itemId:externalProductId.trim()}))[0];}
+  async getProduct(externalProductId:string):Promise<MarketplaceProductInput|undefined>{const itemId=normalizeItemId(externalProductId); return (await this.fetchProducts({itemId}))[0];}
   shopOfferV2():Promise<MarketplaceProductInput[]>{throw new Error("Shopee shopOfferV2 is not a product catalogue operation.");}
-  async getOffers(externalProductId:string):Promise<MarketplaceOfferInput[]>{return (await this.fetchProductNodes({itemId:externalProductId.trim()})).map(n=>this.toOffer(n)).filter((x):x is MarketplaceOfferInput=>Boolean(x));}
+  async getOffers(externalProductId:string):Promise<MarketplaceOfferInput[]>{const itemId=normalizeItemId(externalProductId); return (await this.fetchProductNodes({itemId})).map(n=>this.toOffer(n)).filter((x):x is MarketplaceOfferInput=>Boolean(x));}
   async generateShortLink(externalOfferId:string):Promise<{url:string}>{
     const originUrl=externalOfferId.trim(); if(!/^https?:\/\//i.test(originUrl)) throw new Error("Shopee affiliate offer reference must be the original Shopee URL.");
     const subIds=this.subIds.length?"["+this.subIds.map((id)=>JSON.stringify(id)).join(",")+"]":"[]";
@@ -110,3 +110,4 @@ function parseDecimal(value:string|number|undefined):number|undefined{if(value==
 function toMinorUnits(value:number|undefined):number|undefined{return value===undefined?undefined:Math.max(0,Math.round(value*100));}
 function rateToBps(rate:number|undefined):number|undefined{return rate===undefined?undefined:Math.max(0,Math.min(10000,Math.round(rate*10000)));}
 function discountAdjustedOriginal(price:number|undefined,discountRate:number|undefined):number|undefined{if(price===undefined||discountRate===undefined||discountRate<=0||discountRate>=100)return undefined;return Math.max(toMinorUnits(price)||0,Math.round((price/(1-discountRate/100))*100));}
+\nfunction normalizeItemId(value:string):string{const itemId=value.trim(); if(!/^\\d+$/.test(itemId)||!Number.isSafeInteger(Number(itemId))) throw new Error("Shopee product ID must be a safe integer."); return itemId;}\n
