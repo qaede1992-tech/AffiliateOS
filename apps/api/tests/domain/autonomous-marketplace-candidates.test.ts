@@ -29,6 +29,7 @@ describe("autonomous marketplace candidate provider", () => {
     const offer = { id: "offer-1", productId: p.id, affiliateAccountId: "account-1", externalOfferId: "external-offer-1", priceCents: 1000, currency: "USD", commissionRateBps: 1200, commissionAmountCents: 120, availability: "in_stock" as const, availabilityMetadata: {}, affiliateUrl: "https://example.invalid/affiliate", affiliateLinkStatus: "active" as const, status: "active" as const, createdAt: p.createdAt, updatedAt: p.updatedAt };
     const marketplace = {
       listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      getAffiliateAccount: async () => ({ affiliateId: "affiliate-1", status: "active" }),
       discoverProducts: async (slug: string) => { calls.push(`discover:${slug}`); return [p]; },
       getOffers: async (slug: string, externalProductId: string) => { calls.push(`offers:${slug}:${externalProductId}`); return [{ ...offer, affiliateUrl: undefined, affiliateLinkStatus: "not_generated" as const }]; },
       generateAffiliateLink: async (slug: string, externalProductId: string, externalOfferId: string) => {
@@ -66,6 +67,7 @@ describe("autonomous marketplace candidate provider", () => {
     };
     const marketplace = {
       listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      getAffiliateAccount: async () => ({ affiliateId: "affiliate-1", status: "active" }),
       discoverProducts: async () => [p],
       getOffers: async () => [expired],
       generateAffiliateLink: async () => {
@@ -86,6 +88,7 @@ describe("autonomous marketplace candidate provider", () => {
     inactive.status = "inactive";
     const marketplace = {
       listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      getAffiliateAccount: async () => ({ affiliateId: "affiliate-1", status: "active" }),
       discoverProducts: async () => [inactive],
       getOffers: async () => { offerCalls += 1; return []; }
     } as any;
@@ -102,6 +105,7 @@ describe("autonomous marketplace candidate provider", () => {
         { slug: "broken", enabled: true, status: "active" },
         { slug: "healthy", enabled: true, status: "active" }
       ],
+      getAffiliateAccount: async () => ({ affiliateId: "affiliate-1", status: "active" }),
       discoverProducts: async (slug: string) => {
         if (slug === "broken") throw new Error("provider unavailable");
         return [product("product-healthy")];
