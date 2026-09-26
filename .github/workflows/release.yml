@@ -66,6 +66,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push API image
+        id: api-image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -78,6 +79,7 @@ jobs:
           sbom: true
 
       - name: Build and push web image
+        id: web-image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -91,7 +93,22 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Write immutable image digests
+        shell: bash
+        env:
+          API_DIGEST: ${{ steps.api-image.outputs.digest }}
+          WEB_DIGEST: ${{ steps.web-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test -n "${API_DIGEST}"
+          test -n "${WEB_DIGEST}"
+          {
+            printf 'release_tag=%s\n' "${RELEASE_TAG}"
+            printf 'api_image=ghcr.io/%s/affiliateos-api@%s\n' "${GITHUB_REPOSITORY_OWNER}" "${API_DIGEST}"
+            printf 'web_image=ghcr.io/%s/affiliateos-web@%s\n' "${GITHUB_REPOSITORY_OWNER}" "${WEB_DIGEST}"
+          } > release-images.txt
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${RELEASE_TAG}" --generate-notes --verify-tag
+        run: gh release create "${RELEASE_TAG}" --generate-notes --verify-tag\n          gh release upload "${RELEASE_TAG}" release-images.txt --clobber
