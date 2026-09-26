@@ -52,7 +52,11 @@ const environmentSchema = z.object({
   SHOPEE_AFFILIATE_APP_ID: z.string().trim().optional(),
   SHOPEE_AFFILIATE_APP_SECRET: z.string().optional(),
   SHOPEE_AFFILIATE_MARKET: z.string().trim().regex(/^[A-Za-z]{2}$/).default("ID"),
-  SHOPEE_AFFILIATE_API_VERSION: z.string().trim().regex(/^v\d+$/).default("v2")
+  SHOPEE_AFFILIATE_API_VERSION: z.string().trim().regex(/^v\d+$/).default("v2"),
+  TIKTOK_CLIENT_KEY: z.string().trim().optional(),
+  TIKTOK_CLIENT_SECRET: z.string().optional(),
+  INSTAGRAM_CLIENT_ID: z.string().trim().optional(),
+  INSTAGRAM_CLIENT_SECRET: z.string().optional()
 });
 
 export const environment = environmentSchema.parse(process.env);
