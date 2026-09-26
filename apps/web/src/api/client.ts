@@ -2,6 +2,7 @@ import type { Affiliate, AffiliateOffer, AnalyticsOverview, Campaign, CampaignAn
 
 const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
 const url = (path: string) => `${apiOrigin}${path}`;
+export const socialOAuthRedirectUri = () => new URL("/api/v1/social-accounts/oauth/callback", apiOrigin || window.location.origin).toString();
 let loginPromise: Promise<void> | null = null;
 
 async function loginWithPrompt(): Promise<void> {
