@@ -98,6 +98,19 @@ For every marketplace or social provider:
 
 Mock providers are tests-only and must never be treated as production integrations.
 
+## Shopee conversion synchronization gate
+
+Shopee conversion-report synchronization is disabled by default. Enable it only after:
+
+1. the official Shopee Affiliate credentials are present through the approved secret manager;
+2. the Shopee connection passes its health check and is active;
+3. the marketplace account is bound to the intended AffiliateOS affiliate;
+4. affiliate links and account-scoped tracking references are tested;
+5. conversion-report reconciliation has been tested with provider data, including repeated reports, late status changes, and unattributed reports;
+6. the production PostgreSQL advisory-lock behavior has been verified across multiple API replicas.
+
+When enabled, use `SHOPEE_CONVERSION_SYNC_INTERVAL_MS` at or above five minutes and a bounded `SHOPEE_CONVERSION_SYNC_LOOKBACK_HOURS` (maximum 31 days). The scheduler reconciles a rolling window so provider status changes can be picked up; repeated provider reports are handled through conversion idempotency. Keep the scheduler disabled if provider credentials or attribution are not yet validated.
+
 ## Autonomous execution gate
 
 Enable AUTONOMOUS_CYCLE_ENABLED=true only after:
