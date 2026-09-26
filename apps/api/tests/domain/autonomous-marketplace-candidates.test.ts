@@ -67,6 +67,7 @@ describe("autonomous marketplace candidate provider", () => {
     };
     const marketplace = {
       listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      getAffiliateAccount: async () => ({ affiliateId: "affiliate-1", status: "active" }),
       discoverProducts: async () => [p],
       getOffers: async () => [expired],
       generateAffiliateLink: async () => {
@@ -87,6 +88,7 @@ describe("autonomous marketplace candidate provider", () => {
     inactive.status = "inactive";
     const marketplace = {
       listConnections: async () => [{ slug: "marketplace-1", enabled: true, status: "active" }],
+      getAffiliateAccount: async () => ({ affiliateId: "affiliate-1", status: "active" }),
       discoverProducts: async () => [inactive],
       getOffers: async () => { offerCalls += 1; return []; }
     } as any;
