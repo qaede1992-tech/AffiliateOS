@@ -80,6 +80,24 @@ describe("PublicationWorker", () => {
     assert.equal(selectedAccount, bound.id);
   });
 
+  it("uses bounded reconciliation candidates when the repository provides them", async () => {
+    const { contentService, socialAccounts, jobs, jobService } = await setup();
+    const operations = new InMemoryPublicationOperationRepository();
+    let candidateReads = 0;
+    const boundedRepository = {
+      ...operations,
+      list: async () => { throw new Error("unbounded operation listing should not be used"); },
+      listReconciliationCandidates: async () => {
+        candidateReads += 1;
+        return [];
+      }
+    } as import("../../src/domain/publication-operation.js").PublicationOperationRepository;
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [], boundedRepository);
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.deepEqual(results, []);
+    assert.equal(candidateReads, 1);
+  });
+
   it("fails closed when an accepted operation cannot be reconciled", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const publisher: SocialPublisher = {
