@@ -182,7 +182,7 @@ export class CampaignOrchestrator {
     }
   }
 
-  private async attachProductImageIfAvailable(
+  private async attachProductMediaIfAvailable(
     content: Awaited<ReturnType<ContentService["create"]>>,
     product: Product
   ): Promise<Awaited<ReturnType<ContentService["create"]>>> {
