@@ -146,13 +146,13 @@ export class CampaignOrchestrator {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion" && item.status !== "archived");
         if (existing?.status === "failed") {
           const reset = await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
-          content.push(await this.attachProductImageIfAvailable(reset, liveProduct));
+          content.push(await this.attachProductMediaIfAvailable(reset, liveProduct));
         } else if (existing) {
-          content.push(await this.attachProductImageIfAvailable(existing, liveProduct));
+          content.push(await this.attachProductMediaIfAvailable(existing, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
           let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
-          created = await this.attachProductImageIfAvailable(created, liveProduct);
+          created = await this.attachProductMediaIfAvailable(created, liveProduct);
           content.push(created);
         }
       }
@@ -182,31 +182,51 @@ export class CampaignOrchestrator {
     }
   }
 
-  private async attachProductImageIfAvailable(
+  private async attachProductMediaIfAvailable(
     content: Awaited<ReturnType<ContentService["create"]>>,
     product: Product
-  ): Promise<Awaited<ReturnType<ContentService["create"]>>> {
-    if (content.platform !== "instagram" || !product.imageUrl || !this.mediaAssets) return content;
-    let imageUrl: URL;
-    try { imageUrl = new URL(product.imageUrl); } catch { return content; }
-    if (imageUrl.protocol !== "https:") return content;
+  ) {
+    if (!this.mediaAssets) return content;
+
+    const media = content.platform === "instagram"
+      ? { kind: "image" as const, reference: product.imageUrl }
+      : content.platform === "tiktok"
+        ? { kind: "video" as const, reference: product.videoUrl }
+        : undefined;
+
+    if (!media?.reference) return content;
+
+    let mediaUrl: URL;
+    try {
+      mediaUrl = new URL(media.reference);
+    } catch {
+      return content;
+    }
+    if (mediaUrl.protocol !== "https:") return content;
+
     const existing = await this.mediaAssets.listByContent(content.id);
-    if (existing.some((asset) => asset.kind === "image" && asset.source === "url" && asset.reference === product.imageUrl)) return content;
+    if (existing.some((asset) => asset.kind === media.kind && asset.source === "url" && asset.reference === media.reference)) {
+      return content;
+    }
+
     const now = new Date().toISOString();
     const asset = await this.mediaAssets.save({
       id: randomUUID(),
       contentId: content.id,
-      kind: "image",
+      kind: media.kind,
       source: "url",
-      reference: product.imageUrl,
+      reference: media.reference,
       createdAt: now,
       updatedAt: now
     });
-    return this.content.update(content.id, { mediaAssetIds: [...(content.mediaAssetIds ?? []), asset.id] });
+
+    return this.content.update(content.id, {
+      mediaAssetIds: [...(content.mediaAssetIds ?? []), asset.id]
+    });
   }
 
   private hasAutopublishableMedia(content: Awaited<ReturnType<ContentService["create"]>>): boolean {
     if (!content.mediaAssetIds?.length) return false;
-    return content.platform === "instagram";
+    return content.platform === "instagram" || content.platform === "tiktok";
   }
 }
