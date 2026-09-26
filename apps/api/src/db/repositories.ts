@@ -1,6 +1,6 @@
 import { and, count, eq } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
-import type { MediaAsset } from "../domain/media-asset.js";
+import type { MediaAsset, MediaAssetRepository } from "../domain/media-asset.js";
 import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
 import { DrizzlePublicationOperationRepository } from "./publication-operation-repository.js";
