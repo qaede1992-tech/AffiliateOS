@@ -136,7 +136,7 @@ Before creating a production tag:
 2. Confirm the target deployment has its runtime secrets in the approved secret manager; do not place them in GitHub repository variables, source control, or image build arguments.
 3. Apply and verify the release database migrations using the controlled production migration process.
 4. Create the matching version tag and push it to GitHub. The release workflow builds and publishes API/web images to GHCR under both the release tag and commit SHA, with provenance and SBOM attestations, then creates the GitHub release.
-5. Deploy the exact published image digests through the deployment platform. Run health/readiness checks and `npm run db:verify:applied` before enabling traffic.
+5. Download the `release-images.txt` asset from the GitHub release and deploy the exact API/web image digests listed there (rather than mutable tags). Run health/readiness checks and `npm run db:verify:applied` before enabling traffic.
 6. Keep `AUTONOMOUS_CYCLE_ENABLED=false` until the approved Shopee and social credentials/providers have been configured and production preflight passes.
 
 The release workflow does not configure marketplace/social credentials or deploy them automatically; provider activation remains an explicit deployment responsibility.
