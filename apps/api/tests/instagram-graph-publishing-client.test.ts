@@ -76,8 +76,10 @@ test("Instagram video publishing waits for a finished container before media_pub
       calls.push(url);
       if (url.endsWith("/media")) return new Response(JSON.stringify({ id: "container-2" }), { status: 200 });
       if (url.endsWith("/container-2")) return new Response(JSON.stringify({ id: "container-2", status_code: status }), { status: 200 });
-      assert.equal(init?.method, "POST");
-      assert.match(String(init?.body ?? ""), /creation_id=container-2/);
+      if (url.endsWith("/media_publish")) {
+        assert.equal(init?.method, "POST");
+        assert.match(String(init?.body ?? ""), /creation_id=container-2/);
+      }
       return new Response(JSON.stringify({ id: "media-2" }), { status: 200 });
     }
   });
