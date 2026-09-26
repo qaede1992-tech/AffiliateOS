@@ -9,6 +9,7 @@ import type { PublicationOperationRepository } from "./publication-operation.js"
 
 const ACCEPTED_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 const PROCESSING_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
+const RECONCILIATION_BATCH_LIMIT = 100;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
 import { publicationRetryDelayMs } from "./publication-job.js";
@@ -74,7 +75,11 @@ export class PublicationWorker {
 
   private async reconcile(now: Date): Promise<PublicationWorkerResult[]> {
     const results: PublicationWorkerResult[] = [];
-    for (const operation of await this.operations.list()) {
+    const updatedBefore = new Date(now.getTime() - ACCEPTED_RECONCILIATION_DELAY_MS);
+    const operations = this.operations.listReconciliationCandidates
+      ? await this.operations.listReconciliationCandidates(updatedBefore, RECONCILIATION_BATCH_LIMIT)
+      : await this.operations.list();
+    for (const operation of operations) {
       if (operation.status !== "accepted" && operation.status !== "processing") continue;
       if (reconciliationEligibleAt(operation) > now.getTime()) continue;
       try {
