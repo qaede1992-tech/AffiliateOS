@@ -10,6 +10,7 @@ import type {
 } from "@affiliateos/shared";
 import { api } from "./api/client";
 import { WorkflowPanel } from "./components/WorkflowPanel";
+import { IntegrationSetupPanel } from "./components/IntegrationSetupPanel";
 import "./styles.css";
 
 type DashboardData = {
@@ -231,6 +232,8 @@ This will allow AffiliateOS to use this marketplace connection for operational w
         </section>
 
         <WorkflowPanel />
+
+        <IntegrationSetupPanel />
 
         <section className="workspace-grid">
           <article className="panel" id="conversions">
