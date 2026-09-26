@@ -63,7 +63,8 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
     const scheduled = new Date(job.scheduledAt).getTime();
     const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
     const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
-    const claimableStatus = job.status === "pending" || job.status === "failed" ||
+    const claimableStatus = job.status === "pending" ||
+      (job.status === "failed" && publicationRetryEligibleAt(job) <= nowDate.getTime()) ||
       (job.status === "processing" && !lockFresh);
     if (!claimableStatus || scheduled > nowDate.getTime() || lockFresh) return undefined;
     const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() };
@@ -71,6 +72,17 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
     return claimed;
   }
 }
+
+export const PUBLICATION_RETRY_INITIAL_DELAY_MS = 60 * 1000;
+export const PUBLICATION_RETRY_MAX_DELAY_MS = 60 * 60 * 1000;
+
+export const publicationRetryDelayMs = (attemptCount: number): number => {
+  if (attemptCount <= 0) return 0;
+  return Math.min(PUBLICATION_RETRY_MAX_DELAY_MS, PUBLICATION_RETRY_INITIAL_DELAY_MS * 2 ** (attemptCount - 1));
+};
+
+export const publicationRetryEligibleAt = (job: PublicationJob): number =>
+  new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
 
 const now = () => new Date().toISOString();
 
