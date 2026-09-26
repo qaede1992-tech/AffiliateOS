@@ -50,6 +50,20 @@ describe("PublicationJobService", () => {
     assert.equal(await service.claim(job.id, new Date("2026-09-20T09:00:00.000Z")), undefined);
   });
 
+  it("does not claim a failed job before its retry backoff expires", async () => {
+    const repo = new InMemoryPublicationJobRepository();
+    const service = new PublicationJobService(repo);
+    const job = await service.enqueue(content);
+    await service.claim(job.id, new Date("2026-09-20T11:00:00.000Z"));
+    const failed = await service.fail(job.id, new Error("provider timeout"), new Date("2026-09-20T11:01:00.000Z"));
+
+    assert.equal(await service.claim(job.id, new Date("2026-09-20T11:01:59.999Z")), undefined);
+
+    const retry = await service.claim(job.id, new Date("2026-09-20T11:02:00.000Z"));
+    assert.equal(retry?.status, "processing");
+    assert.equal(retry?.attemptCount, failed.attemptCount + 1);
+  });
+
   it("does not let a stale worker overwrite a terminal failure", async () => {
     const repo = new InMemoryPublicationJobRepository();
     const service = new PublicationJobService(repo);
