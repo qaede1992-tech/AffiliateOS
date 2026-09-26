@@ -20,6 +20,7 @@ import { createShopeeAffiliateProvider } from "./domain/shopee-affiliate-runtime
 import { InMemorySocialOAuthProviderRegistry } from "./domain/oauth.js";
 import { TikTokOAuthProvider } from "./domain/tiktok-oauth-provider.js";
 import { InstagramOAuthProvider } from "./domain/instagram-oauth-provider.js";
+import { createOfficialSocialPublishers } from "./domain/social-publisher-runtime.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
@@ -43,7 +44,7 @@ const services = createServices(
   new DrizzleOAuthStateRepository(persistence.db),
   new DrizzleAnalyticsReader(persistence.db),
   new DrizzleConversionAttributionRepository(persistence.db),
-  [],
+  createOfficialSocialPublishers({}),
   undefined,
   new DrizzlePublicationOperationRepository(persistence.db),
   new DrizzleAutonomousRunRepository(persistence.db),
