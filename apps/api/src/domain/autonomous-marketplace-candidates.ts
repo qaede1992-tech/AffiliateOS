@@ -23,6 +23,8 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
 
     for (const connection of activeConnections) {
       try {
+        const affiliateAccount = await this.marketplace.getAffiliateAccount(connection.slug);
+        if (!affiliateAccount.affiliateId || affiliateAccount.status !== "active") continue;
         const products = (await this.marketplace.discoverProducts(connection.slug))
           .filter((product) => product.status === "active")
           .slice(0, this.maxProductsPerConnection);
