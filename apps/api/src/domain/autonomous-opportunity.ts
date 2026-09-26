@@ -123,7 +123,7 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
-      const selectedOffer = item.offerId ? item.offers.find((offer) => offer.id === item.offerId) : undefined;
+      const selectedOffer = item.offerId ? (item.offers ?? []).find((offer) => offer.id === item.offerId) : undefined;
       return item.score >= minimumScore && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
