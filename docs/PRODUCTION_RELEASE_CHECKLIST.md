@@ -39,18 +39,19 @@ Use this checklist for every production release of AffiliateOS.
 ## Release evidence
 
 - [ ] CI test, typecheck, build, migration verification, container build, and runtime smoke tests are green for the exact release commit.
-- [ ] Production deployment has been smoke-tested after promotion.
+- [ ] The release candidate tag has passed the repository release workflow and immutable API/web image digests have been recorded.
+- [ ] The exact release images have been promoted to production and production deployment has been smoke-tested.
 - [ ] The deployed commit SHA is recorded with the release.
 
 ## Release procedure
 
-1. Start from a clean `main` commit with all required CI checks green.
-2. Record the exact commit SHA as the release candidate.
+1. Start from a clean `main` commit with all required CI checks green and record its exact SHA.
+2. Create the matching release tag so the release workflow can build and publish immutable API/web images for that exact commit.
 3. Run `npm run db:verify:applied` against the release database before promotion; this verifies migration state without applying new migrations.
-4. Promote the API and web images built from the exact release commit.
+4. Promote the exact immutable API and web image digests produced by the release workflow.
 5. Confirm API health and readiness, then confirm the web `/healthz` endpoint.
-6. Run the documented production smoke tests against the deployed origins.
-7. Record the deployed commit SHA and migration state in the release record.
-8. Create the GitHub Release only after the deployment evidence is complete.
+6. Run the documented production smoke tests against the deployed origins and record the deployment evidence.
+7. After production evidence is complete, approve the `production-release` GitHub Environment so the workflow creates the GitHub Release and uploads `release-images.txt`.
+8. Record the deployed commit SHA, image digests, migration state, and approval in the release record.
 
 The checklist is evidence-driven: a repository CI pass validates the application and images, while deployment-specific items must be verified in the production environment before a release is declared complete.
