@@ -619,3 +619,36 @@ test("GET /api/v1/social-accounts requires an authorized operator", async () => 
   assert.ok(Array.isArray(operatorResponse.json().data));
   await operatorApp.close();
 });
+
+
+test("GET /api/v1/social-accounts/:socialAccountId requires an authorized operator", async () => {
+  const token = "test-token-that-is-long-enough";
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+  const account = await services.socialAccounts.create({
+    platform: "instagram",
+    accountReference: "instagram-account",
+    credentialReference: "secret://social/instagram",
+  });
+
+  const publicApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "viewer", role: "viewer" },
+  });
+  const publicResponse = await publicApp.inject({
+    method: "GET",
+    url: `/api/v1/social-accounts/${account.id}`,
+  });
+  assert.equal(publicResponse.statusCode, 401);
+  await publicApp.close();
+
+  const operatorApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator", role: "operator" },
+  });
+  const operatorResponse = await operatorApp.inject({
+    method: "GET",
+    url: `/api/v1/social-accounts/${account.id}`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(operatorResponse.statusCode, 200);
+  assert.equal(operatorResponse.json().id, account.id);
+  await operatorApp.close();
+});
