@@ -148,7 +148,7 @@ jobs:
             --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
             --env API_AUTH_TOKEN="$token" \
             --env API_CORS_ORIGIN=https://dashboard.example.com \
-            affiliateos-api:\${{ github.sha }}
+            affiliateos-api:${{ github.sha }}
           for attempt in $(seq 1 30); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/health >/dev/null; then
               break
@@ -169,7 +169,7 @@ jobs:
           printf '%s\n' "$login_headers" | grep -Fi 'Set-Cookie: affiliateos_session=' >/dev/null
           printf '%s\n' "$login_headers" | grep -Fi 'HttpOnly' >/dev/null
           printf '%s\n' "$login_headers" | grep -Fi 'SameSite=Strict' >/dev/null
-          docker run --detach --name affiliateos-web-smoke --network affiliateos-release-smoke affiliateos-web:\${{ github.sha }}
+          docker run --detach --name affiliateos-web-smoke --network affiliateos-release-smoke affiliateos-web:${{ github.sha }}
           for attempt in $(seq 1 20); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-web-smoke/ >/dev/null; then
               exit 0
