@@ -103,6 +103,15 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Load pushed release images for smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-api:${GITHUB_SHA}
+          docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web:${GITHUB_SHA}
+          docker tag ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-api:${GITHUB_SHA} affiliateos-api:${GITHUB_SHA}
+          docker tag ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web:${GITHUB_SHA} affiliateos-web:${GITHUB_SHA}
+
       - name: Smoke test release images against migrated PostgreSQL
         shell: bash
         run: |
