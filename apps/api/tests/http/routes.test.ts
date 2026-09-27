@@ -652,3 +652,28 @@ test("GET /api/v1/social-accounts/:socialAccountId requires an authorized operat
   assert.equal(operatorResponse.json().id, account.id);
   await operatorApp.close();
 });
+
+
+test("GET /api/v1/autonomous/performance-index requires an authorized operator", async () => {
+  const token = "test-token-that-is-long-enough";
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+
+  const unauthenticatedApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "viewer", role: "viewer" },
+  });
+  const unauthenticated = await unauthenticatedApp.inject({ method: "GET", url: "/api/v1/autonomous/performance-index" });
+  assert.equal(unauthenticated.statusCode, 401);
+  await unauthenticatedApp.close();
+
+  const operatorApp = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator", role: "operator" },
+  });
+  const response = await operatorApp.inject({
+    method: "GET",
+    url: "/api/v1/autonomous/performance-index",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.ok(Array.isArray((response.json() as { data: unknown[] }).data));
+  await operatorApp.close();
+});
