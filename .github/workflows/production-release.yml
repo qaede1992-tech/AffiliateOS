@@ -75,6 +75,25 @@ jobs:
         run: docker build --file apps/api/Dockerfile --tag affiliateos-api:${{ github.sha }} .
       - name: Build web release image
         run: docker build --file apps/web/Dockerfile --build-arg VITE_API_URL=https://api.example.invalid --tag affiliateos-web:${{ github.sha }} .
+      - name: Scan web image for server-side credentials
+        run: |
+          set -euo pipefail
+          forbidden_patterns=(
+            'API_AUTH_TOKEN'
+            'SHOPEE_AFFILIATE_APP_SECRET'
+            'SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE'
+            'SOCIAL_CREDENTIALS_JSON'
+            'TIKTOK_CLIENT_SECRET'
+            'INSTAGRAM_CLIENT_SECRET'
+            'Authorization: Bearer '
+          )
+          for pattern in "${forbidden_patterns[@]}"; do
+            if docker run --rm affiliateos-web:${{ github.sha }} sh -c "grep -R -F -- \"$pattern\" /usr/share/nginx/html >/dev/null"; then
+              echo "Forbidden credential/token pattern found in web bundle: $pattern"
+              exit 1
+            fi
+          done
+
       - name: Inspect release images
         run: |
           docker image inspect affiliateos-api:${{ github.sha }} >/dev/null
