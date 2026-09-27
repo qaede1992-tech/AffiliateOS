@@ -103,6 +103,28 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Scan pushed web image for server-side credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden_patterns=(
+            'API_AUTH_TOKEN'
+            'SHOPEE_AFFILIATE_APP_SECRET'
+            'SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE'
+            'SOCIAL_CREDENTIALS_JSON'
+            'TIKTOK_CLIENT_SECRET'
+            'INSTAGRAM_CLIENT_SECRET'
+            'Authorization: Bearer '
+          )
+          docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web:${GITHUB_SHA}
+          docker tag ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web:${GITHUB_SHA} affiliateos-web-scan:${GITHUB_SHA}
+          for pattern in "${forbidden_patterns[@]}"; do
+            if docker run --rm affiliateos-web-scan:${GITHUB_SHA} sh -c "grep -R -F -- \"$pattern\" /usr/share/nginx/html >/dev/null"; then
+              echo "Forbidden credential/token pattern found in pushed web bundle: $pattern"
+              exit 1
+            fi
+          done
+
       - name: Load pushed release images for smoke test
         shell: bash
         run: |
