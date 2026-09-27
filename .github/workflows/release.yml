@@ -129,7 +129,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
             --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
-            node:24-alpine sh -c 'npm ci --ignore-scripts && npm run db:migrate'
+            node:24-alpine sh -c 'npm ci --ignore-scripts && npm run db:migrate && npm run db:verify:applied'
           docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke \
             --env NODE_ENV=production \
             --env API_HOST=0.0.0.0 \
