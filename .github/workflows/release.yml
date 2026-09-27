@@ -107,10 +107,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-api:${GITHUB_SHA}
-          docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web:${GITHUB_SHA}
-          docker tag ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-api:${GITHUB_SHA} affiliateos-api:${GITHUB_SHA}
-          docker tag ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web:${GITHUB_SHA} affiliateos-web:${GITHUB_SHA}
+          test -n "${{ steps.api-image.outputs.digest }}"
+          test -n "${{ steps.web-image.outputs.digest }}"
+          docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-api@${{ steps.api-image.outputs.digest }}
+          docker pull ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web@${{ steps.web-image.outputs.digest }}
+          docker tag ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-api@${{ steps.api-image.outputs.digest }} affiliateos-api:${GITHUB_SHA}
+          docker tag ghcr.io/${GITHUB_REPOSITORY_OWNER}/affiliateos-web@${{ steps.web-image.outputs.digest }} affiliateos-web:${GITHUB_SHA}
 
       - name: Smoke test release images against migrated PostgreSQL
         shell: bash
