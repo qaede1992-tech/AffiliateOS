@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
 import type {
   Affiliate,
   AnalyticsOverview,
@@ -273,3 +274,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
 }
 
 export default App;
+
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("AffiliateOS root element was not found.");
+createRoot(rootElement).render(<App />);
