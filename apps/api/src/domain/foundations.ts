@@ -4,7 +4,7 @@ export type ProviderEventSignatureHeaders = { signature?: string; timestamp?: st
 export interface MarketplaceProvider {
   readonly slug: string;
   readonly displayName: string;
-  readonly connectionMode: "mock" | "official_api";
+  readonly connectionMode: "mock" | "official_api" | "affiliate_feed";
   readonly capabilities: readonly MarketplaceCapability[];
   validateConfiguration(configuration: Record<string, unknown>, credentialReference?: string): void;
   testConnection?(input: { credentialReference?: string; configuration: Record<string, unknown> }): Promise<{ metadata?: Record<string, unknown> }>;
@@ -69,3 +69,16 @@ export class SafeTemplateContentGenerator implements ContentGenerator { async ge
 export interface SocialMediaProvider { readonly platform: string; connect(): Promise<void>; publish(content: GeneratedContent): Promise<{ externalPostId: string }>; schedule(content: GeneratedContent, scheduledAt: string): Promise<{ externalPostId: string }>; getPostStatus(externalPostId: string): Promise<"scheduled" | "published" | "failed">; getMetrics(externalPostId: string): Promise<{ impressions: number; clicks: number }>; }
 export class SocialMediaProviderRegistry { private readonly providers = new Map<string, SocialMediaProvider>(); register(provider: SocialMediaProvider): void { this.providers.set(provider.platform, provider); } get(platform: string): SocialMediaProvider { const provider = this.providers.get(platform); if (!provider) throw new Error(`Social provider is not configured: ${platform}`); return provider; } }
 export class MockSocialMediaProvider implements SocialMediaProvider { readonly platform = "mock"; async connect(): Promise<void> {} async publish(): Promise<{ externalPostId: string }> { return { externalPostId: "mock-post" }; } async schedule(): Promise<{ externalPostId: string }> { return { externalPostId: "mock-scheduled-post" }; } async getPostStatus(): Promise<"published"> { return "published"; } async getMetrics(): Promise<{ impressions: number; clicks: number }> { return { impressions: 0, clicks: 0 }; } }
+/** Official Shopee Affiliate Product Feed adapter. It never calls Shopee APIs or scrapes pages. */
+export class ShopeeAffiliateFeedProvider implements MarketplaceProvider {
+  readonly slug = "shopee-affiliate-feed";
+  readonly displayName = "Shopee Affiliate Product Feed";
+  readonly connectionMode = "affiliate_feed" as const;
+  readonly capabilities: readonly MarketplaceCapability[] = [];
+  validateConfiguration(configuration: Record<string, unknown>): void {
+    if (Object.keys(configuration).some((key) => /secret|token|password|api[_-]?key|authorization/i.test(key))) throw new Error("Feed configuration must not contain credentials or secrets.");
+  }
+  testConnection(): Promise<{ metadata: Record<string, unknown> }> {
+    return Promise.resolve({ metadata: { adapter: "affiliate-feed", source: "Shopee Affiliate Product Feed", automation: "import-only" } });
+  }
+}

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AffiliateAccount, AffiliateOffer, Offer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, MarketplaceOfferInput, Product, ProductDiscoverySignals, UpdateMarketplaceConnectionRequest } from "@affiliateos/shared";
+import type { AffiliateAccount, AffiliateOffer, Offer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, MarketplaceOfferInput, Product, ProductDiscoverySignals, UpdateMarketplaceConnectionRequest, ImportShopeeAffiliateFeedRequest, ImportShopeeAffiliateFeedResult } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import { MARKETPLACE_ENABLE_CONFIRMATION } from "./marketplace-confirmation.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository, Repository } from "./repository.js";
@@ -35,6 +35,45 @@ export class MarketplaceService {
   async getProduct(connectionSlug: string, externalProductId: string): Promise<Product> { const normalizedProductId = externalProductId.trim(); if (!normalizedProductId) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace product lookup requires an external product id.", 400); const { connection, provider } = await this.providerFor(connectionSlug); const input = await this.requireCapability<(id: string) => Promise<MarketplaceProductInput | undefined>>(provider, "getProduct")(normalizedProductId); if (!input) throw new DomainError("PRODUCT_NOT_FOUND", "The marketplace product does not exist.", 404); return this.persistProduct(connection, input); }
   async getOffers(connectionSlug: string, externalProductId: string): Promise<AffiliateOffer[]> { const normalizedProductId = externalProductId.trim(); if (!normalizedProductId) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace offer lookup requires an external product id.", 400); const { connection, provider } = await this.providerFor(connectionSlug); const product = await this.getProduct(connectionSlug, normalizedProductId); const account = await this.accountFor(connection); return Promise.all((await this.requireCapability<(id: string) => Promise<import("@affiliateos/shared").MarketplaceOfferInput[]>>(provider, "getOffers")(normalizedProductId)).map(async (input) => { validateMarketplaceOfferInput(input); const externalOfferId = input.externalOfferId.trim(); const existing = await this.offers.findByAccountOffer(account.id, externalOfferId); const timestamp = now(); const conversionOffer = await this.ensureConversionOffer(account);
       const offer: AffiliateOffer = { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: input.priceCents, currency: input.currency?.trim().toUpperCase(), commissionRateBps: input.commissionRateBps, commissionAmountCents: input.commissionAmountCents, availability: input.availability, availabilityMetadata: input.metadata ?? {}, affiliateUrl: existing?.affiliateUrl, affiliateLinkExpiresAt: input.affiliateLinkExpiresAt, affiliateLinkStatus: existing?.affiliateLinkStatus ?? "not_generated", status: input.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp }; try { return await this.offers.save(offer); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.offers.findByAccountOffer(account.id, externalOfferId); if (raced) return this.offers.save({ ...raced, productId: product.id, conversionOfferId: conversionOffer.id, externalOfferId, priceCents: input.priceCents, currency: input.currency?.trim().toUpperCase(), commissionRateBps: input.commissionRateBps, commissionAmountCents: input.commissionAmountCents, availability: input.availability, availabilityMetadata: input.metadata ?? {}, affiliateLinkExpiresAt: input.affiliateLinkExpiresAt, status: input.availability === "out_of_stock" ? "inactive" : "active", updatedAt: timestamp }); } throw error; } })); }
+  async importShopeeAffiliateFeed(input: ImportShopeeAffiliateFeedRequest): Promise<ImportShopeeAffiliateFeedResult> {
+    const affiliate = await this.affiliates.findById(input.affiliateId);
+    if (!affiliate) throw new DomainError("AFFILIATE_NOT_FOUND", "The affiliate account can only be bound to an existing affiliate.", 404);
+    const slug = "shopee-affiliate-feed";
+    let connection = await this.connections.findBySlug(slug);
+    if (!connection) {
+      const timestamp = now();
+      connection = await this.connections.save({ id: randomUUID(), name: "Shopee Affiliate Feed", slug, providerSlug: slug, connectionMode: "affiliate_feed", status: "active", enabled: true, configuration: { source: "Shopee Affiliate Product Feed", importOnly: true, sourceReference: input.sourceReference }, healthStatus: "healthy", healthMetadata: { adapter: "affiliate-feed", source: "Shopee Affiliate Product Feed" }, createdAt: timestamp, updatedAt: timestamp });
+    } else if (connection.connectionMode !== "affiliate_feed") {
+      throw new DomainError("MARKETPLACE_CONNECTION_CONFLICT", "The Shopee affiliate feed connection slug is already used by another connection type.", 409);
+    }
+    let account = await this.accounts.findByMarketplace(connection.id);
+    if (!account) {
+      const timestamp = now();
+      account = await this.accounts.save({ id: randomUUID(), marketplaceId: connection.id, affiliateId: affiliate.id, name: "Shopee affiliate feed account", status: "active", configuration: {}, createdAt: timestamp, updatedAt: timestamp });
+    } else if (account.affiliateId !== affiliate.id) {
+      account = await this.accounts.save({ ...account, affiliateId: affiliate.id, updatedAt: now() });
+    }
+    const conversionOffer = await this.ensureConversionOffer(account);
+    let importedProducts = 0;
+    let importedOffers = 0;
+    let skippedItems = 0;
+    const affiliateOfferIds: string[] = [];
+    for (const item of input.items) {
+      validateShopeeFeedItem(item);
+      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl: item.imageUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+      const product = await this.persistProduct(connection, productInput);
+      importedProducts += 1;
+      const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;
+      const existing = await this.offers.findByAccountOffer(account.id, externalOfferId);
+      const timestamp = now();
+      const offer: AffiliateOffer = { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
+      await this.offers.save(offer);
+      importedOffers += 1;
+      affiliateOfferIds.push(offer.id);
+    }
+    return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds };
+  }
+
   async generateAffiliateLink(connectionSlug: string, externalProductId: string, externalOfferId: string): Promise<AffiliateOffer> { const normalizedOfferId = externalOfferId.trim(); if (!normalizedOfferId) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Affiliate link generation requires an external offer id.", 400); const { provider } = await this.providerFor(connectionSlug); const offers = await this.getOffers(connectionSlug, externalProductId); const offer = offers.find((item) => item.externalOfferId === normalizedOfferId);
     if (!offer) throw new DomainError("MARKETPLACE_OFFER_NOT_FOUND", "The marketplace offer does not exist for this product.", 404);
     if (offer.status !== "active" || offer.availability === "out_of_stock") throw new DomainError("MARKETPLACE_OFFER_NOT_ACTIVE", "Affiliate links can only be generated for active, available offers.", 409);
@@ -83,6 +122,14 @@ function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined
 function numberInRange(value: unknown, min: number, max: number): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : undefined; }
 function nonNegativeInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined; }
 
+function validateShopeeFeedItem(item: ImportShopeeAffiliateFeedRequest["items"][number]): void {
+  if (item.originalPriceCents !== undefined && item.originalPriceCents < item.priceCents) throw new DomainError("INVALID_SHOPEE_FEED_ITEM", "Original price cannot be below current price.", 400);
+  if (item.commissionAmountCents !== undefined && item.commissionAmountCents > item.priceCents) throw new DomainError("INVALID_SHOPEE_FEED_ITEM", "Commission amount cannot exceed price.", 400);
+  for (const [value, label] of [[item.productUrl, "product"], [item.affiliateUrl, "affiliate"]] as const) validateMarketplaceUrl(value, label);
+  const affiliateHost = new URL(item.affiliateUrl).hostname.toLowerCase();
+  const allowed = ["shopee.co.id", "s.shopee.co.id", "shopee.ee", "shope.ee"];
+  if (!allowed.includes(affiliateHost) && !affiliateHost.endsWith(".shopee.co.id")) throw new DomainError("INVALID_SHOPEE_AFFILIATE_URL", "Affiliate URL must use a Shopee domain.", 400);
+}
 function validateMarketplaceProductInput(input: MarketplaceProductInput): void {
   if (!input.externalProductId.trim() || !input.name.trim()) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace products require an external product id and name.", 400);
   if (!Number.isInteger(input.priceCents) || input.priceCents < 0) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace product price must be a non-negative integer.", 400);

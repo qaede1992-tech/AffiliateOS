@@ -15,7 +15,7 @@ import { ProviderEventScheduler } from "./domain/provider-event-scheduler.js";
 import { ProviderEventProcessor } from "./domain/provider-event-processor.js";
 import { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./domain/provider-event-conversion-processor.js";
 import { GenericProviderConversionNormalizer } from "./domain/provider-conversion.js";
-import { MarketplaceProviderRegistry } from "./domain/foundations.js";
+import { MarketplaceProviderRegistry, ShopeeAffiliateFeedProvider } from "./domain/foundations.js";
 import { createShopeeAffiliateProvider } from "./domain/shopee-affiliate-runtime.js";
 import { InMemorySocialOAuthProviderRegistry } from "./domain/oauth.js";
 import { TikTokOAuthProvider } from "./domain/tiktok-oauth-provider.js";
@@ -25,6 +25,7 @@ import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
+marketplaceRegistry.register(new ShopeeAffiliateFeedProvider());
 const shopeeProvider = createShopeeAffiliateProvider({
   credentialReference: environment.SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE,
   appId: environment.SHOPEE_AFFILIATE_APP_ID,

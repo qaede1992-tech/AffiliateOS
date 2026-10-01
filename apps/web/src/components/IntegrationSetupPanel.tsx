@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Affiliate, MarketplaceConnectionView, MarketplaceProviderInfo, SocialAccountView } from "@affiliateos/shared";
+import type { Affiliate, ImportShopeeAffiliateFeedRequest, MarketplaceConnectionView, MarketplaceProviderInfo, SocialAccountView } from "@affiliateos/shared";
 import { api, socialOAuthRedirectUri } from "../api/client";
 
 type Readiness = { platform: string; status: string; reason?: string };
@@ -14,6 +14,8 @@ export function IntegrationSetupPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [credentialReference, setCredentialReference] = useState("");
+  const [feedAffiliateId, setFeedAffiliateId] = useState("");
+  const [feedJson, setFeedJson] = useState("");
 
   const load = async () => {
     const [p, c, a, s, r] = await Promise.all([
@@ -31,6 +33,18 @@ export function IntegrationSetupPanel() {
     catch (e) { setError(e instanceof Error ? e.message : "Operation failed."); }
     finally { setBusy(null); }
   };
+
+  const importShopeeFeed = () => run("import-shopee-feed", async () => {
+    if (!feedAffiliateId) throw new Error("Pilih affiliate terlebih dahulu.");
+    const parsed = JSON.parse(feedJson) as unknown;
+    const items = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === "object" && Array.isArray((parsed as { items?: unknown }).items) ? (parsed as { items: unknown[] }).items : null);
+    if (!items) throw new Error("Format feed harus berupa array JSON atau objek { items: [...] }.");
+    const request: ImportShopeeAffiliateFeedRequest = { affiliateId: feedAffiliateId, items: items as ImportShopeeAffiliateFeedRequest["items"] };
+    const result = await api.importShopeeAffiliateFeed(request);
+    setFeedJson("");
+    setFeedAffiliateId("");
+    setMessage(`Feed diimpor: ${result.importedProducts} produk, ${result.importedOffers} affiliate offer.`);
+  }, "Shopee Affiliate Feed berhasil diimpor.");
 
   const createShopee = () => run("create-shopee", async () => {
     const slug = "shopee";
@@ -65,19 +79,32 @@ export function IntegrationSetupPanel() {
           </button>
         </div>
 
+        <div className="affiliate-form">
+          <label>Import Shopee Affiliate Product Feed (JSON)
+            <select value={feedAffiliateId} onChange={(e) => setFeedAffiliateId(e.target.value)}>
+              <option value="">Pilih affiliate...</option>
+              {affiliates.map((a) => <option value={a.id} key={a.id}>{a.name}</option>)}
+            </select>
+            <textarea value={feedJson} onChange={(e) => setFeedJson(e.target.value)} placeholder={'Paste JSON array feed Shopee di sini. Contoh: [{"externalProductId":"...","name":"...","priceCents":100000,"currency":"IDR","productUrl":"https://shopee.co.id/...","affiliateUrl":"https://s.shopee.co.id/..."}]'} rows={8} />
+          </label>
+          <button type="button" onClick={() => void importShopeeFeed()} disabled={busy !== null || affiliates.length === 0 || !feedJson.trim()}>
+            {busy === "import-shopee-feed" ? "Importing..." : "Import Shopee Feed"}
+          </button>
+          <small>Import-only. AffiliateOS tidak memanggil Open API atau melakukan scraping Shopee.</small>
+        </div>
+
         <div className="affiliate-list">
           {connections.length === 0 ? <p className="empty">No marketplace connections configured.</p> : connections.map((connection) => (
             <div className="affiliate-row" key={connection.id}>
-              <div><strong>{connection.name}</strong><small>{connection.providerSlug} · {connection.connectionMode}</small><small>Affiliate binding must point to an existing internal affiliate.</small></div>
+              <div><strong>{connection.name}</strong><small>{connection.providerSlug} · {connection.connectionMode === "affiliate_feed" ? "affiliate feed" : connection.connectionMode}</small><small>Affiliate binding must point to an existing internal affiliate.</small></div>
               <div className="affiliate-meta">
                 <span className={`badge ${connection.enabled ? "active" : "inactive"}`}>{connection.enabled ? "enabled" : "disabled"}</span>
-                <button type="button" onClick={() => void run(`test-${connection.slug}`, () => api.marketplaceTest(connection.slug), "Marketplace connection tested.")} disabled={busy !== null}>Test</button>
+                {connection.connectionMode !== "affiliate_feed" && <button type="button" onClick={() => void run(`test-${connection.slug}`, () => api.marketplaceTest(connection.slug), "Marketplace connection tested.")} disabled={busy !== null}>Test</button>}
                 {affiliates.length > 0 && <select defaultValue="" onChange={(e) => { if (e.target.value) void run(`bind-${connection.slug}`, () => api.bindMarketplaceAffiliate(connection.slug, e.target.value), "Affiliate account bound."); }}>
                   <option value="">Bind affiliate...</option>
                   {affiliates.map((a) => <option value={a.id} key={a.id}>{a.name}</option>)}
                 </select>}
-                <button type="button" onClick={() => void run(`discover-${connection.slug}`, () => api.discoverMarketplaceProducts(connection.slug), "Product discovery completed.")} disabled={busy !== null || !connection.enabled}>Discover
-                </button>
+                {connection.connectionMode !== "affiliate_feed" && <button type="button" onClick={() => void run(`discover-${connection.slug}`, () => api.discoverMarketplaceProducts(connection.slug), "Product discovery completed.")} disabled={busy !== null || !connection.enabled}>Discover</button>}
               </div>
             </div>
           ))}
