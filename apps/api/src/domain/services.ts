@@ -9,7 +9,7 @@ import type {
   Offer
 } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
-import type { ConversionRepository, Repository, TransactionManager } from "./repository.js";
+import type { AffiliateOfferRepository, ConversionRepository, Repository, TransactionManager } from "./repository.js";
 
 const now = () => new Date().toISOString();
 
@@ -61,6 +61,7 @@ export class ConversionService {
     private readonly commissions: import("./repository.js").CommissionRepository,
     private readonly affiliates: Repository<Affiliate>,
     private readonly offers: Repository<Offer>,
+    private readonly affiliateOffers: AffiliateOfferRepository,
     private readonly transactionManager: TransactionManager
   ) {}
 
@@ -111,6 +112,14 @@ export class ConversionService {
       throw new DomainError("OFFER_NOT_ACTIVE", "Conversions require an active offer.");
     }
 
+    const affiliateOffer = input.affiliateOfferId
+      ? await this.affiliateOffers.findById(input.affiliateOfferId)
+      : undefined;
+    if (input.affiliateOfferId && !affiliateOffer) {
+      throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
+    }
+    const commissionRateBps = affiliateOffer?.commissionRateBps ?? offer.commissionRateBps;
+
     const conversion: Conversion = {
       id: randomUUID(),
       affiliateId: input.affiliateId,
@@ -128,7 +137,7 @@ export class ConversionService {
           id: randomUUID(),
           conversionId: conversion.id,
           affiliateId: affiliate.id,
-          amountCents: Math.round((conversion.amountCents * offer.commissionRateBps) / 10_000),
+          amountCents: Math.round((conversion.amountCents * commissionRateBps) / 10_000),
           status: "pending",
           createdAt: now()
         });
