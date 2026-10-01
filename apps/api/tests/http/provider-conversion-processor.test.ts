@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AffiliateOffer } from "@affiliateos/shared";
 import { createInMemoryServices } from "../../src/domain/container.js";
+import { ConversionService } from "../../src/domain/services.js";
+import { InMemoryAffiliateOfferRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryRepository } from "../../src/domain/repository.js";
 import { ProviderConversionProcessor } from "../../src/domain/provider-conversion-processor.js";
 import type { NormalizedProviderConversion } from "../../src/domain/provider-conversion.js";
 
@@ -21,7 +23,7 @@ test("processes a normalized provider conversion through the existing idempotent
   const services = createInMemoryServices();
   const affiliate = await services.affiliates.create({ name: "Provider affiliate", email: "provider@example.com" });
   const offer = await services.offers.create({ name: "Provider offer", status: "active", commissionRateBps: 1000 });
-  const processor = new ProviderConversionProcessor(services.conversions, {
+  const processor = new ProviderConversionProcessor(conversionService, {
     resolveAffiliate: async (reference) => reference === "aff_300" ? affiliate.id : undefined,
     resolveOffer: async (reference) => reference === "offer_300" ? offer.id : undefined
   });
@@ -78,7 +80,17 @@ test("resolves marketplace conversions from tracking references and preserves af
     createdAt: "2026-09-20T10:00:00.000Z",
     updatedAt: "2026-09-20T10:00:00.000Z"
   };
-  await services.affiliateOffers.save(affiliateOffer);
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryCommissionRepository();
+  const affiliates = new InMemoryRepository<typeof affiliate>();
+  const offers = new InMemoryRepository<typeof offer>();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  await affiliates.save(affiliate);
+  await offers.save(offer);
+  await affiliateOffers.save(affiliateOffer);
+  const conversionService = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, {
+    run: (work) => work({ conversions, commissions })
+  });
 
   let attributed: { conversionId: string; trackingLinkId: string } | undefined;
   const processor = new ProviderConversionProcessor(services.conversions, {
@@ -106,6 +118,6 @@ test("resolves marketplace conversions from tracking references and preserves af
   assert.equal(conversion.offerId, offer.id);
   assert.equal(conversion.affiliateOfferId, affiliateOfferId);
   assert.deepEqual(attributed, { conversionId: conversion.id, trackingLinkId });
-  assert.equal((await services.commissions.list()).length, 1);
-  assert.equal((await services.commissions.list())[0]?.amountCents, 600);
+  assert.equal((await commissions.list()).length, 1);
+  assert.equal((await commissions.list())[0]?.amountCents, 600);
 });
