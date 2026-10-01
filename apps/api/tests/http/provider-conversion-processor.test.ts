@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { AffiliateOffer } from "@affiliateos/shared";
+import type { Affiliate, AffiliateOffer, Offer } from "@affiliateos/shared";
 import { createInMemoryServices } from "../../src/domain/container.js";
 import { ConversionService } from "../../src/domain/services.js";
 import { InMemoryAffiliateOfferRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryRepository } from "../../src/domain/repository.js";
@@ -82,8 +82,8 @@ test("resolves marketplace conversions from tracking references and preserves af
   };
   const conversions = new InMemoryConversionRepository();
   const commissions = new InMemoryCommissionRepository();
-  const affiliates = new InMemoryRepository<typeof affiliate>();
-  const offers = new InMemoryRepository<typeof offer>();
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
   const affiliateOffers = new InMemoryAffiliateOfferRepository();
   await affiliates.save(affiliate);
   await offers.save(offer);
