@@ -46,7 +46,7 @@ jobs:
         env:
           NODE_ENV: production
           DATABASE_URL: postgresql://release:release@127.0.0.1:5432/release
-          API_AUTH_TOKEN: 12345678901234567890123456789012
+          API_AUTH_TOKEN: '12345678901234567890123456789012'
           API_CORS_ORIGIN: https://dashboard.example.com
           AUTONOMOUS_CYCLE_ENABLED: "false"
         run: npm run production:preflight --workspace @affiliateos/api
@@ -121,7 +121,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
             --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
-            node:24-alpine sh -c 'npm ci --ignore-scripts && npm run db:migrate && npm run db:verify:applied'
+            node:24-alpine sh -c 'printf "DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release\\n" > .env && npm ci --ignore-scripts && npm run db:migrate && npm run db:verify:applied'
           docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke \
             --env NODE_ENV=production \
             --env API_HOST=0.0.0.0 \
