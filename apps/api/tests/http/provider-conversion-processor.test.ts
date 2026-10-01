@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Affiliate, AffiliateOffer, Commission, Offer } from "@affiliateos/shared";
-import { InMemoryAffiliateOfferRepository, InMemoryConversionRepository, InMemoryRepository, type TransactionManager } from "../../src/domain/repository.js";
-import { ConversionService } from "../../src/domain/services.js";
+import type { AffiliateOffer } from "@affiliateos/shared";
+import { createInMemoryServices } from "../../src/domain/container.js";
 import { ProviderConversionProcessor } from "../../src/domain/provider-conversion-processor.js";
 import type { NormalizedProviderConversion } from "../../src/domain/provider-conversion.js";
 
@@ -58,29 +57,9 @@ test("fails closed when provider references cannot be resolved", async () => {
 });
 
 test("resolves marketplace conversions from tracking references and preserves affiliate offer identity", async () => {
-  const affiliates = new InMemoryRepository<Affiliate>();
-  const offers = new InMemoryRepository<Offer>();
-  const conversions = new InMemoryConversionRepository();
-  const commissions = new InMemoryRepository<Commission>();
-  const affiliateOffers = new InMemoryAffiliateOfferRepository();
-  const transactionManager: TransactionManager = {
-    run: (work) => work({ conversions, commissions })
-  };
-  const conversionService = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, transactionManager);
-  const affiliate = {
-    id: "00000000-0000-4000-8000-000000000390",
-    name: "Marketplace affiliate",
-    email: "marketplace@example.com",
-    status: "active" as const,
-    createdAt: "2026-09-20T10:00:00.000Z"
-  };
-  const offer = {
-    id: "00000000-0000-4000-8000-000000000391",
-    name: "Marketplace program",
-    status: "active" as const,
-    commissionRateBps: 0,
-    createdAt: "2026-09-20T10:00:00.000Z"
-  };
+  const services = createInMemoryServices();
+  const affiliate = await services.affiliates.create({ name: "Marketplace affiliate", email: "marketplace@example.com" });
+  const offer = await services.offers.create({ name: "Marketplace program", status: "active", commissionRateBps: 0 });
   const affiliateOfferId = "00000000-0000-4000-8000-000000000399";
   const trackingLinkId = "00000000-0000-4000-8000-000000000398";
   const affiliateOffer: AffiliateOffer = {
@@ -99,12 +78,10 @@ test("resolves marketplace conversions from tracking references and preserves af
     createdAt: "2026-09-20T10:00:00.000Z",
     updatedAt: "2026-09-20T10:00:00.000Z"
   };
-  await affiliates.save(affiliate);
-  await offers.save(offer);
-  await affiliateOffers.save(affiliateOffer);
+  await services.affiliateOffers.save(affiliateOffer);
 
   let attributed: { conversionId: string; trackingLinkId: string } | undefined;
-  const processor = new ProviderConversionProcessor(conversionService, {
+  const processor = new ProviderConversionProcessor(services.conversions, {
     resolveAffiliate: async () => undefined,
     resolveOffer: async () => undefined,
     resolveTracking: async (accountScope, reference) => accountScope === "account-shopee" && reference === "track-399"
@@ -129,6 +106,6 @@ test("resolves marketplace conversions from tracking references and preserves af
   assert.equal(conversion.offerId, offer.id);
   assert.equal(conversion.affiliateOfferId, affiliateOfferId);
   assert.deepEqual(attributed, { conversionId: conversion.id, trackingLinkId });
-  assert.equal((await commissions.list()).length, 1);
-  assert.equal((await commissions.list())[0]?.amountCents, 600);
+  assert.equal((await services.commissions.list()).length, 1);
+  assert.equal((await services.commissions.list())[0]?.amountCents, 600);
 });
