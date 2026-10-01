@@ -44,8 +44,8 @@ const socialCredentialResolver = environment.SOCIAL_CREDENTIALS_JSON
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
-  undefined,
-  undefined,
+  marketplaceRegistry,
+  socialOAuthRegistry,
   new DrizzleOAuthStateRepository(persistence.db),
   new DrizzleAnalyticsReader(persistence.db),
   new DrizzleConversionAttributionRepository(persistence.db),
