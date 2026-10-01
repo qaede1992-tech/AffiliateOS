@@ -217,7 +217,7 @@ jobs:
           printf '%s\n' "$headers" | grep -Fi 'X-Content-Type-Options: nosniff' >/dev/null
           printf '%s\n' "$headers" | grep -Fi 'X-Frame-Options: DENY' >/dev/null
           printf '%s\n' "$headers" | grep -Fi 'Referrer-Policy: no-referrer' >/dev/null
-          printf '%s\n' "$headers" | grep -Fi 'Permissions-Policy: camera=(),microphone=(),geolocation=()' >/dev/null
+          printf '%s\n' "$headers" | grep -Fi 'Permissions-Policy: camera=(), microphone=(), geolocation=()' >/dev/null
       - name: Cleanup release smoke containers
         if: always()
         run: |
