@@ -51,7 +51,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   if (Boolean(optimizationStateReader) !== Boolean(optimizationStateWriter)) {
     throw new Error("Optimization state reader and writer must be supplied together.");
   }
-  const conversions = new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, transactionManager);
+  const conversions = new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, repositories.affiliateOffers, transactionManager);
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
