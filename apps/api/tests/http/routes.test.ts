@@ -304,6 +304,55 @@ test("POST /api/v1/conversions rejects a missing affiliate", async () => {
   await app.close();
 });
 
+test("POST /api/v1/conversions preserves affiliateOfferId for commission selection", async () => {
+  const app = createApp();
+
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: {
+      name: "Affiliate Offer Partner",
+      email: "affiliate-offer@example.com",
+    },
+  });
+
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+
+  const offerResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/offers",
+    payload: {
+      name: "Affiliate Offer Conversion",
+      status: "active",
+      commissionRateBps: 0,
+    },
+  });
+
+  assert.equal(offerResponse.statusCode, 201);
+  const offer = offerResponse.json();
+
+  const affiliateOfferId = "11111111-1111-4111-8111-111111111111";
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/conversions",
+    payload: {
+      affiliateId: affiliate.id,
+      offerId: offer.id,
+      affiliateOfferId,
+      amountCents: 6900000,
+    },
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(response.json(), {
+    error: "AFFILIATE_OFFER_NOT_FOUND",
+    message: "The affiliate offer does not exist.",
+  });
+
+  await app.close();
+});
+
 test("POST /api/v1/conversions rejects an inactive offer", async () => {
   const app = createApp();
 
