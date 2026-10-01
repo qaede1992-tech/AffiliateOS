@@ -25,9 +25,11 @@ type DashboardData = {
   analytics: AnalyticsOverview;
 };
 
-const money = (cents: number) => new Intl.NumberFormat("en-US", {
+const money = (cents: number) => new Intl.NumberFormat("id-ID", {
   style: "currency",
-  currency: "USD"
+  currency: "IDR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
 }).format(cents / 100);
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
