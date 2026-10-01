@@ -23,7 +23,7 @@ test("processes a normalized provider conversion through the existing idempotent
   const services = createInMemoryServices();
   const affiliate = await services.affiliates.create({ name: "Provider affiliate", email: "provider@example.com" });
   const offer = await services.offers.create({ name: "Provider offer", status: "active", commissionRateBps: 1000 });
-  const processor = new ProviderConversionProcessor(conversionService, {
+  const processor = new ProviderConversionProcessor(services.conversions, {
     resolveAffiliate: async (reference) => reference === "aff_300" ? affiliate.id : undefined,
     resolveOffer: async (reference) => reference === "offer_300" ? offer.id : undefined
   });
@@ -93,7 +93,7 @@ test("resolves marketplace conversions from tracking references and preserves af
   });
 
   let attributed: { conversionId: string; trackingLinkId: string } | undefined;
-  const processor = new ProviderConversionProcessor(services.conversions, {
+  const processor = new ProviderConversionProcessor(conversionService, {
     resolveAffiliate: async () => undefined,
     resolveOffer: async () => undefined,
     resolveTracking: async (accountScope, reference) => accountScope === "account-shopee" && reference === "track-399"
