@@ -25,18 +25,25 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
       try {
         const affiliateAccount = await this.marketplace.getAffiliateAccount(connection.slug);
         if (!affiliateAccount.affiliateId || affiliateAccount.status !== "active") continue;
-        const products = (await this.marketplace.discoverProducts(connection.slug))
+        const products = connection.connectionMode === "affiliate_feed"
+        ? (await this.marketplace.listProducts())
+          .filter((product) => product.marketplaceId === connection.id && product.status === "active")
+          .slice(0, this.maxProductsPerConnection)
+        : (await this.marketplace.discoverProducts(connection.slug))
           .filter((product) => product.status === "active")
           .slice(0, this.maxProductsPerConnection);
-        for (const product of products) {
-          try {
-            const offers = await this.marketplace.getOffers(connection.slug, product.externalProductId);
-            const executableOffers = await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers);
-            candidates.push({ product, offers: executableOffers });
-          } catch {
-            candidates.push({ product, offers: [] });
-          }
+      for (const product of products) {
+        try {
+          const offers = connection.connectionMode === "affiliate_feed"
+            ? (await this.marketplace.listAffiliateOffers())
+              .filter((offer) => offer.productId === product.id && offer.affiliateAccountId === affiliateAccount.id)
+            : await this.marketplace.getOffers(connection.slug, product.externalProductId);
+          const executableOffers = await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers);
+          candidates.push({ product, offers: executableOffers });
+        } catch {
+          candidates.push({ product, offers: [] });
         }
+      }
       } catch {
         continue;
       }

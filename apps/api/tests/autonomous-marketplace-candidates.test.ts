@@ -69,3 +69,49 @@ test("skips active marketplace connections without a bound active affiliate acco
 
   assert.deepEqual(candidates.map((candidate) => candidate.product.id), ["bound-product"]);
 });
+
+
+test("uses persisted products and affiliate offers for affiliate-feed connections", async () => {
+  const feedProduct = {
+    ...product("feed-product", "active"),
+    marketplaceId: "feed-marketplace"
+  };
+  const feedOffer = {
+    ...offer(feedProduct.id),
+    affiliateAccountId: "feed-account"
+  };
+  let discoverCalled = false;
+  let getOffersCalled = false;
+  const marketplace = {
+    listConnections: async () => [{
+      id: "feed-marketplace",
+      slug: "shopee-affiliate-feed",
+      connectionMode: "affiliate_feed",
+      enabled: true,
+      status: "active"
+    }],
+    getAffiliateAccount: async () => ({
+      id: "feed-account",
+      affiliateId: "affiliate-1",
+      status: "active"
+    }),
+    discoverProducts: async () => {
+      discoverCalled = true;
+      return [];
+    },
+    getOffers: async () => {
+      getOffersCalled = true;
+      return [];
+    },
+    listProducts: async () => [feedProduct],
+    listAffiliateOffers: async () => [feedOffer]
+  };
+
+  const provider = new AutonomousMarketplaceCandidateProvider(marketplace as any);
+  const candidates = await provider.listCandidates();
+
+  assert.equal(discoverCalled, false);
+  assert.equal(getOffersCalled, false);
+  assert.deepEqual(candidates.map((candidate) => candidate.product.id), ["feed-product"]);
+  assert.deepEqual(candidates[0]?.offers.map((item) => item.id), ["offer-feed-product"]);
+});
