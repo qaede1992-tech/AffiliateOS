@@ -15,7 +15,7 @@ export const configuredCorsOrigin = (production = process.env.NODE_ENV === "prod
 const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth/callback" || url.startsWith("/api/v1/social-accounts/oauth/callback?");
 const isPublicProviderEvent = (url: string) => /^\/api\/v1\/marketplaces\/[^/]+\/events(?:\?|$)/.test(url);
 const isPublicTrackingRedirect = (url: string) => /^\/r\/[^/]+(?:\?|$)/.test(url);
-const isHealthEndpoint = (url: string) => url === "/api/v1/health" || url === "/api/v1/ready";
+const isHealthEndpoint = (url: string) => { const pathname = url.split("?", 1)[0]; return pathname === "/api/v1/health" || pathname === "/api/v1/ready"; };
 const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
 const isStateChangingMethod = (method: string) => ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 
