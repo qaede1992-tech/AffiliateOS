@@ -10,6 +10,7 @@ test("creating a conversion creates a pending commission using offer basis point
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryConversionRepository();
   const commissions = new InMemoryRepository<Commission>();
+  const affiliateOffers = new InMemoryRepository();
   const affiliate: Affiliate = {
     id: "00000000-0000-4000-8000-000000000001",
     name: "Partner",
@@ -27,7 +28,7 @@ test("creating a conversion creates a pending commission using offer basis point
   affiliates.save(affiliate);
   offers.save(offer);
 
-  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
+  const service = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, { run: async (work) => work({ conversions, commissions }) });
   const conversion = await service.create({
     affiliateId: affiliate.id,
     offerId: offer.id,
@@ -46,11 +47,12 @@ test("creating a conversion with the same idempotency key returns the original c
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryConversionRepository();
   const commissions = new InMemoryRepository<Commission>();
+  const affiliateOffers = new InMemoryRepository();
   const affiliate: Affiliate = { id: "00000000-0000-4000-8000-000000000005", name: "Partner", email: "partner@example.com", status: "active", createdAt: new Date().toISOString() };
   const offer: Offer = { id: "00000000-0000-4000-8000-000000000006", name: "Standard", status: "active", commissionRateBps: 1000, createdAt: new Date().toISOString() };
   await affiliates.save(affiliate);
   await offers.save(offer);
-  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
+  const service = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, { run: async (work) => work({ conversions, commissions }) });
   const input = { affiliateId: affiliate.id, offerId: offer.id, amountCents: 5000, idempotencyKey: "conversion-event-001" };
 
   const first = await service.create(input);
@@ -66,11 +68,12 @@ test("reusing a conversion idempotency key for different data is rejected", asyn
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryConversionRepository();
   const commissions = new InMemoryRepository<Commission>();
+  const affiliateOffers = new InMemoryRepository();
   const affiliateId = "00000000-0000-4000-8000-000000000007";
   const offerId = "00000000-0000-4000-8000-000000000008";
   await affiliates.save({ id: affiliateId, name: "Partner", email: "partner@example.com", status: "active", createdAt: new Date().toISOString() });
   await offers.save({ id: offerId, name: "Standard", status: "active", commissionRateBps: 1000, createdAt: new Date().toISOString() });
-  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
+  const service = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, { run: async (work) => work({ conversions, commissions }) });
   await service.create({ affiliateId, offerId, amountCents: 1000, idempotencyKey: "conversion-event-002" });
 
   await assert.rejects(
@@ -84,11 +87,12 @@ test("creating a conversion rejects an inactive offer", async () => {
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryConversionRepository();
   const commissions = new InMemoryRepository<Commission>();
+  const affiliateOffers = new InMemoryRepository();
   const affiliateId = "00000000-0000-4000-8000-000000000003";
   const offerId = "00000000-0000-4000-8000-000000000004";
   affiliates.save({ id: affiliateId, name: "Partner", email: "partner@example.com", status: "active", createdAt: new Date().toISOString() });
   offers.save({ id: offerId, name: "Paused", status: "archived", commissionRateBps: 1000, createdAt: new Date().toISOString() });
-  const service = new ConversionService(conversions, commissions, affiliates, offers, { run: async (work) => work({ conversions, commissions }) });
+  const service = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, { run: async (work) => work({ conversions, commissions }) });
 
   assert.rejects(
     () => service.create({ affiliateId, offerId, amountCents: 1000 }),
