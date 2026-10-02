@@ -44,6 +44,23 @@ export class AutonomousCycleService {
     this.lock = lock ?? new InMemoryAutonomousCycleLock();
   }
 
+  async previewSelection(input: AutonomousCycleInput = {}): Promise<{
+    candidateCount: number;
+    selected: AutonomousExecutionResult["selected"];
+    rejected: AutonomousExecutionResult["rejected"];
+    audit: AutonomousExecutionResult["audit"];
+  }> {
+    const candidateList = await this.candidates.listCandidates();
+    const result = await this.execution.previewSelection({
+      ...input,
+      candidates: candidateList
+    });
+    return {
+      candidateCount: candidateList.length,
+      ...result
+    };
+  }
+
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
     if (this.running) return undefined;
     if (!(await this.lock.tryAcquire(this.lockKey))) return undefined;
