@@ -15,6 +15,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get<{ Params: { code: string } }>("/r/:code", async (request, reply) => { const destination = await services.tracking.redirect(request.params.code, { source: "public-redirect", ...(typeof request.headers["user-agent"] === "string" ? { userAgent: request.headers["user-agent"] } : {}), ...(typeof request.headers.referer === "string" ? { referer: request.headers.referer } : {}) }); return reply.redirect(destination, 302); });
   app.get("/api/v1/publishers/readiness", writeGuard, async () => list(await services.publisherReadiness.list()));
   app.get("/api/v1/autonomous/status", writeGuard, async () => services.autonomousScheduler.status);
+  app.get("/api/v1/autonomous/preview", writeGuard, async () => services.autonomousScheduler.previewSelection());
   app.get("/api/v1/autonomous/health", writeGuard, async () => {
     const [accepted, processing, failed, recoverable, publishers] = await Promise.all([
       services.autonomousRuns.list({ status: "accepted", limit: 100 }),

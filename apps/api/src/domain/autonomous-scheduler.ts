@@ -77,6 +77,10 @@ export class AutonomousScheduler {
     await this.activeRun;
   }
 
+  async previewSelection(input: AutonomousCycleInput = this.input) {
+    return this.cycle.previewSelection(input);
+  }
+
   async runNow(input: AutonomousCycleInput = this.input): Promise<AutonomousCycleResult | undefined> {
     if (this.activeRun) return this.activeRun;
     const effectiveInput: AutonomousCycleInput = {

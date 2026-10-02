@@ -23,6 +23,22 @@ const executionKey = (namespace: string, opportunity: ScoredOpportunity): string
 export class AutonomousExecutionService {
   constructor(private readonly selector: AutonomousOpportunitySelector, private readonly orchestrator: CampaignOrchestrator, private readonly feedback?: AutonomousFeedbackProvider, private readonly autonomousRuns?: AutonomousRunService, private readonly decisionAudits?: AutonomousDecisionAuditRepository, private readonly adaptiveExploration?: AdaptiveExplorationPolicyProvider) {}
 
+  async previewSelection(input: Omit<AutonomousExecutionInput, "candidates"> & { candidates: OpportunityCandidateSource[] }): Promise<Pick<AutonomousExecutionResult, "selected" | "rejected" | "audit">> {
+    const namespace = input.idempotencyNamespace?.trim() || "autonomous-preview";
+    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
+    const adaptiveExplorationRates = this.adaptiveExploration
+      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      : new Map<string, number>();
+    const selection = this.selector.select(
+      input.candidates,
+      input.policy,
+      performance,
+      input.policiesByMarketplace,
+      adaptiveExplorationRates
+    );
+    return { selected: selection.selected, rejected: selection.rejected, audit: selection.audit };
+  }
+
   async runOnce(input: AutonomousExecutionInput): Promise<AutonomousExecutionResult> {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
