@@ -43,7 +43,7 @@ export class ShopeeCommissionReportReconciliationService {
 
     for (const row of input.rows) {
       try {
-        const externalConversionId = row.externalConversionId?.trim() || `report:${createHash("sha256").update(input.sourceReference + "\\0" + row.rowKey).digest("hex")}`;
+        const externalConversionId = row.externalConversionId?.trim() || `report:${createHash("sha256").update(input.sourceReference + "\0" + row.rowKey).digest("hex")}`;
         await this.providerConversions.process(account.id, {
           externalConversionId,
           trackingReference: row.trackingReference,
