@@ -43,7 +43,7 @@ export class InstagramOAuthProvider implements SocialOAuthProvider {
     return url.toString();
   }
 
-  async exchangeCode(input: { code: string; redirectUri: string }): Promise<{ accountReference: string; credentialReference: string; connection?: Record<string, unknown> }> {
+  async exchangeCode(input: { code: string; redirectUri: string }): Promise<{ accountReference: string; credentialReference: string; credential?: { accessToken?: string; refreshToken?: string; [key: string]: unknown }; connection?: Record<string, unknown> }> {
     const body = new URLSearchParams({
       client_id: this.configuration.clientId,
       client_secret: this.configuration.clientSecret,
