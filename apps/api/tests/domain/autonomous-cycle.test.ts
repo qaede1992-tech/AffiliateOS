@@ -93,7 +93,7 @@ describe("autonomous cycle", () => {
     const first = service.runOnce();
     const overlapping = await service.runOnce();
     assert.equal(overlapping, undefined);
-    assert.equal(service.skipReason, "already_running");
+    assert.equal(service.skipReason, "lock_busy");
     releases[0]();
     assert.ok(await first);
     const second = service.runOnce();
