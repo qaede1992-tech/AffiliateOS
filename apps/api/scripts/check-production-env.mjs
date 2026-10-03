@@ -26,6 +26,10 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
     process.exit(1);
   }
 
+  const autonomousFailures = [];
+  if (!isOpaqueCredentialReference(process.env.SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE)) {
+    autonomousFailures.push("SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE");
+  }
   const socialCredentialsJson = process.env.SOCIAL_CREDENTIALS_JSON?.trim();
   if (!socialCredentialsJson) {
     autonomousFailures.push("SOCIAL_CREDENTIALS_JSON");
@@ -40,3 +44,26 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
 }
 
 console.log("Production configuration preflight passed.");
+
+function isJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed) &&
+      Object.keys(parsed).length > 0 &&
+      Object.entries(parsed).every(([key, credential]) => key.trim() && isConfiguredCredential(credential));
+  } catch {
+    return false;
+  }
+}
+
+function isConfiguredCredential(value) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return typeof value.accessToken === "string" && value.accessToken.trim().length > 0;
+}
+
+function isOpaqueCredentialReference(value) {
+  const reference = value?.trim();
+  if (!reference || /\s/.test(reference)) return false;
+  return /^(?:[a-z][a-z0-9+.-]*:\/\/|[A-Z][A-Z0-9_]*:)[A-Za-z0-9._\/-]+$/i.test(reference);
+}
