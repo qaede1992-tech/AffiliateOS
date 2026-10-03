@@ -31,6 +31,7 @@ describe("autonomous cycle", () => {
     assert.equal(calls.length, 1);
     assert.equal((calls[0] as { candidates: unknown[] }).candidates.length, 2);
     assert.ok(new Date(result.completedAt).getTime() >= new Date(result.startedAt).getTime());
+    assert.equal(service.skipReason, undefined);
   });
 
   it("derives publication time from a configured delay", async () => {
@@ -42,12 +43,10 @@ describe("autonomous cycle", () => {
         return { selected: [], rejected: [], outcomes: [] };
       }
     } as unknown as AutonomousExecutionService;
-
     const service = new AutonomousCycleService(candidates, execution);
     const before = Date.now();
     await service.runOnce({ publicationDelayMs: 5_000 });
     const after = Date.now();
-
     assert.ok(scheduledAt);
     const scheduledMs = Date.parse(scheduledAt);
     assert.ok(scheduledMs >= before + 4_500);
@@ -56,13 +55,8 @@ describe("autonomous cycle", () => {
 
   it("rejects invalid publication delays", async () => {
     const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
-    const execution = {
-      async runOnce() {
-        return { selected: [], rejected: [], outcomes: [] };
-      }
-    } as unknown as AutonomousExecutionService;
+    const execution = { async runOnce() { return { selected: [], rejected: [], outcomes: [] }; } } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution);
-
     await assert.rejects(() => service.runOnce({ publicationDelayMs: -1 }), /finite non-negative/);
     await assert.rejects(() => service.runOnce({ publicationDelayMs: Number.NaN }), /finite non-negative/);
   });
@@ -71,24 +65,17 @@ describe("autonomous cycle", () => {
     const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
     let scheduledAt: string | undefined;
     const execution = {
-      async runOnce(input: { scheduledAt?: string }) {
-        scheduledAt = input.scheduledAt;
-        return { selected: [], rejected: [], outcomes: [] };
-      }
+      async runOnce(input: { scheduledAt?: string }) { scheduledAt = input.scheduledAt; return { selected: [], rejected: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution);
-
     await service.runOnce({ scheduledAt: "2026-10-01T10:00:00.000Z", publicationDelayMs: 60_000 });
     assert.equal(scheduledAt, "2026-10-01T10:00:00.000Z");
   });
 
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() {
-        return [{ product: { id: "product-1" } as never, offers: [] }];
-      }
+      async listCandidates() { return [{ product: { id: "product-1" } as never, offers: [] }]; }
     };
-
     const releases: Array<() => void> = [];
     let callCount = 0;
     let resolveSecondStarted!: () => void;
@@ -102,16 +89,13 @@ describe("autonomous cycle", () => {
         });
       }
     } as unknown as AutonomousExecutionService;
-
     const service = new AutonomousCycleService(candidates, execution);
     const first = service.runOnce();
-
     const overlapping = await service.runOnce();
     assert.equal(overlapping, undefined);
-
+    assert.equal(service.skipReason, "lock_busy");
     releases[0]();
     assert.ok(await first);
-
     const second = service.runOnce();
     await secondStarted;
     releases[1]();
@@ -126,16 +110,12 @@ describe("autonomous cycle", () => {
     };
     const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
     const execution = {
-      async runOnce() {
-        executionCalls += 1;
-        return { selected: [], rejected: [], outcomes: [] };
-      }
+      async runOnce() { executionCalls += 1; return { selected: [], rejected: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
-
     const service = new AutonomousCycleService(candidates, execution, lock);
     const result = await service.runOnce();
-
     assert.equal(result, undefined);
+    assert.equal(service.skipReason, "lock_busy");
     assert.equal(executionCalls, 0);
   });
 
@@ -143,21 +123,11 @@ describe("autonomous cycle", () => {
     let acquired = false;
     let released = false;
     const lock: AutonomousCycleLock = {
-      async tryAcquire(key) {
-        assert.equal(key, "shared-cycle");
-        acquired = true;
-        return true;
-      },
-      async release(key) {
-        assert.equal(key, "shared-cycle");
-        released = true;
-      }
+      async tryAcquire(key) { assert.equal(key, "shared-cycle"); acquired = true; return true; },
+      async release(key) { assert.equal(key, "shared-cycle"); released = true; }
     };
     const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
-    const execution = {
-      async runOnce() { return { selected: [], rejected: [], outcomes: [] }; }
-    } as unknown as AutonomousExecutionService;
-
+    const execution = { async runOnce() { return { selected: [], rejected: [], outcomes: [] }; } } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution, lock, "shared-cycle");
     assert.ok(await service.runOnce());
     assert.equal(acquired, true);
@@ -167,18 +137,9 @@ describe("autonomous cycle", () => {
   it("releases the guard when candidate loading fails", async () => {
     let attempts = 0;
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() {
-        attempts += 1;
-        if (attempts === 1) throw new Error("catalog unavailable");
-        return [];
-      }
+      async listCandidates() { attempts += 1; if (attempts === 1) throw new Error("catalog unavailable"); return []; }
     };
-    const execution = {
-      async runOnce() {
-        return { selected: [], rejected: [], outcomes: [] };
-      }
-    } as unknown as AutonomousExecutionService;
-
+    const execution = { async runOnce() { return { selected: [], rejected: [], outcomes: [] }; } } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution);
     await assert.rejects(() => service.runOnce(), /catalog unavailable/);
     const second = await service.runOnce();

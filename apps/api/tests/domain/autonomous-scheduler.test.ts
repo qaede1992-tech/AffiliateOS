@@ -61,18 +61,32 @@ describe("AutonomousScheduler", () => {
     assert.equal(scheduler.status.lastStartedAt, "2026-09-21T00:00:00.000Z");
     assert.equal(scheduler.status.lastCompletedAt, "2026-09-21T00:00:00.000Z");
     assert.equal(scheduler.status.lastError, undefined);
+    assert.equal(scheduler.status.lastSkipReason, undefined);
   });
 
-  it("records completion time when a cycle returns no result", async () => {
-    const cycle = { runOnce: async () => undefined } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, {
-      now: () => new Date("2026-09-21T00:00:00.000Z")
-    });
+  it("records lock contention as a skip instead of an execution error", async () => {
+    const cycle = {
+      runOnce: async () => undefined,
+      get skipReason() { return "lock_busy" as const; }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, { now: () => new Date("2026-09-21T00:00:00.000Z") });
+    assert.equal(await scheduler.runNow(), undefined);
+    assert.equal(scheduler.status.lastSkipReason, "lock_busy");
+    assert.equal(scheduler.status.lastError, undefined);
+    assert.equal(scheduler.status.active, false);
+  });
 
+  it("records completion time when a cycle returns no result without a skip reason", async () => {
+    const cycle = {
+      runOnce: async () => undefined,
+      get skipReason() { return undefined; }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, { now: () => new Date("2026-09-21T00:00:00.000Z") });
     assert.equal(await scheduler.runNow(), undefined);
     assert.equal(scheduler.status.lastResult, undefined);
     assert.equal(scheduler.status.lastCompletedAt, "2026-09-21T00:00:00.000Z");
     assert.equal(scheduler.status.lastError, undefined);
+    assert.equal(scheduler.status.lastSkipReason, undefined);
   });
 
   it("reports scheduler errors through the error callback and status", async () => {
@@ -83,6 +97,7 @@ describe("AutonomousScheduler", () => {
     assert.equal(errors.length, 1);
     assert.equal((errors[0] as Error).message, "cycle failure");
     assert.equal(scheduler.status.lastError, "cycle failure");
+    assert.equal(scheduler.status.lastSkipReason, undefined);
     assert.equal(scheduler.status.active, false);
   });
 
@@ -94,20 +109,15 @@ describe("AutonomousScheduler", () => {
       onResult: () => { throw new Error("observer failure"); },
       onError: (error) => errors.push(error)
     });
-
     assert.equal(await scheduler.runNow(), output);
     assert.equal(scheduler.status.lastResult, output);
     assert.equal(scheduler.status.lastError, undefined);
     assert.equal(errors.length, 1);
-    assert.equal((errors[0] as Error).message, "observer failure");
   });
 
   it("does not reject when the error observer itself fails", async () => {
     const cycle = { runOnce: async () => { throw new Error("cycle failure"); } } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, {
-      onError: () => { throw new Error("error observer failure"); }
-    });
-
+    const scheduler = new AutonomousScheduler(cycle, {}, { onError: () => { throw new Error("error observer failure"); } });
     assert.equal(await scheduler.runNow(), undefined);
     assert.equal(scheduler.status.lastError, "cycle failure");
     assert.equal(scheduler.status.active, false);

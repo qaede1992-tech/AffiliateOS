@@ -14,6 +14,7 @@ export type AutonomousSchedulerStatus = {
   lastCompletedAt?: string;
   lastResult?: AutonomousCycleResult;
   lastError?: string;
+  lastSkipReason?: "already_running" | "lock_busy";
 };
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
@@ -32,6 +33,7 @@ export class AutonomousScheduler {
   private lastCompletedAt?: string;
   private lastResult?: AutonomousCycleResult;
   private lastError?: string;
+  private lastSkipReason?: "already_running" | "lock_busy";
 
   constructor(
     private readonly cycle: AutonomousCycleService,
@@ -58,7 +60,8 @@ export class AutonomousScheduler {
       lastStartedAt: this.lastStartedAt,
       lastCompletedAt: this.lastCompletedAt,
       lastResult: this.lastResult,
-      lastError: this.lastError
+      lastError: this.lastError,
+      lastSkipReason: this.lastSkipReason
     };
   }
 
@@ -89,8 +92,10 @@ export class AutonomousScheduler {
     };
     this.lastStartedAt = this.now().toISOString();
     this.lastError = undefined;
+    this.lastSkipReason = undefined;
     const run = this.cycle.runOnce(effectiveInput)
       .then(async (result) => {
+        this.lastSkipReason = this.cycle.skipReason;
         if (result) {
           this.lastResult = result;
           await this.notifyResult(result);
@@ -99,6 +104,7 @@ export class AutonomousScheduler {
         return result;
       })
       .catch(async (error) => {
+        this.lastSkipReason = undefined;
         this.lastError = error instanceof Error ? error.message : String(error);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyError(error);

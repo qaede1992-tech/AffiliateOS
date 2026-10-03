@@ -29,8 +29,11 @@ export type AutonomousCycleResult = {
   explorationEvaluation?: ExplorationEvaluationRunResult;
 };
 
+export type AutonomousCycleSkipReason = "already_running" | "lock_busy";
+
 export class AutonomousCycleService {
   private running = false;
+  private lastSkipReason?: AutonomousCycleSkipReason;
   private readonly lock: AutonomousCycleLock;
 
   constructor(
@@ -42,6 +45,10 @@ export class AutonomousCycleService {
     private readonly explorationEvaluation?: AutonomousExplorationEvaluationRunner
   ) {
     this.lock = lock ?? new InMemoryAutonomousCycleLock();
+  }
+
+  get skipReason(): AutonomousCycleSkipReason | undefined {
+    return this.lastSkipReason;
   }
 
   async previewSelection(input: AutonomousCycleInput = {}): Promise<{
@@ -62,8 +69,15 @@ export class AutonomousCycleService {
   }
 
   async runOnce(input: AutonomousCycleInput = {}): Promise<AutonomousCycleResult | undefined> {
-    if (this.running) return undefined;
-    if (!(await this.lock.tryAcquire(this.lockKey))) return undefined;
+    this.lastSkipReason = undefined;
+    if (this.running) {
+      this.lastSkipReason = "already_running";
+      return undefined;
+    }
+    if (!(await this.lock.tryAcquire(this.lockKey))) {
+      this.lastSkipReason = "lock_busy";
+      return undefined;
+    }
     this.running = true;
     const startedAt = new Date().toISOString();
 
