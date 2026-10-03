@@ -22,3 +22,15 @@ export const autonomousDecisionAuditQuerySchema = z.object({ cycleId: z.string()
 const shopeeAffiliateFeedItemSchema = z.object({ externalProductId: nonEmptyText.max(255), externalOfferId: nonEmptyText.max(255).optional(), name: nonEmptyText.max(500), description: z.string().max(10000).optional(), category: z.string().max(255).optional(), priceCents: z.number().int().nonnegative(), originalPriceCents: z.number().int().nonnegative().optional(), currency: z.string().regex(/^[A-Za-z]{3}$/), ratingMilli: z.number().int().min(0).max(5000).optional(), reviewCount: z.number().int().nonnegative().optional(), soldCount: z.number().int().nonnegative().optional(), imageUrl: z.string().url().max(2048).optional(), productUrl: z.string().url().max(2048), affiliateUrl: z.string().url().max(2048), availability: z.enum(["in_stock", "out_of_stock", "limited", "unknown"]).default("unknown"), commissionRateBps: z.number().int().min(0).max(10000).optional(), commissionAmountCents: z.number().int().nonnegative().optional(), metadata: z.record(z.string(), z.unknown()).default({}) }).refine((value) => value.originalPriceCents === undefined || value.originalPriceCents >= value.priceCents, "originalPriceCents must be greater than or equal to priceCents").refine((value) => value.commissionAmountCents === undefined || value.commissionAmountCents <= value.priceCents, "commissionAmountCents cannot exceed priceCents");
 export const importShopeeAffiliateFeedSchema = z.object({ affiliateId: entityId, items: z.array(shopeeAffiliateFeedItemSchema).min(1).max(1000), sourceReference: z.string().trim().min(1).max(255).optional() });
 export const marketplaceConversionSyncSchema = z.object({ since: isoTimestamp });
+export const shopeeCommissionReportSchema = z.object({
+  sourceReference: nonEmptyText.max(255),
+  rows: z.array(z.object({
+    rowKey: nonEmptyText.max(255),
+    trackingReference: nonEmptyText.max(255),
+    amountCents: z.number().int().nonnegative().max(2147483647),
+    commissionCents: z.number().int().nonnegative().max(2147483647).optional(),
+    occurredAt: isoTimestamp,
+    status: z.enum(["pending", "approved", "rejected"]).default("approved"),
+    externalConversionId: z.string().trim().min(1).max(255).optional()
+  })).min(1).max(1000)
+});
