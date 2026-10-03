@@ -44,7 +44,7 @@ describe("ShopeeCommissionReportReconciliationService", () => {
     });
     expect(processed).toEqual([{
       accountScope: "account-1",
-      externalConversionId: "report:commission-period-2026-10-01:order-1001"
+      externalConversionId: "report:403b63f46621c819f1457b194b6a1096a08c91772ea8229545c4554e808de999"
     }]);
   });
 
