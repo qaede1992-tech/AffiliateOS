@@ -30,12 +30,6 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
   if (!isOpaqueCredentialReference(process.env.SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE)) {
     autonomousFailures.push("SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE");
   }
-  if (!process.env.SHOPEE_AFFILIATE_APP_ID?.trim()) {
-    autonomousFailures.push("SHOPEE_AFFILIATE_APP_ID");
-  }
-  if (!process.env.SHOPEE_AFFILIATE_APP_SECRET) {
-    autonomousFailures.push("SHOPEE_AFFILIATE_APP_SECRET");
-  }
   const socialCredentialsJson = process.env.SOCIAL_CREDENTIALS_JSON?.trim();
   if (!socialCredentialsJson) {
     autonomousFailures.push("SOCIAL_CREDENTIALS_JSON");
@@ -54,7 +48,9 @@ console.log("Production configuration preflight passed.");
 function isJsonObject(value) {
   try {
     const parsed = JSON.parse(value);
-    return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed) && Object.keys(parsed).length > 0 && Object.entries(parsed).every(([key, credential]) => key.trim() && isConfiguredCredential(credential));
+    return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed) &&
+      Object.keys(parsed).length > 0 &&
+      Object.entries(parsed).every(([key, credential]) => key.trim() && isConfiguredCredential(credential));
   } catch {
     return false;
   }

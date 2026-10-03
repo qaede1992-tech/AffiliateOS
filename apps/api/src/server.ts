@@ -28,8 +28,6 @@ const marketplaceRegistry = new MarketplaceProviderRegistry();
 marketplaceRegistry.register(new ShopeeAffiliateFeedProvider());
 const shopeeProvider = createShopeeAffiliateProvider({
   credentialReference: environment.SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE,
-  appId: environment.SHOPEE_AFFILIATE_APP_ID,
-  appSecret: environment.SHOPEE_AFFILIATE_APP_SECRET,
   market: environment.SHOPEE_AFFILIATE_MARKET,
   apiVersion: environment.SHOPEE_AFFILIATE_API_VERSION
 });
