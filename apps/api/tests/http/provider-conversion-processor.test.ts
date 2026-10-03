@@ -121,3 +121,29 @@ test("resolves marketplace conversions from tracking references and preserves af
   assert.equal((await commissions.list()).length, 1);
   assert.equal((await commissions.list())[0]?.amountCents, 600);
 });
+
+test("reconciles rejected provider conversions to rejected commission status", async () => {
+  const services = createInMemoryServices();
+  const affiliate = await services.affiliates.create({ name: "Rejected affiliate", email: "rejected@example.com" });
+  const offer = await services.offers.create({ name: "Rejected offer", status: "active", commissionRateBps: 1000 });
+  const processor = new ProviderConversionProcessor(services.conversions, {
+    resolveAffiliate: async () => affiliate.id,
+    resolveOffer: async () => offer.id
+  });
+
+  const conversion = await processor.process("account-rejected", {
+    externalConversionId: "conv-rejected-301",
+    affiliateReference: "aff-rejected",
+    offerReference: "offer-rejected",
+    amountCents: 2500,
+    currency: "IDR",
+    occurredAt: "2026-09-20T10:00:00.000Z",
+    status: "rejected",
+    sourceEventId: "evt-rejected-301",
+    rawEventType: "conversion.updated"
+  });
+
+  assert.equal(conversion.status, "rejected");
+  const commission = (await services.commissions.list()).find((item) => item.conversionId === conversion.id);
+  assert.equal(commission?.status, "rejected");
+});
