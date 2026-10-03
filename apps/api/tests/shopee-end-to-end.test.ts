@@ -4,7 +4,6 @@ import type { Affiliate, AffiliateAccount, AffiliateOffer, Offer } from "@affili
 import {
   InMemoryAffiliateAccountRepository,
   InMemoryAffiliateOfferRepository,
-  InMemoryAffiliateRepository,
   InMemoryCommissionRepository,
   InMemoryConversionRepository,
   InMemoryClickRepository,
