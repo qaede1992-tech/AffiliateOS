@@ -59,8 +59,16 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.post("/api/v1/autonomous/cycles/run", writeGuard, async (request, reply) => {
     const result = await services.autonomousScheduler.runNow();
     const status = services.autonomousScheduler.status;
-    auditSecurityEvent(request.log, request, "autonomous_cycle_triggered", { executed: Boolean(result), active: status.active });
-    return reply.status(result ? 200 : status.active ? 202 : 500).send(result ? { status: "completed", result } : status.active ? { status: "already_running" } : { status: "failed", error: status.lastError ?? "Autonomous cycle failed." });
+    auditSecurityEvent(request.log, request, "autonomous_cycle_triggered", {
+      executed: Boolean(result),
+      active: status.active,
+      skipReason: status.lastSkipReason
+    });
+    if (result) return reply.status(200).send({ status: "completed", result });
+    if (status.active) return reply.status(202).send({ status: "already_running" });
+    if (status.lastSkipReason === "lock_busy") return reply.status(202).send({ status: "lock_busy" });
+    if (status.lastSkipReason === "already_running") return reply.status(202).send({ status: "already_running" });
+    return reply.status(500).send({ status: "failed", error: status.lastError ?? "Autonomous cycle failed." });
   });
   app.post("/api/v1/marketplaces/:connectionSlug/events", { preParsing: captureRawBody }, async (request, reply) => {
     if (!providerEvents) return reply.status(503).send({ error: "PROVIDER_EVENT_STORE_UNAVAILABLE", message: "Provider event persistence is unavailable." });
