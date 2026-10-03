@@ -80,7 +80,7 @@ export class ConversionService {
         await commissions.save({
           ...commission,
           amountCents: commissionCents ?? commission.amountCents,
-          status: status === "approved" ? "approved" : status === "rejected" ? "rejected" : commission.status
+          status: status === "approved" ? "approved" : status === "rejected" ? "pending" : commission.status
         });
       }
       return next;
