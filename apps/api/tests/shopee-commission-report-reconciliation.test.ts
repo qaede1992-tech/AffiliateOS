@@ -54,7 +54,7 @@ test("ShopeeCommissionReportReconciliationService keeps row failures isolated fr
   } as any;
   const providerConversions = {
     process: async (_accountScope: string, event: any) => {
-      if (event.externalConversionId.endsWith("bad")) throw new Error("tracking reference could not be resolved");
+      if (event.trackingReference === "unknown") throw new Error("tracking reference could not be resolved");
       return {
         id: "conversion-ok",
         affiliateId: "affiliate-1",
