@@ -31,6 +31,7 @@ import { AutonomousScheduler } from "./autonomous-scheduler.js";
 import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
 import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
 import { ProviderConversionProcessor } from "./provider-conversion-processor.js";
+import { ShopeeCommissionReportReconciliationService } from "./shopee-commission-report-reconciliation.js";
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 import { AutonomousCampaignActionExecutor } from "./autonomous-campaign-action-executor.js";
 import { AutonomousOptimizationRunner } from "./autonomous-optimization-runner.js";
@@ -44,7 +45,7 @@ import type { AutonomousExplorationStateRepository } from "./autonomous-explorat
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
-  publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor;
+  publicationJobs: PublicationJobService; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor; shopeeCommissionReportReconciliation: ShopeeCommissionReportReconciliationService;
 }
 
 export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, shopeeConversionSyncSchedulerIntervalMs?: number, shopeeConversionSyncLookbackHours?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock, optimizationStateReader?: OptimizationStateReader, optimizationStateWriter?: OptimizationStateWriter, autonomousSelectionPolicy: OpportunitySelectionPolicy = {}, autonomousMarketplacePolicies: OpportunitySelectionPoliciesByMarketplace = {}, autonomousDecisionAuditRepository?: AutonomousDecisionAuditRepository, autonomousActionOutcomeWriter?: AutonomousActionOutcomeWriter, autonomousOptimizationPolicy: import("./optimization-engine.js").OptimizationPolicy = {}, explorationEvaluationPolicy: import("./exploration-evaluator.js").ExplorationEvaluationPolicy = {}, adaptiveExplorationPolicy: AdaptiveExplorationPolicy = {}, autonomousExplorationStateRepository?: AutonomousExplorationStateRepository): Services {
@@ -88,6 +89,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     }
   });
   const shopeeConversionSync = new ShopeeConversionSyncService(marketplace, conversions, providerConversions);
+  const shopeeCommissionReportReconciliation = new ShopeeCommissionReportReconciliationService(marketplace, providerConversions);
   const shopeeConversionSyncScheduler = new ShopeeConversionSyncScheduler(marketplace, shopeeConversionSync, autonomousCycleLock ?? new InMemoryAutonomousCycleLock(), { intervalMs: shopeeConversionSyncSchedulerIntervalMs, lookbackHours: shopeeConversionSyncLookbackHours });
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
@@ -101,7 +103,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies }, { intervalMs: autonomousSchedulerIntervalMs });
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
-    shopeeConversionSync, shopeeConversionSyncScheduler, autonomousDecisionAudits: autonomousDecisionAuditRepository,
+    shopeeConversionSync, shopeeConversionSyncScheduler, shopeeCommissionReportReconciliation, autonomousDecisionAudits: autonomousDecisionAuditRepository,
     socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository), analytics, attribution, publicationJobs, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
 }
