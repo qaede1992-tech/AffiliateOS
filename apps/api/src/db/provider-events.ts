@@ -45,7 +45,7 @@ export class ProviderEventStore {
         eq(providerEvents.status, "received"),
         and(eq(providerEvents.status, "failed"), lt(providerEvents.retryCount, PROVIDER_EVENT_MAX_RETRIES),
           or(isNull(providerEvents.nextAttemptAt), lte(providerEvents.nextAttemptAt, new Date().toISOString()))),
-        and(eq(providerEvents.status, "processing"),
+        and(eq(providerEvents.status, "processing"), lt(providerEvents.retryCount, PROVIDER_EVENT_MAX_RETRIES),
           lte(providerEvents.processingStartedAt, new Date(Date.now() - PROVIDER_EVENT_PROCESSING_TIMEOUT_MS).toISOString()))
       ))
       .orderBy(asc(providerEvents.receivedAt))
