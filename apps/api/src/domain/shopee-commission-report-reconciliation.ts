@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ConversionStatus, IsoTimestamp, MoneyCents } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { MarketplaceService } from "./marketplace.js";
@@ -42,7 +43,7 @@ export class ShopeeCommissionReportReconciliationService {
 
     for (const row of input.rows) {
       try {
-        const externalConversionId = row.externalConversionId?.trim() || `report:${input.sourceReference}:${row.rowKey}`;
+        const externalConversionId = row.externalConversionId?.trim() || `report:${createHash("sha256").update(input.sourceReference + "\\0" + row.rowKey).digest("hex")}`;
         await this.providerConversions.process(account.id, {
           externalConversionId,
           trackingReference: row.trackingReference,
