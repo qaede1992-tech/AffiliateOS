@@ -15,7 +15,7 @@ describe("official social OAuth providers", () => {
     assert.equal(url.searchParams.get("scope"), "user.info.basic,video.publish");
   });
 
-  it("exchanges TikTok authorization codes without persisting token material in the account record", async () => {
+  it("exchanges TikTok authorization codes into transient credential material and an opaque reference", async () => {
     const provider = new TikTokOAuthProvider({
       clientKey: "client-key",
       clientSecret: "client-secret",
@@ -28,7 +28,7 @@ describe("official social OAuth providers", () => {
     const result = await provider.exchangeCode({ code: "code", redirectUri: "https://app.example/callback" });
     assert.equal(result.accountReference, "open-123");
     assert.equal(result.credentialReference, "secret://affiliateos/social/tiktok/open-123");
-    assert.equal(JSON.stringify(result).includes("token-never-persisted"), false);
+    assert.deepEqual(result.credential, { accessToken: "token-never-persisted", refreshToken: undefined, expiresInSeconds: 86400, refreshExpiresInSeconds: undefined });
   });
 
   it("builds the current Instagram Login authorization URL with publishing scope", () => {
@@ -40,7 +40,7 @@ describe("official social OAuth providers", () => {
     assert.equal(url.searchParams.get("scope"), "instagram_business_basic,instagram_business_content_publish");
   });
 
-  it("exchanges Instagram authorization codes into an opaque credential reference", async () => {
+  it("exchanges Instagram authorization codes into transient credential material and an opaque reference", async () => {
     const provider = new InstagramOAuthProvider({
       clientId: "client-id",
       clientSecret: "client-secret",
@@ -49,6 +49,6 @@ describe("official social OAuth providers", () => {
     const result = await provider.exchangeCode({ code: "code", redirectUri: "https://app.example/callback" });
     assert.equal(result.accountReference, "ig-123");
     assert.equal(result.credentialReference, "secret://affiliateos/social/instagram/ig-123");
-    assert.equal(JSON.stringify(result).includes("token-never-persisted"), false);
+    assert.deepEqual(result.credential, { accessToken: "token-never-persisted" });
   });
 });
