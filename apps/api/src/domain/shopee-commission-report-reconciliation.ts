@@ -1,4 +1,5 @@
 import type { ConversionStatus, IsoTimestamp, MoneyCents } from "@affiliateos/shared";
+import { DomainError } from "./errors.js";
 import type { MarketplaceService } from "./marketplace.js";
 import type { ProviderConversionProcessor } from "./provider-conversion-processor.js";
 
@@ -20,7 +21,6 @@ export type ShopeeCommissionReportInput = {
 export type ShopeeCommissionReportResult = {
   sourceReference: string;
   processed: number;
-  alreadyProcessed: number;
   failed: number;
   failures: Array<{ rowKey: string; error: string }>;
 };
@@ -34,17 +34,16 @@ export class ShopeeCommissionReportReconciliationService {
   async reconcile(connectionSlug: string, input: ShopeeCommissionReportInput): Promise<ShopeeCommissionReportResult> {
     const account = await this.marketplace.getAffiliateAccount(connectionSlug);
     if (!account.affiliateId) {
-      throw new Error("Shopee affiliate account must be bound to an Affiliate before report reconciliation.");
+      throw new DomainError("AFFILIATE_ACCOUNT_UNBOUND", "The Shopee affiliate account must be bound to an Affiliate before report reconciliation.", 409);
     }
 
     let processed = 0;
-    let alreadyProcessed = 0;
     const failures: Array<{ rowKey: string; error: string }> = [];
 
     for (const row of input.rows) {
       try {
         const externalConversionId = row.externalConversionId?.trim() || `report:${input.sourceReference}:${row.rowKey}`;
-        const conversion = await this.providerConversions.process(account.id, {
+        await this.providerConversions.process(account.id, {
           externalConversionId,
           trackingReference: row.trackingReference,
           amountCents: row.amountCents,
@@ -54,23 +53,13 @@ export class ShopeeCommissionReportReconciliationService {
           sourceEventId: input.sourceReference,
           rawEventType: "shopee.report.commission"
         });
-        if (conversion.idempotencyKey === `provider:${account.id}:${externalConversionId}`) {
-          processed += 1;
-        } else {
-          alreadyProcessed += 1;
-        }
+        processed += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         failures.push({ rowKey: row.rowKey, error: message });
       }
     }
 
-    return {
-      sourceReference: input.sourceReference,
-      processed,
-      alreadyProcessed,
-      failed: failures.length,
-      failures
-    };
+    return { sourceReference: input.sourceReference, processed, failed: failures.length, failures };
   }
 }
