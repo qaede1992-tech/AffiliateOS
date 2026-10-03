@@ -26,8 +26,17 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
     process.exit(1);
   }
 
-  console.error("Production preflight failed: Shopee autonomous execution is disabled until Shopee provides an officially supported Affiliate access mechanism.");
-  process.exit(1);
+  const socialCredentialsJson = process.env.SOCIAL_CREDENTIALS_JSON?.trim();
+  if (!socialCredentialsJson) {
+    autonomousFailures.push("SOCIAL_CREDENTIALS_JSON");
+  } else if (!isJsonObject(socialCredentialsJson)) {
+    autonomousFailures.push("SOCIAL_CREDENTIALS_JSON(valid JSON object)");
+  }
+
+  if (autonomousFailures.length > 0) {
+    console.error(`Production preflight failed: autonomous activation requires ${autonomousFailures.join(", ")}.`);
+    process.exit(1);
+  }
 }
 
 console.log("Production configuration preflight passed.");
