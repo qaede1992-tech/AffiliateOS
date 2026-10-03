@@ -122,7 +122,7 @@ export class TrackingService {
     if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404);
     if (link.status !== "active") throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Clicks require an active tracking link.");
     await this.recordClick(link.id, { metadata });
-    return link.destinationUrl;
+    return decorateShopeeDestination(link.destinationUrl, link.code);
   }
   async recordClick(id: string, input: RecordClickRequest) {
     const link = await this.get(id);
@@ -146,6 +146,15 @@ export class TrackingService {
   async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
 }
 
+function decorateShopeeDestination(value: string, trackingCode: string): string {
+  const url = new URL(value);
+  const hostname = url.hostname.toLowerCase();
+  const isShopee = hostname === "shopee.co.id" || hostname === "s.shopee.co.id" || hostname === "shopee.ee" || hostname === "shope.ee" || hostname.endsWith(".shopee.co.id");
+  if (!isShopee) return value;
+  url.searchParams.set("sub_id", trackingCode);
+  return url.toString();
+}
+
 function validateRedirectDestination(value: string): void {
   try {
     const url = new URL(value);
@@ -154,3 +163,4 @@ function validateRedirectDestination(value: string): void {
     throw new DomainError("INVALID_REDIRECT_DESTINATION", "Tracking links require an HTTP or HTTPS destination URL.", 400);
   }
 }
+
