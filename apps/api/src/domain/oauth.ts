@@ -4,9 +4,15 @@ import { DomainError } from "./errors.js";
 import { isAllowedOAuthRedirectUri } from "../http/redirect-uri.js";
 import { redactSensitiveConnectionValues, validateOpaqueCredentialReference } from "./content.js";
 import type { SocialAccountRepository } from "./repository.js";
+import type { SocialCredentialStore } from "./social-credentials.js";
 
 const DEFAULT_STATE_TTL_MS = 10 * 60 * 1000;
-export interface SocialOAuthProvider { readonly platform: string; readonly authorizationEndpoint: string; createAuthorizationUrl(input: { state: string; redirectUri: string }): string; exchangeCode(input: { code: string; redirectUri: string }): Promise<{ accountReference: string; credentialReference: string; connection?: Record<string, unknown> }>; }
+export interface SocialOAuthProvider { readonly platform: string; readonly authorizationEndpoint: string; createAuthorizationUrl(input: { state: string; redirectUri: string }): string; exchangeCode(input: { code: string; redirectUri: string }): Promise<{
+  accountReference: string;
+  credentialReference: string;
+  credential?: unknown;
+  connection?: Record<string, unknown>;
+}>; }
 export interface SocialOAuthProviderRegistry { get(platform: string): SocialOAuthProvider | undefined; }
 export interface OAuthState { state: string; platform: string; redirectUri: string; expiresAt: string; }
 export interface OAuthStateRepository { save(state: OAuthState): Promise<OAuthState>; consume(state: string, platform: string): Promise<OAuthState | undefined>; deleteExpired(before: string): Promise<void>; }
@@ -16,7 +22,13 @@ export class InMemoryOAuthStateRepository implements OAuthStateRepository { priv
 const isUniqueViolation = (error: unknown): boolean => error instanceof Error && "code" in error && (error as { code?: unknown }).code === "23505";
 
 export class SocialOAuthService {
-  constructor(private readonly providers: SocialOAuthProviderRegistry, private readonly accounts: SocialAccountRepository, private readonly states: OAuthStateRepository = new InMemoryOAuthStateRepository(), private readonly stateTtlMs = DEFAULT_STATE_TTL_MS) {}
+  constructor(
+    private readonly providers: SocialOAuthProviderRegistry,
+    private readonly accounts: SocialAccountRepository,
+    private readonly states: OAuthStateRepository = new InMemoryOAuthStateRepository(),
+    private readonly stateTtlMs = DEFAULT_STATE_TTL_MS,
+    private readonly credentialStore?: SocialCredentialStore
+  ) {}
   async start(platform: string, redirectUri: string): Promise<{ authorizationUrl: string; state: string; expiresAt: string }> {
     const provider = this.providers.get(platform);
     if (!provider) throw new DomainError("SOCIAL_OAUTH_UNSUPPORTED", "OAuth is not configured for this platform.", 404);
@@ -28,5 +40,15 @@ export class SocialOAuthService {
     await this.states.save({ state, platform, redirectUri, expiresAt });
     return { authorizationUrl: provider.createAuthorizationUrl({ state, redirectUri }), state, expiresAt };
   }
-  async callback(platform: string, code: string, state: string): Promise<SocialAccountView> { const pending = await this.states.consume(state, platform); if (!pending) throw new DomainError("INVALID_SOCIAL_OAUTH_STATE", "The OAuth state is invalid.", 400); if (Date.parse(pending.expiresAt) <= Date.now()) throw new DomainError("EXPIRED_SOCIAL_OAUTH_STATE", "The OAuth state has expired.", 400); const provider = this.providers.get(platform); if (!provider) throw new DomainError("SOCIAL_OAUTH_UNSUPPORTED", "OAuth is not configured for this platform.", 404); if (!code.trim()) throw new DomainError("INVALID_SOCIAL_OAUTH_CODE", "The OAuth callback code is required.", 400); const exchanged = await provider.exchangeCode({ code, redirectUri: pending.redirectUri }); if (!exchanged.accountReference?.trim() || !exchanged.credentialReference?.trim()) throw new DomainError("INVALID_SOCIAL_OAUTH_RESULT", "The OAuth provider returned an invalid account result.", 502); validateOpaqueCredentialReference(exchanged.credentialReference); const existing = await this.accounts.findByPlatformAccount(platform, exchanged.accountReference); const updatedAt = new Date().toISOString(); const account: SocialAccount = existing ? { ...existing, status: "active", connection: exchanged.connection ?? existing.connection, credentialReference: exchanged.credentialReference, updatedAt } : { id: randomUUID(), platform, accountReference: exchanged.accountReference, status: "active", connection: exchanged.connection ?? {}, credentialReference: exchanged.credentialReference, createdAt: updatedAt, updatedAt }; let saved: SocialAccount; try { saved = await this.accounts.save(account); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.accounts.findByPlatformAccount(platform, exchanged.accountReference); if (raced) { saved = await this.accounts.save({ ...raced, status: "active", connection: exchanged.connection ?? raced.connection, credentialReference: exchanged.credentialReference, updatedAt }); } else { throw error; } } else { throw error; } } const { credentialReference: _credentialReference, ...safe } = saved; return { ...safe, connection: redactSensitiveConnectionValues(saved.connection) as SocialAccount["connection"], hasCredentialReference: true }; }
+  async callback(platform: string, code: string, state: string): Promise<SocialAccountView> { const pending = await this.states.consume(state, platform); if (!pending) throw new DomainError("INVALID_SOCIAL_OAUTH_STATE", "The OAuth state is invalid.", 400); if (Date.parse(pending.expiresAt) <= Date.now()) throw new DomainError("EXPIRED_SOCIAL_OAUTH_STATE", "The OAuth state has expired.", 400); const provider = this.providers.get(platform); if (!provider) throw new DomainError("SOCIAL_OAUTH_UNSUPPORTED", "OAuth is not configured for this platform.", 404); if (!code.trim()) throw new DomainError("INVALID_SOCIAL_OAUTH_CODE", "The OAuth callback code is required.", 400); const exchanged = await provider.exchangeCode({ code, redirectUri: pending.redirectUri }); if (!exchanged.accountReference?.trim() || !exchanged.credentialReference?.trim()) throw new DomainError("INVALID_SOCIAL_OAUTH_RESULT", "The OAuth provider returned an invalid account result.", 502); validateOpaqueCredentialReference(exchanged.credentialReference);
+    if (exchanged.credential !== undefined) {
+      if (!this.credentialStore) {
+        throw new DomainError(
+          "SOCIAL_CREDENTIAL_STORE_UNAVAILABLE",
+          "OAuth credentials cannot be persisted because no secure social credential store is configured.",
+          503
+        );
+      }
+      await this.credentialStore.store(exchanged.credentialReference, exchanged.credential);
+    } const existing = await this.accounts.findByPlatformAccount(platform, exchanged.accountReference); const updatedAt = new Date().toISOString(); const account: SocialAccount = existing ? { ...existing, status: "active", connection: exchanged.connection ?? existing.connection, credentialReference: exchanged.credentialReference, updatedAt } : { id: randomUUID(), platform, accountReference: exchanged.accountReference, status: "active", connection: exchanged.connection ?? {}, credentialReference: exchanged.credentialReference, createdAt: updatedAt, updatedAt }; let saved: SocialAccount; try { saved = await this.accounts.save(account); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.accounts.findByPlatformAccount(platform, exchanged.accountReference); if (raced) { saved = await this.accounts.save({ ...raced, status: "active", connection: exchanged.connection ?? raced.connection, credentialReference: exchanged.credentialReference, updatedAt }); } else { throw error; } } else { throw error; } } const { credentialReference: _credentialReference, ...safe } = saved; return { ...safe, connection: redactSensitiveConnectionValues(saved.connection) as SocialAccount["connection"], hasCredentialReference: true }; }
 }
