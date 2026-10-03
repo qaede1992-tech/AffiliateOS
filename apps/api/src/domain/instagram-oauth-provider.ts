@@ -63,6 +63,9 @@ export class InstagramOAuthProvider implements SocialOAuthProvider {
     return {
       accountReference: payload.user_id,
       credentialReference,
+      credential: {
+        accessToken: payload.access_token
+      },
       connection: {
         provider: "instagram",
         grantedScopes: this.scopes
