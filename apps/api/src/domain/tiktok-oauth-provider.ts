@@ -68,6 +68,12 @@ export class TikTokOAuthProvider implements SocialOAuthProvider {
     return {
       accountReference,
       credentialReference,
+      credential: {
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token,
+        expiresInSeconds: payload.expires_in,
+        refreshExpiresInSeconds: payload.refresh_expires_in
+      },
       connection: {
         provider: "tiktok",
         openId: payload.open_id,
