@@ -119,7 +119,7 @@ export class AnalyticsService {
   private attribute(allClicks: Click[], links: TrackingLink[], conversions: Conversion[], commissions: Commission[], attributions: ConversionAttribution[]) {
     const linkIds = new Set(links.map((link) => link.id));
     const conversionIds = new Set(attributions.filter((item) => linkIds.has(item.trackingLinkId)).map((item) => item.conversionId));
-    const validConversions = conversions.filter((item) => conversionIds.has(item.id) && item.status !== "rejected");
+    const validConversions = conversions.filter((item) => conversionIds.has(item.id) && item.status === "approved");
     const validConversionIds = new Set(validConversions.map((item) => item.id));
     return {
       count: validConversions.length,
