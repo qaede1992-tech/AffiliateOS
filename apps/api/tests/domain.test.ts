@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
 import { DomainError } from "../src/domain/errors.js";
-import { InMemoryAffiliateOfferRepository, InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
+import { InMemoryAffiliateOfferRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
 import { ConversionService } from "../src/domain/services.js";
 
 test("creating a conversion creates a pending commission using offer basis points", async () => {
   const affiliates = new InMemoryRepository<Affiliate>();
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryConversionRepository();
-  const commissions = new InMemoryRepository<Commission>();
+  const commissions = new InMemoryCommissionRepository();
   const affiliateOffers = new InMemoryAffiliateOfferRepository();
   const affiliate: Affiliate = {
     id: "00000000-0000-4000-8000-000000000001",
