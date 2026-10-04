@@ -80,3 +80,19 @@ test("ShopeeCommissionReportReconciliationService keeps row failures isolated fr
   assert.equal(result.failed, 1);
   assert.deepEqual(result.failures[0], { rowKey: "bad", error: "tracking reference could not be resolved" });
 });
+test("ShopeeCommissionReportReconciliationService keeps fallback conversion identity stable across report periods", async () => {
+  const externalIds: string[] = [];
+  const marketplace = { getAffiliateAccount: async () => ({ id: "account-1", affiliateId: "affiliate-1" }) } as any;
+  const providerConversions = {
+    process: async (_accountScope: string, event: any) => {
+      externalIds.push(event.externalConversionId);
+      return { id: "conversion-1", affiliateId: "affiliate-1", offerId: "offer-1", amountCents: event.amountCents, status: event.status, occurredAt: event.occurredAt };
+    }
+  } as any;
+  const service = new ShopeeCommissionReportReconciliationService(marketplace, providerConversions);
+  const row = { rowKey: "order-2001", trackingReference: "sub-2001", amountCents: 5000, commissionCents: 500, occurredAt: "2026-10-01T08:00:00.000Z", status: "approved" as const };
+  await service.reconcile("shopee-affiliate-feed", { sourceReference: "period-a", rows: [row] });
+  await service.reconcile("shopee-affiliate-feed", { sourceReference: "period-b", rows: [row] });
+  assert.equal(externalIds.length, 2);
+  assert.equal(externalIds[0], externalIds[1]);
+});
