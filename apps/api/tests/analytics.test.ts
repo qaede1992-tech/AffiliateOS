@@ -54,6 +54,31 @@ test("analytics includes explicitly attributed conversion revenue and commission
   assert.deepEqual(await analytics.campaign(campaignId), { campaignId, clickCount: 1, trackingLinkCount: 1, contentCount: 0, publishedContentCount: 0, scheduledContentCount: 0, attributedConversionCount: 1, attributedRevenueCents: 12500, attributedCommissionCents: 1250, conversionRate: 1 });
 });
 
+test("analytics excludes pending commissions from attributed commission totals", async () => {
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const contents = new InMemoryRepository<import("@affiliateos/shared").Content>();
+  const links = new InMemoryTrackingLinkRepository();
+  const clicks = new InMemoryClickRepository();
+  const conversions = new InMemoryRepository<import("@affiliateos/shared").Conversion>();
+  const commissions = new InMemoryRepository<import("@affiliateos/shared").Commission>();
+  const attributions = new InMemoryConversionAttributionRepository();
+  const now = new Date().toISOString();
+  const campaignId = "00000000-0000-0000-0000-000000000401";
+  const linkId = "00000000-0000-0000-0000-000000000402";
+  const conversionId = "00000000-0000-0000-0000-000000000403";
+  await campaigns.save({ id: campaignId, name: "Pending Commission", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
+  await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000404", campaignId, code: "pending1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000405", offerId: "00000000-0000-0000-0000-000000000406", amountCents: 5000, status: "approved", occurredAt: now });
+  await commissions.save({ id: "00000000-0000-0000-0000-000000000407", conversionId, affiliateId: "00000000-0000-0000-0000-000000000405", amountCents: 500, status: "pending", createdAt: now });
+  await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
+
+  const analytics = new AnalyticsService(campaigns, links, clicks, contents, undefined, conversions, commissions, attributions);
+  const result = await analytics.campaign(campaignId);
+  assert.equal(result.attributedConversionCount, 1);
+  assert.equal(result.attributedRevenueCents, 5000);
+  assert.equal(result.attributedCommissionCents, 0);
+});
+
 test("analytics excludes commissions belonging to rejected attributed conversions", async () => {
   const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
   const contents = new InMemoryRepository<import("@affiliateos/shared").Content>();
