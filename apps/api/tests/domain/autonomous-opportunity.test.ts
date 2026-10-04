@@ -294,6 +294,33 @@ describe("autonomous opportunity selection", () => {
     assert.ok(audit?.reasons.includes("Commission rate is below the minimum"));
   });
 
+  it("rejects an explicitly ineligible offer during autonomous selection", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("ineligible"), offers: [offer("ineligible", { availabilityMetadata: { affiliateEligible: false } })] },
+      { product: product("eligible"), offers: [offer("eligible")] }
+    ], { minimumScore: 0, maximumResults: 5 });
+
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["eligible"]);
+    assert.ok(result.rejected.find((item) => item.productId === "ineligible")?.reasons.includes("Selected affiliate offer is not executable or is not bound to this product"));
+  });
+
+  it("rejects an explicitly commission-ineligible offer during autonomous selection", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("commission-ineligible"), offers: [offer("commission-ineligible", { availabilityMetadata: { commissionEligible: false } })] }
+    ], { minimumScore: 0, maximumResults: 5 });
+
+    assert.equal(result.selected.length, 0);
+    assert.ok(result.rejected.find((item) => item.productId === "commission-ineligible"));
+  });
+
+  it("keeps legacy offers without eligibility metadata executable", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("legacy", { soldCount: 0, reviewCount: 0 }), offers: [offer("legacy", { availabilityMetadata: {} })] }
+    ], { minimumScore: 0, maximumResults: 5 });
+
+    assert.deepEqual(result.selected.map((item) => item.product.id), ["legacy"]);
+  });
+
   it("does not select a product that misses a required audience", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("beauty", { category: "fashion", name: "Running Shoes", description: "Athletic shoes" }), offers: [offer("beauty")] }
