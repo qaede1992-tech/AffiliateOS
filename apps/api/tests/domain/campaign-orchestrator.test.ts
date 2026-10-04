@@ -381,4 +381,27 @@ describe("campaign orchestrator", () => {
     assert.equal((await contentService.get(scheduledContent!.id)).status, "published");
   });
 
+  it("rejects an explicitly ineligible offer before creating a tracking link", async () => {
+    const repository = await import("../../src/domain/repository.js");
+    const { TrackingService } = await import("../../src/domain/campaigns.js");
+    const { DomainError } = await import("../../src/domain/errors.js");
+    const campaigns = new repository.InMemoryRepository<Campaign>();
+    const affiliateOffers = new repository.InMemoryAffiliateOfferRepository();
+    const campaignOffers = new repository.InMemoryCampaignOfferRepository();
+    const trackingLinks = new repository.InMemoryTrackingLinkRepository();
+    const clicks = new repository.InMemoryClickRepository();
+
+    await campaigns.save(campaign);
+    await affiliateOffers.save({ ...offer, availabilityMetadata: { affiliateEligible: false } });
+    await campaignOffers.save({ campaignId: campaign.id, affiliateOfferId: offer.id, createdAt: campaign.createdAt });
+
+    const tracking = new TrackingService(trackingLinks, clicks, campaigns, affiliateOffers, campaignOffers);
+    await assert.rejects(
+      () => tracking.create({ affiliateOfferId: offer.id, campaignId: campaign.id, destinationUrl: offer.affiliateUrl! }),
+      (error: unknown) => error instanceof DomainError && error.code === "AFFILIATE_OFFER_NOT_ELIGIBLE"
+    );
+    assert.equal((await trackingLinks.list()).length, 0);
+  });
+
+
 });
