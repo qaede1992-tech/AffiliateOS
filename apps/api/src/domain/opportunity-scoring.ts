@@ -33,10 +33,17 @@ const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty
 function textFor(product: Product): string { return `${product.name} ${product.description ?? ""} ${product.category ?? ""}`.toLowerCase(); }
 function audienceFit(product: Product, audience: AudienceSegment[]): { score: number; matched: AudienceSegment[] } { if (audience.length === 0) return { score: 50, matched: [] }; const text = textFor(product); const matched = audience.filter((segment) => audienceCategories[segment].some((term) => text.includes(term))); return { score: clamp((matched.length / audience.length) * 100), matched }; }
 function isAffiliateLinkUsable(offer: AffiliateOffer, now = new Date()): boolean { return offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now.getTime()); }
+function isExplicitlyAffiliateEligible(offer: AffiliateOffer): boolean {
+  const metadata = offer.availabilityMetadata ?? {};
+  for (const key of ["affiliateEligible", "commissionEligible", "isEligible"]) {
+    if (metadata[key] === false) return false;
+  }
+  return true;
+}
 function commissionScore(offer: AffiliateOffer): number { const rateScore = offer.commissionRateBps !== undefined ? clamp((offer.commissionRateBps / 2_000) * 100) : 0; if (offer.commissionAmountCents === undefined) return rateScore; return clamp(rateScore * 0.6 + logScore(Math.max(0, offer.commissionAmountCents), 4) * 0.4); }
 function bestOffer(productId: string, offers: AffiliateOffer[]): AffiliateOffer | undefined {
   return offers
-    .filter((offer) => offer.productId === productId && offer.status === "active" && isAffiliateLinkUsable(offer) && offer.availability !== "out_of_stock")
+    .filter((offer) => offer.productId === productId && offer.status === "active" && isAffiliateLinkUsable(offer) && offer.availability !== "out_of_stock" && isExplicitlyAffiliateEligible(offer))
     .slice()
     .sort((a, b) => {
       const commissionA = commissionScore(a);
