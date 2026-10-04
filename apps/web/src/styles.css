@@ -126,3 +126,22 @@ nav { display: grid; gap: 5px; }
 .autonomous-run-summary { display: grid; gap: 6px; margin-bottom: 12px; padding: 12px 14px; border: 1px solid #d0cabe; color: #667174; font-size: 11px; }
 .autonomous-run-summary strong { font-family: "Courier New", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #4f5b5d; }
 .autonomous-run-summary span { overflow-wrap: anywhere; line-height: 1.5; }
+
+.offer-visibility-list { display: grid; gap: 14px; margin-top: 18px; }
+.offer-visibility-card { padding: 16px; border: 1px solid #d0cabe; background: rgba(255, 253, 247, .32); }
+.offer-visibility-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.offer-visibility-header > div:first-child { display: grid; gap: 5px; min-width: 0; }
+.offer-visibility-header strong { overflow-wrap: anywhere; font-size: 14px; }
+.offer-visibility-header small, .offer-visibility-details span { color: #7d8788; font-size: 10px; }
+.offer-visibility-details { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #d8d2c7; }
+.offer-visibility-details > div { display: grid; gap: 4px; min-width: 0; }
+.offer-visibility-details strong { overflow-wrap: anywhere; font-size: 11px; }
+.offer-link-list { display: grid; gap: 8px; margin-top: 12px; }
+.offer-link-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0 0; border-top: 1px solid #e1dcd3; }
+.offer-link-row > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.offer-link-row strong { font-family: "Courier New", monospace; font-size: 11px; }
+.offer-link-row small { color: #7d8788; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .offer-visibility-header, .offer-link-row { align-items: flex-start; flex-direction: column; }
+  .offer-visibility-details { grid-template-columns: 1fr; }
+}
