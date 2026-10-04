@@ -194,11 +194,9 @@ describe("publication affiliate eligibility", () => {
       status: "draft"
     });
 
+    const eligibility = new RepositoryAffiliatePublicationEligibilityValidator(products, affiliateOffers, campaignOffers, trackingLinks);
     await assert.rejects(
-      () => contentService.update(draft.id, {
-        status: "scheduled",
-        scheduledAt: timestamps.scheduledAt
-      }),
+      () => eligibility.validate(draft),
       (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "AFFILIATE_OFFER_NOT_AVAILABLE")
     );
     assert.equal((await contentService.get(draft.id)).status, "draft");
