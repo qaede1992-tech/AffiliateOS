@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
 import { DomainError } from "../src/domain/errors.js";
-import { InMemoryAffiliateOfferRepository, InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
+import { InMemoryAffiliateOfferRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
 import { ConversionService } from "../src/domain/services.js";
 
 test("creating a conversion creates a pending commission using offer basis points", async () => {
   const affiliates = new InMemoryRepository<Affiliate>();
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryConversionRepository();
-  const commissions = new InMemoryRepository<Commission>();
+  const commissions = new InMemoryCommissionRepository();
   const affiliateOffers = new InMemoryAffiliateOfferRepository();
   const affiliate: Affiliate = {
     id: "00000000-0000-4000-8000-000000000001",
@@ -100,4 +100,23 @@ test("creating a conversion rejects an inactive offer", async () => {
   );
   assert.equal((await conversions.list()).length, 0);
   assert.equal((await commissions.list()).length, 0);
+});
+test("reconciling a pending or rejected conversion keeps its commission pending", async () => {
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryCommissionRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const affiliate = { id: "00000000-0000-4000-8000-000000000010", name: "Partner", email: "partner@example.com", status: "active" as const, createdAt: new Date().toISOString() };
+  const offer = { id: "00000000-0000-4000-8000-000000000011", name: "Standard", status: "active" as const, commissionRateBps: 1000, createdAt: new Date().toISOString() };
+  await affiliates.save(affiliate);
+  await offers.save(offer);
+  const service = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, { run: async (work) => work({ conversions, commissions }) });
+  const conversion = await service.create({ affiliateId: affiliate.id, offerId: offer.id, amountCents: 10000 });
+  await service.reconcileProviderState(conversion.id, "approved", 1000);
+  await service.reconcileProviderState(conversion.id, "pending");
+  assert.equal((await commissions.findByConversionId(conversion.id))?.status, "pending");
+  await service.reconcileProviderState(conversion.id, "approved");
+  await service.reconcileProviderState(conversion.id, "rejected");
+  assert.equal((await commissions.findByConversionId(conversion.id))?.status, "pending");
 });
