@@ -7,6 +7,7 @@ import { ShopeeConversionSyncService } from "./shopee-conversion-sync.js";
 import { ShopeeConversionSyncScheduler } from "./shopee-conversion-sync-scheduler.js";
 import { CampaignService, TrackingService } from "./campaigns.js";
 import { ContentService, SocialAccountService } from "./content.js";
+import { RepositoryAffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
 import { AnalyticsService } from "./analytics.js";
 import type { AnalyticsReader } from "./analytics-db.js";
 import { ConversionAttributionService, InMemoryConversionAttributionRepository, type ConversionAttributionRepository } from "./attribution.js";
@@ -60,7 +61,8 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publisherRegistry = new SocialPublisherRegistry(socialPublishers);
   const publishers = publisherRegistry.list();
   const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets);
+  const affiliatePublicationEligibility = new RepositoryAffiliatePublicationEligibilityValidator(repositories.products, repositories.affiliateOffers, repositories.campaignOffers, repositories.trackingLinks);
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility);
   const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver), repositories.socialAccounts, socialCredentialResolver);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
