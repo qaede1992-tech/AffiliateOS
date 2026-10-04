@@ -31,17 +31,17 @@ export class PublisherExecutor {
     const content = await this.contentService.get(contentId);
     if (content.status !== "scheduled") throw new Error("Only scheduled content can be published.");
     await this.contentService.validatePublicationEligibility(content);
-    await this.affiliatePublicationEligibility?.validate(content);
     const scheduledAt = content.scheduledAt ? new Date(content.scheduledAt) : null;
     if (!scheduledAt || !Number.isFinite(scheduledAt.getTime())) throw new Error("Scheduled content requires a valid scheduledAt timestamp.");
     if (scheduledAt.getTime() > now.getTime()) return { content, status: "not_due" };
 
-    const account = await this.findAccount(content);
-    const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content));
-    if (!publisher) return { content, account, status: "unsupported" };
-    if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
-
     try {
+      await this.affiliatePublicationEligibility?.validate(content);
+      const account = await this.findAccount(content);
+      const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content));
+      if (!publisher) return { content, account, status: "unsupported" };
+      if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
+
       const credential = await this.resolveCredential(account);
       const mediaAssets = await this.resolveMediaAssets(content);
       const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey });
