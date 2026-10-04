@@ -225,5 +225,5 @@ test("ShopeeCommissionReportReconciliationService trims identity fields before d
 
   assert.equal(result.sourceReference, "period-1");
   assert.equal(result.processed, 1);
-  assert.deepEqual(externalIds, ["report:28e95c0f6d4e2f8d3b0f7e7d6f0f7c7c6c8f0d2e5b4c4c1c7c5e0b3d8e2a9a1"]);
+  assert.deepEqual(externalIds, ["report:0bafe22156d2698c143b86040446d366ead863ba600d5c924f3d15c786ef4057"]);
 });
