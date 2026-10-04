@@ -93,6 +93,7 @@ export class TrackingService {
     const offer = await this.affiliateOffers.findById(input.affiliateOfferId);
     if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
     if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Tracking links require an active affiliate offer.");
+    if (!isExplicitlyAffiliateEligible(offer)) throw new DomainError("AFFILIATE_OFFER_NOT_ELIGIBLE", "Tracking links require an affiliate-eligible offer.");
     if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Tracking links require an active affiliate link.");
     if (offer.affiliateLinkExpiresAt) {
       const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
