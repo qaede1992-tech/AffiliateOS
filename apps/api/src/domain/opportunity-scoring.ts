@@ -33,10 +33,17 @@ const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty
 function textFor(product: Product): string { return `${product.name} ${product.description ?? ""} ${product.category ?? ""}`.toLowerCase(); }
 function audienceFit(product: Product, audience: AudienceSegment[]): { score: number; matched: AudienceSegment[] } { if (audience.length === 0) return { score: 50, matched: [] }; const text = textFor(product); const matched = audience.filter((segment) => audienceCategories[segment].some((term) => text.includes(term))); return { score: clamp((matched.length / audience.length) * 100), matched }; }
 function isAffiliateLinkUsable(offer: AffiliateOffer, now = new Date()): boolean { return offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now.getTime()); }
+function isExplicitlyAffiliateEligible(offer: AffiliateOffer): boolean {
+  const metadata = offer.availabilityMetadata;
+  for (const key of ["affiliateEligible", "commissionEligible", "isEligible"]) {
+    if (metadata[key] === false) return false;
+  }
+  return true;
+}
 function commissionScore(offer: AffiliateOffer): number { const rateScore = offer.commissionRateBps !== undefined ? clamp((offer.commissionRateBps / 2_000) * 100) : 0; if (offer.commissionAmountCents === undefined) return rateScore; return clamp(rateScore * 0.6 + logScore(Math.max(0, offer.commissionAmountCents), 4) * 0.4); }
 function bestOffer(productId: string, offers: AffiliateOffer[]): AffiliateOffer | undefined {
   return offers
-    .filter((offer) => offer.productId === productId && offer.status === "active" && isAffiliateLinkUsable(offer) && offer.availability !== "out_of_stock")
+    .filter((offer) => offer.productId === productId && offer.status === "active" && isAffiliateLinkUsable(offer) && offer.availability !== "out_of_stock" && isExplicitlyAffiliateEligible(offer))
     .slice()
     .sort((a, b) => {
       const commissionA = commissionScore(a);
@@ -87,7 +94,7 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   // the catalog demand/review signals are the available evidence and should not be penalized.
   const confidencePenalty = 0;
   const total = clamp(commission * 0.25 + demand * 0.20 + audience.score * 0.20 + socialProof * 0.10 + priceAppeal * 0.10 + availability * 0.15 - confidencePenalty);
-  const reasons: string[] = []; if (commission >= 60) reasons.push("Strong commission potential"); if (demand >= 60) reasons.push(reachSignals?.audienceReachScore !== undefined || observedReach > 0 ? "Strong demand and audience-reach signals" : "Strong demand signals from sales and reviews"); if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`); if (priceAppeal >= 60) reasons.push("Competitive price or discount signal"); if (socialProof >= 70) reasons.push("Strong rating and review evidence"); if (!offer) reasons.push("No active affiliate offer available"); if (availability < 100 && availability > 0) reasons.push("Offer availability is limited");
+  const reasons: string[] = []; if (commission >= 60) reasons.push("Strong commission potential"); if (demand >= 60) reasons.push(reachSignals?.audienceReachScore !== undefined || observedReach > 0 ? "Strong demand and audience-reach signals" : "Strong demand signals from sales and reviews"); if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`); if (priceAppeal >= 60) reasons.push("Competitive price or discount signal"); if (socialProof >= 70) reasons.push("Strong rating and review evidence"); if (!offer) reasons.push("No active eligible affiliate offer available"); if (availability < 100 && availability > 0) reasons.push("Offer availability is limited");
   return { product, offerId: offer?.id, score: Math.round(total * 100) / 100, reasons, disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.", breakdown: { commission: Math.round(commission * 100) / 100, commissionRateBps, commissionAmountCents, demand: Math.round(demand * 100) / 100, audienceFit: Math.round(audience.score * 100) / 100, socialProof: Math.round(socialProof * 100) / 100, priceAppeal: Math.round(priceAppeal * 100) / 100, availability, confidencePenalty, total: Math.round(total * 100) / 100 } };
 }
 export function rankOpportunities(inputs: OpportunityScoringInput[]): ScoredOpportunity[] { return inputs.map(scoreOpportunity).sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id)); }
