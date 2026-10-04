@@ -1,4 +1,5 @@
 import type { Content, SocialAccount } from "@affiliateos/shared";
+import type { AffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
 import type { ContentService } from "./content.js";
 import type { MediaAssetRepository } from "./media-asset.js";
 import { publisherSupportsContent, type PublicationCheckResult, type SocialPublisher } from "./distribution-engine.js";
@@ -22,13 +23,15 @@ export class PublisherExecutor {
     private readonly socialAccounts: SocialAccountRepository,
     private readonly publishers: SocialPublisher[],
     private readonly credentialResolver?: SocialCredentialResolver,
-    private readonly mediaAssets?: MediaAssetRepository
+    private readonly mediaAssets?: MediaAssetRepository,
+    private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator
   ) {}
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`): Promise<PublishExecutionResult> {
     const content = await this.contentService.get(contentId);
     if (content.status !== "scheduled") throw new Error("Only scheduled content can be published.");
     await this.contentService.validatePublicationEligibility(content);
+    await this.affiliatePublicationEligibility?.validate(content);
     const scheduledAt = content.scheduledAt ? new Date(content.scheduledAt) : null;
     if (!scheduledAt || !Number.isFinite(scheduledAt.getTime())) throw new Error("Scheduled content requires a valid scheduledAt timestamp.");
     if (scheduledAt.getTime() > now.getTime()) return { content, status: "not_due" };
@@ -56,6 +59,7 @@ export class PublisherExecutor {
   async check(operation: PublicationOperation): Promise<{ content: Content; account: SocialAccount; result: PublicationCheckResult }> {
     const content = await this.contentService.get(operation.contentId);
     await this.contentService.validatePublicationEligibility(content);
+    await this.affiliatePublicationEligibility?.validate(content);
     const account = await this.findAccount(content);
     const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content) && (candidate.provider ?? content.platform) === operation.provider);
     if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
