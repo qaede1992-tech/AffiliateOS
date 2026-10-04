@@ -121,7 +121,8 @@ export class PublicationWorker {
           "PRODUCT_NOT_ACTIVE",
           "PRODUCT_NOT_FOUND",
           "CONTENT_NOT_FOUND",
-          "SOCIAL_ACCOUNT_NOT_FOUND"
+          "SOCIAL_ACCOUNT_NOT_FOUND",
+          "AFFILIATE_OFFER_NOT_AVAILABLE"
         ]);
         const isTerminal = (error: unknown): boolean => {
           if (!error || typeof error !== "object" || !("code" in error)) return false;
