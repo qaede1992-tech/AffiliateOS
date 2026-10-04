@@ -104,6 +104,49 @@ test("analytics excludes commissions belonging to rejected attributed conversion
   assert.equal(result.attributedCommissionCents, 0);
 });
 
+test("analytics preserves campaign metadata in the shared contract", async () => {
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const campaignId = "00000000-0000-0000-0000-000000000601";
+  await campaigns.save({
+    id: campaignId,
+    name: "Metadata",
+    objective: "sales",
+    status: "active",
+    audience: {
+      productId: "00000000-0000-0000-0000-000000000602",
+      marketplaceId: "00000000-0000-0000-0000-000000000603",
+      category: "electronics",
+      audience: ["deal-hunters", "electronics"]
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+
+  const analytics = new AnalyticsService(
+    campaigns,
+    new InMemoryTrackingLinkRepository(),
+    new InMemoryClickRepository(),
+    new InMemoryRepository()
+  );
+
+  assert.deepEqual(await analytics.campaign(campaignId), {
+    campaignId,
+    productId: "00000000-0000-0000-0000-000000000602",
+    marketplaceId: "00000000-0000-0000-0000-000000000603",
+    category: "electronics",
+    audienceSegments: ["deal-hunters", "electronics"],
+    clickCount: 0,
+    trackingLinkCount: 0,
+    contentCount: 0,
+    publishedContentCount: 0,
+    scheduledContentCount: 0,
+    attributedConversionCount: 0,
+    attributedRevenueCents: 0,
+    attributedCommissionCents: 0,
+    conversionRate: 0
+  });
+});
+
 test("analytics delegates to the database reader when configured", async () => {
   const reader = {
     async overview() { return { clickCount: 7, trackingLinkCount: 3, campaignCount: 2, contentCount: 4, publishedContentCount: 2, scheduledContentCount: 1, attributedConversionCount: 0, attributedRevenueCents: 0, attributedCommissionCents: 0, conversionRate: 0, campaigns: [] }; },
