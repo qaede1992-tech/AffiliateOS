@@ -1,6 +1,6 @@
-import type { AffiliateOffer, Conversion, ConversionAttribution, TrackingLink } from "@affiliateos/shared";
+import type { Conversion, ConversionAttribution, TrackingLink } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
-import type { AffiliateOfferRepository, Repository } from "./repository.js";
+import type { Repository } from "./repository.js";
 
 const now = () => new Date().toISOString();
 
@@ -25,7 +25,6 @@ export class ConversionAttributionService {
   constructor(
     private readonly conversions: Repository<Conversion>,
     private readonly trackingLinks: Repository<TrackingLink>,
-    private readonly affiliateOffers: AffiliateOfferRepository,
     private readonly attributions: ConversionAttributionRepository
   ) {}
 
@@ -39,15 +38,9 @@ export class ConversionAttributionService {
     const trackingLink = await this.trackingLinks.findById(input.trackingLinkId);
     if (!trackingLink) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404);
     if (trackingLink.status !== "active" && !options.allowInactiveTrackingLink) throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Conversions can only be attributed to active tracking links.");
-
-    const affiliateOffer = await this.affiliateOffers.findById(trackingLink.affiliateOfferId);
-    if (!affiliateOffer || affiliateOffer.conversionOfferId !== conversion.offerId) {
-      throw new DomainError("TRACKING_LINK_OFFER_MISMATCH", "The tracking link must belong to the same conversion offer as the conversion.");
-    }
-    if (conversion.affiliateOfferId && conversion.affiliateOfferId !== affiliateOffer.id) {
+    if (!conversion.affiliateOfferId || trackingLink.affiliateOfferId !== conversion.affiliateOfferId) {
       throw new DomainError("TRACKING_LINK_OFFER_MISMATCH", "The tracking link must belong to the same affiliate offer as the conversion.");
     }
-
     const existing = await this.attributions.findByConversion(conversionId);
     if (existing) {
       if (existing.trackingLinkId === input.trackingLinkId) return existing;
