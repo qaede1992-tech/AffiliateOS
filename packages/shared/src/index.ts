@@ -66,5 +66,5 @@ export interface SocialOAuthStartRequest { platform: string; redirectUri: string
 export interface SocialOAuthStartResponse { authorizationUrl: string; state: string; expiresAt: IsoTimestamp; }
 
 export interface ConversionAttribution { conversionId: EntityId; trackingLinkId: EntityId; attributedAt: IsoTimestamp; }
-export interface CampaignAnalytics { campaignId: EntityId; productId?: EntityId; clickCount: number; trackingLinkCount: number; contentCount: number; publishedContentCount: number; scheduledContentCount: number; attributedConversionCount: number; attributedRevenueCents: MoneyCents; attributedCommissionCents: MoneyCents; conversionRate: number; }
+export interface CampaignAnalytics { campaignId: EntityId; productId?: EntityId; marketplaceId?: EntityId; category?: string; audienceSegments?: string[]; clickCount: number; trackingLinkCount: number; contentCount: number; publishedContentCount: number; scheduledContentCount: number; attributedConversionCount: number; attributedRevenueCents: MoneyCents; attributedCommissionCents: MoneyCents; conversionRate: number; }
 export interface AnalyticsOverview extends Omit<CampaignAnalytics, "campaignId" | "productId"> { campaignCount: number; campaigns: CampaignAnalytics[]; }
