@@ -150,3 +150,40 @@ test("rejects provider commissions above conversion amount before persistence", 
   assert.equal((await services.conversions.list()).length, 0);
   assert.equal((await services.commissions.list()).length, 0);
 });
+
+test("reconciles a replayed pending provider state after an approved conversion", async () => {
+  const services = createInMemoryServices();
+  const affiliate = await services.affiliates.create({ name: "Replay affiliate", email: "replay@example.com" });
+  const offer = await services.offers.create({ name: "Replay offer", status: "active", commissionRateBps: 1000 });
+  const processor = new ProviderConversionProcessor(services.conversions, {
+    resolveAffiliate: async () => affiliate.id,
+    resolveOffer: async () => offer.id
+  });
+
+  const approved = await processor.process("account-replay", {
+    externalConversionId: "conv-replay-status",
+    affiliateReference: "aff-replay",
+    offerReference: "offer-replay",
+    amountCents: 5000,
+    occurredAt: "2026-10-04T10:00:00.000Z",
+    status: "approved",
+    commissionCents: 600,
+    sourceEventId: "evt-approved",
+    rawEventType: "conversion.report"
+  });
+
+  const pending = await processor.process("account-replay", {
+    externalConversionId: "conv-replay-status",
+    affiliateReference: "aff-replay",
+    offerReference: "offer-replay",
+    amountCents: 5000,
+    occurredAt: "2026-10-04T10:00:00.000Z",
+    status: "pending",
+    sourceEventId: "evt-pending",
+    rawEventType: "conversion.report"
+  });
+
+  assert.equal(pending.id, approved.id);
+  assert.equal((await services.conversions.list())[0]?.status, "pending");
+  assert.equal((await services.commissions.list())[0]?.status, "pending");
+});

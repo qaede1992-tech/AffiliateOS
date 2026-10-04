@@ -74,10 +74,8 @@ export class ProviderConversionProcessor {
 
     if (trackingLinkId && this.attributor) await this.attributor.attribute(conversion.id, trackingLinkId);
 
-    if (event.status !== "pending" || event.commissionCents !== undefined) {
-      return this.conversions.reconcileProviderState(conversion.id, event.status, event.commissionCents);
-    }
-
-    return conversion;
+    // Reconcile every provider state, including pending events. A later provider
+    // report may legitimately move an existing conversion back to pending.
+    return this.conversions.reconcileProviderState(conversion.id, event.status, event.commissionCents);
   }
 }
