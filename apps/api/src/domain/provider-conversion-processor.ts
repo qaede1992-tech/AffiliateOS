@@ -28,6 +28,16 @@ export class ProviderConversionProcessor {
     if (!accountScope.trim()) throw new DomainError("PROVIDER_CONVERSION_ACCOUNT_MISSING", "Provider conversion account scope is required.", 422);
     if (!event.externalConversionId.trim()) throw new DomainError("PROVIDER_CONVERSION_ID_MISSING", "Provider conversion external ID is required.", 422);
     if (event.externalConversionId.length > 255) throw new DomainError("PROVIDER_CONVERSION_ID_INVALID", "Provider conversion external ID is too long.", 422);
+    if (
+      event.commissionCents !== undefined &&
+      (!Number.isSafeInteger(event.commissionCents) || event.commissionCents < 0 || event.commissionCents > event.amountCents)
+    ) {
+      throw new DomainError(
+        "PROVIDER_CONVERSION_COMMISSION_INVALID",
+        "Provider conversion commission cannot exceed the conversion amount and must be a non-negative safe integer.",
+        422
+      );
+    }
     const affiliateReference = event.affiliateReference?.trim();
     const offerReference = event.offerReference?.trim();
     const trackingReference = event.trackingReference?.trim();
