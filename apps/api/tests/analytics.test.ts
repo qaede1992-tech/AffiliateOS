@@ -118,3 +118,27 @@ test("analytics rejects an unknown campaign", async () => {
   const services = new AnalyticsService(new InMemoryRepository(), new InMemoryTrackingLinkRepository(), new InMemoryClickRepository(), new InMemoryRepository());
   await assert.rejects(() => services.campaign("00000000-0000-0000-0000-000000000999"), /campaign does not exist/i);
 });
+test("analytics excludes pending attributed conversions and their commissions", async () => {
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const contents = new InMemoryRepository<import("@affiliateos/shared").Content>();
+  const links = new InMemoryTrackingLinkRepository();
+  const clicks = new InMemoryClickRepository();
+  const conversions = new InMemoryRepository<import("@affiliateos/shared").Conversion>();
+  const commissions = new InMemoryRepository<import("@affiliateos/shared").Commission>();
+  const attributions = new InMemoryConversionAttributionRepository();
+  const now = new Date().toISOString();
+  const campaignId = "00000000-0000-0000-0000-000000000501";
+  const linkId = "00000000-0000-0000-0000-000000000502";
+  const conversionId = "00000000-0000-0000-0000-000000000503";
+  await campaigns.save({ id: campaignId, name: "Pending Conversion", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
+  await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000504", campaignId, code: "pending-conversion", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000505", offerId: "00000000-0000-0000-0000-000000000504", amountCents: 5000, status: "pending", occurredAt: now });
+  await commissions.save({ id: "00000000-0000-0000-0000-000000000506", conversionId, affiliateId: "00000000-0000-0000-0000-000000000505", amountCents: 500, status: "approved", createdAt: now });
+  await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
+
+  const analytics = new AnalyticsService(campaigns, links, clicks, contents, undefined, conversions, commissions, attributions);
+  const result = await analytics.campaign(campaignId);
+  assert.equal(result.attributedConversionCount, 0);
+  assert.equal(result.attributedRevenueCents, 0);
+  assert.equal(result.attributedCommissionCents, 0);
+});
