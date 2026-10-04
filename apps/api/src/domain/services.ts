@@ -69,6 +69,10 @@ export class ConversionService {
     return this.conversions.list();
   }
 
+  findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined> {
+    return this.conversions.findByIdempotencyKey(idempotencyKey.trim());
+  }
+
   async reconcileProviderState(conversionId: string, status: Conversion["status"], commissionCents?: number): Promise<Conversion> {
     const existing = await this.conversions.findById(conversionId);
     if (!existing) throw new DomainError("CONVERSION_NOT_FOUND", "The conversion does not exist.", 404);
