@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Campaign, Content, CreateContentRequest, CreateSocialAccountRequest, Product, SocialAccount, SocialAccountView, UpdateContentRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
-import { isExplicitlyAffiliateEligible } from "./opportunity-scoring.js";
-import type { CampaignOfferRepository, Repository, SocialAccountRepository, TrackingLinkRepository } from "./repository.js";
+import type { Repository, SocialAccountRepository } from "./repository.js";
 
 const now = () => new Date().toISOString();
 
@@ -18,14 +17,7 @@ function isOpaqueCredentialReference(value: string): boolean { return /^(?:[a-z]
 export function validateOpaqueCredentialReference(value: string | undefined): void { if (value !== undefined && (!value.trim() || !isOpaqueCredentialReference(value.trim()))) throw new DomainError("INVALID_SOCIAL_CREDENTIAL_REFERENCE", "Social credential references must be opaque secret-manager references.", 400); }
 
 export class ContentService {
-  constructor(
-    private readonly contents: Repository<Content>,
-    private readonly campaigns: Repository<Campaign>,
-    private readonly products: Repository<Product>,
-    private readonly campaignOffers?: CampaignOfferRepository,
-    private readonly trackingLinks?: TrackingLinkRepository,
-    private readonly affiliateOffers?: import("./repository.js").AffiliateOfferRepository
-  ) {}
+  constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>) {}
   async list(campaignId?: string) { const items = await this.contents.list(); if (campaignId) { await this.getCampaign(campaignId); return items.filter((item) => item.campaignId === campaignId); } return items; }
   async get(id: string) { const content = await this.contents.findById(id); if (!content) throw new DomainError("CONTENT_NOT_FOUND", "The content does not exist.", 404); return content; }
   async validateProductForPublication(productId: string): Promise<Product> {
@@ -34,38 +26,10 @@ export class ContentService {
     if (product.status !== "active") throw new DomainError("PRODUCT_NOT_ACTIVE", "Affiliate promotion content requires an active product.");
     return product;
   }
-  async validatePublicationEligibility(content: Content): Promise<void> {
-    if (content.contentType !== "affiliate-promotion" || !content.productId) return;
-    const product = await this.validateProductForPublication(content.productId);
-    if (!content.campaignId) throw new DomainError("AFFILIATE_OFFER_NOT_AVAILABLE", "Affiliate promotion content requires a campaign with an active affiliate offer.");
-    if (!this.campaignOffers || !this.trackingLinks) throw new DomainError("AFFILIATE_PUBLICATION_VALIDATION_UNAVAILABLE", "Affiliate publication validation is not configured.");
-
-    const attachedOffers = await this.campaignOffers.listByCampaign(content.campaignId);
-    const candidateOffers = attachedOffers.filter((attachment) => attachment.affiliateOfferId);
-    let eligibleOfferId: string | undefined;
-    for (const attachment of candidateOffers) {
-      const offer = await this.findAffiliateOffer(attachment.affiliateOfferId);
-      if (!offer || offer.productId !== product.id || offer.status !== "active" || !isExplicitlyAffiliateEligible(offer)) continue;
-      if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) continue;
-      if (offer.affiliateLinkExpiresAt) {
-        const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
-        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) continue;
-      }
-      const links = await this.trackingLinks.listByCampaign(content.campaignId);
-      if (links.some((link) => link.status === "active" && link.affiliateOfferId === offer.id && link.destinationUrl === offer.affiliateUrl)) {
-        eligibleOfferId = offer.id;
-        break;
-      }
-    }
-    if (!eligibleOfferId) throw new DomainError("AFFILIATE_OFFER_NOT_AVAILABLE", "Affiliate promotion content requires an active, eligible affiliate offer and tracking link.");
-  }
+  async validatePublicationEligibility(content: Content): Promise<void> { if (content.contentType !== "affiliate-promotion" || !content.productId) return; await this.validateProductForPublication(content.productId); }
   async create(input: CreateContentRequest) { await this.validateReferences(input.campaignId, input.productId); const nextStatus = input.status ?? "draft"; validateContentTiming(nextStatus, input.scheduledAt, input.publishedAt); const draftContent = { productId: input.productId, contentType: input.contentType } as Content; if (nextStatus === "scheduled" || nextStatus === "published") await this.validatePublicationEligibility(draftContent); const createdAt = now(); return this.contents.save({ id: randomUUID(), productId: input.productId, campaignId: input.campaignId, socialAccountId: input.socialAccountId, mediaAssetIds: input.mediaAssetIds ? [...input.mediaAssetIds] : undefined, platform: input.platform, contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta, status: input.status ?? "draft", scheduledAt: input.scheduledAt, publishedAt: input.publishedAt, createdAt, updatedAt: createdAt }); }
   async update(id: string, input: UpdateContentRequest) { const current = await this.get(id); const productId = input.productId ?? current.productId; await this.validateReferences(input.campaignId ?? current.campaignId, productId); const nextStatus = input.status ?? current.status; validateContentTransition(current.status, input.status); validateContentTiming(nextStatus, input.scheduledAt ?? current.scheduledAt, input.publishedAt ?? current.publishedAt); const nextContent = { ...current, ...input, productId, mediaAssetIds: input.mediaAssetIds ? [...input.mediaAssetIds] : current.mediaAssetIds, updatedAt: now() }; if (nextStatus === "scheduled" || nextStatus === "published") await this.validatePublicationEligibility(nextContent); return this.contents.save(nextContent); }
   private async getCampaign(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
-  private async findAffiliateOffer(id: string) {
-    return this.affiliateOffers?.findById(id);
-  }
-
   private async validateReferences(campaignId?: string, productId?: string) { if (campaignId) await this.getCampaign(campaignId); if (productId && !(await this.products.findById(productId))) throw new DomainError("PRODUCT_NOT_FOUND", "The product does not exist.", 404); }
 }
 
