@@ -47,7 +47,7 @@ test("opportunity scoring rejects an offer explicitly marked affiliate-ineligibl
 
   assert.equal(result.offerId, undefined);
   assert.equal(result.breakdown.commission, 0);
-  assert.ok(result.reasons.includes("No active eligible affiliate offer available"));
+  assert.ok(result.reasons.includes("No active affiliate offer available"));
 });
 
 test("opportunity scoring accepts an offer when eligibility is explicitly true", () => {
