@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Affiliate, Commission, Conversion, Offer } from "@affiliateos/shared";
+import type { Affiliate, AffiliateOffer, Commission, Conversion, Offer } from "@affiliateos/shared";
 import { DomainError } from "../src/domain/errors.js";
 import { InMemoryAffiliateOfferRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
 import { ConversionService } from "../src/domain/services.js";
@@ -101,6 +101,44 @@ test("creating a conversion rejects an inactive offer", async () => {
   assert.equal((await conversions.list()).length, 0);
   assert.equal((await commissions.list()).length, 0);
 });
+
+test("creating a conversion rejects an affiliate offer belonging to another conversion offer", async () => {
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryCommissionRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const affiliateId = "00000000-0000-4000-8000-000000000020";
+  const offerId = "00000000-0000-4000-8000-000000000021";
+  const otherOfferId = "00000000-0000-4000-8000-000000000022";
+  const affiliateOfferId = "00000000-0000-4000-8000-000000000023";
+  await affiliates.save({ id: affiliateId, name: "Partner", email: "partner@example.com", status: "active", createdAt: new Date().toISOString() });
+  await offers.save({ id: offerId, name: "Standard", status: "active", commissionRateBps: 1000, createdAt: new Date().toISOString() });
+  await offers.save({ id: otherOfferId, name: "Other", status: "active", commissionRateBps: 2000, createdAt: new Date().toISOString() });
+  const affiliateOffer: AffiliateOffer = {
+    id: affiliateOfferId,
+    productId: "00000000-0000-4000-8000-000000000024",
+    conversionOfferId: otherOfferId,
+    affiliateAccountId: "00000000-0000-4000-8000-000000000025",
+    externalOfferId: "external-mismatch",
+    availability: "in_stock",
+    availabilityMetadata: {},
+    affiliateLinkStatus: "active",
+    status: "active",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  await affiliateOffers.save(affiliateOffer);
+  const service = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, { run: async (work) => work({ conversions, commissions }) });
+
+  await assert.rejects(
+    () => service.create({ affiliateId, offerId, affiliateOfferId, amountCents: 1000 }),
+    (error: unknown) => error instanceof DomainError && error.code === "AFFILIATE_OFFER_OFFER_MISMATCH" && error.statusCode === 422
+  );
+  assert.equal((await conversions.list()).length, 0);
+  assert.equal((await commissions.list()).length, 0);
+});
+
 test("reconciling a pending or rejected conversion keeps its commission pending", async () => {
   const affiliates = new InMemoryRepository<Affiliate>();
   const offers = new InMemoryRepository<Offer>();
