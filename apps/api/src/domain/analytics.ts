@@ -124,7 +124,7 @@ export class AnalyticsService {
     return {
       count: validConversions.length,
       revenueCents: validConversions.reduce((sum, item) => sum + item.amountCents, 0),
-      commissionCents: commissions.filter((item) => validConversionIds.has(item.conversionId)).reduce((sum, item) => sum + item.amountCents, 0)
+      commissionCents: commissions.filter((item) => validConversionIds.has(item.conversionId) && (item.status === "approved" || item.status === "paid")).reduce((sum, item) => sum + item.amountCents, 0)
     };
   }
 }
