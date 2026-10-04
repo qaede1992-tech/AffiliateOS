@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Campaign, CreateCampaignRequest, CreateTrackingLinkRequest, RecordClickRequest, TrackingLink, TrackingLinkStats, UpdateCampaignRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
+import { isExplicitlyAffiliateEligible } from "./opportunity-scoring.js";
 import type { AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, Repository, TrackingLinkRepository } from "./repository.js";
 
 const now = () => new Date().toISOString();
@@ -53,6 +54,7 @@ export class CampaignService {
     const offer = await this.affiliateOffers.findById(affiliateOfferId);
     if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
     if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Campaign execution requires an active affiliate offer.");
+    if (!isExplicitlyAffiliateEligible(offer)) throw new DomainError("AFFILIATE_OFFER_NOT_ELIGIBLE", "Campaign execution requires an affiliate-eligible offer.");
     if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Campaign execution requires an active affiliate link.");
     if (offer.affiliateLinkExpiresAt) {
       const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);

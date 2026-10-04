@@ -33,7 +33,7 @@ const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty
 function textFor(product: Product): string { return `${product.name} ${product.description ?? ""} ${product.category ?? ""}`.toLowerCase(); }
 function audienceFit(product: Product, audience: AudienceSegment[]): { score: number; matched: AudienceSegment[] } { if (audience.length === 0) return { score: 50, matched: [] }; const text = textFor(product); const matched = audience.filter((segment) => audienceCategories[segment].some((term) => text.includes(term))); return { score: clamp((matched.length / audience.length) * 100), matched }; }
 function isAffiliateLinkUsable(offer: AffiliateOffer, now = new Date()): boolean { return offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now.getTime()); }
-function isExplicitlyAffiliateEligible(offer: AffiliateOffer): boolean {
+export function isExplicitlyAffiliateEligible(offer: AffiliateOffer): boolean {
   const metadata = offer.availabilityMetadata ?? {};
   for (const key of ["affiliateEligible", "commissionEligible", "isEligible"]) {
     if (metadata[key] === false) return false;

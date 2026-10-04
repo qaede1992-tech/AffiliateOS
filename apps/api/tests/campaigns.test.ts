@@ -42,6 +42,19 @@ test("tracking link filters reject an unknown campaign", async () => {
   await assert.rejects(() => services.tracking.list("00000000-0000-0000-0000-000000000001"), /campaign does not exist/i);
 });
 
+test("campaign execution revalidates explicit affiliate eligibility", async () => {
+  const campaigns = new InMemoryRepository<import("@affiliateos/shared").Campaign>();
+  const campaignOffers = new InMemoryCampaignOfferRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const service = new CampaignService(campaigns, campaignOffers, affiliateOffers);
+  const offerId = "00000000-0000-0000-0000-000000000099";
+  await affiliateOffers.save(activeOffer(offerId));
+  const campaign = await service.create({ name: "Eligibility", objective: "sales" });
+  await affiliateOffers.save({ ...activeOffer(offerId), availabilityMetadata: { affiliateEligible: false } });
+  await assert.rejects(() => service.validateOfferForExecution(offerId), /affiliate-eligible offer/i);
+  assert.equal(campaign.name, "Eligibility");
+});
+
 test("tracking links reject unknown affiliate offers", async () => {
   const services = createInMemoryServices();
   const campaign = await services.campaigns.create({ name: "Launch", objective: "sales" });
