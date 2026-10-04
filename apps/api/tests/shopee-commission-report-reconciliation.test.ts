@@ -44,7 +44,7 @@ test("ShopeeCommissionReportReconciliationService maps commission report rows in
   });
   assert.deepEqual(processed, [{
     accountScope: "account-1",
-    externalConversionId: "report:403b63f46621c819f1457b194b6a1096a08c91772ea8229545c4554e808de999"
+    externalConversionId: "report:50ac93f41009bb5828fbeb9b39ca5129a5888ba493196a343d69c38b2df5a412"
   }]);
 });
 
