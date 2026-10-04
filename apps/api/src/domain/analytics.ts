@@ -100,10 +100,13 @@ export class AnalyticsService {
     const productId = typeof campaign.audience.productId === "string" ? campaign.audience.productId : undefined;
     const marketplaceId = typeof campaign.audience.marketplaceId === "string" ? campaign.audience.marketplaceId : undefined;
     const audienceSegments = Array.isArray(campaign.audience.audience) ? campaign.audience.audience.filter((item): item is string => typeof item === "string") : undefined;
+    const category = typeof campaign.audience.category === "string" ? campaign.audience.category : undefined;
     return {
       campaignId: campaign.id,
       ...(productId ? { productId } : {}),
       ...(marketplaceId ? { marketplaceId } : {}),
+      ...(category ? { category } : {}),
+      ...(audienceSegments?.length ? { audienceSegments } : {}),
       clickCount,
       trackingLinkCount: trackingLinks.length,
       contentCount: contents.length,
