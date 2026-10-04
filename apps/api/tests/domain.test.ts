@@ -158,3 +158,44 @@ test("reconciling a pending or rejected conversion keeps its commission pending"
   await service.reconcileProviderState(conversion.id, "rejected");
   assert.equal((await commissions.findByConversionId(conversion.id))?.status, "pending");
 });
+
+
+test("reconciling a provider commission rejects values outside the conversion amount", async () => {
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryCommissionRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const conversion: Conversion = {
+    id: "00000000-0000-4000-8000-000000000030",
+    affiliateId: "00000000-0000-4000-8000-000000000031",
+    offerId: "00000000-0000-4000-8000-000000000032",
+    amountCents: 10_000,
+    status: "pending",
+    occurredAt: "2026-09-20T10:00:00.000Z"
+  };
+  await conversions.save(conversion);
+  await commissions.save({
+    id: "00000000-0000-4000-8000-000000000033",
+    conversionId: conversion.id,
+    affiliateId: conversion.affiliateId,
+    amountCents: 1_000,
+    status: "pending",
+    createdAt: "2026-09-20T10:00:00.000Z"
+  });
+
+  const service = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, {
+    run: async (work) => work({ conversions, commissions })
+  });
+
+  await assert.rejects(
+    () => service.reconcileProviderState(conversion.id, "approved", 10_001),
+    (error: unknown) =>
+      error instanceof DomainError &&
+      error.code === "PROVIDER_CONVERSION_COMMISSION_INVALID" &&
+      error.statusCode === 422
+  );
+
+  assert.equal((await commissions.findByConversionId(conversion.id))?.amountCents, 1_000);
+  assert.equal((await conversions.findById(conversion.id))?.status, "pending");
+});
