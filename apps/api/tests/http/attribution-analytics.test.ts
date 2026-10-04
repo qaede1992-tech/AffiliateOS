@@ -42,14 +42,15 @@ test("HTTP attribution flow feeds campaign analytics without implicit legacy att
   const conversionId = "00000000-0000-4000-8000-000000000403";
   const affiliateId = "00000000-0000-4000-8000-000000000404";
   const offerId = "00000000-0000-4000-8000-000000000405";
+  const affiliateOfferId = "00000000-0000-4000-8000-000000000409";
 
   await repositories.campaigns.save({ id: campaignId, name: "HTTP attribution", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
-  await repositories.affiliateOffers.save({ id: offerId, productId: "00000000-0000-4000-8000-000000000406", affiliateAccountId: "00000000-0000-4000-8000-000000000407", availability: "in_stock", availabilityMetadata: {}, affiliateLinkStatus: "active", status: "active", createdAt: now, updatedAt: now });
-  await repositories.trackingLinks.save({ id: linkId, affiliateOfferId: offerId, campaignId, code: "httpattr", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
+  await repositories.affiliateOffers.save({ id: affiliateOfferId, productId: "00000000-0000-4000-8000-000000000406", affiliateAccountId: "00000000-0000-4000-8000-000000000407", availability: "in_stock", availabilityMetadata: {}, affiliateLinkStatus: "active", status: "active", createdAt: now, updatedAt: now });
+  await repositories.trackingLinks.save({ id: linkId, affiliateOfferId, campaignId, code: "httpattr", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
   await repositories.clicks.save({ id: "00000000-0000-4000-8000-000000000408", trackingLinkId: linkId, occurredAt: now, metadata: {} });
   await repositories.affiliates.save({ id: affiliateId, name: "HTTP Partner", email: "http@example.com", status: "active", createdAt: now });
   await repositories.offers.save({ id: offerId, name: "Attributed offer", status: "active", commissionRateBps: 1000, createdAt: now });
-  await repositories.conversions.save({ id: conversionId, affiliateId, offerId, amountCents: 25000, status: "approved", occurredAt: now });
+  await repositories.conversions.save({ id: conversionId, affiliateId, offerId, affiliateOfferId, amountCents: 25000, status: "approved", occurredAt: now });
   await repositories.commissions.save({ id: "00000000-0000-4000-8000-000000000410", conversionId, affiliateId, amountCents: 2500, status: "approved", createdAt: now });
 
   const attributionResponse = await app.inject({

@@ -38,7 +38,9 @@ export class ConversionAttributionService {
     const trackingLink = await this.trackingLinks.findById(input.trackingLinkId);
     if (!trackingLink) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404);
     if (trackingLink.status !== "active" && !options.allowInactiveTrackingLink) throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Conversions can only be attributed to active tracking links.");
-    if (trackingLink.affiliateOfferId !== (conversion.affiliateOfferId ?? conversion.offerId)) throw new DomainError("TRACKING_LINK_OFFER_MISMATCH", "The tracking link must belong to the same offer as the conversion.");
+    if (!conversion.affiliateOfferId || trackingLink.affiliateOfferId !== conversion.affiliateOfferId) {
+      throw new DomainError("TRACKING_LINK_OFFER_MISMATCH", "The tracking link must belong to the same affiliate offer as the conversion.");
+    }
     const existing = await this.attributions.findByConversion(conversionId);
     if (existing) {
       if (existing.trackingLinkId === input.trackingLinkId) return existing;

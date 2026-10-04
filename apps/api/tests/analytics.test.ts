@@ -46,7 +46,7 @@ test("analytics includes explicitly attributed conversion revenue and commission
   await campaigns.save({ id: campaignId, name: "Attributed", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
   await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000207", campaignId, code: "attr1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
   await clicks.save({ id: "00000000-0000-0000-0000-000000000205", trackingLinkId: linkId, occurredAt: now, metadata: {} });
-  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000206", offerId: "00000000-0000-0000-0000-000000000207", amountCents: 12500, status: "approved", occurredAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000206", offerId: "00000000-0000-0000-0000-000000000207", affiliateOfferId: "00000000-0000-0000-0000-000000000207", amountCents: 12500, status: "approved", occurredAt: now });
   await commissions.save({ id: "00000000-0000-0000-0000-000000000208", conversionId, affiliateId: "00000000-0000-0000-0000-000000000206", amountCents: 1250, status: "approved", createdAt: now });
   await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
 
@@ -68,7 +68,7 @@ test("analytics excludes pending commissions from attributed commission totals",
   const conversionId = "00000000-0000-0000-0000-000000000403";
   await campaigns.save({ id: campaignId, name: "Pending Commission", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
   await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000404", campaignId, code: "pending1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
-  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000405", offerId: "00000000-0000-0000-0000-000000000404", amountCents: 5000, status: "approved", occurredAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000405", offerId: "00000000-0000-0000-0000-000000000404", affiliateOfferId: "00000000-0000-0000-0000-000000000404", amountCents: 5000, status: "approved", occurredAt: now });
   await commissions.save({ id: "00000000-0000-0000-0000-000000000407", conversionId, affiliateId: "00000000-0000-0000-0000-000000000405", amountCents: 500, status: "pending", createdAt: now });
   await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
 
@@ -93,7 +93,7 @@ test("analytics excludes commissions belonging to rejected attributed conversion
   const conversionId = "00000000-0000-0000-0000-000000000303";
   await campaigns.save({ id: campaignId, name: "Rejected", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
   await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000304", campaignId, code: "reject1", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
-  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", offerId: "00000000-0000-0000-0000-000000000304", amountCents: 5000, status: "rejected", occurredAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", offerId: "00000000-0000-0000-0000-000000000304", affiliateOfferId: "00000000-0000-0000-0000-000000000304", amountCents: 5000, status: "rejected", occurredAt: now });
   await commissions.save({ id: "00000000-0000-0000-0000-000000000307", conversionId, affiliateId: "00000000-0000-0000-0000-000000000305", amountCents: 500, status: "pending", createdAt: now });
   await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
 
@@ -132,7 +132,7 @@ test("analytics excludes pending attributed conversions and their commissions", 
   const conversionId = "00000000-0000-0000-0000-000000000503";
   await campaigns.save({ id: campaignId, name: "Pending Conversion", objective: "sales", status: "active", audience: {}, createdAt: now, updatedAt: now });
   await links.save({ id: linkId, affiliateOfferId: "00000000-0000-0000-0000-000000000504", campaignId, code: "pending-conversion", destinationUrl: "https://example.com", status: "active", createdAt: now, updatedAt: now });
-  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000505", offerId: "00000000-0000-0000-0000-000000000504", amountCents: 5000, status: "pending", occurredAt: now });
+  await conversions.save({ id: conversionId, affiliateId: "00000000-0000-0000-0000-000000000505", offerId: "00000000-0000-0000-0000-000000000504", affiliateOfferId: "00000000-0000-0000-0000-000000000504", amountCents: 5000, status: "pending", occurredAt: now });
   await commissions.save({ id: "00000000-0000-0000-0000-000000000506", conversionId, affiliateId: "00000000-0000-0000-0000-000000000505", amountCents: 500, status: "approved", createdAt: now });
   await new ConversionAttributionService(conversions, links, attributions).create(conversionId, { trackingLinkId: linkId });
 
