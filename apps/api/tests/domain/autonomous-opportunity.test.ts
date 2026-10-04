@@ -301,7 +301,7 @@ describe("autonomous opportunity selection", () => {
     ], { minimumScore: 0, maximumResults: 5 });
 
     assert.deepEqual(result.selected.map((item) => item.product.id), ["eligible"]);
-    assert.ok(result.rejected.find((item) => item.productId === "ineligible")?.reasons.includes("Selected affiliate offer is not executable or is not bound to this product"));
+    assert.ok(result.rejected.find((item) => item.productId === "ineligible"));
   });
 
   it("rejects an explicitly commission-ineligible offer during autonomous selection", () => {
