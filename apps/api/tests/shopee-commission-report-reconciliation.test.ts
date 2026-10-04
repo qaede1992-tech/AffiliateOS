@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ShopeeCommissionReportReconciliationService } from "../src/domain/shopee-commission-report-reconciliation.js";
+import type { Affiliate, AffiliateOffer, Offer } from "@affiliateos/shared";
+import { ConversionService } from "../src/domain/services.js";
+import { InMemoryAffiliateOfferRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryRepository } from "../src/domain/repository.js";
+import { ProviderConversionProcessor } from "../src/domain/provider-conversion-processor.js";
+
 
 test("ShopeeCommissionReportReconciliationService maps commission report rows into provider conversions using stable idempotency keys", async () => {
   const processed: Array<{ accountScope: string; externalConversionId: string }> = [];
@@ -95,4 +100,62 @@ test("ShopeeCommissionReportReconciliationService keeps fallback conversion iden
   await service.reconcile("shopee-affiliate-feed", { sourceReference: "period-b", rows: [row] });
   assert.equal(externalIds.length, 2);
   assert.equal(externalIds[0], externalIds[1]);
+});
+
+
+test("ShopeeCommissionReportReconciliationService is idempotent when the same report row is replayed", async () => {
+  const affiliate: Affiliate = { id: "00000000-0000-4000-8000-000000000501", name: "Shopee affiliate", email: "shopee@example.com", status: "active", createdAt: "2026-10-01T08:00:00.000Z" };
+  const offer: Offer = { id: "00000000-0000-4000-8000-000000000502", name: "Shopee program", status: "active", commissionRateBps: 1000, createdAt: "2026-10-01T08:00:00.000Z" };
+  const affiliateOffer: AffiliateOffer = {
+    id: "00000000-0000-4000-8000-000000000503",
+    productId: "00000000-0000-4000-8000-000000000504",
+    conversionOfferId: offer.id,
+    affiliateAccountId: "00000000-0000-4000-8000-000000000505",
+    externalOfferId: "shopee-offer-501",
+    priceCents: 125000,
+    currency: "IDR",
+    commissionRateBps: 760,
+    availability: "in_stock",
+    availabilityMetadata: {},
+    affiliateLinkStatus: "active",
+    status: "active",
+    createdAt: "2026-10-01T08:00:00.000Z",
+    updatedAt: "2026-10-01T08:00:00.000Z"
+  };
+  const conversions = new InMemoryConversionRepository();
+  const commissions = new InMemoryCommissionRepository();
+  const affiliates = new InMemoryRepository<Affiliate>();
+  const offers = new InMemoryRepository<Offer>();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  await affiliates.save(affiliate);
+  await offers.save(offer);
+  await affiliateOffers.save(affiliateOffer);
+  const conversionService = new ConversionService(conversions, commissions, affiliates, offers, affiliateOffers, {
+    run: (work) => work({ conversions, commissions })
+  });
+  const processor = new ProviderConversionProcessor(conversionService, {
+    resolveAffiliate: async () => undefined,
+    resolveOffer: async () => undefined,
+    resolveTracking: async (accountScope, reference) => accountScope === affiliateOffer.affiliateAccountId && reference === "sub-501"
+      ? { affiliateId: affiliate.id, offerId: offer.id, affiliateOfferId: affiliateOffer.id, trackingLinkId: "00000000-0000-4000-8000-000000000506" }
+      : undefined
+  });
+  const marketplace = {
+    getAffiliateAccount: async () => ({ id: affiliateOffer.affiliateAccountId, affiliateId: affiliate.id })
+  } as any;
+  const service = new ShopeeCommissionReportReconciliationService(marketplace, processor);
+  const input = {
+    sourceReference: "commission-period-2026-10-04",
+    rows: [{ rowKey: "order-501", trackingReference: "sub-501", amountCents: 1250000, commissionCents: 95000, occurredAt: "2026-10-04T08:00:00.000Z", status: "approved" as const }]
+  };
+
+  const first = await service.reconcile("shopee-affiliate-feed", input);
+  const second = await service.reconcile("shopee-affiliate-feed", input);
+
+  assert.deepEqual(first, { sourceReference: input.sourceReference, processed: 1, failed: 0, failures: [] });
+  assert.deepEqual(second, first);
+  assert.equal((await conversions.list()).length, 1);
+  assert.equal((await commissions.list()).length, 1);
+  assert.equal((await commissions.list())[0]?.amountCents, 95000);
+  assert.equal((await conversions.list())[0]?.status, "approved");
 });
