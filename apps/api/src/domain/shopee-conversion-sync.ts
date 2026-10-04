@@ -31,7 +31,9 @@ export class ShopeeConversionSyncService {
       try {
         const amountCents = grossAmountCents(report);
         const commissionCents = report.netCommissionCents ?? report.totalCommissionCents;
-        const conversion = await this.processor.process(account.id, {
+        const idempotencyKey = `provider:${account.id}:${report.conversionId}`;
+        const existing = await this.conversions.findByIdempotencyKey(idempotencyKey);
+        await this.processor.process(account.id, {
           externalConversionId: report.conversionId,
           trackingReference: report.utmContent,
           amountCents,
@@ -41,11 +43,10 @@ export class ShopeeConversionSyncService {
           sourceEventId: report.conversionId,
           rawEventType: "shopee.conversion.report"
         });
-        await this.conversions.reconcileProviderState(conversion.id, reportStatus(report), commissionCents);
-        result.created += 1;
+        if (existing) result.alreadyProcessed += 1;
+        else result.created += 1;
       } catch (error) {
-        if (isAlreadyProcessed(error)) result.alreadyProcessed += 1;
-        else if (isUnattributed(error)) result.skippedUnattributed += 1;
+        if (isUnattributed(error)) result.skippedUnattributed += 1;
         else result.failed += 1;
       }
     }
@@ -57,7 +58,10 @@ function grossAmountCents(report: ShopeeAffiliateConversionReportItem): number {
   let total = 0;
   for (const order of report.orders) for (const item of order.items) {
     const amount = item.actualAmountCents ?? item.itemPriceCents;
-    if (amount !== undefined) total += Math.max(0, amount) * Math.max(1, item.qty ?? 1);
+    if (amount !== undefined) {
+      const quantity = item.qty === undefined ? 1 : Math.max(0, item.qty);
+      total += Math.max(0, amount) * quantity;
+    }
   }
   return Number.isSafeInteger(total) ? total : Number.MAX_SAFE_INTEGER;
 }
@@ -69,9 +73,6 @@ function reportStatus(report: ShopeeAffiliateConversionReportItem): "approved" |
   return "pending";
 }
 
-function isAlreadyProcessed(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && (error as {code?: unknown}).code === "IDEMPOTENCY_KEY_CONFLICT");
-}
 function isUnattributed(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && String((error as {code?: unknown}).code).includes("TRACKING"));
 }
