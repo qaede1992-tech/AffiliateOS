@@ -63,7 +63,8 @@ function grossAmountCents(report: ShopeeAffiliateConversionReportItem): number {
       total += Math.max(0, amount) * quantity;
     }
   }
-  return Number.isSafeInteger(total) ? total : Number.MAX_SAFE_INTEGER;
+  if (!Number.isSafeInteger(total)) throw new Error("Shopee conversion amount exceeds the maximum safe integer.");
+  return total;
 }
 
 function reportStatus(report: ShopeeAffiliateConversionReportItem): "approved" | "pending" | "rejected" {
