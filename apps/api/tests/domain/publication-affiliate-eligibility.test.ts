@@ -16,6 +16,7 @@ import { DistributionEngine } from "../../src/domain/distribution-engine.js";
 import { PublicationJobService } from "../../src/domain/publication-job-service.js";
 import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
 import { PublicationWorker } from "../../src/domain/publication-worker.js";
+import { RepositoryAffiliatePublicationEligibilityValidator } from "../../src/domain/affiliate-publication-eligibility.js";
 
 const timestamps = {
   createdAt: "2026-10-04T00:00:00.000Z",
@@ -99,8 +100,7 @@ describe("publication affiliate eligibility", () => {
       campaigns,
       products,
       campaignOffers,
-      trackingLinks,
-      affiliateOffers
+      trackingLinks
     );
     const publicationJobs = new PublicationJobService(jobs);
     const socialAccount = {
@@ -145,7 +145,8 @@ describe("publication affiliate eligibility", () => {
       updatedAt: "2026-10-04T00:30:00.000Z"
     });
 
-    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher]);
+    const eligibility = new RepositoryAffiliatePublicationEligibilityValidator(products, affiliateOffers, campaignOffers, trackingLinks);
+    const executor = new PublisherExecutor(contentService, socialAccounts, [publisher], undefined, undefined, eligibility);
     const worker = new PublicationWorker(jobs, publicationJobs, executor, contentService);
     const results = await worker.runOnce(new Date("2026-10-04T02:00:00.000Z"));
 
@@ -182,8 +183,7 @@ describe("publication affiliate eligibility", () => {
       campaigns,
       products,
       campaignOffers,
-      trackingLinks,
-      affiliateOffers
+      trackingLinks
     );
 
     const draft = await contentService.create({
