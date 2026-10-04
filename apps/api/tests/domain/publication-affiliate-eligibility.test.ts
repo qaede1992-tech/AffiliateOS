@@ -98,9 +98,7 @@ describe("publication affiliate eligibility", () => {
     const contentService = new ContentService(
       contents,
       campaigns,
-      products,
-      campaignOffers,
-      trackingLinks
+      products
     );
     const publicationJobs = new PublicationJobService(jobs);
     const socialAccount = {
