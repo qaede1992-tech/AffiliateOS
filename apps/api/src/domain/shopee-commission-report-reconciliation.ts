@@ -33,6 +33,14 @@ export class ShopeeCommissionReportReconciliationService {
   ) {}
 
   async reconcile(connectionSlug: string, input: ShopeeCommissionReportInput): Promise<ShopeeCommissionReportResult> {
+    const sourceReference = input.sourceReference.trim();
+    if (!sourceReference) {
+      throw new DomainError("SHOPEE_REPORT_SOURCE_MISSING", "Shopee commission report source reference is required.", 422);
+    }
+    if (sourceReference.length > 255) {
+      throw new DomainError("SHOPEE_REPORT_SOURCE_INVALID", "Shopee commission report source reference is too long.", 422);
+    }
+
     const account = await this.marketplace.getAffiliateAccount(connectionSlug);
     if (!account.affiliateId) {
       throw new DomainError("AFFILIATE_ACCOUNT_UNBOUND", "The Shopee affiliate account must be bound to an Affiliate before report reconciliation.", 409);
@@ -43,7 +51,15 @@ export class ShopeeCommissionReportReconciliationService {
 
     for (const row of input.rows) {
       try {
-        const externalConversionId = row.externalConversionId?.trim() || `report:${createHash("sha256").update(row.rowKey).digest("hex")}`;
+        const rowKey = row.rowKey.trim();
+        if (!rowKey) {
+          throw new DomainError("SHOPEE_REPORT_ROW_KEY_MISSING", "Shopee commission report row key is required.", 422);
+        }
+        if (rowKey.length > 255) {
+          throw new DomainError("SHOPEE_REPORT_ROW_KEY_INVALID", "Shopee commission report row key is too long.", 422);
+        }
+
+        const externalConversionId = row.externalConversionId?.trim() || `report:${createHash("sha256").update(rowKey).digest("hex")}`;
         await this.providerConversions.process(account.id, {
           externalConversionId,
           trackingReference: row.trackingReference,
@@ -51,7 +67,7 @@ export class ShopeeCommissionReportReconciliationService {
           commissionCents: row.commissionCents,
           occurredAt: row.occurredAt,
           status: row.status ?? "approved",
-          sourceEventId: input.sourceReference,
+          sourceEventId: sourceReference,
           rawEventType: "shopee.report.commission"
         });
         processed += 1;
@@ -61,6 +77,6 @@ export class ShopeeCommissionReportReconciliationService {
       }
     }
 
-    return { sourceReference: input.sourceReference, processed, failed: failures.length, failures };
+    return { sourceReference, processed, failed: failures.length, failures };
   }
 }
