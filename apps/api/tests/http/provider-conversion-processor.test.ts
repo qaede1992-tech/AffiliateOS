@@ -121,3 +121,32 @@ test("resolves marketplace conversions from tracking references and preserves af
   assert.equal((await commissions.list()).length, 1);
   assert.equal((await commissions.list())[0]?.amountCents, 600);
 });
+
+test("rejects provider commissions above conversion amount before persistence", async () => {
+  const services = createInMemoryServices();
+  const affiliate = await services.affiliates.create({ name: "Bounded affiliate", email: "bounded@example.com" });
+  const offer = await services.offers.create({ name: "Bounded offer", status: "active", commissionRateBps: 1000 });
+  const processor = new ProviderConversionProcessor(services.conversions, {
+    resolveAffiliate: async () => affiliate.id,
+    resolveOffer: async () => offer.id
+  });
+
+  await assert.rejects(
+    () => processor.process("account-bounded", {
+      externalConversionId: "conv-bounded",
+      affiliateReference: "aff-bounded",
+      offerReference: "offer-bounded",
+      amountCents: 1000,
+      currency: "IDR",
+      occurredAt: "2026-10-04T10:00:00.000Z",
+      status: "approved",
+      commissionCents: 1001,
+      sourceEventId: "evt-bounded",
+      rawEventType: "conversion.report"
+    }),
+    { code: "PROVIDER_CONVERSION_COMMISSION_INVALID" }
+  );
+
+  assert.equal((await services.conversions.list()).length, 0);
+  assert.equal((await services.commissions.list()).length, 0);
+});

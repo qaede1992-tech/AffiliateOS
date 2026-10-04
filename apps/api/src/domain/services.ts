@@ -76,6 +76,16 @@ export class ConversionService {
   async reconcileProviderState(conversionId: string, status: Conversion["status"], commissionCents?: number): Promise<Conversion> {
     const existing = await this.conversions.findById(conversionId);
     if (!existing) throw new DomainError("CONVERSION_NOT_FOUND", "The conversion does not exist.", 404);
+    if (
+      commissionCents !== undefined &&
+      (!Number.isSafeInteger(commissionCents) || commissionCents < 0 || commissionCents > existing.amountCents)
+    ) {
+      throw new DomainError(
+        "PROVIDER_CONVERSION_COMMISSION_INVALID",
+        "Provider conversion commission cannot exceed the conversion amount and must be a non-negative safe integer.",
+        422
+      );
+    }
     const next: Conversion = { ...existing, status };
     return this.transactionManager.run(async ({ conversions, commissions }) => {
       await conversions.save(next);
