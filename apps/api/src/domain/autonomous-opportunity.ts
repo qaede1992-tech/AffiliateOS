@@ -273,7 +273,9 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
 
 
 export function isExecutableAffiliateOffer(productId: string, offer: AffiliateOffer | undefined): boolean {
-  if (!offer || offer.productId !== productId || offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return false;
+  const metadata = offer?.availabilityMetadata ?? {};
+  const explicitlyIneligible = ["affiliateEligible", "commissionEligible", "isEligible"].some((key) => metadata[key] === false);
+  if (explicitlyIneligible || !offer || offer.productId !== productId || offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return false;
   try {
     const url = new URL(offer.affiliateUrl);
     if (url.protocol !== "https:" && url.protocol !== "http:") return false;
