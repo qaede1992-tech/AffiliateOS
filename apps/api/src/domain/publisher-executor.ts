@@ -37,19 +37,25 @@ export class PublisherExecutor {
 
     try {
       await this.affiliatePublicationEligibility?.validate(content);
-      const account = await this.findAccount(content);
-      const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content));
-      if (!publisher) return { content, account, status: "unsupported" };
-      if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
+    } catch (error) {
+      await this.contentService.update(content.id, { status: "failed" });
+      throw error;
+    }
 
+    const account = await this.findAccount(content);
+    const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content));
+    if (!publisher) return { content, account, status: "unsupported" };
+    if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
+
+    try {
       const credential = await this.resolveCredential(account);
       const mediaAssets = await this.resolveMediaAssets(content);
       const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey });
-      if (result.status === "accepted") {
-        return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
-      }
-      const updated = await this.contentService.update(content.id, { status: "published", publishedAt: now.toISOString() });
-      return { content: updated, account, publisher, provider: publisher.provider ?? content.platform, externalPostId: result.externalPostId, status: "published" };
+    if (result.status === "accepted") {
+      return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
+    }
+    const updated = await this.contentService.update(content.id, { status: "published", publishedAt: now.toISOString() });
+    return { content: updated, account, publisher, provider: publisher.provider ?? content.platform, externalPostId: result.externalPostId, status: "published" };
     } catch (error) {
       await this.contentService.update(content.id, { status: "failed" });
       throw error;
