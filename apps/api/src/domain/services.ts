@@ -132,6 +132,13 @@ export class ConversionService {
     if (input.affiliateOfferId && !affiliateOffer) {
       throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
     }
+    if (affiliateOffer && affiliateOffer.conversionOfferId !== input.offerId) {
+      throw new DomainError(
+        "AFFILIATE_OFFER_OFFER_MISMATCH",
+        "The affiliate offer must belong to the same conversion offer.",
+        422
+      );
+    }
     const commissionRateBps = affiliateOffer?.commissionRateBps ?? offer.commissionRateBps;
 
     const conversion: Conversion = {
