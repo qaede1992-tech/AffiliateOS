@@ -105,7 +105,7 @@ test("reconciling a pending or rejected conversion keeps its commission pending"
   const affiliates = new InMemoryRepository<Affiliate>();
   const offers = new InMemoryRepository<Offer>();
   const conversions = new InMemoryConversionRepository();
-  const commissions = new InMemoryRepository<Commission>();
+  const commissions = new InMemoryCommissionRepository();
   const affiliateOffers = new InMemoryAffiliateOfferRepository();
   const affiliate = { id: "00000000-0000-4000-8000-000000000010", name: "Partner", email: "partner@example.com", status: "active" as const, createdAt: new Date().toISOString() };
   const offer = { id: "00000000-0000-4000-8000-000000000011", name: "Standard", status: "active" as const, commissionRateBps: 1000, createdAt: new Date().toISOString() };
