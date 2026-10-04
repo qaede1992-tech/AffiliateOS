@@ -159,3 +159,71 @@ test("ShopeeCommissionReportReconciliationService is idempotent when the same re
   assert.equal((await commissions.list())[0]?.amountCents, 95000);
   assert.equal((await conversions.list())[0]?.status, "approved");
 });
+
+
+test("ShopeeCommissionReportReconciliationService rejects a missing source reference", async () => {
+  const service = new ShopeeCommissionReportReconciliationService(
+    { getAffiliateAccount: async () => ({ id: "account-1", affiliateId: "affiliate-1" }) } as any,
+    { process: async () => { throw new Error("should not process"); } } as any
+  );
+
+  await assert.rejects(
+    () => service.reconcile("shopee-affiliate-feed", {
+      sourceReference: "   ",
+      rows: []
+    }),
+    (error: any) => error?.code === "SHOPEE_REPORT_SOURCE_MISSING" && error?.statusCode === 422
+  );
+});
+
+test("ShopeeCommissionReportReconciliationService rejects an empty row key without processing it", async () => {
+  let processed = 0;
+  const service = new ShopeeCommissionReportReconciliationService(
+    { getAffiliateAccount: async () => ({ id: "account-1", affiliateId: "affiliate-1" }) } as any,
+    { process: async () => { processed += 1; } } as any
+  );
+
+  const result = await service.reconcile("shopee-affiliate-feed", {
+    sourceReference: "period-1",
+    rows: [{
+      rowKey: "   ",
+      trackingReference: "sub-1",
+      amountCents: 1000,
+      occurredAt: "2026-10-01T08:00:00.000Z"
+    }]
+  });
+
+  assert.equal(processed, 0);
+  assert.equal(result.processed, 0);
+  assert.equal(result.failed, 1);
+  assert.deepEqual(result.failures, [{
+    rowKey: "   ",
+    error: "Shopee commission report row key is required."
+  }]);
+});
+
+test("ShopeeCommissionReportReconciliationService trims identity fields before deriving fallback conversion IDs", async () => {
+  const externalIds: string[] = [];
+  const service = new ShopeeCommissionReportReconciliationService(
+    { getAffiliateAccount: async () => ({ id: "account-1", affiliateId: "affiliate-1" }) } as any,
+    {
+      process: async (_accountScope: string, event: any) => {
+        externalIds.push(event.externalConversionId);
+      }
+    } as any
+  );
+
+  const result = await service.reconcile("  shopee-affiliate-feed  ", {
+    sourceReference: "  period-1  ",
+    rows: [{
+      rowKey: "  order-1  ",
+      trackingReference: "sub-1",
+      amountCents: 1000,
+      occurredAt: "2026-10-01T08:00:00.000Z"
+    }]
+  });
+
+  assert.equal(result.sourceReference, "period-1");
+  assert.equal(result.processed, 1);
+  assert.deepEqual(externalIds, ["report:0bafe22156d2698c143b86040446d366ead863ba600d5c924f3d15c786ef4057"]);
+});
