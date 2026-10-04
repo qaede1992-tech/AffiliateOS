@@ -44,7 +44,7 @@ test("ShopeeCommissionReportReconciliationService maps commission report rows in
   });
   assert.deepEqual(processed, [{
     accountScope: "account-1",
-    externalConversionId: "report:403b63f46621c819f1457b194b6a1096a08c91772ea8229545c4554e808de999"
+    externalConversionId: "report:50ac93f41009bb5828fbeb9b39ca5129a5888ba493196a343d69c38b2df5a412"
   }]);
 });
 
@@ -79,4 +79,20 @@ test("ShopeeCommissionReportReconciliationService keeps row failures isolated fr
   assert.equal(result.processed, 1);
   assert.equal(result.failed, 1);
   assert.deepEqual(result.failures[0], { rowKey: "bad", error: "tracking reference could not be resolved" });
+});
+test("ShopeeCommissionReportReconciliationService keeps fallback conversion identity stable across report periods", async () => {
+  const externalIds: string[] = [];
+  const marketplace = { getAffiliateAccount: async () => ({ id: "account-1", affiliateId: "affiliate-1" }) } as any;
+  const providerConversions = {
+    process: async (_accountScope: string, event: any) => {
+      externalIds.push(event.externalConversionId);
+      return { id: "conversion-1", affiliateId: "affiliate-1", offerId: "offer-1", amountCents: event.amountCents, status: event.status, occurredAt: event.occurredAt };
+    }
+  } as any;
+  const service = new ShopeeCommissionReportReconciliationService(marketplace, providerConversions);
+  const row = { rowKey: "order-2001", trackingReference: "sub-2001", amountCents: 5000, commissionCents: 500, occurredAt: "2026-10-01T08:00:00.000Z", status: "approved" as const };
+  await service.reconcile("shopee-affiliate-feed", { sourceReference: "period-a", rows: [row] });
+  await service.reconcile("shopee-affiliate-feed", { sourceReference: "period-b", rows: [row] });
+  assert.equal(externalIds.length, 2);
+  assert.equal(externalIds[0], externalIds[1]);
 });
