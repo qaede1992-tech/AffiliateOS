@@ -21,6 +21,8 @@ jobs:
           fetch-depth: 0
 
       - name: Create version-matched release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -29,11 +31,17 @@ jobs:
           tag="v${version}"
 
           if git ls-remote --exit-code --refs origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "Release tag ${tag} already exists."
-            exit 1
+            existing_commit="$(git rev-list -n 1 "${tag}^{}" 2>/dev/null || true)"
+            if [ "${existing_commit}" != "${GITHUB_SHA}" ]; then
+              echo "Release tag ${tag} already exists but does not point to ${GITHUB_SHA}."
+              exit 1
+            fi
+            echo "Release tag ${tag} already exists on the current release commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "${tag}" "${GITHUB_SHA}" -m "Release ${tag}"
+            git push origin "refs/tags/${tag}"
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${tag}" "${GITHUB_SHA}" -m "Release ${tag}"
-          git push origin "refs/tags/${tag}"
+          gh workflow run release.yml --ref "${tag}"
