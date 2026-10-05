@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*.*.*"
@@ -146,11 +147,7 @@ jobs:
           trap 'docker rm --force affiliateos-api-smoke >/dev/null 2>&1 || true; docker rm --force affiliateos-postgres-smoke >/dev/null 2>&1 || true; docker rm --force affiliateos-web-smoke >/dev/null 2>&1 || true; docker network rm affiliateos-release-smoke >/dev/null 2>&1 || true' EXIT
           token='release-smoke-test-token-123456789012345678901234'
           docker network create affiliateos-release-smoke
-          docker run --detach --name affiliateos-postgres-smoke --network affiliateos-release-smoke \
-            --env POSTGRES_DB=release \
-            --env POSTGRES_USER=release \
-            --env POSTGRES_PASSWORD=release \
-            postgres:16-alpine
+          docker run --detach --name affiliateos-postgres-smoke --network affiliateos-release-smoke             --env POSTGRES_DB=release             --env POSTGRES_USER=release             --env POSTGRES_PASSWORD=release             postgres:16-alpine
           for attempt in $(seq 1 30); do
             if docker exec affiliateos-postgres-smoke pg_isready -U release -d release >/dev/null 2>&1; then
               break
@@ -161,19 +158,8 @@ jobs:
             fi
             sleep 1
           done
-          docker run --rm --network affiliateos-release-smoke \
-            --volume "$GITHUB_WORKSPACE:/workspace" \
-            --workdir /workspace \
-            --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
-            node:24-alpine sh -c 'printf "DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release\\n" > .env && npm ci --ignore-scripts && npm run db:migrate && npm run db:verify:applied'
-          docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke \
-            --env NODE_ENV=production \
-            --env API_HOST=0.0.0.0 \
-            --env API_PORT=3001 \
-            --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release \
-            --env API_AUTH_TOKEN="$token" \
-            --env API_CORS_ORIGIN=https://dashboard.example.com \
-            affiliateos-api:${{ github.sha }}
+          docker run --rm --network affiliateos-release-smoke             --volume "$GITHUB_WORKSPACE:/workspace"             --workdir /workspace             --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release             node:24-alpine sh -c 'printf "DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release\\n" > .env && npm ci --ignore-scripts && npm run db:migrate && npm run db:verify:applied'
+          docker run --detach --name affiliateos-api-smoke --network affiliateos-release-smoke             --env NODE_ENV=production             --env API_HOST=0.0.0.0             --env API_PORT=3001             --env DATABASE_URL=postgresql://release:release@affiliateos-postgres-smoke:5432/release             --env API_AUTH_TOKEN="$token"             --env API_CORS_ORIGIN=https://dashboard.example.com             affiliateos-api:${{ github.sha }}
           for attempt in $(seq 1 30); do
             if docker run --rm --network affiliateos-release-smoke curlimages/curl:8.16.0 -fsS http://affiliateos-api-smoke:3001/api/v1/health >/dev/null; then
               break
