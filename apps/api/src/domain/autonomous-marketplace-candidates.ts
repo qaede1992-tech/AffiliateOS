@@ -16,7 +16,8 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     this.maxProductsPerConnection = Math.max(1, options.maxProductsPerConnection ?? 100);
   }
 
-  async listCandidates(): Promise<AutonomousExecutionCandidate[]> {
+  async listCandidates(options: { resolveAffiliateLinks?: boolean } = {}): Promise<AutonomousExecutionCandidate[]> {
+    const resolveAffiliateLinks = options.resolveAffiliateLinks ?? true;
     const connections = await this.marketplace.listConnections();
     const activeConnections = connections.filter((connection) => connection.enabled && connection.status === "active");
     const candidates: AutonomousExecutionCandidate[] = [];
@@ -38,7 +39,9 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
             ? (await this.marketplace.listAffiliateOffers())
               .filter((offer) => offer.productId === product.id && offer.affiliateAccountId === affiliateAccount.id)
             : await this.marketplace.getOffers(connection.slug, product.externalProductId);
-          const executableOffers = await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers);
+          const executableOffers = resolveAffiliateLinks
+            ? await this.ensureAffiliateLinks(product.id, connection.slug, product.externalProductId, offers)
+            : this.filterExecutableOffers(product.id, offers);
           candidates.push({ product, offers: executableOffers });
         } catch {
           candidates.push({ product, offers: [] });
@@ -52,8 +55,12 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     return deduplicateCandidates(candidates);
   }
 
+  private filterExecutableOffers(productId: string, offers: AffiliateOffer[]): AffiliateOffer[] {
+    return offers.filter((offer) => offer.productId === productId && offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > Date.now()));
+  }
+
   private async ensureAffiliateLinks(productId: string, connectionSlug: string, externalProductId: string, offers: AffiliateOffer[]): Promise<AffiliateOffer[]> {
-    if (typeof this.marketplace.generateAffiliateLink !== "function") return offers.filter((offer) => offer.productId === productId && offer.status === "active" && offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > Date.now()));
+    if (typeof this.marketplace.generateAffiliateLink !== "function") return this.filterExecutableOffers(productId, offers);
 
     const executable: AffiliateOffer[] = [];
     const now = Date.now();
