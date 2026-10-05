@@ -7,7 +7,7 @@ import type { AutonomousExplorationEvaluationRunner, ExplorationEvaluationRunRes
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 
 export interface AutonomousCandidateProvider {
-  listCandidates(): Promise<AutonomousExecutionCandidate[]>;
+  listCandidates(options?: { resolveAffiliateLinks?: boolean }): Promise<AutonomousExecutionCandidate[]>;
 }
 
 export type AutonomousCycleInput = Omit<AutonomousExecutionInput, "candidates"> & {
@@ -57,7 +57,7 @@ export class AutonomousCycleService {
     rejected: AutonomousExecutionResult["rejected"];
     audit: AutonomousExecutionResult["audit"];
   }> {
-    const candidateList = await this.candidates.listCandidates();
+    const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: false });
     const result = await this.execution.previewSelection({
       ...input,
       candidates: candidateList
@@ -82,7 +82,7 @@ export class AutonomousCycleService {
     const startedAt = new Date().toISOString();
 
     try {
-      const candidateList = await this.candidates.listCandidates();
+      const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
       const scheduledAt = input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs);
       const executionInput: AutonomousExecutionInput = {
         ...input,
