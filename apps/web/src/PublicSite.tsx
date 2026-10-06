@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 
 type PublicPage = "home" | "terms" | "privacy";
 
@@ -177,7 +177,7 @@ function LegalPage({ type }: { type: "terms" | "privacy" }) {
 export function PublicSite() {
   const [page, setPage] = useState<PublicPage>(pageFromPath(window.location.pathname));
 
-  useMemo(() => {
+  useEffect(() => {
     const onPopState = () => setPage(pageFromPath(window.location.pathname));
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
