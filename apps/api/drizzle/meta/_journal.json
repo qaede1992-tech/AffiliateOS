@@ -365,6 +365,13 @@
       "when": 1790424311000,
       "tag": "0054_provider_event_retry_backoff",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1791325400000,
+      "tag": "0055_oauth_state_length",
+      "breakpoints": true
     }
   ]
 }
