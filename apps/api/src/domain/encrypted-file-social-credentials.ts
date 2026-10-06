@@ -41,13 +41,11 @@ export class EncryptedFileSocialCredentialStore implements SocialCredentialStore
   async store(credentialReference: string, credential: unknown): Promise<void> {
     const reference = credentialReference.trim();
     if (!reference) throw new Error("Social credential reference is required.");
-
-    this.writeQueue = this.writeQueue.then(async () => {
+    return this.enqueueWrite(async () => {
       const credentials = await this.readCredentials();
       credentials[reference] = credential;
       await this.writeCredentials(credentials);
     });
-    return this.writeQueue;
   }
 
   async resolve(credentialReference: string): Promise<unknown> {
@@ -61,13 +59,18 @@ export class EncryptedFileSocialCredentialStore implements SocialCredentialStore
   async delete(credentialReference: string): Promise<void> {
     const reference = credentialReference.trim();
     if (!reference) return;
-    this.writeQueue = this.writeQueue.then(async () => {
+    return this.enqueueWrite(async () => {
       const credentials = await this.readCredentials();
       if (!(reference in credentials)) return;
       delete credentials[reference];
       await this.writeCredentials(credentials);
     });
-    return this.writeQueue;
+  }
+
+  private enqueueWrite(operation: () => Promise<void>): Promise<void> {
+    const next = this.writeQueue.then(operation);
+    this.writeQueue = next.catch(() => undefined);
+    return next;
   }
 
   private async readCredentials(): Promise<Record<string, unknown>> {
