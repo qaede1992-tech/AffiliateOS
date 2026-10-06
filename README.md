@@ -102,7 +102,9 @@ Connection `configuration` rejects secret-like fields. Failed health checks pers
 | `API_RATE_LIMIT_WINDOW_MS` | Rate-limit window length in milliseconds. |
 | `AFFILIATEOS_MARKETPLACE_*_CREDENTIAL_REF` | Deployment-level reference to a secret-manager entry. |
 | `AFFILIATEOS_SOCIAL_*_CREDENTIAL_REF` | Optional OAuth/API credential reference for an approved social adapter. |
-| `SOCIAL_CREDENTIALS_JSON` | Deployment-injected secret payload mapping opaque social credential references to runtime access-token records; source control and database must contain no token values. |
+| `SOCIAL_CREDENTIALS_JSON` | Deployment-injected secret payload mapping opaque social credential references to runtime access-token records; source control and database must contain no token values. Read-only fallback for existing deployments. |
+| `SOCIAL_CREDENTIAL_STORE_PATH` | Path to the encrypted persistent social credential store used for OAuth-issued credential material; defaults to `/var/lib/affiliateos/secrets/social-credentials.enc`. |
+| `SOCIAL_CREDENTIAL_STORE_KEY` | Deployment secret used to encrypt the social credential store; at least 32 characters. When configured, it is used for OAuth persistence and publisher resolution. |
 | `AFFILIATEOS_AI_*_CREDENTIAL_REF` | Optional credential reference for a production content-generator adapter. |
 | `AUTONOMOUS_CYCLE_ENABLED` | Enables the autonomous discovery/selection/execution scheduler; keep disabled until approved provider connections are configured. |
 | `AUTONOMOUS_CYCLE_INTERVAL_MS` | Autonomous cycle interval; minimum 5 minutes, default 15 minutes. |
@@ -141,6 +143,8 @@ Before creating a production tag:
 7. Keep `AUTONOMOUS_CYCLE_ENABLED=false` until the approved Shopee and social credentials/providers have been configured and production preflight passes.
 
 The release workflow does not configure marketplace/social credentials or deploy them automatically; provider activation remains an explicit deployment responsibility.
+
+For OAuth-enabled deployments, configure `SOCIAL_CREDENTIAL_STORE_KEY` in the deployment environment. The API stores OAuth-issued social credentials only in the encrypted credential store and keeps an opaque credential reference in the social account record. The default Docker image declares `/var/lib/affiliateos/secrets` as a persistent volume. On blitz.cloud, environment variables are encrypted and persistent folders survive restarts when configured for the app; on the free plan, persistent files are not nightly backed up, so this store should be treated as a testing/Fase A mechanism until an external managed secret store is selected.
 
 ## Production completion checklist
 

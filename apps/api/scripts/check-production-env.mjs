@@ -31,8 +31,11 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
     autonomousFailures.push("SHOPEE_AFFILIATE_CREDENTIAL_REFERENCE");
   }
   const socialCredentialsJson = process.env.SOCIAL_CREDENTIALS_JSON?.trim();
-  if (!socialCredentialsJson) {
-    autonomousFailures.push("SOCIAL_CREDENTIALS_JSON");
+  const socialCredentialStoreKey = process.env.SOCIAL_CREDENTIAL_STORE_KEY?.trim();
+  if (socialCredentialStoreKey) {
+    if (socialCredentialStoreKey.length < 32) autonomousFailures.push("SOCIAL_CREDENTIAL_STORE_KEY");
+  } else if (!socialCredentialsJson) {
+    autonomousFailures.push("SOCIAL_CREDENTIALS_JSON or SOCIAL_CREDENTIAL_STORE_KEY");
   } else if (!isJsonObject(socialCredentialsJson)) {
     autonomousFailures.push("SOCIAL_CREDENTIALS_JSON(valid JSON object)");
   }

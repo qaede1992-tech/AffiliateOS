@@ -22,6 +22,7 @@ import { TikTokOAuthProvider } from "./domain/tiktok-oauth-provider.js";
 import { InstagramOAuthProvider } from "./domain/instagram-oauth-provider.js";
 import { createOfficialSocialPublishers } from "./domain/social-publisher-runtime.js";
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
+import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
@@ -36,9 +37,16 @@ const autonomousCycleLock = new PostgresAutonomousCycleLock(persistence.pool);
 const socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry();
 if (environment.TIKTOK_CLIENT_KEY && environment.TIKTOK_CLIENT_SECRET) socialOAuthRegistry.register(new TikTokOAuthProvider({ clientKey: environment.TIKTOK_CLIENT_KEY, clientSecret: environment.TIKTOK_CLIENT_SECRET }));
 if (environment.INSTAGRAM_CLIENT_ID && environment.INSTAGRAM_CLIENT_SECRET) socialOAuthRegistry.register(new InstagramOAuthProvider({ clientId: environment.INSTAGRAM_CLIENT_ID, clientSecret: environment.INSTAGRAM_CLIENT_SECRET }));
-const socialCredentialResolver = environment.SOCIAL_CREDENTIALS_JSON
-  ? JsonSocialCredentialResolver.fromJson(environment.SOCIAL_CREDENTIALS_JSON)
+const fileSocialCredentialStore = environment.SOCIAL_CREDENTIAL_STORE_KEY
+  ? EncryptedFileSocialCredentialStore.fromSecret(
+      environment.SOCIAL_CREDENTIAL_STORE_PATH,
+      environment.SOCIAL_CREDENTIAL_STORE_KEY
+    )
   : undefined;
+const socialCredentialResolver = fileSocialCredentialStore
+  ?? (environment.SOCIAL_CREDENTIALS_JSON
+    ? JsonSocialCredentialResolver.fromJson(environment.SOCIAL_CREDENTIALS_JSON)
+    : undefined);
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
@@ -49,6 +57,7 @@ const services = createServices(
   new DrizzleConversionAttributionRepository(persistence.db),
   createOfficialSocialPublishers({ credentialResolver: socialCredentialResolver }),
   socialCredentialResolver,
+  fileSocialCredentialStore,
   new DrizzlePublicationOperationRepository(persistence.db),
   new DrizzleAutonomousRunRepository(persistence.db),
   environment.AUTONOMOUS_CYCLE_INTERVAL_MS,
