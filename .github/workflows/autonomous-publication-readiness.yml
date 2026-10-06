@@ -1,0 +1,36 @@
+name: Autonomous Publication Readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publication-readiness:
+    runs-on: ubuntu-latest
+    env:
+      API_URL: ${{ vars.PRODUCTION_API_URL }}
+      TOKEN: ${{ secrets.AUTONOMOUS_RUNTIME_TOKEN }}
+    steps:
+      - name: Validate runtime configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${API_URL}" || { echo "Repository variable PRODUCTION_API_URL is required."; exit 1; }
+          case "${API_URL}" in
+            https://*) ;;
+            *) echo "PRODUCTION_API_URL must use HTTPS."; exit 1 ;;
+          esac
+          test -n "${TOKEN}" || { echo "Repository secret AUTONOMOUS_RUNTIME_TOKEN is required."; exit 1; }
+
+      - name: Check publisher readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl --silent --show-error -o /tmp/readiness.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "${API_URL}/api/v1/publishers/readiness")"
+          echo "HTTP status: ${code}"
+          cat /tmp/readiness.json
+          test "${code}" = "200"
