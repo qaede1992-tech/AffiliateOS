@@ -13,6 +13,7 @@ import { api } from "./api/client";
 import { WorkflowPanel } from "./components/WorkflowPanel";
 import { IntegrationSetupPanel } from "./components/IntegrationSetupPanel";
 import { AutonomousObservabilityPanel } from "./components/AutonomousObservabilityPanel";
+import { PublicSite } from "./PublicSite";
 import "./styles.css";
 
 type DashboardData = {
@@ -282,4 +283,5 @@ export default App;
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("AffiliateOS root element was not found.");
-createRoot(rootElement).render(<App />);
+const isDashboardPath = window.location.pathname === "/app" || window.location.pathname === "/app/";
+createRoot(rootElement).render(isDashboardPath ? <App /> : <PublicSite />);
