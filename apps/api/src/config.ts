@@ -55,7 +55,9 @@ const environmentSchema = z.object({
   TIKTOK_CLIENT_SECRET: z.string().optional(),
   INSTAGRAM_CLIENT_ID: z.string().trim().optional(),
   INSTAGRAM_CLIENT_SECRET: z.string().optional(),
-  SOCIAL_CREDENTIALS_JSON: z.string().optional()
+  SOCIAL_CREDENTIALS_JSON: z.string().optional(),
+  SOCIAL_CREDENTIAL_STORE_PATH: z.string().trim().default("/var/lib/affiliateos/secrets/social-credentials.enc"),
+  SOCIAL_CREDENTIAL_STORE_KEY: z.string().trim().min(32).optional()
 });
 
 export const environment = environmentSchema.parse(process.env);
