@@ -101,8 +101,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const anomalyScore = windows ? calculateAnomalyScore(windows) : 0;
       const elapsedSincePrevious = previous ? Date.parse(observedAt) - Date.parse(previous.observedAt) : Number.POSITIVE_INFINITY;
       const recentHalt = previous?.anomaly === "halt" && elapsedSincePrevious < ANOMALY_COOLDOWN_MS;
-      const recoveryAnchor = isProductSignal && this.memory!.recentByProductAndMarketplace
-        ? (await activeRecoveryEpisode(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, observedAt)
+      const recoveryAnchor = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
+        ? (await activeRecoveryEpisode(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId, observedAt)
           ?? (previous?.anomaly === "halt" ? previous : undefined))
         : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
@@ -155,12 +155,12 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const adjustment = anomaly === "halt"
         ? 0
         : Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
-      if (isProductSignal) {
+      if (isProductSignal && marketplaceId) {
         const snapshot: AutonomousFeedbackSnapshot = {
           id: crypto.randomUUID(),
           observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
           productId,
-          marketplaceId: marketplaceId ?? previous?.marketplaceId ?? "unknown",
+          marketplaceId,
           clickCount: signal.clickCount,
           conversionCount: signal.conversionCount,
           attributedCommissionCents: signal.attributedCommissionCents,
