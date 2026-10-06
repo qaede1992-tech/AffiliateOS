@@ -15,6 +15,7 @@ COPY apps/web/tsconfig.app.json apps/web/tsconfig.app.json
 COPY apps/web/tsconfig.node.json apps/web/tsconfig.node.json
 COPY apps/web/vite.config.ts apps/web/vite.config.ts
 COPY apps/web/index.html apps/web/index.html
+COPY apps/web/public apps/web/public
 COPY apps/web/src apps/web/src
 COPY packages/shared/tsconfig.json packages/shared/tsconfig.json
 COPY packages/shared/src packages/shared/src
