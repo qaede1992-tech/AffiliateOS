@@ -49,7 +49,7 @@ describe("Autonomous analytics feedback", () => {
     let current = { clickCount: 100, conversions: 2 };
     let observedAt = new Date("2026-09-21T01:00:00.000Z");
     const provider = new AutonomousAnalyticsFeedbackProvider(
-      { overview: async () => ({ ...current, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: current.conversions, attributedRevenueCents: 100000, attributedCommissionCents: 10000, conversionRate: current.conversions / current.clickCount, campaigns: [campaign("p1", current.clickCount, current.conversions, 10000)] }) },
+      { overview: async () => ({ ...current, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: current.conversions, attributedRevenueCents: 100000, attributedCommissionCents: 10000, conversionRate: current.conversions / current.clickCount, campaigns: [campaign("p1", current.clickCount, current.conversions, 10000, "market-1")] }) },
       memory, () => observedAt
     );
     await provider.getSignals({ observationKey: "trend-1" });
