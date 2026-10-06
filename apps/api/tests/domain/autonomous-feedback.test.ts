@@ -45,17 +45,29 @@ describe("Autonomous analytics feedback", () => {
   });
 
   it("persists snapshots and applies a bounded incremental trend adjustment", async () => {
-    const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+    const snapshots = new Map<string, any>();
+    const memory = {
+      async saveIfAbsent(snapshot: any) {
+        if (!snapshots.has(snapshot.observationKey)) snapshots.set(snapshot.observationKey, snapshot);
+        return snapshots.get(snapshot.observationKey);
+      },
+      async latestByProduct(productId: string) {
+        return [...snapshots.values()].filter((snapshot) => snapshot.productId === productId).sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+      },
+      async latestByProductAndMarketplace(productId: string, marketplaceId: string) {
+        return [...snapshots.values()].filter((snapshot) => snapshot.productId === productId && snapshot.marketplaceId === marketplaceId).sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+      }
+    };
     let current = { clickCount: 100, conversions: 2 };
     let observedAt = new Date("2026-09-21T01:00:00.000Z");
     const provider = new AutonomousAnalyticsFeedbackProvider(
-      { overview: async () => ({ ...current, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: current.conversions, attributedRevenueCents: 100000, attributedCommissionCents: 10000, conversionRate: current.conversions / current.clickCount, campaigns: [campaign("p1", current.clickCount, current.conversions, 10000)] }) },
+      { overview: async () => ({ ...current, trackingLinkCount: 1, campaignCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0, attributedConversionCount: current.conversions, attributedRevenueCents: 100000, attributedCommissionCents: 10000, conversionRate: current.conversions / current.clickCount, campaigns: [campaign("p1", current.clickCount, current.conversions, 10000, "market-1")] }) },
       memory, () => observedAt
     );
     await provider.getSignals({ observationKey: "trend-1" });
     current = { clickCount: 120, conversions: 4 };
     observedAt = new Date("2026-09-21T02:00:00.000Z");
-    const signal = (await provider.getSignals({ observationKey: "trend-2" })).get("p1");
+    const signal = (await provider.getSignals({ observationKey: "trend-2" })).get("market-1:p1");
     assert.ok(signal);
     assert.equal(signal.conversionCount, 4);
     assert.equal(signal.trendAdjustment, 1.66);
