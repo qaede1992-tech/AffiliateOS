@@ -43,3 +43,28 @@ test("persists only product performance signals in feedback memory", async () =>
   assert.deepEqual(calls, ["product-1:marketplace-1"]);
   assert.deepEqual(saved, ["aggregate-regression:marketplace-1:product-1"]);
 });
+
+
+test("does not persist product feedback when marketplace scope is missing", async () => {
+  const saved: unknown[] = [];
+  const memory = {
+    latestByProductAndMarketplace: async () => undefined,
+    latestByProduct: async () => undefined,
+    saveIfAbsent: async (snapshot: unknown) => { saved.push(snapshot); return snapshot; }
+  };
+  const overview = {
+    campaigns: [{
+      campaignId: "c2", productId: "product-2",
+      clickCount: 10, trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1, scheduledContentCount: 0,
+      attributedConversionCount: 1, attributedRevenueCents: 1000, attributedCommissionCents: 100, conversionRate: 0.1
+    }]
+  };
+  const provider = new AutonomousAnalyticsFeedbackProvider(
+    { overview: async () => overview },
+    memory,
+    () => new Date("2026-10-06T00:00:00.000Z")
+  );
+  const signals = await provider.getSignals({ observationKey: "missing-marketplace" });
+  assert.ok(signals.has("product-2"));
+  assert.equal(saved.length, 0);
+});
