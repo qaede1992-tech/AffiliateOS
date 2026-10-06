@@ -79,10 +79,13 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
     const observedAt = this.now().toISOString();
     const observationNamespace = context.observationKey?.trim() || observedAt;
     const entries = await Promise.all([...current.entries()].map(async ([key, signal]) => {
-      const [marketplaceId, productId] = splitSignalKey(key);
-      const previous = marketplaceId
-        ? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
-        : await this.memory!.latestByProduct(productId);
+      const isProductSignal = isProductSignalKey(key);
+      const [marketplaceId, productId] = isProductSignal ? splitSignalKey(key) : [undefined, key];
+      const previous = isProductSignal
+        ? marketplaceId
+          ? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
+          : await this.memory!.latestByProduct(productId)
+        : undefined;
       const freshness = previous ? learningFreshness(previous.observedAt, observedAt) : 0;
       const trendAdjustment = previous && signal.clickCount > previous.clickCount
         ? calculateTrendAdjustment(signal, previous) * freshness
@@ -90,9 +93,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous) * freshness
         : 0;
-      const isProductSignal = !key.startsWith("global:") && !key.includes(":category:") && !key.includes(":audience:");
-      const windows = isProductSignal && this.memory!.recentByProductAndMarketplace
-        ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId!, signal, observedAt)
+      const windows = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
+        ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId, signal, observedAt)
         : undefined;
       const regime = windows ? classifyWindowRegime(windows, signal.conversionRate) : "stable";
       const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
@@ -153,28 +155,30 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const adjustment = anomaly === "halt"
         ? 0
         : Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
-      const snapshot: AutonomousFeedbackSnapshot = {
-        id: crypto.randomUUID(),
-        observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
-        productId,
-        marketplaceId: marketplaceId ?? previous?.marketplaceId ?? "unknown",
-        clickCount: signal.clickCount,
-        conversionCount: signal.conversionCount,
-        attributedCommissionCents: signal.attributedCommissionCents,
-        commissionPerClickCents: signal.commissionPerClickCents,
-        conversionRate: signal.conversionRate,
-        adjustment,
-        anomaly,
-        anomalyScore,
-        recoveryState: recoveryAnchor ? (recentHalt || recoveryGate ? "recovering" : "recovered") : "none",
-        recoveryClicks,
-        recoveryEvidenceScore,
-        recoveryQualityScore: recoveryEpisodeMetrics?.qualityScore ?? 0,
-        recoveryEpisodeId,
-        observedAt
-      };
-      if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
-      else await this.memory!.save(snapshot);
+      if (isProductSignal) {
+        const snapshot: AutonomousFeedbackSnapshot = {
+          id: crypto.randomUUID(),
+          observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
+          productId,
+          marketplaceId: marketplaceId ?? previous?.marketplaceId ?? "unknown",
+          clickCount: signal.clickCount,
+          conversionCount: signal.conversionCount,
+          attributedCommissionCents: signal.attributedCommissionCents,
+          commissionPerClickCents: signal.commissionPerClickCents,
+          conversionRate: signal.conversionRate,
+          adjustment,
+          anomaly,
+          anomalyScore,
+          recoveryState: recoveryAnchor ? (recentHalt || recoveryGate ? "recovering" : "recovered") : "none",
+          recoveryClicks,
+          recoveryEvidenceScore,
+          recoveryQualityScore: recoveryEpisodeMetrics?.qualityScore ?? 0,
+          recoveryEpisodeId,
+          observedAt
+        };
+        if (this.memory!.saveIfAbsent) await this.memory!.saveIfAbsent(snapshot);
+        else await this.memory!.save(snapshot);
+      }
       return [key, { ...signal, adjustment, trendAdjustment: Math.round((trendAdjustment + efficiencyAdjustment) * 100) / 100, windows, regime, regimeConfidence, anomaly, anomalyScore, anomalyRecovery, recoveryClicks, recoveryEvidenceScore, recoveryEpisodeId, recoveryEpisodeMetrics, recoveryPolicy }] as const;
     }));
     return new Map(entries);
@@ -257,6 +261,10 @@ function audienceSignalKey(marketplaceId: string | undefined, audience: string):
 
 function signalKey(marketplaceId: string, productId: string): string {
   return marketplaceId + ":" + productId;
+}
+
+function isProductSignalKey(key: string): boolean {
+  return !key.startsWith("global:") && !key.includes(":category:") && !key.includes(":audience:");
 }
 
 function splitSignalKey(key: string): [string | undefined, string] {
