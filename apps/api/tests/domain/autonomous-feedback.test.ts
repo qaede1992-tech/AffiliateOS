@@ -55,7 +55,7 @@ describe("Autonomous analytics feedback", () => {
     await provider.getSignals({ observationKey: "trend-1" });
     current = { clickCount: 120, conversions: 4 };
     observedAt = new Date("2026-09-21T02:00:00.000Z");
-    const signal = (await provider.getSignals({ observationKey: "trend-2" })).get("p1");
+    const signal = (await provider.getSignals({ observationKey: "trend-2" })).get("market-1:p1");
     assert.ok(signal);
     assert.equal(signal.conversionCount, 4);
     assert.equal(signal.trendAdjustment, 1.66);
