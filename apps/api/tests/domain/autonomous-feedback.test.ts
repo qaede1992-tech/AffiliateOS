@@ -45,7 +45,19 @@ describe("Autonomous analytics feedback", () => {
   });
 
   it("persists snapshots and applies a bounded incremental trend adjustment", async () => {
-    const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+    const snapshots = new Map<string, any>();
+    const memory = {
+      async saveIfAbsent(snapshot: any) {
+        if (!snapshots.has(snapshot.observationKey)) snapshots.set(snapshot.observationKey, snapshot);
+        return snapshots.get(snapshot.observationKey);
+      },
+      async latestByProduct(productId: string) {
+        return [...snapshots.values()].filter((snapshot) => snapshot.productId === productId).sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+      },
+      async latestByProductAndMarketplace(productId: string, marketplaceId: string) {
+        return [...snapshots.values()].filter((snapshot) => snapshot.productId === productId && snapshot.marketplaceId === marketplaceId).sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0];
+      }
+    };
     let current = { clickCount: 100, conversions: 2 };
     let observedAt = new Date("2026-09-21T01:00:00.000Z");
     const provider = new AutonomousAnalyticsFeedbackProvider(
