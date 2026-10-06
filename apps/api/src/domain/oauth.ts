@@ -35,7 +35,7 @@ export class SocialOAuthService {
     if (!isAllowedOAuthRedirectUri(redirectUri)) throw new DomainError("INVALID_SOCIAL_OAUTH_REDIRECT_URI", "The OAuth redirect URI is not allowed.", 400);
     const now = new Date();
     await this.states.deleteExpired(now.toISOString());
-    const state = randomUUID();
+    const state = `${randomUUID()}.${platform}`;
     const expiresAt = new Date(now.getTime() + this.stateTtlMs).toISOString();
     await this.states.save({ state, platform, redirectUri, expiresAt });
     return { authorizationUrl: provider.createAuthorizationUrl({ state, redirectUri }), state, expiresAt };
