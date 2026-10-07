@@ -38,7 +38,55 @@ class DrizzleTrackingLinkRepository extends DrizzleRepository<TrackingLink, type
 class DrizzleClickRepository extends DrizzleRepository<Click, typeof clicks.$inferSelect> implements ClickRepository { constructor(db: DatabaseExecutor) { super(db, clicks, toClick, (entity) => ({ ...entity, idempotencyKey: entity.idempotencyKey ?? null } as any)); } async listByTrackingLink(trackingLinkId: string) { return (await this.db.select().from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId))).map(toClick); } async findByIdempotencyKey(trackingLinkId: string, idempotencyKey: string) { const rows = await this.db.select().from(clicks).where(and(eq(clicks.trackingLinkId, trackingLinkId), eq(clicks.idempotencyKey, idempotencyKey))).limit(1); return rows[0] ? toClick(rows[0]) : undefined; } async countByTrackingLink(trackingLinkId: string) { const rows = await this.db.select({ count: count() }).from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId)); return Number(rows[0]?.count ?? 0); } }
 class DrizzleConversionRepository extends DrizzleRepository<Conversion, typeof conversions.$inferSelect> implements ConversionRepository { constructor(db: DatabaseExecutor) { super(db, conversions, toConversion, (entity) => ({ ...entity, affiliateOfferId: entity.affiliateOfferId ?? null, idempotencyKey: entity.idempotencyKey ?? null } as any)); } async findByIdempotencyKey(idempotencyKey: string) { const rows = await this.db.select().from(conversions).where(eq(conversions.idempotencyKey, idempotencyKey)).limit(1); return rows[0] ? toConversion(rows[0]) : undefined; } }
 class DrizzleCommissionRepository extends DrizzleRepository<Commission, typeof commissions.$inferSelect> implements CommissionRepository { constructor(db: DatabaseExecutor) { super(db, commissions, toCommission, (entity) => ({ ...entity } as any)); } async findByConversionId(conversionId: string) { const rows = await this.db.select().from(commissions).where(eq(commissions.conversionId, conversionId)).limit(1); return rows[0] ? toCommission(rows[0]) : undefined; } }
-class DrizzleContentRepository extends DrizzleRepository<Content, typeof contentTable.$inferSelect> {\n  constructor(db: DatabaseExecutor) { super(db, contentTable, toContent, (entity) => ({ ...entity, productId: entity.productId ?? null, campaignId: entity.campaignId ?? null, socialAccountId: entity.socialAccountId ?? null, title: entity.title ?? null, caption: entity.caption ?? null, script: entity.script ?? null, cta: entity.cta ?? null, scheduledAt: entity.scheduledAt ?? null, publishedAt: entity.publishedAt ?? null } as any)); }\n\n  private async hydrateMediaAssetIds(rows: Array<typeof contentTable.$inferSelect>): Promise<Content[]> {\n    if (!rows.length) return [];\n    const assets = await this.db.select({ id: mediaAssets.id, contentId: mediaAssets.contentId }).from(mediaAssets).where(inArray(mediaAssets.contentId, rows.map((row) => row.id)));\n    const idsByContent = new Map<string, string[]>();\n    for (const asset of assets) idsByContent.set(asset.contentId, [...(idsByContent.get(asset.contentId) ?? []), asset.id]);\n    return rows.map((row) => toContent(row, idsByContent.get(row.id) ?? []));\n  }\n\n  override async list(): Promise<Content[]> {\n    const rows = await this.db.select().from(contentTable);\n    return this.hydrateMediaAssetIds(rows);\n  }\n\n  override async findById(id: string): Promise<Content | undefined> {\n    const rows = await this.db.select().from(contentTable).where(eq(contentTable.id, id)).limit(1);\n    if (!rows[0]) return undefined;\n    return (await this.hydrateMediaAssetIds([rows[0]]))[0];\n  }\n\n  override async save(entity: Content) {\n    if (await this.findById(entity.id)) await this.db.update(contentTable).set(this.toRow(entity)).where(eq(contentTable.id, entity.id)); else await super.save(entity);\n    return entity;\n  }\n}
+class DrizzleContentRepository extends DrizzleRepository<Content, typeof contentTable.$inferSelect> {
+  constructor(db: DatabaseExecutor) {
+    super(db, contentTable, toContent, (entity) => ({
+      ...entity,
+      productId: entity.productId ?? null,
+      campaignId: entity.campaignId ?? null,
+      socialAccountId: entity.socialAccountId ?? null,
+      title: entity.title ?? null,
+      caption: entity.caption ?? null,
+      script: entity.script ?? null,
+      cta: entity.cta ?? null,
+      scheduledAt: entity.scheduledAt ?? null,
+      publishedAt: entity.publishedAt ?? null
+    } as any));
+  }
+
+  private async hydrateMediaAssetIds(rows: Array<typeof contentTable.$inferSelect>): Promise<Content[]> {
+    if (!rows.length) return [];
+    const assets = await this.db
+      .select({ id: mediaAssets.id, contentId: mediaAssets.contentId })
+      .from(mediaAssets)
+      .where(inArray(mediaAssets.contentId, rows.map((row) => row.id)));
+    const idsByContent = new Map<string, string[]>();
+    for (const asset of assets) {
+      idsByContent.set(asset.contentId, [...(idsByContent.get(asset.contentId) ?? []), asset.id]);
+    }
+    return rows.map((row) => toContent(row, idsByContent.get(row.id) ?? []));
+  }
+
+  override async list(): Promise<Content[]> {
+    const rows = await this.db.select().from(contentTable);
+    return this.hydrateMediaAssetIds(rows);
+  }
+
+  override async findById(id: string): Promise<Content | undefined> {
+    const rows = await this.db.select().from(contentTable).where(eq(contentTable.id, id)).limit(1);
+    if (!rows[0]) return undefined;
+    return (await this.hydrateMediaAssetIds([rows[0]]))[0];
+  }
+
+  override async save(entity: Content) {
+    if (await this.findById(entity.id)) {
+      await this.db.update(contentTable).set(this.toRow(entity)).where(eq(contentTable.id, entity.id));
+    } else {
+      await super.save(entity);
+    }
+    return entity;
+  }
+}
 class DrizzleMediaAssetRepository extends DrizzleRepository<MediaAsset, typeof mediaAssets.$inferSelect> implements MediaAssetRepository {
   constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity } as any)); }
   async listByContent(contentId: string) { return (await this.db.select().from(mediaAssets).where(eq(mediaAssets.contentId, contentId))).map(toMediaAsset); }
