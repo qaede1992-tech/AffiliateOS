@@ -24,4 +24,26 @@ describe("content database mapping", () => {
 
     assert.equal(content.socialAccountId, "social-account-1");
   });
+
+  it("hydrates media asset references from the media asset relation", () => {
+    const content = toContent({
+      id: "content-2",
+      productId: null,
+      campaignId: null,
+      socialAccountId: null,
+      platform: "tiktok",
+      contentType: "affiliate-promotion",
+      title: "Video",
+      caption: null,
+      script: null,
+      cta: null,
+      status: "draft",
+      scheduledAt: null,
+      publishedAt: null,
+      createdAt: "2026-09-20T10:00:00.000Z",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    } as any, ["asset-1"]);
+
+    assert.deepEqual(content.mediaAssetIds, ["asset-1"]);
+  });
 });
