@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "../domain/media-asset.js";
 import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets } from "./schema.js";
@@ -18,7 +18,7 @@ const toAffiliateOffer = (row: typeof affiliateOffers.$inferSelect): AffiliateOf
 const toCampaign = (row: typeof campaigns.$inferSelect): Campaign => ({ id: row.id, name: row.name, objective: row.objective, status: row.status as Campaign["status"], startAt: row.startAt ?? undefined, endAt: row.endAt ?? undefined, audience: row.audience, createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toTrackingLink = (row: typeof trackingLinks.$inferSelect): TrackingLink => ({ id: row.id, affiliateOfferId: row.affiliateOfferId, campaignId: row.campaignId ?? undefined, code: row.code, destinationUrl: row.destinationUrl, status: row.status as TrackingLink["status"], createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toClick = (row: typeof clicks.$inferSelect): Click => ({ id: row.id, trackingLinkId: row.trackingLinkId, idempotencyKey: row.idempotencyKey ?? undefined, occurredAt: row.occurredAt, metadata: row.metadata });
-export const toContent = (row: typeof contentTable.$inferSelect): Content => ({ id: row.id, productId: row.productId ?? undefined, campaignId: row.campaignId ?? undefined, socialAccountId: row.socialAccountId ?? undefined, platform: row.platform as Content["platform"], contentType: row.contentType, title: row.title ?? undefined, caption: row.caption ?? undefined, script: row.script ?? undefined, cta: row.cta ?? undefined, status: row.status as Content["status"], scheduledAt: row.scheduledAt ?? undefined, publishedAt: row.publishedAt ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
+export const toContent = (row: typeof contentTable.$inferSelect, mediaAssetIds: string[] = []): Content => ({ id: row.id, productId: row.productId ?? undefined, campaignId: row.campaignId ?? undefined, socialAccountId: row.socialAccountId ?? undefined, mediaAssetIds: mediaAssetIds.length ? mediaAssetIds : undefined, platform: row.platform as Content["platform"], contentType: row.contentType, title: row.title ?? undefined, caption: row.caption ?? undefined, script: row.script ?? undefined, cta: row.cta ?? undefined, status: row.status as Content["status"], scheduledAt: row.scheduledAt ?? undefined, publishedAt: row.publishedAt ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toSocialAccount = (row: typeof socialAccounts.$inferSelect): SocialAccount => ({ id: row.id, platform: row.platform, accountReference: row.accountReference, status: row.status as SocialAccount["status"], connection: row.connection, credentialReference: row.credentialReference ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toMediaAsset = (row: typeof mediaAssets.$inferSelect): MediaAsset => ({ id: row.id, contentId: row.contentId, kind: row.kind as MediaAsset["kind"], source: row.source as MediaAsset["source"], reference: row.reference, mimeType: row.mimeType ?? undefined, byteSize: row.byteSize ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 
@@ -38,7 +38,55 @@ class DrizzleTrackingLinkRepository extends DrizzleRepository<TrackingLink, type
 class DrizzleClickRepository extends DrizzleRepository<Click, typeof clicks.$inferSelect> implements ClickRepository { constructor(db: DatabaseExecutor) { super(db, clicks, toClick, (entity) => ({ ...entity, idempotencyKey: entity.idempotencyKey ?? null } as any)); } async listByTrackingLink(trackingLinkId: string) { return (await this.db.select().from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId))).map(toClick); } async findByIdempotencyKey(trackingLinkId: string, idempotencyKey: string) { const rows = await this.db.select().from(clicks).where(and(eq(clicks.trackingLinkId, trackingLinkId), eq(clicks.idempotencyKey, idempotencyKey))).limit(1); return rows[0] ? toClick(rows[0]) : undefined; } async countByTrackingLink(trackingLinkId: string) { const rows = await this.db.select({ count: count() }).from(clicks).where(eq(clicks.trackingLinkId, trackingLinkId)); return Number(rows[0]?.count ?? 0); } }
 class DrizzleConversionRepository extends DrizzleRepository<Conversion, typeof conversions.$inferSelect> implements ConversionRepository { constructor(db: DatabaseExecutor) { super(db, conversions, toConversion, (entity) => ({ ...entity, affiliateOfferId: entity.affiliateOfferId ?? null, idempotencyKey: entity.idempotencyKey ?? null } as any)); } async findByIdempotencyKey(idempotencyKey: string) { const rows = await this.db.select().from(conversions).where(eq(conversions.idempotencyKey, idempotencyKey)).limit(1); return rows[0] ? toConversion(rows[0]) : undefined; } }
 class DrizzleCommissionRepository extends DrizzleRepository<Commission, typeof commissions.$inferSelect> implements CommissionRepository { constructor(db: DatabaseExecutor) { super(db, commissions, toCommission, (entity) => ({ ...entity } as any)); } async findByConversionId(conversionId: string) { const rows = await this.db.select().from(commissions).where(eq(commissions.conversionId, conversionId)).limit(1); return rows[0] ? toCommission(rows[0]) : undefined; } }
-class DrizzleContentRepository extends DrizzleRepository<Content, typeof contentTable.$inferSelect> { constructor(db: DatabaseExecutor) { super(db, contentTable, toContent, (entity) => ({ ...entity, productId: entity.productId ?? null, campaignId: entity.campaignId ?? null, socialAccountId: entity.socialAccountId ?? null, title: entity.title ?? null, caption: entity.caption ?? null, script: entity.script ?? null, cta: entity.cta ?? null, scheduledAt: entity.scheduledAt ?? null, publishedAt: entity.publishedAt ?? null } as any)); } override async save(entity: Content) { if (await this.findById(entity.id)) await this.db.update(contentTable).set(this.toRow(entity)).where(eq(contentTable.id, entity.id)); else await super.save(entity); return entity; } }
+class DrizzleContentRepository extends DrizzleRepository<Content, typeof contentTable.$inferSelect> {
+  constructor(db: DatabaseExecutor) {
+    super(db, contentTable, toContent, (entity) => ({
+      ...entity,
+      productId: entity.productId ?? null,
+      campaignId: entity.campaignId ?? null,
+      socialAccountId: entity.socialAccountId ?? null,
+      title: entity.title ?? null,
+      caption: entity.caption ?? null,
+      script: entity.script ?? null,
+      cta: entity.cta ?? null,
+      scheduledAt: entity.scheduledAt ?? null,
+      publishedAt: entity.publishedAt ?? null
+    } as any));
+  }
+
+  private async hydrateMediaAssetIds(rows: Array<typeof contentTable.$inferSelect>): Promise<Content[]> {
+    if (!rows.length) return [];
+    const assets = await this.db
+      .select({ id: mediaAssets.id, contentId: mediaAssets.contentId })
+      .from(mediaAssets)
+      .where(inArray(mediaAssets.contentId, rows.map((row) => row.id)));
+    const idsByContent = new Map<string, string[]>();
+    for (const asset of assets) {
+      idsByContent.set(asset.contentId, [...(idsByContent.get(asset.contentId) ?? []), asset.id]);
+    }
+    return rows.map((row) => toContent(row, idsByContent.get(row.id) ?? []));
+  }
+
+  override async list(): Promise<Content[]> {
+    const rows = await this.db.select().from(contentTable);
+    return this.hydrateMediaAssetIds(rows);
+  }
+
+  override async findById(id: string): Promise<Content | undefined> {
+    const rows = await this.db.select().from(contentTable).where(eq(contentTable.id, id)).limit(1);
+    if (!rows[0]) return undefined;
+    return (await this.hydrateMediaAssetIds([rows[0]]))[0];
+  }
+
+  override async save(entity: Content) {
+    if (await this.findById(entity.id)) {
+      await this.db.update(contentTable).set(this.toRow(entity)).where(eq(contentTable.id, entity.id));
+    } else {
+      await super.save(entity);
+    }
+    return entity;
+  }
+}
 class DrizzleMediaAssetRepository extends DrizzleRepository<MediaAsset, typeof mediaAssets.$inferSelect> implements MediaAssetRepository {
   constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity } as any)); }
   async listByContent(contentId: string) { return (await this.db.select().from(mediaAssets).where(eq(mediaAssets.contentId, contentId))).map(toMediaAsset); }
