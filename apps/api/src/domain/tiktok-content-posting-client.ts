@@ -203,7 +203,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
         "content-length": String(chunk.byteLength),
         "content-range": "bytes " + firstByte + "-" + lastByte + "/" + totalSize
       },
-      body: chunk
+      body: Buffer.from(chunk)
     });
     if (!response.ok) {
       const message = await response.text().catch(() => "");
