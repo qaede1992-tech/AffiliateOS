@@ -26,15 +26,26 @@ test("TikTok publisher accepts content with media asset ids at distribution time
   assert.equal(publisher.supportsContent({ ...contentBase, mediaAssetIds: ["asset-1"] }), true);
 });
 
-test("TikTok publisher rejects execution when the resolved media is not a video", async () => {
+test("TikTok publisher accepts execution when the resolved media is an image", async () => {
+  const publisher = new TikTokContentPublisher(client);
+  const result = await publisher.publish({
+    content: { ...contentBase, mediaAssetIds: ["asset-1"] },
+    account: {} as never,
+    mediaAssets: [{ id: "asset-1", contentId: "content-1", kind: "image", source: "url", reference: "https://example.test/image.jpg", createdAt: contentBase.createdAt, updatedAt: contentBase.updatedAt }],
+    idempotencyKey: "idem-1"
+  });
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-1" });
+});
+
+test("TikTok publisher rejects execution when the resolved media is unsupported", async () => {
   const publisher = new TikTokContentPublisher(client);
   await assert.rejects(
     () => publisher.publish({
       content: { ...contentBase, mediaAssetIds: ["asset-1"] },
       account: {} as never,
-      mediaAssets: [{ id: "asset-1", contentId: "content-1", kind: "image", source: "url", reference: "https://example.test/image.jpg", createdAt: contentBase.createdAt, updatedAt: contentBase.updatedAt }],
+      mediaAssets: [{ id: "asset-1", contentId: "content-1", kind: "thumbnail", source: "url", reference: "https://example.test/thumb.jpg", createdAt: contentBase.createdAt, updatedAt: contentBase.updatedAt }],
       idempotencyKey: "idem-1"
     }),
-    /video media asset/i
+    /video or image media asset/i
   );
 });
