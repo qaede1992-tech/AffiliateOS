@@ -127,7 +127,7 @@ describe("campaign orchestrator", () => {
       ).execute({
         opportunity,
         offer,
-        product,
+        product: { ...product, imageUrl: undefined },
         platforms: ["tiktok"],
         scheduledAt: "2026-09-21T12:00:00.000Z"
       }),
