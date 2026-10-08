@@ -122,3 +122,43 @@ test("TikTok client reconciles published status", async () => {
   const result = await client.checkPublication({ content, account, mediaAssets: [asset], operation });
   assert.deepEqual(result, { status: "published", externalPostId: "123456789" });
 });
+
+
+test("TikTok client publishes an image through the photo Direct Post API", async () => {
+  const calls: Array<{ url: string; method: string; body?: string }> = [];
+  const image = {
+    ...asset,
+    id: "asset-image-1",
+    kind: "image" as const,
+    reference: "https://media.example.test/product.jpg",
+    mimeType: "image/jpeg",
+    byteSize: undefined
+  };
+
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      calls.push({ url, method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : undefined });
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] }, error: { code: "ok" } }), { status: 200 });
+      }
+      assert.equal(url, "https://open.tiktokapis.com/v2/post/publish/content/init/");
+      assert.equal(init?.method, "POST");
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.media_type, "PHOTO");
+      assert.equal(body.post_mode, "DIRECT_POST");
+      assert.deepEqual(body.source_info, {
+        source: "PULL_FROM_URL",
+        photo_images: [image.reference],
+        photo_cover_index: 0
+      });
+      assert.equal(body.post_info.privacy_level, "SELF_ONLY");
+      return new Response(JSON.stringify({ data: { publish_id: "photo-publish-1" }, error: { code: "ok" } }), { status: 200 });
+    }
+  });
+
+  const result = await client.publish({ content, account, mediaAssets: [image], idempotencyKey: "idem-photo-1" });
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "photo-publish-1" });
+  assert.deepEqual(calls.map((call) => call.method), ["POST", "POST"]);
+});
