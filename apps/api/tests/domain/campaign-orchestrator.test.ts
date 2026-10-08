@@ -113,6 +113,7 @@ describe("campaign orchestrator", () => {
 
   it("rejects a scheduled campaign when no requested platform is publishable", async () => {
     const content = new StubContent();
+    content.validateProductForPublication = async () => ({ ...product, imageUrl: undefined });
     const mediaAssets = new StubMediaAssets();
     const distribution = new StubDistribution();
     await assert.rejects(

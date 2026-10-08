@@ -194,7 +194,9 @@ export class CampaignOrchestrator {
     const media = content.platform === "instagram"
       ? { kind: "image" as const, reference: product.imageUrl }
       : content.platform === "tiktok"
-        ? { kind: "video" as const, reference: product.videoUrl }
+        ? product.videoUrl
+          ? { kind: "video" as const, reference: product.videoUrl }
+          : { kind: "image" as const, reference: product.imageUrl }
         : undefined;
 
     if (!media?.reference) return content;

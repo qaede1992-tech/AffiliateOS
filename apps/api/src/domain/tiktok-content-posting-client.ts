@@ -51,11 +51,18 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     }
 
     const creator = await this.creatorInfo(accessToken);
-    const asset = input.mediaAssets.find((candidate) => candidate.kind === "video");
-    if (!asset) throw new Error("TikTok direct video posting requires a video media asset.");
+    const asset = input.mediaAssets.find((candidate) => candidate.kind === "video") ??
+      input.mediaAssets.find((candidate) => candidate.kind === "image");
+    if (!asset) throw new Error("TikTok direct publishing requires a video or image media asset.");
 
     if (!creator.privacy_level_options?.includes(privacyLevel)) {
       throw new Error("TikTok privacy level is not permitted by the latest creator settings.");
+    }
+
+    if (asset.kind === "image") {
+      if (asset.source !== "url") throw new Error("TikTok photo publishing requires a media URL.");
+      if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok photo URL must use HTTPS.");
+      return this.initializePhotoDirectPost(input, input.account, accessToken, privacyLevel, asset.reference);
     }
 
     if (this.mediaTransferMode === "PULL_FROM_URL") {
@@ -115,6 +122,37 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       return { status: "failed", error: response.data?.fail_reason ?? response.error?.message ?? "TikTok publication failed." };
     }
     return { status: "processing" };
+  }
+
+  private async initializePhotoDirectPost(
+    input: { content: Content },
+    account: SocialAccount,
+    accessToken: string,
+    privacyLevel: string,
+    reference: string
+  ): Promise<PublishOutcome> {
+    const response = await this.requestJson<TikTokInitResponse>("/v2/post/publish/content/init/", accessToken, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        post_info: {
+          title: input.content.title ?? "",
+          description: input.content.caption ?? "",
+          privacy_level: privacyLevel,
+          disable_comment: this.readBoolean(account, "disableComment")
+        },
+        source_info: {
+          source: "PULL_FROM_URL",
+          photo_images: [reference],
+          photo_cover_index: 0
+        },
+        post_mode: "DIRECT_POST",
+        media_type: "PHOTO"
+      })
+    });
+    const publishId = response.data?.publish_id;
+    if (!publishId) throw new Error(response.error?.message ?? "TikTok did not return a publish id.");
+    return { status: "accepted", providerOperationId: publishId };
   }
 
   private async initializePullFromUrl(
