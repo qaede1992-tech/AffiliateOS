@@ -107,10 +107,10 @@ export class AutonomousCycleService {
   }
 
   private deriveScheduledAt(publicationDelayMs: number | undefined): string | undefined {
-    if (publicationDelayMs === undefined) return undefined;
-    if (!Number.isFinite(publicationDelayMs) || publicationDelayMs < 0) {
+    const effectiveDelayMs = publicationDelayMs ?? 0;
+    if (!Number.isFinite(effectiveDelayMs) || effectiveDelayMs < 0) {
       throw new Error("publicationDelayMs must be a finite non-negative number");
     }
-    return new Date(Date.now() + publicationDelayMs).toISOString();
+    return new Date(Date.now() + effectiveDelayMs).toISOString();
   }
 }
