@@ -30,8 +30,8 @@ export class TikTokContentPublisher implements SocialPublisher {
 
   publish(input: { content: Content; account: SocialAccount; credential?: unknown; mediaAssets?: MediaAsset[]; idempotencyKey: string }): Promise<PublishOutcome> {
     if (!input.mediaAssets?.length) return Promise.reject(new Error("TikTok publishing requires at least one media asset."));
-    if (!input.mediaAssets.some((asset) => asset.kind === "video")) {
-      return Promise.reject(new Error("TikTok direct publishing requires a video media asset."));
+    if (!input.mediaAssets.some((asset) => asset.kind === "video" || asset.kind === "image")) {
+      return Promise.reject(new Error("TikTok direct publishing requires a video or image media asset."));
     }
     return this.client.publish({ content: input.content, account: input.account, mediaAssets: input.mediaAssets, idempotencyKey: input.idempotencyKey });
   }
