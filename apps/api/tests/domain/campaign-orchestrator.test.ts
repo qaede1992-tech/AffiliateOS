@@ -113,6 +113,7 @@ describe("campaign orchestrator", () => {
 
   it("rejects a scheduled campaign when no requested platform is publishable", async () => {
     const content = new StubContent();
+    content.validateProductForPublication = async () => ({ ...product, imageUrl: undefined });
     const mediaAssets = new StubMediaAssets();
     const distribution = new StubDistribution();
     await assert.rejects(
@@ -127,7 +128,7 @@ describe("campaign orchestrator", () => {
       ).execute({
         opportunity,
         offer,
-        product: { ...product, imageUrl: undefined },
+        product,
         platforms: ["tiktok"],
         scheduledAt: "2026-09-21T12:00:00.000Z"
       }),
