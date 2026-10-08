@@ -32,6 +32,7 @@ const asset = {
   source: "url" as const,
   reference: "https://media.example.test/video.mp4",
   mimeType: "video/mp4",
+  byteSize: 4 * 1024 * 1024,
   createdAt: "2026-09-26T00:00:00.000Z",
   updatedAt: "2026-09-26T00:00:00.000Z"
 };
@@ -48,9 +49,44 @@ const operation = {
   updatedAt: "2026-09-26T00:00:00.000Z"
 };
 
-test("TikTok client queries creator info and initializes a URL publication", async () => {
+test("TikTok client uses FILE_UPLOAD by default and uploads the media sequentially", async () => {
+  const calls: Array<{ url: string; method: string; headers: Headers; body?: Uint8Array }> = [];
+  const video = new Uint8Array(asset.byteSize).fill(7);
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      calls.push({ url, method: init?.method ?? "GET", headers, body: init?.body instanceof Uint8Array ? init.body : undefined });
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] }, error: { code: "ok" } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        assert.match(String(init?.body), /"source":"FILE_UPLOAD"/);
+        assert.match(String(init?.body), /"video_size":4194304/);
+        return new Response(JSON.stringify({ data: { publish_id: "publish-1", upload_url: "https://upload.example.test/video" }, error: { code: "ok" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(video, { status: 200, headers: { "content-type": "video/mp4", "content-length": String(video.byteLength) } });
+      }
+      assert.equal(url, "https://upload.example.test/video");
+      assert.equal(init?.method, "PUT");
+      assert.equal(headers.get("content-range"), "bytes 0-4194303/4194304");
+      assert.equal(headers.get("content-length"), "4194304");
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-1" });
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-1" });
+  assert.deepEqual(calls.map((call) => call.method), ["POST", "POST", "GET", "PUT"]);
+  assert.equal(calls[3]?.body?.byteLength, video.byteLength);
+});
+
+test("TikTok client retains PULL_FROM_URL as an explicit compatibility mode", async () => {
   const calls: string[] = [];
   const client = new TikTokContentPostingClient({
+    mediaTransferMode: "PULL_FROM_URL",
     accessTokenResolver: async () => "secret-token",
     fetchImpl: async (input, init) => {
       calls.push(String(input));
@@ -58,12 +94,12 @@ test("TikTok client queries creator info and initializes a URL publication", asy
       if (String(input).includes("creator_info")) {
         return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] }, error: { code: "ok" } }), { status: 200 });
       }
-      return new Response(JSON.stringify({ data: { publish_id: "publish-1" }, error: { code: "ok" } }), { status: 200 });
+      return new Response(JSON.stringify({ data: { publish_id: "publish-pull-1" }, error: { code: "ok" } }), { status: 200 });
     }
   });
 
-  const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-1" });
-  assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-1" });
+  const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-pull" });
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-pull-1" });
   assert.equal(calls.length, 2);
 });
 
