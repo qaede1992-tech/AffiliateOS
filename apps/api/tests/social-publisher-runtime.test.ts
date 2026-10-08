@@ -29,7 +29,6 @@ test("runtime credential values may be opaque access-token records without expos
   assert.doesNotMatch(JSON.stringify(tiktok), /runtime-only-token/);
 });
 
-
 test("JSON social credential resolver resolves opaque references without exposing unrelated entries", async () => {
   const resolver = JsonSocialCredentialResolver.fromJson(JSON.stringify({
     "secret://affiliateos/social/tiktok/account-1": { accessToken: "runtime-token" },
@@ -49,7 +48,6 @@ test("JSON social credential resolver rejects malformed deployment configuration
   assert.throws(() => JsonSocialCredentialResolver.fromJson("not-json"), /valid JSON/i);
   assert.throws(() => JsonSocialCredentialResolver.fromJson("[]"), /JSON object/i);
 });
-
 
 test("encrypted file credential store persists and resolves credentials without plaintext", async () => {
   const directory = await mkdtemp(join(tmpdir(), "affiliateos-social-credentials-"));
@@ -88,7 +86,9 @@ test("encrypted file credential store refuses tampered ciphertext", async () => 
     const store = EncryptedFileSocialCredentialStore.fromSecret(filePath, "b".repeat(32));
     await store.store("secret://affiliateos/social/tiktok/account-1", { accessToken: "tamper-secret" });
     const envelope = JSON.parse(await readFile(filePath, "utf8")) as { ciphertext: string };
-    envelope.ciphertext = "X" + envelope.ciphertext.slice(1);
+    const ciphertext = Buffer.from(envelope.ciphertext, "base64");
+    ciphertext[0] ^= 0xff;
+    envelope.ciphertext = ciphertext.toString("base64");
     await writeFile(filePath, JSON.stringify(envelope), "utf8");
     await assert.rejects(
       () => store.resolve("secret://affiliateos/social/tiktok/account-1"),
