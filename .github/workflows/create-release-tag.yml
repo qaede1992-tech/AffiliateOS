@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: create-release-tag
@@ -55,3 +56,6 @@ jobs:
             echo "Release tag ${tag} contains package version ${tag_version}, expected ${version}."
             exit 1
           }
+
+          echo "Dispatching release workflow for ${tag}."
+          gh workflow run release.yml --ref "${tag}"
