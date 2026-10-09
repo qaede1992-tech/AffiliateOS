@@ -9,7 +9,7 @@ import type {
   MarketplaceProviderInfo,
   Offer
 } from "@affiliateos/shared";
-import { api } from "./api/client";
+import { api, type AffiliateOfferVerification } from "./api/client";
 import { WorkflowPanel } from "./components/WorkflowPanel";
 import { IntegrationSetupPanel } from "./components/IntegrationSetupPanel";
 import { AutonomousObservabilityPanel } from "./components/AutonomousObservabilityPanel";
@@ -23,6 +23,7 @@ type DashboardData = {
   commissions: Commission[];
   marketplaceProviders: MarketplaceProviderInfo[];
   marketplaceConnections: MarketplaceConnectionView[];
+  affiliateOfferVerification: AffiliateOfferVerification[];
   analytics: AnalyticsOverview;
 };
 
@@ -56,6 +57,7 @@ function App() {
       api.commissions(),
       api.marketplaceProviders(),
       api.marketplaceConnections(),
+      api.affiliateOfferVerification(),
       api.analyticsOverview(),
       api.autonomousStatus()
     ]);
@@ -66,6 +68,7 @@ function App() {
       commissions: commissions.data,
       marketplaceProviders: marketplaceProviders.data,
       marketplaceConnections: marketplaceConnections.data,
+      affiliateOfferVerification: affiliateOfferVerification.data,
       analytics
     });
     setAutonomousStatus(autonomous);
@@ -272,6 +275,23 @@ This will allow AffiliateOS to use this marketplace connection for operational w
             <span className="eyebrow">Commercial</span><h3>Offers</h3><p>{data.offers.length} offers currently available in the system.</p>
             <form className="affiliate-form" onSubmit={handleCreateOffer}><input type="text" placeholder="Offer name" value={offerName} onChange={(event) => setOfferName(event.target.value)} required /><input type="number" min="0" step="0.01" placeholder="Commission rate (%)" value={offerRate} onChange={(event) => setOfferRate(event.target.value)} required /><button type="submit" disabled={isCreatingOffer}>{isCreatingOffer ? "Adding..." : "Add Offer"}</button></form>
             <div className="affiliate-list">{data.offers.map((offer) => <div className="affiliate-row" key={offer.id}><div><strong>{offer.name}</strong><small>{offer.commissionRateBps / 100}% commission</small></div><div className="affiliate-meta"><span className={`badge ${offer.status}`}>{offer.status}</span><small>{offer.id.slice(0, 8)}</small></div></div>)}</div>
+            <div className="affiliate-list" style={{ marginTop: "1rem" }}>
+              <p className="eyebrow">Marketplace affiliate offers</p>
+              {data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada affiliate offer marketplace.</p> : data.affiliateOfferVerification.map((offer) => (
+                <div className="affiliate-row" key={offer.id}>
+                  <div>
+                    <strong>{offer.productName ?? "Produk marketplace"}</strong>
+                    <small>Product ID: {offer.productExternalId ?? "—"} · Marketplace: {offer.marketplaceSlug ?? "—"}</small>
+                    <small>Affiliate: {offer.affiliateName ?? "Tidak terikat"} · Account: {offer.affiliateAccountName ?? offer.affiliateAccountId.slice(0, 8)}</small>
+                    <small>Commission: {offer.commissionRateBps !== undefined ? String(offer.commissionRateBps / 100) + "%" : "—"} · Link: {offer.affiliateUrl ?? "—"}</small>
+                  </div>
+                  <div className="affiliate-meta">
+                    <span className={`badge ${offer.status}`}>{offer.status}</span>
+                    <small>{offer.affiliateLinkStatus}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
           </article>
         </section>
       </main>
