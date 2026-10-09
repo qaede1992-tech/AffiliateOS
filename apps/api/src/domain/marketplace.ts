@@ -14,6 +14,25 @@ export class MarketplaceService {
   async listConnections(): Promise<MarketplaceConnectionView[]> { return (await this.connections.list()).map(this.toView); }
   async listProducts(): Promise<Product[]> { return this.products.list(); }
   async listAffiliateOffers(): Promise<AffiliateOffer[]> { return this.offers.list(); }
+  async listAffiliateOfferVerification() {
+    const offers = await this.offers.list();
+    return Promise.all(offers.map(async (offer) => {
+      const account = await this.accounts.findById(offer.affiliateAccountId);
+      const affiliate = account?.affiliateId ? await this.affiliates.findById(account.affiliateId) : undefined;
+      const product = await this.products.findById(offer.productId);
+      const connection = account ? await this.connections.findById(account.marketplaceId) : undefined;
+      return {
+        ...offer,
+        affiliateId: affiliate?.id,
+        affiliateName: affiliate?.name,
+        affiliateAccountName: account?.name,
+        marketplaceSlug: connection?.slug,
+        productExternalId: product?.externalProductId,
+        productName: product?.name,
+        productUrl: product?.productUrl
+      };
+    }));
+  }
   async getConnection(slug: string): Promise<MarketplaceConnectionView> { return this.toView(await this.connectionFor(slug)); }
   async verifyProviderEvent(slug: string, rawBody: string, headers: ProviderEventSignatureHeaders) { if (!rawBody) throw new DomainError("INVALID_PROVIDER_EVENT", "Provider event payload is required.", 400); if (Buffer.byteLength(rawBody, "utf8") > 1_048_576) throw new DomainError("INVALID_PROVIDER_EVENT", "Provider event payload exceeds the 1 MB limit.", 413); if (!headers.signature?.trim()) throw new DomainError("INVALID_PROVIDER_EVENT_SIGNATURE", "Provider event signature is required.", 400); const connection = await this.connectionFor(slug); if (!connection.enabled || connection.status !== "active") throw new DomainError("MARKETPLACE_NOT_ACTIVE", "The marketplace connection is not enabled and active for event ingestion.", 409); const provider = this.getProvider(connection.providerSlug); if (!provider.verifyEventSignature) throw new DomainError("MARKETPLACE_WEBHOOK_UNSUPPORTED", "This marketplace provider does not support signed event ingestion.", 409); let result: { valid: boolean; version?: string }; try { result = await provider.verifyEventSignature({ rawBody, headers: { ...headers, signature: headers.signature.trim(), timestamp: headers.timestamp?.trim() || undefined }, credentialReference: connection.credentialReference, configuration: connection.configuration }); } catch (error) { throw new DomainError("MARKETPLACE_PROVIDER_ERROR", safeErrorMessage(error), 502); } if (!result.valid) throw new DomainError("INVALID_PROVIDER_EVENT_SIGNATURE", "Provider event signature verification failed.", 401); return result; }
   async getAffiliateAccount(slug: string): Promise<AffiliateAccount> { return this.accountFor(await this.connectionFor(slug)); }
