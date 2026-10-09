@@ -16,6 +16,14 @@ export function IntegrationSetupPanel() {
   const [credentialReference, setCredentialReference] = useState("");
   const [feedAffiliateId, setFeedAffiliateId] = useState("");
   const [feedJson, setFeedJson] = useState("");
+  const [testAffiliateId, setTestAffiliateId] = useState("");
+  const [testExternalProductId, setTestExternalProductId] = useState("");
+  const [testName, setTestName] = useState("");
+  const [testPriceCents, setTestPriceCents] = useState("");
+  const [testProductUrl, setTestProductUrl] = useState("");
+  const [testAffiliateUrl, setTestAffiliateUrl] = useState("");
+  const [testImageUrl, setTestImageUrl] = useState("");
+  const [testCommissionPercent, setTestCommissionPercent] = useState("");
 
   const load = async () => {
     const [p, c, a, s, r] = await Promise.all([
@@ -33,6 +41,33 @@ export function IntegrationSetupPanel() {
     catch (e) { setError(e instanceof Error ? e.message : "Operation failed."); }
     finally { setBusy(null); }
   };
+
+  const validateShopeeOffer = () => run("validate-shopee-offer", async () => {
+    const priceCents = Number(testPriceCents);
+    const commissionPercent = Number(testCommissionPercent);
+    if (!testAffiliateId) throw new Error("Pilih affiliate baru terlebih dahulu.");
+    if (!testExternalProductId.trim() || !testName.trim()) throw new Error("Product ID dan nama produk wajib diisi.");
+    if (!Number.isInteger(priceCents) || priceCents < 0) throw new Error("Harga harus berupa angka rupiah dalam satuan cent (Rp × 100).");
+    if (!testProductUrl.trim() || !testAffiliateUrl.trim()) throw new Error("Product URL dan Affiliate URL wajib diisi.");
+    if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) throw new Error("Komisi harus 0–100%.");
+    const result = await api.importShopeeAffiliateFeed({
+      affiliateId: testAffiliateId,
+      sourceReference: "manual-affiliate-offer-validation",
+      items: [{
+        externalProductId: testExternalProductId.trim(),
+        externalOfferId: `feed:${testExternalProductId.trim()}`,
+        name: testName.trim(),
+        priceCents,
+        currency: "IDR",
+        productUrl: testProductUrl.trim(),
+        affiliateUrl: testAffiliateUrl.trim(),
+        imageUrl: testImageUrl.trim() || undefined,
+        availability: "in_stock",
+        commissionRateBps: Math.round(commissionPercent * 100)
+      }]
+    });
+    setMessage(`Offer akun baru tersimpan: ${result.importedProducts} produk, ${result.importedOffers} offer.`);
+  }, "Offer akun baru berhasil divalidasi.");
 
   const importShopeeFeed = () => run("import-shopee-feed", async () => {
     if (!feedAffiliateId) throw new Error("Pilih affiliate terlebih dahulu.");
@@ -76,6 +111,25 @@ export function IntegrationSetupPanel() {
           <label>Opaque Shopee credential reference (optional)<input value={credentialReference} onChange={(e) => setCredentialReference(e.target.value)} placeholder="e.g. vault://affiliateos/shopee/prod" /></label>
           <button type="button" onClick={() => void createShopee()} disabled={busy !== null || !providers.some((p) => p.slug === "shopee" && p.configured)}>
             {busy === "create-shopee" ? "Creating..." : "Add Shopee connection"}
+          </button>
+        </div>
+
+        <div className="affiliate-form">
+          <strong>Validasi 1 produk Shopee — akun baru</strong>
+          <small>Jalur ini hanya untuk pengujian akun/link baru. Bukan ingestion otomatis production dan tidak memakai scraping/Open API.</small>
+          <select value={testAffiliateId} onChange={(e) => setTestAffiliateId(e.target.value)}>
+            <option value="">Pilih affiliate baru...</option>
+            {affiliates.map((a) => <option value={a.id} key={a.id}>{a.name}</option>)}
+          </select>
+          <input value={testExternalProductId} onChange={(e) => setTestExternalProductId(e.target.value)} placeholder="Product ID Shopee, contoh 57018205331" />
+          <input value={testName} onChange={(e) => setTestName(e.target.value)} placeholder="Nama produk" />
+          <input value={testPriceCents} onChange={(e) => setTestPriceCents(e.target.value)} inputMode="numeric" placeholder="Harga × 100, contoh 5389000" />
+          <input value={testCommissionPercent} onChange={(e) => setTestCommissionPercent(e.target.value)} inputMode="decimal" placeholder="Komisi %, contoh 10" />
+          <input value={testProductUrl} onChange={(e) => setTestProductUrl(e.target.value)} placeholder="URL produk Shopee" />
+          <input value={testAffiliateUrl} onChange={(e) => setTestAffiliateUrl(e.target.value)} placeholder="Link affiliate dari Penawaran Produk" />
+          <input value={testImageUrl} onChange={(e) => setTestImageUrl(e.target.value)} placeholder="URL gambar HTTPS (opsional, untuk TikTok)" />
+          <button type="button" onClick={() => void validateShopeeOffer()} disabled={busy !== null || affiliates.length === 0 || !testAffiliateUrl.trim()}>
+            {busy === "validate-shopee-offer" ? "Menyimpan..." : "Validasi & simpan offer akun baru"}
           </button>
         </div>
 
