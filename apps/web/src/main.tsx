@@ -50,7 +50,7 @@ function App() {
   const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
 
   const loadDashboard = async () => {
-    const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, analytics, autonomous] = await Promise.all([
+    const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, affiliateOfferVerification, analytics, autonomous] = await Promise.all([
       api.affiliates(),
       api.offers(),
       api.conversions(),
