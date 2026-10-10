@@ -48,6 +48,8 @@ describe("Publication operation lifecycle", () => {
     };
     const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, [publisher]), contentService, operations);
     const job = await jobService.enqueue(content);
+    await jobs.save({ ...job, status: "pending_approval" });
+    await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
 
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const storedJob = await jobs.findById(job.id);
@@ -101,6 +103,8 @@ describe("Publication operation lifecycle", () => {
     };
     const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, [publisher]), contentService, operations);
     const job = await jobService.enqueue(content);
+    await jobs.save({ ...job, status: "pending_approval" });
+    await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
 
     await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const results = await worker.runOnce(new Date("2026-09-20T11:03:00.000Z"));

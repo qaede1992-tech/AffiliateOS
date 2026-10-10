@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Content, EntityId, IsoTimestamp } from "@affiliateos/shared";
 
-export type PublicationJobStatus = "pending" | "processing" | "awaiting_confirmation" | "succeeded" | "failed";
+export type PublicationJobStatus = "pending" | "pending_approval" | "processing" | "awaiting_confirmation" | "succeeded" | "failed";
 
 export interface PublicationJob {
   id: EntityId;
@@ -15,6 +15,7 @@ export interface PublicationJob {
   lastError?: string;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
+  confirmedAt?: IsoTimestamp;
 }
 
 export interface PublicationJobRepository {
@@ -67,6 +68,7 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
       lockedAt: job.lockedAt,
       externalPostId: job.externalPostId,
       lastError: job.lastError,
+      confirmedAt: job.confirmedAt,
       updatedAt: job.updatedAt
     };
     this.jobs.set(id, next);

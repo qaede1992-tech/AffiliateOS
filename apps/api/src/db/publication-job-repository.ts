@@ -19,6 +19,7 @@ const toPublicationJob = (row: PublicationJobRow): PublicationJob => ({
   lockedAt: row.lockedAt ?? undefined,
   externalPostId: row.externalPostId ?? undefined,
   lastError: row.lastError ?? undefined,
+  confirmedAt: row.confirmedAt ?? undefined,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 });
@@ -71,6 +72,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
       lockedAt: job.lockedAt ?? null,
       externalPostId: job.externalPostId ?? null,
       lastError: job.lastError ?? null,
+      confirmedAt: job.confirmedAt ?? null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt
     };
@@ -113,6 +115,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
         lockedAt: job.lockedAt ?? null,
         externalPostId: job.externalPostId ?? null,
         lastError: job.lastError ?? null,
+        confirmedAt: job.confirmedAt ?? null,
         updatedAt: job.updatedAt
       })
       .where(and(eq(publicationJobs.id, id), or(...expected.map((status) => eq(publicationJobs.status, status)))))
