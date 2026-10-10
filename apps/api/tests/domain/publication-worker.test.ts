@@ -40,6 +40,7 @@ const workerFor = (contentService: ContentService, socialAccounts: InMemorySocia
 
 const enqueueApproved = async (jobService: PublicationJobService, content: Content) => {
   const job = await jobService.enqueue(content);
+  await jobService.jobs?.save?.({ ...job, status: "pending_approval" });
   await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
   return (await jobService.require(job.id));
 };
