@@ -47,7 +47,7 @@ describe("Publication operation lifecycle", () => {
       checkPublication: async () => ({ status: "processing" })
     };
     const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, [publisher]), contentService, operations);
-    const job = await jobService.enqueue(content);
+    const job = const job = await jobService.enqueue(content);\n    await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));\n    await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
 
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const storedJob = await jobs.findById(job.id);
