@@ -15,6 +15,14 @@ export class PublicationJobService {
     return this.jobs.save(job);
   }
 
+  async list(): Promise<PublicationJob[]> {
+    return this.jobs.list();
+  }
+
+  async get(id: EntityId): Promise<PublicationJob | undefined> {
+    return this.jobs.findById(id);
+  }
+
   async claim(id: EntityId, now = new Date()): Promise<PublicationJob | undefined> {
     if (this.jobs.claimDue) return this.jobs.claimDue(id, now, LOCK_TIMEOUT_MS);
     const job = await this.jobs.findById(id);
