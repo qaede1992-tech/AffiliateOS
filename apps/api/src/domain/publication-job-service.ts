@@ -45,13 +45,6 @@ export class PublicationJobService {
     return this.jobs.transition ? (await this.jobs.transition(id, ["awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
   }
 
-  async confirm(id: EntityId, now = new Date()): Promise<PublicationJob> {
-    const job = await this.require(id);
-    if (job.status !== "awaiting_confirmation") throw new Error("Publication job is not awaiting confirmation.");
-    const next = { ...job, status: "pending" as const, confirmedAt: now.toISOString(), updatedAt: now.toISOString() };
-    return this.jobs.transition ? (await this.jobs.transition(id, ["awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
-  }
-
   async awaitConfirmation(id: EntityId, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
     const next = { ...job, status: "awaiting_confirmation" as const, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() };

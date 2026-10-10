@@ -34,5 +34,3 @@ export const shopeeCommissionReportSchema = z.object({
     externalConversionId: z.string().trim().min(1).max(255).optional()
   })).min(1).max(1000)
 });
-
-export const publicationJobIdSchema = z.object({ jobId: entityId });
