@@ -102,7 +102,7 @@ describe("PublicationWorker", () => {
       }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
-    await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.equal(results[0]?.status, "succeeded");
     assert.equal(selectedAccount, bound.id);
@@ -290,7 +290,7 @@ describe("PublicationWorker", () => {
     assert.equal(approval[0]?.status, "pending_approval");
     assert.equal(retry[0]?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
-    assert.equal(stored?.attemptCount, 2);
+    assert.equal(stored?.attemptCount, 3);
     assert.equal(stored?.status, "succeeded");
   });
 
