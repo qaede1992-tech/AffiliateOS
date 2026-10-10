@@ -39,7 +39,7 @@ const workerFor = (contentService: ContentService, socialAccounts: InMemorySocia
   new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService, operationRepository);
 
 const enqueueApproved = async (jobService: PublicationJobService, content: Content) => {
-  const job = await enqueueApproved(jobService, content);
+  const job = await jobService.enqueue(content);
   await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
   return (await jobService.require(job.id));
 };
