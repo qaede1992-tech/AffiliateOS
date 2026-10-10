@@ -37,7 +37,7 @@ const reconciliationEligibleAt = (operation: import("./publication-operation.js"
 export type PublicationWorkerResult = {
   jobId: EntityId;
   contentId: EntityId;
-  status: "succeeded" | "failed" | "awaiting_confirmation" | "processing" | "skipped";
+  status: "succeeded" | "failed" | "pending_approval" | "awaiting_confirmation" | "processing" | "skipped";
   externalPostId?: string;
   error?: string;
 };
@@ -150,6 +150,13 @@ export class PublicationWorker {
   private async process(job: PublicationJob, now: Date): Promise<PublicationWorkerResult> {
     try {
       await this.prepareRetry(job);
+      if (this.contentService) {
+        const content = await this.contentService.get(job.contentId);
+        if (content.platform === "tiktok" && !job.confirmedAt) {
+          await this.jobService.requestApproval(job.id, now);
+          return { jobId: job.id, contentId: job.contentId, status: "pending_approval" };
+        }
+      }
       const result = await this.executor.execute(job.contentId, now, job.idempotencyKey);
       if (result.status === "published" && result.externalPostId) {
         await this.jobService.succeed(job.id, result.externalPostId, now);
