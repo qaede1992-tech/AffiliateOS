@@ -7,7 +7,8 @@ export type AuditEvent =
   | "autonomous_run_retry_requested"
   | "autonomous_cycle_triggered"
   | "social_credential_rotated"
-  | "social_credential_revoked";
+  | "social_credential_revoked"
+  | "publication_job_confirmed";
 
 export function auditSecurityEvent(
   log: FastifyBaseLogger,
