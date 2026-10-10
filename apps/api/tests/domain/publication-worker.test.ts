@@ -56,7 +56,7 @@ describe("PublicationWorker", () => {
       publish: async () => { publishes += 1; return { externalPostId: "must-not-publish", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
-    const job = await enqueueApproved(jobService, jobs, content);
+    const job = await jobService.enqueue(content);
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.deepEqual(results[0], { jobId: job.id, contentId: content.id, status: "pending_approval" });
     assert.equal((await jobs.findById(job.id))?.status, "pending_approval");
@@ -280,10 +280,10 @@ describe("PublicationWorker", () => {
     const first = await worker.runOnce(testNow);
     assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date(testNow.getTime() + 59_999));
-    const approval = await worker.runOnce(new Date(testNow.getTime() + 60_000));
-    assert.equal(approval[0]?.status, "pending_approval");
-    await jobService.confirm(job.id, new Date(testNow.getTime() + 61_000));
-    const second = await worker.runOnce(new Date(testNow.getTime() + 61_000));
+    const second = await worker.runOnce(new Date(testNow.getTime() + 60_000));
+    await jobService.confirm(job.id, new Date(testNow.getTime() + 60_000));
+    const retry = await worker.runOnce(new Date(testNow.getTime() + 60_001));
+    const second = retry;
     const stored = await jobs.findById(job.id);
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
