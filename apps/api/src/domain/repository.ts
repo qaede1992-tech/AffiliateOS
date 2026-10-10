@@ -57,6 +57,7 @@ export class InMemoryPublicationJobRepository {
       lockedAt: job.lockedAt,
       externalPostId: job.externalPostId,
       lastError: job.lastError,
+      confirmedAt: job.confirmedAt,
       updatedAt: job.updatedAt
     };
     this.jobs.set(id, next);
