@@ -39,7 +39,7 @@ const workerFor = (contentService: ContentService, socialAccounts: InMemorySocia
   new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService, operationRepository);
 
 const enqueueApproved = async (jobService: PublicationJobService, jobs: InMemoryPublicationJobRepository, content: Content) => {
-  const job = await jobService.enqueue(content);
+  const job = await enqueueApproved(jobService, jobs, content);
   await jobs.save({ ...job, status: "pending_approval" });
   await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
   return (await jobService.require(job.id));
@@ -56,7 +56,7 @@ describe("PublicationWorker", () => {
       publish: async () => { publishes += 1; return { externalPostId: "must-not-publish", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.deepEqual(results[0], { jobId: job.id, contentId: content.id, status: "pending_approval" });
     assert.equal((await jobs.findById(job.id))?.status, "pending_approval");
@@ -152,7 +152,7 @@ describe("PublicationWorker", () => {
     };
     const operations = new InMemoryPublicationOperationRepository();
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const accepted = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.equal(accepted[0]?.status, "awaiting_confirmation");
     const recovered = await worker.runOnce(new Date("2026-09-20T11:03:00.000Z"));
@@ -177,7 +177,7 @@ describe("PublicationWorker", () => {
     };
     const operations = new InMemoryPublicationOperationRepository();
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const testNow = new Date("2026-09-20T11:00:00.000Z");
     const first = await worker.runOnce(testNow);
     assert.equal(first.at(-1)?.status, "awaiting_confirmation");
@@ -205,7 +205,7 @@ describe("PublicationWorker", () => {
       checkPublication: async () => { checks += 1; return { status: "published", externalPostId: "restart-safe-post" }; }
     };
     const firstWorker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const accepted = await firstWorker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     assert.equal(accepted[0]?.status, "awaiting_confirmation");
     assert.equal((await operations.list()).length, 1);
@@ -221,7 +221,7 @@ describe("PublicationWorker", () => {
   it("does not regress a published operation when concurrent reconciliation has a stale failed check", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const operations = new InMemoryPublicationOperationRepository();
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     await jobService.claim(job.id, new Date("2026-09-20T11:00:00.000Z"));
     await jobService.awaitConfirmation(job.id, new Date("2026-09-20T11:00:00.000Z"));
     const operation = await operations.save({
@@ -275,13 +275,15 @@ describe("PublicationWorker", () => {
       publish: async () => { attempts += 1; if (attempts === 1) throw new Error("temporary provider failure"); return { externalPostId: "external-post-2", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const testNow = new Date("2026-09-20T11:00:00.000Z");
     const first = await worker.runOnce(testNow);
     assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date(testNow.getTime() + 59_999));
-    await jobService.confirm(job.id, new Date(testNow.getTime() + 60_000));
-    const second = await worker.runOnce(new Date(testNow.getTime() + 60_000));
+    const approval = await worker.runOnce(new Date(testNow.getTime() + 60_000));
+    assert.equal(approval[0]?.status, "pending_approval");
+    await jobService.confirm(job.id, new Date(testNow.getTime() + 61_000));
+    const second = await worker.runOnce(new Date(testNow.getTime() + 61_000));
     const stored = await jobs.findById(job.id);
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
@@ -309,7 +311,7 @@ describe("PublicationWorker", () => {
       publish: async () => { publishes += 1; return { externalPostId: "external-post-recovered", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     await jobs.save({ ...job, status: "processing", attemptCount: 1, confirmedAt: "2026-09-20T10:30:00.000Z", lockedAt: "2026-09-20T10:40:00.000Z", updatedAt: "2026-09-20T10:40:00.000Z" });
     const results = await worker.runOnce(new Date("2026-09-20T10:50:00.000Z"));
     const stored = await jobs.findById(job.id);
@@ -321,7 +323,7 @@ describe("PublicationWorker", () => {
   it("leaves future jobs untouched", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup("2026-09-20T12:00:00.000Z");
     const worker = workerFor(contentService, socialAccounts, jobs, jobService);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const stored = await jobs.findById(job.id);
     assert.deepEqual(results, []);
