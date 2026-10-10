@@ -87,7 +87,9 @@ export class AutonomousCycleService {
       const executionInput: AutonomousExecutionInput = {
         ...input,
         scheduledAt,
-        candidates: candidateList
+        candidates: candidateList,
+        requirePublishableMedia: true,
+        requireCommissionSignal: true
       };
       const result = await this.execution.runOnce(executionInput);
       const explorationEvaluation = this.explorationEvaluation ? await this.explorationEvaluation.run() : undefined;

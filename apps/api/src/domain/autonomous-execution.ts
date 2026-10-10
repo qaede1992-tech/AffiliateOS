@@ -15,6 +15,8 @@ export type AutonomousExecutionInput = {
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyNamespace?: string;
+  requirePublishableMedia?: boolean;
+  requireCommissionSignal?: boolean;
 };
 export type AutonomousExecutionOutcome = { productId: string; offerId?: string; score: number; status: "completed" | "failed"; idempotencyKey: string; result?: CampaignOrchestrationResult; error?: string };
 export type AutonomousExecutionResult = { selected: ScoredOpportunity[]; rejected: Array<{ productId: string; score: number; reasons: string[] }>; audit: OpportunitySelectionAudit[]; outcomes: AutonomousExecutionOutcome[]; recoveredRunCount?: number };
@@ -31,7 +33,7 @@ export class AutonomousExecutionService {
       : new Map<string, number>();
     const selection = this.selector.select(
       input.candidates,
-      input.policy,
+      { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal },
       performance,
       input.policiesByMarketplace,
       adaptiveExplorationRates
@@ -72,7 +74,7 @@ export class AutonomousExecutionService {
     const adaptiveExplorationRates = this.adaptiveExploration
       ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
-    const selection = this.selector.select(input.candidates, input.policy, performance, input.policiesByMarketplace, adaptiveExplorationRates);
+    const selection = this.selector.select(input.candidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates);
     const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
