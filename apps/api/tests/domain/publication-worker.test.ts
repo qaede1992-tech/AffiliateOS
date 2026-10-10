@@ -38,9 +38,9 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
 const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = [], operationRepository?: import("../../src/domain/publication-operation.js").PublicationOperationRepository) =>
   new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService, operationRepository);
 
-const enqueueApproved = async (jobService: PublicationJobService, content: Content) => {
+const enqueueApproved = async (jobService: PublicationJobService, jobs: InMemoryPublicationJobRepository, content: Content) => {
   const job = await jobService.enqueue(content);
-  await jobService.jobs?.save?.({ ...job, status: "pending_approval" });
+  await jobs.save({ ...job, status: "pending_approval" });
   await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
   return (await jobService.require(job.id));
 };
@@ -76,7 +76,7 @@ describe("PublicationWorker", () => {
       publish: async () => { publishes += 1; return { externalPostId: "external-post-1", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
-    const job = await enqueueApproved(jobService, content);
+    const job = await enqueueApproved(jobService, jobs, content);
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const stored = await jobs.findById(job.id);
     assert.deepEqual(results[0], { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "external-post-1" });
