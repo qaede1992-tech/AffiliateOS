@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Content, EntityId, IsoTimestamp } from "@affiliateos/shared";
 
-export type PublicationJobStatus = "pending" | "processing" | "awaiting_confirmation" | "succeeded" | "failed";
+export type PublicationJobStatus = "pending" | "pending_approval" | "processing" | "awaiting_confirmation" | "succeeded" | "failed";
 
 export interface PublicationJob {
   id: EntityId;
