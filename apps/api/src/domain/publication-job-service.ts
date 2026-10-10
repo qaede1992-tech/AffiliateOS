@@ -66,7 +66,7 @@ export class PublicationJobService {
   async fail(id: EntityId, error: unknown, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
     const message = error instanceof Error ? error.message : String(error);
-    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, updatedAt: now.toISOString() };
+    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, confirmedAt: undefined, updatedAt: now.toISOString() };
     return this.jobs.transition ? (await this.jobs.transition(id, ["processing", "awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
   }
 
