@@ -38,6 +38,13 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
 const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = [], operationRepository?: import("../../src/domain/publication-operation.js").PublicationOperationRepository) =>
   new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService, operationRepository);
 
+const enqueueApproved = async (jobService: PublicationJobService, content: Content) => {
+  const job = await enqueueApproved(jobService, content);
+  await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
+  return (await jobService.require(job.id));
+};
+
+
 describe("PublicationWorker", () => {
   it("claims and completes a due publication job", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
@@ -48,7 +55,7 @@ describe("PublicationWorker", () => {
       publish: async () => { publishes += 1; return { externalPostId: "external-post-1", status: "published" }; }
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
-    const job = await jobService.enqueue(content);
+    const job = await enqueueApproved(jobService, content);
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const stored = await jobs.findById(job.id);
     assert.deepEqual(results[0], { jobId: job.id, contentId: content.id, status: "succeeded", externalPostId: "external-post-1" });
@@ -281,7 +288,7 @@ describe("PublicationWorker", () => {
     };
     const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
     const job = await jobService.enqueue(content);
-    await jobs.save({ ...job, status: "processing", attemptCount: 1, lockedAt: "2026-09-20T10:40:00.000Z", updatedAt: "2026-09-20T10:40:00.000Z" });
+    await jobs.save({ ...job, status: "processing", attemptCount: 1, confirmedAt: "2026-09-20T10:30:00.000Z", lockedAt: "2026-09-20T10:40:00.000Z", updatedAt: "2026-09-20T10:40:00.000Z" });
     const results = await worker.runOnce(new Date("2026-09-20T10:50:00.000Z"));
     const stored = await jobs.findById(job.id);
     assert.equal(results[0]?.status, "succeeded");
