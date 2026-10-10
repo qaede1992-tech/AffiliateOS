@@ -162,3 +162,50 @@ test("TikTok client publishes an image through the photo Direct Post API", async
   assert.deepEqual(result, { status: "accepted", providerOperationId: "photo-publish-1" });
   assert.deepEqual(calls.map((call) => call.method), ["POST", "POST"]);
 });
+
+
+test("TikTok creator interaction restrictions override account preferences", async () => {
+  let publishBody: Record<string, unknown> | undefined;
+  const client = new TikTokContentPostingClient({
+    mediaTransferMode: "PULL_FROM_URL",
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({
+          data: {
+            privacy_level_options: ["SELF_ONLY"],
+            comment_disabled: true,
+            duet_disabled: true,
+            stitch_disabled: true
+          },
+          error: { code: "ok" }
+        }), { status: 200 });
+      }
+      publishBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ data: { publish_id: "publish-restricted-1" }, error: { code: "ok" } }), { status: 200 });
+    }
+  });
+
+  const accountWithInteractionsEnabled = {
+    ...account,
+    connection: {
+      ...account.connection,
+      tiktokDisableComment: false,
+      tiktokDisableDuet: false,
+      tiktokDisableStitch: false
+    }
+  };
+  const result = await client.publish({
+    content,
+    account: accountWithInteractionsEnabled,
+    mediaAssets: [asset],
+    idempotencyKey: "idem-restricted-1"
+  });
+
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-restricted-1" });
+  const postInfo = publishBody?.post_info as Record<string, unknown>;
+  assert.equal(postInfo.disable_comment, true);
+  assert.equal(postInfo.disable_duet, true);
+  assert.equal(postInfo.disable_stitch, true);
+});
