@@ -10,6 +10,9 @@ const MAX_VIDEO_SIZE = 4 * 1024 * 1024 * 1024;
 
 type TikTokCreatorInfo = {
   privacy_level_options?: string[];
+  comment_disabled?: boolean;
+  duet_disabled?: boolean;
+  stitch_disabled?: boolean;
   max_video_post_duration_sec?: number;
 };
 
@@ -59,16 +62,22 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       throw new Error("TikTok privacy level is not permitted by the latest creator settings.");
     }
 
+    // Creator-level restrictions always win over account preferences. TikTok may
+    // disable interactions for private accounts or from the creator's settings.
+    const disableComment = this.readBoolean(input.account, "disableComment") || creator.comment_disabled === true;
+    const disableDuet = this.readBoolean(input.account, "disableDuet") || creator.duet_disabled === true;
+    const disableStitch = this.readBoolean(input.account, "disableStitch") || creator.stitch_disabled === true;
+
     if (asset.kind === "image") {
       if (asset.source !== "url") throw new Error("TikTok photo publishing requires a media URL.");
       if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok photo URL must use HTTPS.");
-      return this.initializePhotoDirectPost(input, input.account, accessToken, privacyLevel, asset.reference);
+      return this.initializePhotoDirectPost(input, input.account, accessToken, privacyLevel, asset.reference, disableComment);
     }
 
     if (this.mediaTransferMode === "PULL_FROM_URL") {
       if (asset.source !== "url") throw new Error("TikTok PULL_FROM_URL publishing requires a media URL.");
       if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok media URL must use HTTPS.");
-      return this.initializePullFromUrl(input, accessToken, privacyLevel, asset.reference);
+      return this.initializePullFromUrl(input, accessToken, privacyLevel, asset.reference, disableComment, disableDuet, disableStitch);
     }
 
     if (!this.isHttpsUrl(asset.reference)) {
@@ -84,9 +93,9 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
         post_info: {
           title: input.content.caption ?? input.content.title ?? "",
           privacy_level: privacyLevel,
-          disable_duet: this.readBoolean(input.account, "disableDuet"),
-          disable_stitch: this.readBoolean(input.account, "disableStitch"),
-          disable_comment: this.readBoolean(input.account, "disableComment")
+          disable_duet: disableDuet,
+          disable_stitch: disableStitch,
+          disable_comment: disableComment
         },
         source_info: {
           source: "FILE_UPLOAD",
@@ -129,7 +138,8 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     account: SocialAccount,
     accessToken: string,
     privacyLevel: string,
-    reference: string
+    reference: string,
+    disableComment: boolean
   ): Promise<PublishOutcome> {
     const response = await this.requestJson<TikTokInitResponse>("/v2/post/publish/content/init/", accessToken, {
       method: "POST",
@@ -139,7 +149,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
           title: input.content.title ?? "",
           description: input.content.caption ?? "",
           privacy_level: privacyLevel,
-          disable_comment: this.readBoolean(account, "disableComment")
+          disable_comment: disableComment
         },
         source_info: {
           source: "PULL_FROM_URL",
@@ -159,7 +169,10 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     input: { content: Content },
     accessToken: string,
     privacyLevel: string,
-    reference: string
+    reference: string,
+    disableComment: boolean,
+    disableDuet: boolean,
+    disableStitch: boolean
   ): Promise<PublishOutcome> {
     const response = await this.requestJson<TikTokInitResponse>("/v2/post/publish/video/init/", accessToken, {
       method: "POST",
@@ -167,7 +180,10 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       body: JSON.stringify({
         post_info: {
           title: input.content.caption ?? input.content.title ?? "",
-          privacy_level: privacyLevel
+          privacy_level: privacyLevel,
+          disable_comment: disableComment,
+          disable_duet: disableDuet,
+          disable_stitch: disableStitch
         },
         source_info: { source: "PULL_FROM_URL", video_url: reference }
       })
