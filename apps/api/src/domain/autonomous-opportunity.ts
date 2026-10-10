@@ -13,6 +13,10 @@ export type OpportunitySelectionPolicy = {
   minimumDemandScore?: number;
   explorationRate?: number;
   explorationMinimumEvidenceClicks?: number;
+  /** Require media that can be consumed by the social publishers before autonomous selection. */
+  requirePublishableMedia?: boolean;
+  /** Require an explicit commission rate or amount signal before autonomous selection. */
+  requireCommissionSignal?: boolean;
 };
 
 export type OpportunitySelectionPoliciesByMarketplace = Record<string, OpportunitySelectionPolicy>;
@@ -125,7 +129,10 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       const selectedOffer = item.offerId ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId) : undefined;
+      const hasCommissionSignal = Boolean(selectedOffer && (selectedOffer.commissionRateBps !== undefined || selectedOffer.commissionAmountCents !== undefined));
       return item.score >= minimumScore && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
+        (!candidatePolicy.requirePublishableMedia || hasPublishableMedia(item.product)) &&
+        (!candidatePolicy.requireCommissionSignal || hasCommissionSignal) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
         (item.breakdown.commissionAmountCents ?? 0) >= minimumCommissionAmountCents &&
@@ -157,6 +164,8 @@ export class AutonomousOpportunitySelector {
           : [
             ...(!item.offerId ? ["No affiliate offer selected"] : []),
             ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId)) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
+            ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product) ? ["Product has no HTTPS image or video suitable for autopublishing"] : []),
+            ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
             ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
           ]
       };
@@ -271,6 +280,22 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
   return { ...primary[0], clickCount: evidence, confidence, adjustment: Math.round(Math.max(-8, Math.min(8, adjustment)) * 100) / 100 };
 }
 
+
+function hasPublishableMedia(product: Product): boolean {
+  return [product.videoUrl, product.imageUrl].some((reference) => {
+    if (!reference) return false;
+    try {
+      return new URL(reference).protocol === "https:";
+    } catch {
+      return false;
+    }
+  });
+}
+
+function hasCommissionSignalForProduct(productId: string, offerId: string | undefined, offersByProductId: Map<string, AffiliateOffer[]>): boolean {
+  const offer = offerId ? offersByProductId.get(productId)?.find((candidate) => candidate.id === offerId) : undefined;
+  return Boolean(offer && (offer.commissionRateBps !== undefined || offer.commissionAmountCents !== undefined));
+}
 
 export function isExecutableAffiliateOffer(productId: string, offer: AffiliateOffer | undefined): boolean {
   const metadata = offer?.availabilityMetadata ?? {};
