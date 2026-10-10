@@ -15,6 +15,7 @@ export interface PublicationJob {
   lastError?: string;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
+  confirmedAt?: IsoTimestamp;
 }
 
 export interface PublicationJobRepository {
