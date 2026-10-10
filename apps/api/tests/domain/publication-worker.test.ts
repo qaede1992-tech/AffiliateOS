@@ -46,6 +46,26 @@ const enqueueApproved = async (jobService: PublicationJobService, content: Conte
 
 
 describe("PublicationWorker", () => {
+  it("blocks TikTok publication until explicit approval", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    let publishes = 0;
+    const publisher: SocialPublisher = {
+      provider: "tiktok",
+      supports: (platform) => platform === "tiktok",
+      publish: async () => { publishes += 1; return { externalPostId: "must-not-publish", status: "published" }; }
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher]);
+    const job = await jobService.enqueue(content);
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.deepEqual(results[0], { jobId: job.id, contentId: content.id, status: "pending_approval" });
+    assert.equal((await jobs.findById(job.id))?.status, "pending_approval");
+    assert.equal(publishes, 0);
+    await jobService.confirm(job.id, new Date("2026-09-20T11:01:00.000Z"));
+    const approved = await worker.runOnce(new Date("2026-09-20T11:02:00.000Z"));
+    assert.equal(approved[0]?.status, "succeeded");
+    assert.equal(publishes, 1);
+  });
+
   it("claims and completes a due publication job", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let publishes = 0;
