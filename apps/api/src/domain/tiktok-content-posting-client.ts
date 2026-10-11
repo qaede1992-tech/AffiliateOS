@@ -287,7 +287,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
   }
 
   private async creatorInfo(accessToken: string): Promise<TikTokCreatorInfoResponse> {
-    const response = await this.requestJson<{ data?: TikTokCreatorInfo; error?: { message?: string } }>("/v2/post/publish/creator_info/query/", accessToken, {
+    const response = await this.requestJson<{ data?: TikTokCreatorInfoResponse; error?: { message?: string } }>("/v2/post/publish/creator_info/query/", accessToken, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{}"
