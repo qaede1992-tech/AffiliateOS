@@ -38,10 +38,22 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
 const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = [], operationRepository?: import("../../src/domain/publication-operation.js").PublicationOperationRepository) =>
   new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService, operationRepository);
 
+const approval = {
+  privacyLevel: "SELF_ONLY",
+  disableComment: false,
+  disableDuet: false,
+  disableStitch: false,
+  commercialDisclosureEnabled: false,
+  brandOrganicToggle: false,
+  brandContentToggle: false,
+  musicUsageConfirmed: true,
+  previewConfirmed: true
+} as const;
+
 const enqueueApproved = async (jobService: PublicationJobService, jobs: InMemoryPublicationJobRepository, content: Content) => {
   const job = await jobService.enqueue(content);
   await jobs.save({ ...job, status: "pending_approval" });
-  await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
+  await jobService.confirmWithApproval(job.id, approval, new Date("2026-09-20T10:30:00.000Z"));
   return (await jobService.require(job.id));
 };
 
