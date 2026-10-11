@@ -379,6 +379,13 @@
       "when": 1791676800000,
       "tag": "0056_tiktok_publication_approval_and_media_duration",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791763200000,
+      "tag": "0057_content_products_multi_product_story",
+      "breakpoints": true
     }
   ]
 }
