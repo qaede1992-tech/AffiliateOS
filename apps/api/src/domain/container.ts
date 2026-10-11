@@ -25,7 +25,7 @@ import type { SocialCredentialResolver, SocialCredentialStore } from "./social-c
 import { AutonomousRunService } from "./autonomous-run-service.js";
 import { AutonomousExecutionService } from "./autonomous-execution.js";
 import { AutonomousOpportunitySelector, type OpportunitySelectionPolicy, type OpportunitySelectionPoliciesByMarketplace } from "./autonomous-opportunity.js";
-import { InMemoryAutonomousRunRepository, InMemoryContentProductRepository, type AutonomousRunRepository } from "./autonomous-run.js";
+import { InMemoryAutonomousRunRepository, type AutonomousRunRepository } from "./autonomous-run.js";
 import type { PublicationOperationRepository } from "./publication-operation.js";
 import { AutonomousCycleService } from "./autonomous-cycle.js";
 import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace-candidates.js";
