@@ -3,7 +3,7 @@ import type { MediaAsset } from "./media-asset.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { PublicationCheckResult, PublishOutcome, SocialPublisher } from "./distribution-engine.js";
 
-export interface TikTokCreatorInfo { creatorNickname?: string; privacyLevelOptions: string[]; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean; maxVideoPostDurationSec?: number; }
+export interface TikTokCreatorInfo { creatorNickname?: string; privacyLevelOptions: string[]; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean; maxVideoPostDurationSec?: number; canPostMore?: boolean; }
 export interface TikTokContentPublisherClient {
   publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string; tiktokApproval?: TikTokPublicationApproval }): Promise<PublishOutcome>;
   checkPublication(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }): Promise<PublicationCheckResult>;
