@@ -88,7 +88,7 @@ class DrizzleContentRepository extends DrizzleRepository<Content, typeof content
   }
 }
 class DrizzleMediaAssetRepository extends DrizzleRepository<MediaAsset, typeof mediaAssets.$inferSelect> implements MediaAssetRepository {
-  constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity } as any)); }
+  constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity, durationSeconds: entity.durationSeconds ?? null } as any)); }
   async listByContent(contentId: string) { return (await this.db.select().from(mediaAssets).where(eq(mediaAssets.contentId, contentId))).map(toMediaAsset); }
   override async save(entity: MediaAsset) { if (await this.findById(entity.id)) await this.db.update(mediaAssets).set(this.toRow(entity)).where(eq(mediaAssets.id, entity.id)); else await super.save(entity); return entity; }
 }
