@@ -15,6 +15,7 @@ export type TikTokCreatorInfoResponse = {
   duet_disabled?: boolean;
   stitch_disabled?: boolean;
   max_video_post_duration_sec?: number;
+  can_post_more?: boolean;
 };
 
 type TikTokInitResponse = {
@@ -54,6 +55,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
     const creator = await this.creatorInfo(accessToken);
     const privacyLevel = approval.privacyLevel;
+    if (creator.can_post_more === false) throw new Error("TikTok creator cannot publish more posts right now. Please retry later.");
     const asset = input.mediaAssets.find((candidate) => candidate.kind === "video") ??
       input.mediaAssets.find((candidate) => candidate.kind === "image");
     if (!asset) throw new Error("TikTok direct publishing requires a video or image media asset.");
@@ -67,6 +69,11 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     const disableComment = approval.disableComment || creator.comment_disabled === true;
     const disableDuet = approval.disableDuet || creator.duet_disabled === true;
     const disableStitch = approval.disableStitch || creator.stitch_disabled === true;
+
+    if (asset.kind === "video" && creator.max_video_post_duration_sec !== undefined) {
+      if (asset.durationSeconds === undefined) throw new Error("TikTok requires video duration metadata before publishing.");
+      if (asset.durationSeconds > creator.max_video_post_duration_sec) throw new Error("TikTok video duration exceeds the creator's current maximum of " + creator.max_video_post_duration_sec + " seconds.");
+    }
 
     if (asset.kind === "image") {
       if (asset.source !== "url") throw new Error("TikTok photo publishing requires a media URL.");
@@ -289,7 +296,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     if (account.platform !== "tiktok") throw new Error("TikTok creator info requires a TikTok social account.");
     const accessToken = await this.configuration.accessTokenResolver(account);
     const creator = await this.creatorInfo(accessToken);
-    return { ...(creator.creator_nickname ? { creatorNickname: creator.creator_nickname } : {}), privacyLevelOptions: creator.privacy_level_options ?? [], commentDisabled: creator.comment_disabled === true, duetDisabled: creator.duet_disabled === true, stitchDisabled: creator.stitch_disabled === true, ...(creator.max_video_post_duration_sec !== undefined ? { maxVideoPostDurationSec: creator.max_video_post_duration_sec } : {}) };
+    return { ...(creator.creator_nickname ? { creatorNickname: creator.creator_nickname } : {}), privacyLevelOptions: creator.privacy_level_options ?? [], commentDisabled: creator.comment_disabled === true, duetDisabled: creator.duet_disabled === true, stitchDisabled: creator.stitch_disabled === true, ...(creator.max_video_post_duration_sec !== undefined ? { maxVideoPostDurationSec: creator.max_video_post_duration_sec } : {}), ...(creator.can_post_more !== undefined ? { canPostMore: creator.can_post_more } : {}) };
   }
 
   private async creatorInfo(accessToken: string): Promise<TikTokCreatorInfoResponse> {
