@@ -73,7 +73,7 @@ describe("PublicationWorker", () => {
     assert.deepEqual(results[0], { jobId: job.id, contentId: content.id, status: "pending_approval" });
     assert.equal((await jobs.findById(job.id))?.status, "pending_approval");
     assert.equal(publishes, 0);
-    await jobService.confirm(job.id, new Date("2026-09-20T11:01:00.000Z"));
+    await jobService.confirmWithApproval(job.id, approval, new Date("2026-09-20T11:01:00.000Z"));
     const approved = await worker.runOnce(new Date("2026-09-20T11:02:00.000Z"));
     assert.equal(approved[0]?.status, "succeeded");
     assert.equal(publishes, 1);
@@ -293,7 +293,7 @@ describe("PublicationWorker", () => {
     assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date(testNow.getTime() + 59_999));
     const approval = await worker.runOnce(new Date(testNow.getTime() + 60_000));
-    await jobService.confirm(job.id, new Date(testNow.getTime() + 60_000));
+    await jobService.confirmWithApproval(job.id, approval, new Date(testNow.getTime() + 60_000));
     const retry = await worker.runOnce(new Date(testNow.getTime() + 60_001));
     const stored = await jobs.findById(job.id);
     assert.equal(first[0]?.status, "failed");
