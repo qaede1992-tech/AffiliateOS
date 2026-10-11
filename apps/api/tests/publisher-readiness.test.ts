@@ -3,6 +3,7 @@ import test from "node:test";
 import { PublisherReadinessService } from "../src/domain/publisher-readiness.js";
 import type { SocialPublisher } from "../src/domain/distribution-engine.js";
 import type { SocialAccount } from "@affiliateos/shared";
+import { InMemorySocialCredentialResolver } from "../src/domain/social-credentials.js";
 
 const publisher: SocialPublisher = {
   provider: "test-provider",
@@ -62,4 +63,46 @@ test("TikTok remains unconfigured when the video publishing scope is missing", (
   assert.equal(result.status, "unconfigured");
   assert.equal(result.requiredScope, "video.publish");
   assert.equal(result.requiredScopeGranted, false);
+});
+
+
+test("TikTok becomes ready after the opaque credential reference resolves", async () => {
+  const tiktokPublisher: SocialPublisher = {
+    provider: "tiktok-provider",
+    supports: (platform) => platform === "tiktok"
+  };
+  const repository = { list: async () => [account({
+    platform: "tiktok",
+    connection: { grantedScopes: ["video.publish"] },
+    credentialReference: "secret://social/tiktok"
+  })] };
+  const credentials = new InMemorySocialCredentialResolver();
+  credentials.set("secret://social/tiktok", { accessToken: "redacted-test-value" });
+  const service = new PublisherReadinessService([tiktokPublisher], true, repository, credentials);
+
+  const result = (await service.list()).find((item) => item.platform === "tiktok");
+  assert.equal(result?.status, "ready");
+  assert.equal(result?.credentialResolvable, true);
+});
+
+test("TikTok stays unconfigured when credential resolution fails", async () => {
+  const tiktokPublisher: SocialPublisher = {
+    provider: "tiktok-provider",
+    supports: (platform) => platform === "tiktok"
+  };
+  const repository = { list: async () => [account({
+    platform: "tiktok",
+    connection: { grantedScopes: ["video.publish"] },
+    credentialReference: "secret://social/tiktok"
+  })] };
+  const service = new PublisherReadinessService(
+    [tiktokPublisher],
+    true,
+    repository,
+    new InMemorySocialCredentialResolver()
+  );
+
+  const result = (await service.list()).find((item) => item.platform === "tiktok");
+  assert.equal(result?.status, "unconfigured");
+  assert.equal(result?.credentialResolvable, false);
 });
