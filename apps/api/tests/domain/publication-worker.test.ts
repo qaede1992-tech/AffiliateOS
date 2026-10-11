@@ -292,14 +292,14 @@ describe("PublicationWorker", () => {
     const first = await worker.runOnce(testNow);
     assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date(testNow.getTime() + 59_999));
-    const approval = await worker.runOnce(new Date(testNow.getTime() + 60_000));
+    const approvalResult = await worker.runOnce(new Date(testNow.getTime() + 60_000));
     await jobService.confirmWithApproval(job.id, approval, new Date(testNow.getTime() + 60_000));
     const retry = await worker.runOnce(new Date(testNow.getTime() + 60_001));
     const stored = await jobs.findById(job.id);
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
     assert.deepEqual(blocked, []);
-    assert.equal(approval[0]?.status, "pending_approval");
+    assert.equal(approvalResult[0]?.status, "pending_approval");
     assert.equal(retry[0]?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
     assert.equal(stored?.attemptCount, 3);
