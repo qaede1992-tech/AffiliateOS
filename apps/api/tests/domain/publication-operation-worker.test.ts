@@ -21,6 +21,18 @@ const account: SocialAccount = {
   createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
 };
 
+const approval = {
+  privacyLevel: "SELF_ONLY",
+  disableComment: false,
+  disableDuet: false,
+  disableStitch: false,
+  commercialDisclosureEnabled: false,
+  brandOrganicToggle: false,
+  brandContentToggle: false,
+  musicUsageConfirmed: true,
+  previewConfirmed: true
+} as const;
+
 const setup = async () => {
   const contents = new InMemoryRepository<Content>();
   const campaigns = new InMemoryRepository<any>();
@@ -49,7 +61,7 @@ describe("Publication operation lifecycle", () => {
     const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, [publisher]), contentService, operations);
     const job = await jobService.enqueue(content);
     await jobs.save({ ...job, status: "pending_approval" });
-    await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
+    await jobService.confirmWithApproval(job.id, approval, new Date("2026-09-20T10:30:00.000Z"));
 
     const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const storedJob = await jobs.findById(job.id);
@@ -104,7 +116,7 @@ describe("Publication operation lifecycle", () => {
     const worker = new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, [publisher]), contentService, operations);
     const job = await jobService.enqueue(content);
     await jobs.save({ ...job, status: "pending_approval" });
-    await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
+    await jobService.confirmWithApproval(job.id, approval, new Date("2026-09-20T10:30:00.000Z"));
 
     await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
     const results = await worker.runOnce(new Date("2026-09-20T11:03:00.000Z"));
