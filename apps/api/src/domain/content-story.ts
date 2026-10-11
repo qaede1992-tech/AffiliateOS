@@ -1,7 +1,7 @@
 import type { ContentProduct, ContentStory, EntityId } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import type { AffiliateOfferRepository, ContentProductRepository, ProductCatalogRepository, Repository } from "./repository.js";
-import type { Content, Product } from "@affiliateos/shared";
+import type { Content } from "@affiliateos/shared";
 
 export interface SetContentProductsInput {
   productId: EntityId;
