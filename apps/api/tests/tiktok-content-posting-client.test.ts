@@ -115,14 +115,16 @@ test("TikTok client retains PULL_FROM_URL as an explicit compatibility mode", as
   assert.equal(calls.length, 2);
 });
 
-test("TikTok client fails closed without explicit consent", async () => {
-  const noConsent = { ...account, connection: { tiktokPrivacyLevel: "SELF_ONLY", tiktokPublishingConsentAt: undefined } };
+test("TikTok client fails closed without an approved publication payload", async () => {
   let called = false;
   const client = new TikTokContentPostingClient({
     accessTokenResolver: async () => "secret-token",
     fetchImpl: async () => { called = true; return new Response("{}", { status: 200 }); }
   });
-  await assert.rejects(() => client.publish({ content, account: noConsent, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-1" }), /explicit creator consent/i);
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-no-approval" }),
+    /approved publication payload/i
+  );
   assert.equal(called, false);
 });
 
