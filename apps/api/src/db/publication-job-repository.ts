@@ -20,6 +20,7 @@ const toPublicationJob = (row: PublicationJobRow): PublicationJob => ({
   externalPostId: row.externalPostId ?? undefined,
   lastError: row.lastError ?? undefined,
   confirmedAt: row.confirmedAt ?? undefined,
+  tiktokApproval: row.tiktokApproval as PublicationJob["tiktokApproval"],
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 });
@@ -73,6 +74,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
       externalPostId: job.externalPostId ?? null,
       lastError: job.lastError ?? null,
       confirmedAt: job.confirmedAt ?? null,
+      tiktokApproval: job.tiktokApproval ?? null,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt
     };
@@ -116,6 +118,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
         externalPostId: job.externalPostId ?? null,
         lastError: job.lastError ?? null,
         confirmedAt: job.confirmedAt ?? null,
+        tiktokApproval: job.tiktokApproval ?? null,
         updatedAt: job.updatedAt
       })
       .where(and(eq(publicationJobs.id, id), or(...expected.map((status) => eq(publicationJobs.status, status)))))
