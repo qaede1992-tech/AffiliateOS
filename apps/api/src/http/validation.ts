@@ -36,3 +36,24 @@ export const shopeeCommissionReportSchema = z.object({
 });
 
 export const publicationJobIdSchema = z.object({ jobId: entityId });
+
+export const tiktokPublicationApprovalSchema = z.object({
+  privacyLevel: z.string().trim().min(1).max(50),
+  disableComment: z.boolean(),
+  disableDuet: z.boolean(),
+  disableStitch: z.boolean(),
+  commercialDisclosureEnabled: z.boolean(),
+  brandOrganicToggle: z.boolean(),
+  brandContentToggle: z.boolean(),
+  title: z.string().max(2200).optional(),
+  description: z.string().max(4000).optional(),
+  musicUsageConfirmed: z.literal(true),
+  previewConfirmed: z.literal(true)
+}).superRefine((value, context) => {
+  if (value.commercialDisclosureEnabled && !value.brandOrganicToggle && !value.brandContentToggle) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["brandOrganicToggle"], message: "Select Your Brand, Branded Content, or both when commercial disclosure is enabled." });
+  }
+  if (value.brandContentToggle && !["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"].includes(value.privacyLevel)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["privacyLevel"], message: "Branded content must be public or friends-only." });
+  }
+});
