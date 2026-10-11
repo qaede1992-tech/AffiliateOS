@@ -53,6 +53,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     if (!approval) throw new Error("TikTok publishing requires an approved publication payload.");
 
     const creator = await this.creatorInfo(accessToken);
+    const privacyLevel = approval.privacyLevel;
     const asset = input.mediaAssets.find((candidate) => candidate.kind === "video") ??
       input.mediaAssets.find((candidate) => candidate.kind === "image");
     if (!asset) throw new Error("TikTok direct publishing requires a video or image media asset.");
@@ -61,11 +62,11 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       throw new Error("TikTok privacy level is not permitted by the latest creator settings.");
     }
 
-    // Creator-level restrictions always win over account preferences. TikTok may
-    // disable interactions for private accounts or from the creator's settings.
-    const disableComment = this.readBoolean(input.account, "disableComment") || creator.comment_disabled === true;
-    const disableDuet = this.readBoolean(input.account, "disableDuet") || creator.duet_disabled === true;
-    const disableStitch = this.readBoolean(input.account, "disableStitch") || creator.stitch_disabled === true;
+    // Publication approval is the source of user-selected options. Creator restrictions
+    // can only make an approved interaction setting more restrictive.
+    const disableComment = approval.disableComment || creator.comment_disabled === true;
+    const disableDuet = approval.disableDuet || creator.duet_disabled === true;
+    const disableStitch = approval.disableStitch || creator.stitch_disabled === true;
 
     if (asset.kind === "image") {
       if (asset.source !== "url") throw new Error("TikTok photo publishing requires a media URL.");
@@ -90,11 +91,13 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         post_info: {
-          title: input.content.caption ?? input.content.title ?? "",
+          title: approval.title ?? input.content.caption ?? input.content.title ?? "",
           privacy_level: privacyLevel,
           disable_duet: disableDuet,
           disable_stitch: disableStitch,
-          disable_comment: disableComment
+          disable_comment: disableComment,
+          brand_content_toggle: approval.commercialDisclosureEnabled && approval.brandContentToggle,
+          brand_organic_toggle: approval.commercialDisclosureEnabled && approval.brandOrganicToggle
         },
         source_info: {
           source: "FILE_UPLOAD",
@@ -134,11 +137,11 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
   private async initializePhotoDirectPost(
     input: { content: Content },
-    account: SocialAccount,
     accessToken: string,
     privacyLevel: string,
     reference: string,
-    disableComment: boolean
+    disableComment: boolean,
+    approval: TikTokPublicationApproval
   ): Promise<PublishOutcome> {
     const response = await this.requestJson<TikTokInitResponse>("/v2/post/publish/content/init/", accessToken, {
       method: "POST",
@@ -146,9 +149,11 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       body: JSON.stringify({
         post_info: {
           title: input.content.title ?? "",
-          description: input.content.caption ?? "",
+          description: approval.description ?? input.content.caption ?? "",
           privacy_level: privacyLevel,
-          disable_comment: disableComment
+          disable_comment: disableComment,
+          brand_content_toggle: approval.commercialDisclosureEnabled && approval.brandContentToggle,
+          brand_organic_toggle: approval.commercialDisclosureEnabled && approval.brandOrganicToggle
         },
         source_info: {
           source: "PULL_FROM_URL",
@@ -171,18 +176,21 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     reference: string,
     disableComment: boolean,
     disableDuet: boolean,
-    disableStitch: boolean
+    disableStitch: boolean,
+    approval: TikTokPublicationApproval
   ): Promise<PublishOutcome> {
     const response = await this.requestJson<TikTokInitResponse>("/v2/post/publish/video/init/", accessToken, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         post_info: {
-          title: input.content.caption ?? input.content.title ?? "",
+          title: approval.title ?? input.content.caption ?? input.content.title ?? "",
           privacy_level: privacyLevel,
           disable_comment: disableComment,
           disable_duet: disableDuet,
-          disable_stitch: disableStitch
+          disable_stitch: disableStitch,
+          brand_content_toggle: approval.commercialDisclosureEnabled && approval.brandContentToggle,
+          brand_organic_toggle: approval.commercialDisclosureEnabled && approval.brandOrganicToggle
         },
         source_info: { source: "PULL_FROM_URL", video_url: reference }
       })
@@ -306,21 +314,6 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       throw new Error(error ?? "TikTok request failed (HTTP " + response.status + ").");
     }
     return payload;
-  }
-
-  private readPrivacyLevel(account: SocialAccount): string {
-    const value = account.connection.tiktokPrivacyLevel;
-    if (typeof value !== "string" || !value.trim()) throw new Error("TikTok account requires an explicit privacy level.");
-    return value;
-  }
-
-  private hasExplicitConsent(account: SocialAccount): boolean {
-    const value = account.connection.tiktokPublishingConsentAt;
-    return typeof value === "string" && Number.isFinite(new Date(value).getTime());
-  }
-
-  private readBoolean(account: SocialAccount, key: string): boolean {
-    return account.connection["tiktok" + key.charAt(0).toUpperCase() + key.slice(1)] === true;
   }
 
   private isHttpsUrl(value: string): boolean {
