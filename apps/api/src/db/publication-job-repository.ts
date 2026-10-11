@@ -20,7 +20,7 @@ const toPublicationJob = (row: PublicationJobRow): PublicationJob => ({
   externalPostId: row.externalPostId ?? undefined,
   lastError: row.lastError ?? undefined,
   confirmedAt: row.confirmedAt ?? undefined,
-  tiktokApproval: row.tiktokApproval as PublicationJob["tiktokApproval"],
+  tiktokApproval: row.tiktokApproval as unknown as PublicationJob["tiktokApproval"],
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 });
