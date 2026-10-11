@@ -239,7 +239,8 @@ test("TikTok client exposes normalized creator info for the approval screen", as
           comment_disabled: false,
           duet_disabled: true,
           stitch_disabled: false,
-          max_video_post_duration_sec: 600
+          max_video_post_duration_sec: 600,
+          can_post_more: true
         }
       }), { status: 200 });
     }
@@ -251,7 +252,8 @@ test("TikTok client exposes normalized creator info for the approval screen", as
     commentDisabled: false,
     duetDisabled: true,
     stitchDisabled: false,
-    maxVideoPostDurationSec: 600
+    maxVideoPostDurationSec: 600,
+    canPostMore: true
   });
 });
 
