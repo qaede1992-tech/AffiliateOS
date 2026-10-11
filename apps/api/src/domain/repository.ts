@@ -13,6 +13,11 @@ export class InMemoryRepository<T extends { id: EntityId }> {
   async findById(id: EntityId): Promise<T | undefined> { return this.entities.get(id); }
   async save(entity: T): Promise<T> { this.entities.set(entity.id, entity); return entity; }
 }
+export class InMemoryContentProductRepository implements ContentProductRepository {
+  private readonly entities = new Map<string, ContentProduct>();
+  async listByContent(contentId: string) { return [...this.entities.values()].filter((item) => item.contentId === contentId).sort((a, b) => a.position - b.position); }
+  async replaceForContent(contentId: string, items: ContentProduct[]) { for (const key of [...this.entities.keys()]) if (this.entities.get(key)?.contentId === contentId) this.entities.delete(key); for (const item of items) this.entities.set(`${contentId}:${item.productId}`, item); return items; }
+}
 export class InMemoryCommissionRepository extends InMemoryRepository<Commission> implements CommissionRepository { async findByConversionId(conversionId: EntityId) { return (await this.list()).find((commission) => commission.conversionId === conversionId); } }
 export class InMemoryMarketplaceConnectionRepository extends InMemoryRepository<import("@affiliateos/shared").MarketplaceConnection> implements MarketplaceConnectionRepository { async findBySlug(slug: string) { return (await this.list()).find((connection) => connection.slug === slug); } }
 export class InMemoryProductCatalogRepository extends InMemoryRepository<import("@affiliateos/shared").Product> implements ProductCatalogRepository { async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { return (await this.list()).find((product) => product.marketplaceId === marketplaceId && product.externalProductId === externalProductId); } }
