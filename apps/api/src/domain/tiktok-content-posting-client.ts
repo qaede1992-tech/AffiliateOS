@@ -2,7 +2,7 @@ import type { Content, SocialAccount } from "@affiliateos/shared";
 import type { MediaAsset } from "./media-asset.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { PublicationCheckResult, PublishOutcome } from "./distribution-engine.js";
-import type { TikTokContentPublisherClient } from "./tiktok-content-publisher.js";
+import type { TikTokContentPublisherClient, TikTokCreatorInfo } from "./tiktok-content-publisher.js";
 
 const FIVE_MB = 5 * 1024 * 1024;
 const SIXTY_FOUR_MB = 64 * 1024 * 1024;
@@ -279,7 +279,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     }
   }
 
-  async getCreatorInfo(account: SocialAccount): Promise<import("./tiktok-content-publisher.js").TikTokCreatorInfo> {
+  async getCreatorInfo(account: SocialAccount): Promise<TikTokCreatorInfo> {
     if (account.platform !== "tiktok") throw new Error("TikTok creator info requires a TikTok social account.");
     const accessToken = await this.configuration.accessTokenResolver(account);
     const creator = await this.creatorInfo(accessToken);

@@ -209,3 +209,34 @@ test("TikTok creator interaction restrictions override account preferences", asy
   assert.equal(postInfo.disable_duet, true);
   assert.equal(postInfo.disable_stitch, true);
 });
+
+
+test("TikTok client exposes normalized creator info for the approval screen", async () => {
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      assert.equal(String(input), "https://open.tiktokapis.com/v2/post/publish/creator_info/query/");
+      assert.equal(init?.method, "POST");
+      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer secret-token");
+      return new Response(JSON.stringify({
+        data: {
+          creator_nickname: "Demo Creator",
+          privacy_level_options: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"],
+          comment_disabled: false,
+          duet_disabled: true,
+          stitch_disabled: false,
+          max_video_post_duration_sec: 600
+        }
+      }), { status: 200 });
+    }
+  });
+
+  assert.deepEqual(await client.getCreatorInfo(account), {
+    creatorNickname: "Demo Creator",
+    privacyLevelOptions: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"],
+    commentDisabled: false,
+    duetDisabled: true,
+    stitchDisabled: false,
+    maxVideoPostDurationSec: 600
+  });
+});
