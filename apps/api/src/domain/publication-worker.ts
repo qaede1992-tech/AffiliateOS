@@ -152,12 +152,12 @@ export class PublicationWorker {
       await this.prepareRetry(job);
       if (this.contentService) {
         const content = await this.contentService.get(job.contentId);
-        if (content.platform === "tiktok" && !job.confirmedAt) {
+        if (content.platform === "tiktok" && (!job.confirmedAt || !job.tiktokApproval)) {
           await this.jobService.requestApproval(job.id, now);
           return { jobId: job.id, contentId: job.contentId, status: "pending_approval" };
         }
       }
-      const result = await this.executor.execute(job.contentId, now, job.idempotencyKey);
+      const result = await this.executor.execute(job.contentId, now, job.idempotencyKey, job.tiktokApproval);
       if (result.status === "published" && result.externalPostId) {
         await this.jobService.succeed(job.id, result.externalPostId, now);
         return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: result.externalPostId };
