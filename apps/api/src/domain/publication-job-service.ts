@@ -69,7 +69,7 @@ export class PublicationJobService {
 
   async requestApproval(id: EntityId, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
-    const next = { ...job, status: "pending_approval" as const, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() };
+    const next = { ...job, status: "pending_approval" as const, lockedAt: undefined, lastError: undefined, confirmedAt: undefined, tiktokApproval: undefined, updatedAt: now.toISOString() };
     return this.jobs.transition ? (await this.jobs.transition(id, ["processing"], next)) ?? job : this.jobs.save(next);
   }
 
@@ -88,7 +88,7 @@ export class PublicationJobService {
   async fail(id: EntityId, error: unknown, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
     const message = error instanceof Error ? error.message : String(error);
-    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, confirmedAt: undefined, updatedAt: now.toISOString() };
+    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, confirmedAt: undefined, tiktokApproval: undefined, updatedAt: now.toISOString() };
     return this.jobs.transition ? (await this.jobs.transition(id, ["processing", "awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
   }
 
