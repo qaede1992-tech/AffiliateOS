@@ -7,6 +7,7 @@ import { ShopeeConversionSyncService } from "./shopee-conversion-sync.js";
 import { ShopeeConversionSyncScheduler } from "./shopee-conversion-sync-scheduler.js";
 import { CampaignService, TrackingService } from "./campaigns.js";
 import { ContentService, SocialAccountService } from "./content.js";
+import { ContentStoryService } from "./content-story.js";
 import { RepositoryAffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
 import { AnalyticsService } from "./analytics.js";
 import type { AnalyticsReader } from "./analytics-db.js";
@@ -24,7 +25,7 @@ import type { SocialCredentialResolver, SocialCredentialStore } from "./social-c
 import { AutonomousRunService } from "./autonomous-run-service.js";
 import { AutonomousExecutionService } from "./autonomous-execution.js";
 import { AutonomousOpportunitySelector, type OpportunitySelectionPolicy, type OpportunitySelectionPoliciesByMarketplace } from "./autonomous-opportunity.js";
-import { InMemoryAutonomousRunRepository, type AutonomousRunRepository } from "./autonomous-run.js";
+import { InMemoryAutonomousRunRepository, InMemoryContentProductRepository, type AutonomousRunRepository } from "./autonomous-run.js";
 import type { PublicationOperationRepository } from "./publication-operation.js";
 import { AutonomousCycleService } from "./autonomous-cycle.js";
 import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace-candidates.js";
@@ -46,7 +47,7 @@ import type { TikTokCreatorInfo, TikTokContentPublisherClient } from "./tiktok-c
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
-  campaigns: CampaignService; tracking: TrackingService; content: ContentService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
+  campaigns: CampaignService; tracking: TrackingService; content: ContentService; contentStory: ContentStoryService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   publicationJobs: PublicationJobService; tiktokCreatorInfo: { getCreatorInfo(account: SocialAccount): Promise<TikTokCreatorInfo> }; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor; shopeeCommissionReportReconciliation: ShopeeCommissionReportReconciliationService;
 }
 
@@ -58,6 +59,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
   const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
+  const contentStory = new ContentStoryService(repositories.contents, repositories.products, repositories.affiliateOffers, repositories.contentProducts);
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
   const publisherRegistry = new SocialPublisherRegistry(socialPublishers);
   const publishers = publisherRegistry.list();
@@ -107,13 +109,13 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
     shopeeConversionSync, shopeeConversionSyncScheduler, shopeeCommissionReportReconciliation, autonomousDecisionAudits: autonomousDecisionAuditRepository,
-    socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository, undefined, socialCredentialStore), analytics, attribution, publicationJobs, tiktokCreatorInfo: tiktokCreatorInfoClient ?? { getCreatorInfo: async () => { throw new Error("TikTok creator info is not configured."); } }, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
+    contentStory, socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository, undefined, socialCredentialStore), analytics, attribution, publicationJobs, tiktokCreatorInfo: tiktokCreatorInfoClient ?? { getCreatorInfo: async () => { throw new Error("TikTok creator info is not configured."); } }, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
 }
 
 export function createInMemoryServices(): Services {
   const repositories: RepositorySet = {
-    affiliates: new InMemoryRepository<Affiliate>(), offers: new InMemoryRepository<Offer>(), conversions: new InMemoryConversionRepository(), commissions: new InMemoryCommissionRepository(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository(), campaigns: new InMemoryRepository<Campaign>(), campaignOffers: new InMemoryCampaignOfferRepository(), trackingLinks: new InMemoryTrackingLinkRepository(), clicks: new InMemoryClickRepository(), contents: new InMemoryRepository<Content>(), mediaAssets: new InMemoryMediaAssetRepository(), socialAccounts: new InMemorySocialAccountRepository(), publicationJobs: new InMemoryPublicationJobRepository(), publicationOperations: new InMemoryPublicationOperationRepository(), autonomousRuns: new InMemoryAutonomousRunRepository()
+    affiliates: new InMemoryRepository<Affiliate>(), offers: new InMemoryRepository<Offer>(), conversions: new InMemoryConversionRepository(), commissions: new InMemoryCommissionRepository(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository(), campaigns: new InMemoryRepository<Campaign>(), campaignOffers: new InMemoryCampaignOfferRepository(), trackingLinks: new InMemoryTrackingLinkRepository(), clicks: new InMemoryClickRepository(), contents: new InMemoryRepository<Content>(), contentProducts: new InMemoryContentProductRepository(), mediaAssets: new InMemoryMediaAssetRepository(), socialAccounts: new InMemorySocialAccountRepository(), publicationJobs: new InMemoryPublicationJobRepository(), publicationOperations: new InMemoryPublicationOperationRepository(), autonomousRuns: new InMemoryAutonomousRunRepository()
   };
   const transactionManager: TransactionManager = { run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions }) };
   return createServices(repositories, transactionManager);
