@@ -60,3 +60,10 @@ function readAccessToken(value: unknown, provider: string): string {
   }
   throw new Error(`${provider} social credential did not resolve to an access token.`);
 }
+
+
+export function createOfficialTikTokContentPostingClient(configuration: OfficialSocialPublisherRuntimeConfiguration): TikTokContentPostingClient | undefined {
+  const resolver = configuration.credentialResolver;
+  if (!resolver) return undefined;
+  return new TikTokContentPostingClient({ accessTokenResolver: async (account) => { const value = await resolver.resolve(account.credentialReference ?? ""); return readAccessToken(value, "TikTok"); }, fetchImpl: configuration.tiktok?.fetchImpl, baseUrl: configuration.tiktok?.baseUrl });
+}
