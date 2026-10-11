@@ -33,7 +33,28 @@ export function IntegrationSetupPanel() {
     setProviders(p.data); setConnections(c.data); setAffiliates(a.data); setSocialAccounts(s.data); setReadiness(r.data);
   };
 
-  useEffect(() => { void load().catch((e: unknown) => setError(e instanceof Error ? e.message : "Unable to load integration setup.")); }, []);
+  useEffect(() => {
+    let disposed = false;
+    const refreshReadiness = () => {
+      void load().catch((e: unknown) => {
+        if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
+      });
+    };
+    refreshReadiness();
+    const handleFocus = () => refreshReadiness();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refreshReadiness();
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    const intervalId = window.setInterval(refreshReadiness, 30_000);
+    return () => {
+      disposed = true;
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const run = async (key: string, action: () => Promise<unknown>, success: string) => {
     setBusy(key); setError(null); setMessage(null);
