@@ -214,6 +214,7 @@ test("TikTok creator interaction restrictions override account preferences", asy
     content,
     account: accountWithInteractionsEnabled,
     mediaAssets: [asset],
+    tiktokApproval: approval,
     idempotencyKey: "idem-restricted-1"
   });
 
