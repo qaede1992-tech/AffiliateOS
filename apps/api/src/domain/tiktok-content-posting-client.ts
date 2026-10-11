@@ -49,10 +49,8 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
   async publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string; tiktokApproval?: TikTokPublicationApproval }): Promise<PublishOutcome> {
     const accessToken = await this.configuration.accessTokenResolver(input.account);
-    const privacyLevel = this.readPrivacyLevel(input.account);
-    if (!this.hasExplicitConsent(input.account)) {
-      throw new Error("TikTok publishing requires explicit creator consent before media is sent.");
-    }
+    const approval = input.tiktokApproval;
+    if (!approval) throw new Error("TikTok publishing requires an approved publication payload.");
 
     const creator = await this.creatorInfo(accessToken);
     const asset = input.mediaAssets.find((candidate) => candidate.kind === "video") ??
