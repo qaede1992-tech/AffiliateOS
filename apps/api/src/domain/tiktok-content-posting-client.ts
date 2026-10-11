@@ -1,4 +1,4 @@
-import type { Content, SocialAccount } from "@affiliateos/shared";
+import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
 import type { MediaAsset } from "./media-asset.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { PublicationCheckResult, PublishOutcome } from "./distribution-engine.js";
@@ -47,7 +47,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     this.mediaTransferMode = configuration.mediaTransferMode ?? "FILE_UPLOAD";
   }
 
-  async publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string }): Promise<PublishOutcome> {
+  async publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string; tiktokApproval?: TikTokPublicationApproval }): Promise<PublishOutcome> {
     const accessToken = await this.configuration.accessTokenResolver(input.account);
     const privacyLevel = this.readPrivacyLevel(input.account);
     if (!this.hasExplicitConsent(input.account)) {
@@ -72,13 +72,13 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     if (asset.kind === "image") {
       if (asset.source !== "url") throw new Error("TikTok photo publishing requires a media URL.");
       if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok photo URL must use HTTPS.");
-      return this.initializePhotoDirectPost(input, input.account, accessToken, privacyLevel, asset.reference, disableComment);
+      return this.initializePhotoDirectPost(input, accessToken, privacyLevel, asset.reference, disableComment, approval);
     }
 
     if (this.mediaTransferMode === "PULL_FROM_URL") {
       if (asset.source !== "url") throw new Error("TikTok PULL_FROM_URL publishing requires a media URL.");
       if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok media URL must use HTTPS.");
-      return this.initializePullFromUrl(input, accessToken, privacyLevel, asset.reference, disableComment, disableDuet, disableStitch);
+      return this.initializePullFromUrl(input, accessToken, privacyLevel, asset.reference, disableComment, disableDuet, disableStitch, approval);
     }
 
     if (!this.isHttpsUrl(asset.reference)) {
