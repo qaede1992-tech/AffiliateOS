@@ -8,7 +8,8 @@ const FIVE_MB = 5 * 1024 * 1024;
 const SIXTY_FOUR_MB = 64 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 4 * 1024 * 1024 * 1024;
 
-type TikTokCreatorInfo = {
+export type TikTokCreatorInfoResponse = {
+  creator_nickname?: string;
   privacy_level_options?: string[];
   comment_disabled?: boolean;
   duet_disabled?: boolean;
@@ -278,7 +279,14 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     }
   }
 
-  private async creatorInfo(accessToken: string): Promise<TikTokCreatorInfo> {
+  async getCreatorInfo(account: SocialAccount): Promise<import("./tiktok-content-publisher.js").TikTokCreatorInfo> {
+    if (account.platform !== "tiktok") throw new Error("TikTok creator info requires a TikTok social account.");
+    const accessToken = await this.configuration.accessTokenResolver(account);
+    const creator = await this.creatorInfo(accessToken);
+    return { ...(creator.creator_nickname ? { creatorNickname: creator.creator_nickname } : {}), privacyLevelOptions: creator.privacy_level_options ?? [], commentDisabled: creator.comment_disabled === true, duetDisabled: creator.duet_disabled === true, stitchDisabled: creator.stitch_disabled === true, ...(creator.max_video_post_duration_sec !== undefined ? { maxVideoPostDurationSec: creator.max_video_post_duration_sec } : {}) };
+  }
+
+  private async creatorInfo(accessToken: string): Promise<TikTokCreatorInfoResponse> {
     const response = await this.requestJson<{ data?: TikTokCreatorInfo; error?: { message?: string } }>("/v2/post/publish/creator_info/query/", accessToken, {
       method: "POST",
       headers: { "content-type": "application/json" },

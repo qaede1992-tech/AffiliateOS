@@ -20,7 +20,7 @@ import { createShopeeAffiliateProvider } from "./domain/shopee-affiliate-runtime
 import { InMemorySocialOAuthProviderRegistry } from "./domain/oauth.js";
 import { TikTokOAuthProvider } from "./domain/tiktok-oauth-provider.js";
 import { InstagramOAuthProvider } from "./domain/instagram-oauth-provider.js";
-import { createOfficialSocialPublishers } from "./domain/social-publisher-runtime.js";
+import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClient } from "./domain/social-publisher-runtime.js";
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 
@@ -80,7 +80,8 @@ const services = createServices(
   { minimumCommissionPerClickCents: environment.AUTONOMOUS_OPTIMIZATION_MIN_COMMISSION_PER_CLICK_CENTS },
   {},
   {},
-  persistence.autonomousExplorationStates
+  persistence.autonomousExplorationStates,
+  createOfficialTikTokContentPostingClient({ credentialResolver: socialCredentialResolver })
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
