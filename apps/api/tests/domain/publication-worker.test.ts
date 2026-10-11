@@ -38,10 +38,22 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
 const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = [], operationRepository?: import("../../src/domain/publication-operation.js").PublicationOperationRepository) =>
   new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService, operationRepository);
 
+const approval = {
+  privacyLevel: "SELF_ONLY",
+  disableComment: false,
+  disableDuet: false,
+  disableStitch: false,
+  commercialDisclosureEnabled: false,
+  brandOrganicToggle: false,
+  brandContentToggle: false,
+  musicUsageConfirmed: true,
+  previewConfirmed: true
+} as const;
+
 const enqueueApproved = async (jobService: PublicationJobService, jobs: InMemoryPublicationJobRepository, content: Content) => {
   const job = await jobService.enqueue(content);
   await jobs.save({ ...job, status: "pending_approval" });
-  await jobService.confirm(job.id, new Date("2026-09-20T10:30:00.000Z"));
+  await jobService.confirmWithApproval(job.id, approval, new Date("2026-09-20T10:30:00.000Z"));
   return (await jobService.require(job.id));
 };
 
@@ -61,7 +73,7 @@ describe("PublicationWorker", () => {
     assert.deepEqual(results[0], { jobId: job.id, contentId: content.id, status: "pending_approval" });
     assert.equal((await jobs.findById(job.id))?.status, "pending_approval");
     assert.equal(publishes, 0);
-    await jobService.confirm(job.id, new Date("2026-09-20T11:01:00.000Z"));
+    await jobService.confirmWithApproval(job.id, approval, new Date("2026-09-20T11:01:00.000Z"));
     const approved = await worker.runOnce(new Date("2026-09-20T11:02:00.000Z"));
     assert.equal(approved[0]?.status, "succeeded");
     assert.equal(publishes, 1);
@@ -280,14 +292,14 @@ describe("PublicationWorker", () => {
     const first = await worker.runOnce(testNow);
     assert.equal((await contentService.get(content.id)).status, "failed");
     const blocked = await worker.runOnce(new Date(testNow.getTime() + 59_999));
-    const approval = await worker.runOnce(new Date(testNow.getTime() + 60_000));
-    await jobService.confirm(job.id, new Date(testNow.getTime() + 60_000));
+    const approvalResult = await worker.runOnce(new Date(testNow.getTime() + 60_000));
+    await jobService.confirmWithApproval(job.id, approval, new Date(testNow.getTime() + 60_000));
     const retry = await worker.runOnce(new Date(testNow.getTime() + 60_001));
     const stored = await jobs.findById(job.id);
     assert.equal(first[0]?.status, "failed");
     assert.equal(first[0]?.error, "temporary provider failure");
     assert.deepEqual(blocked, []);
-    assert.equal(approval[0]?.status, "pending_approval");
+    assert.equal(approvalResult[0]?.status, "pending_approval");
     assert.equal(retry[0]?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
     assert.equal(stored?.attemptCount, 3);

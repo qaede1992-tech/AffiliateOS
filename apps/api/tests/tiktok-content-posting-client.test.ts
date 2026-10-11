@@ -37,6 +37,18 @@ const asset = {
   updatedAt: "2026-09-26T00:00:00.000Z"
 };
 
+const approval = {
+  privacyLevel: "SELF_ONLY",
+  disableComment: false,
+  disableDuet: false,
+  disableStitch: false,
+  commercialDisclosureEnabled: false,
+  brandOrganicToggle: false,
+  brandContentToggle: false,
+  musicUsageConfirmed: true,
+  previewConfirmed: true
+};
+
 const operation = {
   id: "operation-1",
   jobId: "job-1",
@@ -77,7 +89,7 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
     }
   });
 
-  const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-1" });
+  const result = await client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-1" });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-1" });
   assert.deepEqual(calls.map((call) => call.method), ["POST", "POST", "GET", "PUT"]);
   assert.equal(calls[3]?.body?.byteLength, video.byteLength);
@@ -98,19 +110,21 @@ test("TikTok client retains PULL_FROM_URL as an explicit compatibility mode", as
     }
   });
 
-  const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-pull" });
+  const result = await client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-pull" });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-pull-1" });
   assert.equal(calls.length, 2);
 });
 
-test("TikTok client fails closed without explicit consent", async () => {
-  const noConsent = { ...account, connection: { tiktokPrivacyLevel: "SELF_ONLY", tiktokPublishingConsentAt: undefined } };
+test("TikTok client fails closed without an approved publication payload", async () => {
   let called = false;
   const client = new TikTokContentPostingClient({
     accessTokenResolver: async () => "secret-token",
     fetchImpl: async () => { called = true; return new Response("{}", { status: 200 }); }
   });
-  await assert.rejects(() => client.publish({ content, account: noConsent, mediaAssets: [asset], idempotencyKey: "idem-1" }), /explicit creator consent/i);
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-no-approval" }),
+    /approved publication payload/i
+  );
   assert.equal(called, false);
 });
 
@@ -158,7 +172,7 @@ test("TikTok client publishes an image through the photo Direct Post API", async
     }
   });
 
-  const result = await client.publish({ content, account, mediaAssets: [image], idempotencyKey: "idem-photo-1" });
+  const result = await client.publish({ content, account, mediaAssets: [image], tiktokApproval: approval, idempotencyKey: "idem-photo-1" });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "photo-publish-1" });
   assert.deepEqual(calls.map((call) => call.method), ["POST", "POST"]);
 });
@@ -200,6 +214,7 @@ test("TikTok creator interaction restrictions override account preferences", asy
     content,
     account: accountWithInteractionsEnabled,
     mediaAssets: [asset],
+    tiktokApproval: approval,
     idempotencyKey: "idem-restricted-1"
   });
 
@@ -225,7 +240,8 @@ test("TikTok client exposes normalized creator info for the approval screen", as
           comment_disabled: false,
           duet_disabled: true,
           stitch_disabled: false,
-          max_video_post_duration_sec: 600
+          max_video_post_duration_sec: 600,
+          can_post_more: true
         }
       }), { status: 200 });
     }
@@ -237,6 +253,76 @@ test("TikTok client exposes normalized creator info for the approval screen", as
     commentDisabled: false,
     duetDisabled: true,
     stitchDisabled: false,
-    maxVideoPostDurationSec: 600
+    maxVideoPostDurationSec: 600,
+    canPostMore: true
   });
+});
+
+
+test("TikTok client blocks publishing when creator cannot post more", async () => {
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => new Response(JSON.stringify({
+      data: { privacy_level_options: ["SELF_ONLY"], can_post_more: false },
+      error: { code: "ok" }
+    }), { status: 200 })
+  });
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-cap-1" }),
+    /cannot publish more posts/i
+  );
+});
+
+test("TikTok client blocks video without duration metadata when creator has a duration limit", async () => {
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async () => new Response(JSON.stringify({
+      data: { privacy_level_options: ["SELF_ONLY"], max_video_post_duration_sec: 60 },
+      error: { code: "ok" }
+    }), { status: 200 })
+  });
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-duration-missing" }),
+    /duration metadata/i
+  );
+});
+
+test("TikTok client blocks video longer than the latest creator limit", async () => {
+  const timedAsset = { ...asset, durationSeconds: 61 };
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async () => new Response(JSON.stringify({
+      data: { privacy_level_options: ["SELF_ONLY"], max_video_post_duration_sec: 60 },
+      error: { code: "ok" }
+    }), { status: 200 })
+  });
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [timedAsset], tiktokApproval: approval, idempotencyKey: "idem-duration-long" }),
+    /exceeds the creator's current maximum/i
+  );
+});
+
+test("TikTok client accepts video at the creator duration limit", async () => {
+  const timedAsset = { ...asset, durationSeconds: 60 };
+  const client = new TikTokContentPostingClient({
+    mediaTransferMode: "PULL_FROM_URL",
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      if (String(input).includes("creator_info")) {
+        return new Response(JSON.stringify({
+          data: { privacy_level_options: ["SELF_ONLY"], max_video_post_duration_sec: 60, can_post_more: true },
+          error: { code: "ok" }
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ data: { publish_id: "publish-duration-ok" }, error: { code: "ok" } }), { status: 200 });
+    }
+  });
+  const result = await client.publish({
+    content,
+    account,
+    mediaAssets: [timedAsset],
+    tiktokApproval: approval,
+    idempotencyKey: "idem-duration-ok"
+  });
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-duration-ok" });
 });

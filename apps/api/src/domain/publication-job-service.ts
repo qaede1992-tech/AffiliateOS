@@ -1,4 +1,4 @@
-import type { Content, EntityId } from "@affiliateos/shared";
+import type { Content, EntityId, TikTokPublicationApproval } from "@affiliateos/shared";
 import { publicationRetryEligibleAt, type PublicationJob, type PublicationJobRepository } from "./publication-job.js";
 import { createPublicationJob } from "./publication-job.js";
 
@@ -53,9 +53,23 @@ export class PublicationJobService {
     return this.jobs.transition ? (await this.jobs.transition(id, ["pending_approval"], next)) ?? job : this.jobs.save(next);
   }
 
+  async confirmWithApproval(id: EntityId, approval: TikTokPublicationApproval, now = new Date()): Promise<PublicationJob> {
+    const job = await this.require(id);
+    if (job.status !== "pending_approval") throw new Error("Publication job is not awaiting approval.");
+    if (!approval.musicUsageConfirmed || !approval.previewConfirmed) throw new Error("TikTok publication requires explicit preview and music usage confirmation.");
+    if (approval.commercialDisclosureEnabled && !approval.brandOrganicToggle && !approval.brandContentToggle) {
+      throw new Error("Commercial disclosure requires at least one brand category.");
+    }
+    if (approval.brandContentToggle && !["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS"].includes(approval.privacyLevel)) {
+      throw new Error("Branded content cannot use private or follower-only visibility.");
+    }
+    const next = { ...job, status: "pending" as const, confirmedAt: now.toISOString(), tiktokApproval: approval, updatedAt: now.toISOString() };
+    return this.jobs.transition ? (await this.jobs.transition(id, ["pending_approval"], next)) ?? job : this.jobs.save(next);
+  }
+
   async requestApproval(id: EntityId, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
-    const next = { ...job, status: "pending_approval" as const, lockedAt: undefined, lastError: undefined, updatedAt: now.toISOString() };
+    const next = { ...job, status: "pending_approval" as const, lockedAt: undefined, lastError: undefined, confirmedAt: undefined, tiktokApproval: undefined, updatedAt: now.toISOString() };
     return this.jobs.transition ? (await this.jobs.transition(id, ["processing"], next)) ?? job : this.jobs.save(next);
   }
 
@@ -74,7 +88,7 @@ export class PublicationJobService {
   async fail(id: EntityId, error: unknown, now = new Date()): Promise<PublicationJob> {
     const job = await this.require(id);
     const message = error instanceof Error ? error.message : String(error);
-    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, confirmedAt: undefined, updatedAt: now.toISOString() };
+    const next = { ...job, status: "failed" as const, lockedAt: undefined, lastError: message, confirmedAt: undefined, tiktokApproval: undefined, updatedAt: now.toISOString() };
     return this.jobs.transition ? (await this.jobs.transition(id, ["processing", "awaiting_confirmation"], next)) ?? job : this.jobs.save(next);
   }
 

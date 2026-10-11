@@ -11,6 +11,7 @@ export interface MediaAsset {
   reference: string;
   mimeType?: string;
   byteSize?: number;
+  durationSeconds?: number;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 }
@@ -37,5 +38,8 @@ export const validateMediaAsset = (asset: MediaAsset): void => {
   }
   if (asset.byteSize !== undefined && (!Number.isSafeInteger(asset.byteSize) || asset.byteSize < 0)) {
     throw new Error("Media asset byteSize must be a non-negative integer.");
+  }
+  if (asset.durationSeconds !== undefined && (!Number.isSafeInteger(asset.durationSeconds) || asset.durationSeconds < 0)) {
+    throw new Error("Media asset durationSeconds must be a non-negative integer.");
   }
 };

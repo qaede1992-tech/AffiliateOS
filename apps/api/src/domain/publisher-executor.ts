@@ -1,4 +1,4 @@
-import type { Content, SocialAccount } from "@affiliateos/shared";
+import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
 import type { AffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
 import type { ContentService } from "./content.js";
 import type { MediaAssetRepository } from "./media-asset.js";
@@ -27,7 +27,7 @@ export class PublisherExecutor {
     private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator
   ) {}
 
-  async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`): Promise<PublishExecutionResult> {
+  async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval): Promise<PublishExecutionResult> {
     const content = await this.contentService.get(contentId);
     if (content.status !== "scheduled") throw new Error("Only scheduled content can be published.");
     await this.contentService.validatePublicationEligibility(content);
@@ -50,7 +50,7 @@ export class PublisherExecutor {
     try {
       const credential = await this.resolveCredential(account);
       const mediaAssets = await this.resolveMediaAssets(content);
-      const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey });
+      const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
     if (result.status === "accepted") {
       return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
     }

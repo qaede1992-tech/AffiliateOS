@@ -20,7 +20,7 @@ const toTrackingLink = (row: typeof trackingLinks.$inferSelect): TrackingLink =>
 const toClick = (row: typeof clicks.$inferSelect): Click => ({ id: row.id, trackingLinkId: row.trackingLinkId, idempotencyKey: row.idempotencyKey ?? undefined, occurredAt: row.occurredAt, metadata: row.metadata });
 export const toContent = (row: typeof contentTable.$inferSelect, mediaAssetIds: string[] = []): Content => ({ id: row.id, productId: row.productId ?? undefined, campaignId: row.campaignId ?? undefined, socialAccountId: row.socialAccountId ?? undefined, mediaAssetIds: mediaAssetIds.length ? mediaAssetIds : undefined, platform: row.platform as Content["platform"], contentType: row.contentType, title: row.title ?? undefined, caption: row.caption ?? undefined, script: row.script ?? undefined, cta: row.cta ?? undefined, status: row.status as Content["status"], scheduledAt: row.scheduledAt ?? undefined, publishedAt: row.publishedAt ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toSocialAccount = (row: typeof socialAccounts.$inferSelect): SocialAccount => ({ id: row.id, platform: row.platform, accountReference: row.accountReference, status: row.status as SocialAccount["status"], connection: row.connection, credentialReference: row.credentialReference ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
-const toMediaAsset = (row: typeof mediaAssets.$inferSelect): MediaAsset => ({ id: row.id, contentId: row.contentId, kind: row.kind as MediaAsset["kind"], source: row.source as MediaAsset["source"], reference: row.reference, mimeType: row.mimeType ?? undefined, byteSize: row.byteSize ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
+const toMediaAsset = (row: typeof mediaAssets.$inferSelect): MediaAsset => ({ id: row.id, contentId: row.contentId, kind: row.kind as MediaAsset["kind"], source: row.source as MediaAsset["source"], reference: row.reference, mimeType: row.mimeType ?? undefined, byteSize: row.byteSize ?? undefined, durationSeconds: row.durationSeconds ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 
 class DrizzleRepository<T extends { id: string }, Row extends { id: string }> {
   constructor(protected readonly db: DatabaseExecutor, protected readonly table: any, private readonly toDomain: (row: Row) => T, protected readonly toRow: (entity: T) => Row) {}
@@ -88,7 +88,7 @@ class DrizzleContentRepository extends DrizzleRepository<Content, typeof content
   }
 }
 class DrizzleMediaAssetRepository extends DrizzleRepository<MediaAsset, typeof mediaAssets.$inferSelect> implements MediaAssetRepository {
-  constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity } as any)); }
+  constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity, durationSeconds: entity.durationSeconds ?? null } as any)); }
   async listByContent(contentId: string) { return (await this.db.select().from(mediaAssets).where(eq(mediaAssets.contentId, contentId))).map(toMediaAsset); }
   override async save(entity: MediaAsset) { if (await this.findById(entity.id)) await this.db.update(mediaAssets).set(this.toRow(entity)).where(eq(mediaAssets.id, entity.id)); else await super.save(entity); return entity; }
 }

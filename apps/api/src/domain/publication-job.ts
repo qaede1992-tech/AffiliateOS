@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Content, EntityId, IsoTimestamp } from "@affiliateos/shared";
+import type { Content, EntityId, IsoTimestamp, TikTokPublicationApproval } from "@affiliateos/shared";
 
 export type PublicationJobStatus = "pending" | "pending_approval" | "processing" | "awaiting_confirmation" | "succeeded" | "failed";
 
@@ -16,6 +16,7 @@ export interface PublicationJob {
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
   confirmedAt?: IsoTimestamp;
+  tiktokApproval?: TikTokPublicationApproval;
 }
 
 export interface PublicationJobRepository {
@@ -69,6 +70,7 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
       externalPostId: job.externalPostId,
       lastError: job.lastError,
       confirmedAt: job.confirmedAt,
+      tiktokApproval: job.tiktokApproval,
       updatedAt: job.updatedAt
     };
     this.jobs.set(id, next);
