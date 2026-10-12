@@ -72,7 +72,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const autonomousRuns = new AutonomousRunService(autonomousRunRepository);
   const analytics = new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository);
   const feedback = new AutonomousAnalyticsFeedbackProvider(analytics, autonomousFeedbackMemoryRepository);
-  const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns, repositories.mediaAssets);
+  const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns, repositories.mediaAssets, contentStory);
   const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliates, repositories.affiliateOffers, repositories.offers);
   const attribution = new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository);
   const providerConversions = new ProviderConversionProcessor(conversions, {
