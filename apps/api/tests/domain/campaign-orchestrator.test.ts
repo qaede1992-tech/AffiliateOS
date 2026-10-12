@@ -452,7 +452,7 @@ describe("campaign orchestrator", () => {
     const tracking = new StubTracking();
     tracking.list = async () => [
       link,
-      ...(tracking.created > 1 ? [{ ...link, id: "link-2", affiliateOfferId: secondOffer.id, destinationUrl: secondOffer.affiliateUrl! }] : [])
+      ...(tracking.created >= 1 ? [{ ...link, id: "link-2", affiliateOfferId: secondOffer.id, destinationUrl: secondOffer.affiliateUrl! }] : [])
     ];
     const content = new StubContent();
     content.validateProductForPublication = async (id?: string) => id === secondProduct.id ? secondProduct : product;
