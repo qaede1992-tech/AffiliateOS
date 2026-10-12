@@ -54,7 +54,9 @@ export interface RecordClickRequest { occurredAt?: IsoTimestamp; idempotencyKey?
 
 export type ContentPlatform = "tiktok" | "instagram" | "facebook" | "youtube-shorts" | "x" | "threads";
 export type ContentStatus = "draft" | "scheduled" | "published" | "failed" | "archived";
+export interface ContentProduct { contentId: EntityId; productId: EntityId; affiliateOfferId?: EntityId; position: number; role: "primary" | "recommendation" | "alternative" | "comparison"; createdAt: IsoTimestamp; }
 export interface Content { id: EntityId; productId?: EntityId; campaignId?: EntityId; platform: ContentPlatform; contentType: string; title?: string; caption?: string; script?: string; cta?: string; status: ContentStatus; scheduledAt?: IsoTimestamp; publishedAt?: IsoTimestamp; socialAccountId?: EntityId; mediaAssetIds?: EntityId[]; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
+export interface ContentStory { content: Content; products: ContentProduct[]; }
 export interface CreateContentRequest { productId?: EntityId; campaignId?: EntityId; platform: ContentPlatform; contentType: string; title?: string; caption?: string; script?: string; cta?: string; status?: ContentStatus; scheduledAt?: IsoTimestamp; publishedAt?: IsoTimestamp; socialAccountId?: EntityId; mediaAssetIds?: EntityId[]; }
 export interface UpdateContentRequest { productId?: EntityId; campaignId?: EntityId; platform?: ContentPlatform; contentType?: string; title?: string; caption?: string; script?: string; cta?: string; status?: ContentStatus; scheduledAt?: IsoTimestamp; publishedAt?: IsoTimestamp; socialAccountId?: EntityId; mediaAssetIds?: EntityId[]; }
 export type SocialAccountStatus = "active" | "inactive" | "pending" | "error";
