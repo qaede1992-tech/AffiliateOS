@@ -1,5 +1,6 @@
 import type { ContentProduct, ContentStory, EntityId } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
+import { isExplicitlyAffiliateEligible } from "./opportunity-scoring.js";
 import type { AffiliateOfferRepository, ContentProductRepository, ProductCatalogRepository, Repository } from "./repository.js";
 import type { Content } from "@affiliateos/shared";
 
@@ -40,6 +41,13 @@ export class ContentStoryService {
         const offer = await this.affiliateOffers.findById(item.affiliateOfferId);
         if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer does not exist.", 404);
         if (offer.productId !== product.id) throw new DomainError("AFFILIATE_OFFER_PRODUCT_MISMATCH", "The affiliate offer does not belong to the selected product.");
+        if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "Story recommendations require an active affiliate offer.");
+        if (!isExplicitlyAffiliateEligible(offer)) throw new DomainError("AFFILIATE_OFFER_NOT_ELIGIBLE", "Story recommendations require an affiliate-eligible offer.");
+        if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "Story recommendations require an active affiliate link.");
+        if (offer.affiliateLinkExpiresAt) {
+          const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
+          if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new DomainError("AFFILIATE_LINK_EXPIRED", "Story recommendations require a non-expired affiliate link.");
+        }
       }
       items.push({ contentId, productId: product.id, affiliateOfferId: item.affiliateOfferId, position: item.position, role: item.role, createdAt: new Date().toISOString() });
     }
