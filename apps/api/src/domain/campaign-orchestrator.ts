@@ -108,11 +108,13 @@ export class CampaignOrchestrator {
 
     let currentCampaignId = run?.campaignId;
     let ownsRunAttempt = false;
+    let completedRunRecovery = false;
     try {
       if (run) {
         const claim = await this.autonomousRuns!.claimProcessing(run.id);
         if (claim.acquired) ownsRunAttempt = true;
-        else if (claim.run.status !== "completed") throw new Error("Autonomous run is not currently available for execution.");
+        else if (claim.run.status === "completed") completedRunRecovery = true;
+        else throw new Error("Autonomous run is not currently available for execution.");
       }
 
       const audience = input.audience ?? [];
@@ -203,8 +205,10 @@ export class CampaignOrchestrator {
             item.offer = liveStoryOffer;
           }
         }
-        for (const item of content) {
-          await this.contentStory.replaceProducts(item.id, storyItems.map((story, index) => ({ productId: story.product.id, affiliateOfferId: story.offer.id, position: index, role: index === 0 ? "primary" : story.role })));
+        if (!completedRunRecovery) {
+          for (const item of content) {
+            await this.contentStory.replaceProducts(item.id, storyItems.map((story, index) => ({ productId: story.product.id, affiliateOfferId: story.offer.id, position: index, role: index === 0 ? "primary" : story.role })));
+          }
         }
       }
       if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "completed", { campaignId: campaign.id });

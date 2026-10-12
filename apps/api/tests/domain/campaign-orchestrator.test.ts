@@ -442,4 +442,61 @@ describe("campaign orchestrator", () => {
     assert.deepEqual(stories[0]?.products.map((item) => item.affiliateOfferId), [offer.id, secondOffer.id]);
   });
 
+  it("recovers a multi-product story without duplicating secondary tracking or content", async () => {
+    const secondProduct: Product = { ...product, id: "product-2", externalProductId: "external-2", name: "Hair Serum" };
+    const secondOffer: AffiliateOffer = { ...offer, id: "offer-2", productId: secondProduct.id, externalOfferId: "external-offer-2", affiliateUrl: "https://affiliate.example.test/offer-2" };
+    const runs = new InMemoryAutonomousRunRepository();
+    const autonomousRuns = new AutonomousRunService(runs);
+    const campaigns = new StubCampaigns();
+    campaigns.validateOfferForExecution = async (id?: string) => id === secondOffer.id ? secondOffer : offer;
+    const tracking = new StubTracking();
+    tracking.list = async () => [
+      link,
+      ...(tracking.created >= 1 ? [{ ...link, id: "link-2", affiliateOfferId: secondOffer.id, destinationUrl: secondOffer.affiliateUrl! }] : [])
+    ];
+    const content = new StubContent();
+    content.validateProductForPublication = async (id?: string) => id === secondProduct.id ? secondProduct : product;
+    const stories: Array<Array<{ productId: string; affiliateOfferId?: string; position: number; role: string }>> = [];
+    const storyService = {
+      replaceProducts: async (_contentId: string, products: Array<{ productId: string; affiliateOfferId?: string; position: number; role: string }>) => {
+        stories.push(products);
+        return { content: content.created[0]!, products };
+      }
+    };
+    const orchestrator = new CampaignOrchestrator(
+      campaigns as never,
+      tracking as never,
+      content as never,
+      undefined,
+      undefined,
+      autonomousRuns,
+      undefined,
+      storyService as never
+    );
+    const input = {
+      opportunity,
+      offer,
+      product,
+      idempotencyKey: "run-1",
+      platforms: ["tiktok"] as const,
+      storyProducts: [{ product: secondProduct, offer: secondOffer, role: "recommendation" as const, position: 1 }]
+    };
+
+    await orchestrator.execute(input);
+    const run = await runs.findByIdempotencyKey("run-1");
+    assert.equal(run?.status, "completed");
+
+    const firstContentCount = content.created.length;
+    const firstTrackingCount = tracking.created;
+    const firstStoryCount = stories.length;
+
+    await orchestrator.execute(input);
+
+    assert.equal(campaigns.created, 1);
+    assert.equal(tracking.created, firstTrackingCount);
+    assert.equal(content.created.length, firstContentCount);
+    assert.equal(stories.length, firstStoryCount);
+    assert.equal(stories[0]?.map((item) => item.productId).join(","), [product.id, secondProduct.id].join(","));
+  });
+
 });
