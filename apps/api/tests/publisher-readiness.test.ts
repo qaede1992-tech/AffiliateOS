@@ -106,3 +106,16 @@ test("TikTok stays unconfigured when credential resolution fails", async () => {
   assert.equal(result?.status, "unconfigured");
   assert.equal(result?.credentialResolvable, false);
 });
+
+test("Threads and X remain explicitly unsupported until an official publisher is registered", async () => {
+  const service = new PublisherReadinessService([], false);
+
+  const readiness = await service.list();
+  const threads = readiness.find((item) => item.platform === "threads");
+  const x = readiness.find((item) => item.platform === "x");
+
+  assert.equal(threads?.status, "unsupported");
+  assert.equal(threads?.publisherConfigured, false);
+  assert.equal(x?.status, "unsupported");
+  assert.equal(x?.publisherConfigured, false);
+});
