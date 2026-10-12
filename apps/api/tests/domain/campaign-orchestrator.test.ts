@@ -473,13 +473,13 @@ describe("campaign orchestrator", () => {
       opportunity,
       offer,
       product,
-      idempotencyKey: "story-recovery",
+      idempotencyKey: "run-1",
       platforms: ["tiktok"] as const,
       storyProducts: [{ product: secondProduct, offer: secondOffer, role: "recommendation" as const, position: 1 }]
     };
 
     await orchestrator.execute(input);
-    const run = await runs.findByIdempotencyKey("story-recovery");
+    const run = await runs.findByIdempotencyKey("run-1");
     assert.equal(run?.status, "completed");
 
     const firstContentCount = content.created.length;
