@@ -102,7 +102,6 @@ Connection `configuration` rejects secret-like fields. Failed health checks pers
 | `API_RATE_LIMIT_WINDOW_MS` | Rate-limit window length in milliseconds. |
 | `AFFILIATEOS_MARKETPLACE_*_CREDENTIAL_REF` | Deployment-level reference to a secret-manager entry. |
 | `SOCIAL_CREDENTIALS_JSON` | Deployment-injected secret payload mapping opaque social credential references to runtime access-token records; source control and database must contain no token values. Read-only fallback for existing deployments. |
-| `SOCIAL_CREDENTIALS_JSON` | Deployment-injected secret payload mapping opaque social credential references to runtime access-token records; source control and database must contain no token values. Read-only fallback for existing deployments. |
 | `SOCIAL_CREDENTIAL_STORE_PATH` | Path to the encrypted persistent social credential store used for OAuth-issued credential material; defaults to `/var/lib/affiliateos/secrets/social-credentials.enc`. |
 | `SOCIAL_CREDENTIAL_STORE_KEY` | Deployment secret used to encrypt the social credential store; at least 32 characters. When configured, it is used for OAuth persistence and publisher resolution. |
 | `AFFILIATEOS_AI_*_CREDENTIAL_REF` | Optional credential reference for a production content-generator adapter. |
