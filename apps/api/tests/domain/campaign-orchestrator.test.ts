@@ -405,4 +405,41 @@ describe("campaign orchestrator", () => {
   });
 
 
+  it("attaches additional products and affiliate offers to a single content story", async () => {
+    const secondProduct: Product = { ...product, id: "product-2", externalProductId: "external-2", name: "Hair Serum" };
+    const secondOffer: AffiliateOffer = { ...offer, id: "offer-2", productId: secondProduct.id, externalOfferId: "external-offer-2", affiliateUrl: "https://affiliate.example.test/offer-2" };
+    const content = new StubContent();
+    content.validateProductForPublication = async (id?: string) => id === secondProduct.id ? secondProduct : product;
+    const stories: Array<{ contentId: string; products: Array<{ productId: string; affiliateOfferId?: string; position: number; role: string }> }> = [];
+    const storyService = {
+      replaceProducts: async (contentId: string, products: Array<{ productId: string; affiliateOfferId?: string; position: number; role: string }>) => {
+        stories.push({ contentId, products });
+        return { content: content.created.find((item) => item.id === contentId)!, products };
+      }
+    };
+    const campaigns = new StubCampaigns();
+    campaigns.validateOfferForExecution = async (id?: string) => id === secondOffer.id ? secondOffer : offer;
+    const result = await new CampaignOrchestrator(
+      campaigns as never,
+      new StubTracking() as never,
+      content as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      storyService as never
+    ).execute({
+      opportunity,
+      offer,
+      product,
+      platforms: ["tiktok"],
+      storyProducts: [{ product: secondProduct, offer: secondOffer, role: "recommendation", position: 1 }]
+    });
+    assert.equal(result.content.length, 1);
+    assert.equal(result.trackingLinks.length, 2);
+    assert.equal(stories.length, 1);
+    assert.deepEqual(stories[0]?.products.map((item) => item.productId), [product.id, secondProduct.id]);
+    assert.deepEqual(stories[0]?.products.map((item) => item.affiliateOfferId), [offer.id, secondOffer.id]);
+  });
+
 });
