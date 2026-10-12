@@ -101,13 +101,17 @@ Connection `configuration` rejects secret-like fields. Failed health checks pers
 | `API_RATE_LIMIT_MAX` | Maximum application requests per client IP in one rate-limit window. |
 | `API_RATE_LIMIT_WINDOW_MS` | Rate-limit window length in milliseconds. |
 | `AFFILIATEOS_MARKETPLACE_*_CREDENTIAL_REF` | Deployment-level reference to a secret-manager entry. |
-| `AFFILIATEOS_SOCIAL_*_CREDENTIAL_REF` | Optional OAuth/API credential reference for an approved social adapter. |
+| `SOCIAL_CREDENTIALS_JSON` | Deployment-injected secret payload mapping opaque social credential references to runtime access-token records; source control and database must contain no token values. Read-only fallback for existing deployments. |
 | `SOCIAL_CREDENTIALS_JSON` | Deployment-injected secret payload mapping opaque social credential references to runtime access-token records; source control and database must contain no token values. Read-only fallback for existing deployments. |
 | `SOCIAL_CREDENTIAL_STORE_PATH` | Path to the encrypted persistent social credential store used for OAuth-issued credential material; defaults to `/var/lib/affiliateos/secrets/social-credentials.enc`. |
 | `SOCIAL_CREDENTIAL_STORE_KEY` | Deployment secret used to encrypt the social credential store; at least 32 characters. When configured, it is used for OAuth persistence and publisher resolution. |
 | `AFFILIATEOS_AI_*_CREDENTIAL_REF` | Optional credential reference for a production content-generator adapter. |
 | `AUTONOMOUS_CYCLE_ENABLED` | Enables the autonomous discovery/selection/execution scheduler; keep disabled until approved provider connections are configured. |
 | `AUTONOMOUS_CYCLE_INTERVAL_MS` | Autonomous cycle interval; minimum 5 minutes, default 15 minutes. |
+| `PROVIDER_EVENT_WORKER_INTERVAL_MS` | Provider-event worker interval; minimum 10 seconds, default 60 seconds. |
+| `SHOPEE_CONVERSION_SYNC_ENABLED` | Enables the optional Shopee conversion reconciliation scheduler; keep disabled until the supported access mechanism is validated. |
+| `SHOPEE_CONVERSION_SYNC_INTERVAL_MS` | Shopee conversion reconciliation interval; minimum 5 minutes, default 15 minutes. |
+| `SHOPEE_CONVERSION_SYNC_LOOKBACK_HOURS` | Rolling Shopee conversion reconciliation window; maximum 31 days, default 8 days. |
 
 Do not put API keys, OAuth tokens, marketplace credentials, or bearer credentials in `.env.example`, source code, migrations, or database metadata JSON. Production adapters must use official OAuth/API scopes and consent flows.
 
