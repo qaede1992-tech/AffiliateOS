@@ -283,8 +283,9 @@ function contentStoryFixture() {
   });
   const offer = (id: string, productId: string): AffiliateOffer => ({
     id, productId, affiliateAccountId: "00000000-0000-4000-8000-000000000020",
-    availability: "in_stock", availabilityMetadata: {}, affiliateLinkStatus: "active",
-    status: "active", createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z"
+    availability: "in_stock", availabilityMetadata: {}, affiliateUrl: "https://example.com/affiliate",
+    affiliateLinkStatus: "active", status: "active",
+    createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z"
   });
   const service = new ContentStoryService(contents, products, offers, contentProducts);
   return { contents, products, offers, contentProducts, content, product, offer, service };
@@ -349,4 +350,40 @@ test("content story rejects unknown affiliate offers", async () => {
   await assert.rejects(() => f.service.replaceProducts(f.content.id, [
     { productId, affiliateOfferId: "00000000-0000-4000-8000-000000000022", position: 0, role: "primary" }
   ]), (error: any) => error.code === "AFFILIATE_OFFER_NOT_FOUND");
+});
+
+test("content story rejects inactive or ineligible affiliate offers", async () => {
+  const f = contentStoryFixture();
+  await f.contents.save(f.content);
+  const productId = "00000000-0000-4000-8000-000000000011";
+  await f.products.save(f.product(productId));
+  const offerId = "00000000-0000-4000-8000-000000000023";
+  await f.offers.save({ ...f.offer(offerId, productId), status: "inactive" });
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId, affiliateOfferId: offerId, position: 0, role: "primary" }
+  ]), (error: any) => error.code === "AFFILIATE_OFFER_NOT_ACTIVE");
+  await f.offers.save({ ...f.offer(offerId, productId), availabilityMetadata: { affiliateEligible: false } });
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId, affiliateOfferId: offerId, position: 0, role: "primary" }
+  ]), (error: any) => error.code === "AFFILIATE_OFFER_NOT_ELIGIBLE");
+});
+
+test("content story rejects missing, inactive, and expired affiliate links", async () => {
+  const f = contentStoryFixture();
+  await f.contents.save(f.content);
+  const productId = "00000000-0000-4000-8000-000000000011";
+  await f.products.save(f.product(productId));
+  const offerId = "00000000-0000-4000-8000-000000000024";
+  await f.offers.save({ ...f.offer(offerId, productId), affiliateUrl: undefined });
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId, affiliateOfferId: offerId, position: 0, role: "primary" }
+  ]), (error: any) => error.code === "AFFILIATE_LINK_NOT_ACTIVE");
+  await f.offers.save({ ...f.offer(offerId, productId), affiliateLinkStatus: "expired" });
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId, affiliateOfferId: offerId, position: 0, role: "primary" }
+  ]), (error: any) => error.code === "AFFILIATE_LINK_NOT_ACTIVE");
+  await f.offers.save({ ...f.offer(offerId, productId), affiliateLinkExpiresAt: "2000-01-01T00:00:00.000Z" });
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId, affiliateOfferId: offerId, position: 0, role: "primary" }
+  ]), (error: any) => error.code === "AFFILIATE_LINK_EXPIRED");
 });
