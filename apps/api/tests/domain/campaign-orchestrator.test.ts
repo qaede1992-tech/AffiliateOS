@@ -409,6 +409,7 @@ describe("campaign orchestrator", () => {
     const secondProduct: Product = { ...product, id: "product-2", externalProductId: "external-2", name: "Hair Serum" };
     const secondOffer: AffiliateOffer = { ...offer, id: "offer-2", productId: secondProduct.id, externalOfferId: "external-offer-2", affiliateUrl: "https://affiliate.example.test/offer-2" };
     const content = new StubContent();
+    content.validateProductForPublication = async (id?: string) => id === secondProduct.id ? secondProduct : product;
     const stories: Array<{ contentId: string; products: Array<{ productId: string; affiliateOfferId?: string; position: number; role: string }> }> = [];
     const storyService = {
       replaceProducts: async (contentId: string, products: Array<{ productId: string; affiliateOfferId?: string; position: number; role: string }>) => {
