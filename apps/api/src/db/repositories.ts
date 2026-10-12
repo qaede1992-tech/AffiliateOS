@@ -1,10 +1,10 @@
 import { and, count, eq, inArray } from "drizzle-orm";
-import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
+import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, ContentProduct, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "../domain/media-asset.js";
-import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets } from "./schema.js";
+import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets, contentProducts } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
 import { DrizzlePublicationOperationRepository } from "./publication-operation-repository.js";
-import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
+import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ContentProductRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
 
 type DatabaseExecutor = any;
 const toAffiliate = (row: typeof affiliates.$inferSelect): Affiliate => ({ id: row.id, name: row.name, email: row.email, status: row.status as Affiliate["status"], createdAt: row.createdAt });
@@ -19,6 +19,7 @@ const toCampaign = (row: typeof campaigns.$inferSelect): Campaign => ({ id: row.
 const toTrackingLink = (row: typeof trackingLinks.$inferSelect): TrackingLink => ({ id: row.id, affiliateOfferId: row.affiliateOfferId, campaignId: row.campaignId ?? undefined, code: row.code, destinationUrl: row.destinationUrl, status: row.status as TrackingLink["status"], createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toClick = (row: typeof clicks.$inferSelect): Click => ({ id: row.id, trackingLinkId: row.trackingLinkId, idempotencyKey: row.idempotencyKey ?? undefined, occurredAt: row.occurredAt, metadata: row.metadata });
 export const toContent = (row: typeof contentTable.$inferSelect, mediaAssetIds: string[] = []): Content => ({ id: row.id, productId: row.productId ?? undefined, campaignId: row.campaignId ?? undefined, socialAccountId: row.socialAccountId ?? undefined, mediaAssetIds: mediaAssetIds.length ? mediaAssetIds : undefined, platform: row.platform as Content["platform"], contentType: row.contentType, title: row.title ?? undefined, caption: row.caption ?? undefined, script: row.script ?? undefined, cta: row.cta ?? undefined, status: row.status as Content["status"], scheduledAt: row.scheduledAt ?? undefined, publishedAt: row.publishedAt ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
+const toContentProduct = (row: typeof contentProducts.$inferSelect): ContentProduct => ({ contentId: row.contentId, productId: row.productId, affiliateOfferId: row.affiliateOfferId ?? undefined, position: row.position, role: row.role as ContentProduct["role"], createdAt: row.createdAt });
 const toSocialAccount = (row: typeof socialAccounts.$inferSelect): SocialAccount => ({ id: row.id, platform: row.platform, accountReference: row.accountReference, status: row.status as SocialAccount["status"], connection: row.connection, credentialReference: row.credentialReference ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toMediaAsset = (row: typeof mediaAssets.$inferSelect): MediaAsset => ({ id: row.id, contentId: row.contentId, kind: row.kind as MediaAsset["kind"], source: row.source as MediaAsset["source"], reference: row.reference, mimeType: row.mimeType ?? undefined, byteSize: row.byteSize ?? undefined, durationSeconds: row.durationSeconds ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 
@@ -92,6 +93,17 @@ class DrizzleMediaAssetRepository extends DrizzleRepository<MediaAsset, typeof m
   async listByContent(contentId: string) { return (await this.db.select().from(mediaAssets).where(eq(mediaAssets.contentId, contentId))).map(toMediaAsset); }
   override async save(entity: MediaAsset) { if (await this.findById(entity.id)) await this.db.update(mediaAssets).set(this.toRow(entity)).where(eq(mediaAssets.id, entity.id)); else await super.save(entity); return entity; }
 }
+class DrizzleContentProductRepository implements ContentProductRepository {
+  constructor(private readonly db: DatabaseExecutor) {}
+  async listByContent(contentId: string) { return (await this.db.select().from(contentProducts).where(eq(contentProducts.contentId, contentId))).map(toContentProduct); }
+  async replaceForContent(contentId: string, items: ContentProduct[]) {
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      await tx.delete(contentProducts).where(eq(contentProducts.contentId, contentId));
+      if (items.length) await tx.insert(contentProducts).values(items.map((item) => ({ ...item, affiliateOfferId: item.affiliateOfferId ?? null })));
+      return items;
+    });
+  }
+}
 class DrizzleSocialAccountRepository extends DrizzleRepository<SocialAccount, typeof socialAccounts.$inferSelect> { constructor(db: DatabaseExecutor) { super(db, socialAccounts, toSocialAccount, (entity) => ({ ...entity, credentialReference: entity.credentialReference ?? null } as any)); } async findByPlatformAccount(platform: string, accountReference: string) { const rows = await this.db.select().from(socialAccounts).where(and(eq(socialAccounts.platform, platform), eq(socialAccounts.accountReference, accountReference))).limit(1); return rows[0] ? toSocialAccount(rows[0]) : undefined; } override async save(entity: SocialAccount) { if (await this.findById(entity.id)) await this.db.update(socialAccounts).set(this.toRow(entity)).where(eq(socialAccounts.id, entity.id)); else await super.save(entity); return entity; } }
 
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
@@ -101,7 +113,7 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
   commissions: new DrizzleCommissionRepository(db),
   marketplaceConnections: new DrizzleMarketplaceConnectionRepository(db), affiliateAccounts: new DrizzleAffiliateAccountRepository(db), products: new DrizzleProductCatalogRepository(db), affiliateOffers: new DrizzleAffiliateOfferRepository(db),
   campaigns: new DrizzleCampaignRepository(db), campaignOffers: new DrizzleCampaignOfferRepository(db), trackingLinks: new DrizzleTrackingLinkRepository(db), clicks: new DrizzleClickRepository(db),
-  contents: new DrizzleContentRepository(db), mediaAssets: new DrizzleMediaAssetRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), publicationOperations: new DrizzlePublicationOperationRepository(db)
+  contents: new DrizzleContentRepository(db), contentProducts: new DrizzleContentProductRepository(db), mediaAssets: new DrizzleMediaAssetRepository(db), socialAccounts: new DrizzleSocialAccountRepository(db), publicationJobs: new DrizzlePublicationJobRepository(db), publicationOperations: new DrizzlePublicationOperationRepository(db)
 });
 export class DrizzleTransactionManager implements TransactionManager { constructor(private readonly db: DatabaseExecutor) {} run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T> { return this.db.transaction(async (transaction: DatabaseExecutor) => { const repositories = createRepositories(transaction); return work({ conversions: repositories.conversions, commissions: repositories.commissions }); }); }
 }

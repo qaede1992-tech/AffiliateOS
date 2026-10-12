@@ -1,16 +1,22 @@
 import type { EntityId } from "@affiliateos/shared";
-import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, Conversion, Offer, Product, TrackingLink, SocialAccount } from "@affiliateos/shared";
+import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, ContentProduct, Conversion, Offer, Product, TrackingLink, SocialAccount } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
 
+export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
   private readonly entities = new Map<EntityId, T>();
   async list(): Promise<T[]> { return [...this.entities.values()]; }
   async findById(id: EntityId): Promise<T | undefined> { return this.entities.get(id); }
   async save(entity: T): Promise<T> { this.entities.set(entity.id, entity); return entity; }
+}
+export class InMemoryContentProductRepository implements ContentProductRepository {
+  private readonly entities = new Map<string, ContentProduct>();
+  async listByContent(contentId: string) { return [...this.entities.values()].filter((item) => item.contentId === contentId).sort((a, b) => a.position - b.position); }
+  async replaceForContent(contentId: string, items: ContentProduct[]) { for (const key of [...this.entities.keys()]) if (this.entities.get(key)?.contentId === contentId) this.entities.delete(key); for (const item of items) this.entities.set(`${contentId}:${item.productId}`, item); return items; }
 }
 export class InMemoryCommissionRepository extends InMemoryRepository<Commission> implements CommissionRepository { async findByConversionId(conversionId: EntityId) { return (await this.list()).find((commission) => commission.conversionId === conversionId); } }
 export class InMemoryMarketplaceConnectionRepository extends InMemoryRepository<import("@affiliateos/shared").MarketplaceConnection> implements MarketplaceConnectionRepository { async findBySlug(slug: string) { return (await this.list()).find((connection) => connection.slug === slug); } }
@@ -111,7 +117,7 @@ export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; mediaAssets: MediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
+  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface CommissionRepository extends Repository<Commission> { findByConversionId(conversionId: EntityId): Promise<Commission | undefined>; }

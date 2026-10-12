@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { Content, Product, AffiliateOffer } from "@affiliateos/shared";
+import { ContentStoryService } from "../src/domain/content-story.js";
+import { InMemoryContentProductRepository, InMemoryProductCatalogRepository } from "../src/domain/repository.js";
 import type { CampaignOffer, Click, TrackingLink } from "@affiliateos/shared";
 import { CampaignService, TrackingService } from "../src/domain/campaigns.js";
 import { InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryRepository, InMemoryTrackingLinkRepository } from "../src/domain/repository.js";
@@ -255,4 +258,95 @@ test("click idempotency converts a unique-constraint race into the original clic
   const click = await tracking.recordClick(link.id, { idempotencyKey: "race-click-key" });
   assert.equal(click.idempotencyKey, "race-click-key");
   assert.equal((await clicks.listByTrackingLink(link.id)).length, 1);
+});
+
+
+function contentStoryFixture() {
+  const contents = new InMemoryRepository<Content>();
+  const products = new InMemoryProductCatalogRepository();
+  const offers = new InMemoryAffiliateOfferRepository();
+  const contentProducts = new InMemoryContentProductRepository();
+  const content: Content = {
+    id: "00000000-0000-4000-8000-000000000001",
+    platform: "instagram",
+    contentType: "story",
+    status: "draft",
+    createdAt: "2026-10-01T00:00:00.000Z",
+    updatedAt: "2026-10-01T00:00:00.000Z"
+  };
+  const product = (id: string, status: Product["status"] = "active"): Product => ({
+    id, marketplaceId: "00000000-0000-4000-8000-000000000010",
+    externalProductId: id, name: "Story product", priceCents: 1000,
+    currency: "IDR", reviewCount: 0, soldCount: 0,
+    productUrl: "https://example.com/product", status,
+    createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z"
+  });
+  const offer = (id: string, productId: string): AffiliateOffer => ({
+    id, productId, affiliateAccountId: "00000000-0000-4000-8000-000000000020",
+    availability: "in_stock", availabilityMetadata: {}, affiliateLinkStatus: "active",
+    status: "active", createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z"
+  });
+  const service = new ContentStoryService(contents, products, offers, contentProducts);
+  return { contents, products, offers, contentProducts, content, product, offer, service };
+}
+
+test("content story returns products in position order and replaces existing selections", async () => {
+  const f = contentStoryFixture();
+  await f.contents.save(f.content);
+  await f.products.save(f.product("00000000-0000-4000-8000-000000000011"));
+  await f.products.save(f.product("00000000-0000-4000-8000-000000000012"));
+  await f.service.replaceProducts(f.content.id, [
+    { productId: "00000000-0000-4000-8000-000000000012", position: 2, role: "recommendation" },
+    { productId: "00000000-0000-4000-8000-000000000011", position: 1, role: "primary" }
+  ]);
+  const story = await f.service.get(f.content.id);
+  assert.deepEqual(story.products.map((item) => item.position), [1, 2]);
+  await f.service.replaceProducts(f.content.id, [
+    { productId: "00000000-0000-4000-8000-000000000011", position: 0, role: "primary" }
+  ]);
+  assert.equal((await f.service.get(f.content.id)).products.length, 1);
+});
+
+test("content story rejects missing content and missing products", async () => {
+  const f = contentStoryFixture();
+  await assert.rejects(() => f.service.get(f.content.id), (error: any) => error.code === "CONTENT_NOT_FOUND");
+  await f.contents.save(f.content);
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId: "00000000-0000-4000-8000-000000000099", position: 0, role: "primary" }
+  ]), (error: any) => error.code === "PRODUCT_NOT_FOUND");
+});
+
+test("content story rejects inactive products and duplicate products", async () => {
+  const f = contentStoryFixture();
+  await f.contents.save(f.content);
+  await f.products.save(f.product("00000000-0000-4000-8000-000000000011", "inactive"));
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId: "00000000-0000-4000-8000-000000000011", position: 0, role: "primary" }
+  ]), (error: any) => error.code === "PRODUCT_NOT_ACTIVE");
+  await f.products.save(f.product("00000000-0000-4000-8000-000000000012"));
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId: "00000000-0000-4000-8000-000000000012", position: 0, role: "primary" },
+    { productId: "00000000-0000-4000-8000-000000000012", position: 1, role: "recommendation" }
+  ]), (error: any) => error.code === "DUPLICATE_CONTENT_PRODUCT");
+});
+
+test("content story requires an affiliate offer to belong to the selected product", async () => {
+  const f = contentStoryFixture();
+  await f.contents.save(f.content);
+  const productId = "00000000-0000-4000-8000-000000000011";
+  await f.products.save(f.product(productId));
+  await f.offers.save(f.offer("00000000-0000-4000-8000-000000000021", "00000000-0000-4000-8000-000000000012"));
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId, affiliateOfferId: "00000000-0000-4000-8000-000000000021", position: 0, role: "primary" }
+  ]), (error: any) => error.code === "AFFILIATE_OFFER_PRODUCT_MISMATCH");
+});
+
+test("content story rejects unknown affiliate offers", async () => {
+  const f = contentStoryFixture();
+  await f.contents.save(f.content);
+  const productId = "00000000-0000-4000-8000-000000000011";
+  await f.products.save(f.product(productId));
+  await assert.rejects(() => f.service.replaceProducts(f.content.id, [
+    { productId, affiliateOfferId: "00000000-0000-4000-8000-000000000022", position: 0, role: "primary" }
+  ]), (error: any) => error.code === "AFFILIATE_OFFER_NOT_FOUND");
 });
