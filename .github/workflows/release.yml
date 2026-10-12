@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           npm ci
-          npm test
+          timeout --signal=TERM --kill-after=30s 15m npm test
           npm run typecheck
           npm run build
           npm run db:check
