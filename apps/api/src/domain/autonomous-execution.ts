@@ -17,6 +17,8 @@ export type AutonomousExecutionInput = {
   idempotencyNamespace?: string;
   requirePublishableMedia?: boolean;
   requireCommissionSignal?: boolean;
+  /** Maximum products per automatically grouped story; set to 1 to disable grouping. */
+  storyMaxProducts?: number;
 };
 export type AutonomousExecutionOutcome = { productId: string; offerId?: string; score: number; status: "completed" | "failed"; idempotencyKey: string; result?: CampaignOrchestrationResult; error?: string };
 export type AutonomousExecutionResult = { selected: ScoredOpportunity[]; rejected: Array<{ productId: string; score: number; reasons: string[] }>; audit: OpportunitySelectionAudit[]; outcomes: AutonomousExecutionOutcome[]; recoveredRunCount?: number };
@@ -42,6 +44,10 @@ export class AutonomousExecutionService {
   }
 
   async runOnce(input: AutonomousExecutionInput): Promise<AutonomousExecutionResult> {
+    const storyMaxProducts = input.storyMaxProducts ?? 3;
+    if (!Number.isInteger(storyMaxProducts) || storyMaxProducts < 1 || storyMaxProducts > 10) {
+      throw new Error("storyMaxProducts must be an integer between 1 and 10.");
+    }
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const recoveredKeys = new Set<string>();
@@ -106,29 +112,21 @@ export class AutonomousExecutionService {
       )
     );
     const outcomes: AutonomousExecutionOutcome[] = [];
+    const executable: Array<{ opportunity: ScoredOpportunity; offer: AffiliateOffer; idempotencyKey: string }> = [];
     for (const opportunity of selection.selected) {
       const performanceSignal = performance.get(opportunity.product.marketplaceId + ":" + opportunity.product.id) ?? performance.get(opportunity.product.id);
+      const idempotencyKey = executionKey(namespace, opportunity);
       if (performanceSignal?.anomaly === "halt") {
-        const idempotencyKey = executionKey(namespace, opportunity);
         const error = "Autonomous execution blocked by active performance anomaly cooldown.";
         outcomes.push({ productId: opportunity.product.id, offerId: opportunity.offerId, score: opportunity.score, status: "failed", idempotencyKey, error });
         const audit = auditByProductId.get(opportunity.product.id);
-        if (audit && this.decisionAudits) {
-          await this.decisionAudits.updateOutcome(audit.auditId, {
-            offerId: opportunity.offerId,
-            status: "failed",
-            error,
-            observedAt: new Date().toISOString()
-          });
-        }
+        if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: opportunity.offerId, status: "failed", error, observedAt: new Date().toISOString() });
         continue;
       }
-      const idempotencyKey = executionKey(namespace, opportunity);
       if (recoveredKeys.has(idempotencyKey)) continue;
       const resolved = opportunity.offerId
         ? candidatesByOpportunity.get(`${opportunity.product.id}:${opportunity.offerId}`)
         : undefined;
-      const candidate = resolved?.candidate;
       const offer = resolved?.offer;
       if (!offer || !isExecutableAffiliateOffer(opportunity.product.id, offer)) {
         const error = !offer
@@ -139,16 +137,61 @@ export class AutonomousExecutionService {
         if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: opportunity.offerId, status: "failed", error, observedAt: new Date().toISOString() });
         continue;
       }
+      executable.push({ opportunity, offer, idempotencyKey });
+    }
+
+    // Group only products with an explicit shared category and marketplace. Missing
+    // categories stay single-product so unrelated items are never combined by guess.
+    const grouped = new Map<string, typeof executable>();
+    for (const item of executable) {
+      const category = item.opportunity.product.category?.trim().toLowerCase();
+      const key = category
+        ? `${item.opportunity.product.marketplaceId}:category:${category}`
+        : `product:${item.opportunity.product.id}`;
+      const group = grouped.get(key) ?? [];
+      group.push(item);
+      grouped.set(key, group);
+    }
+    const executionGroups = [...grouped.values()].flatMap((group) => {
+      const chunks: typeof executable[] = [];
+      for (let index = 0; index < group.length; index += storyMaxProducts) {
+        chunks.push(group.slice(index, index + storyMaxProducts));
+      }
+      return chunks;
+    });
+
+    for (const group of executionGroups) {
+      const primary = group[0];
+      if (!primary) continue;
+      const storyProducts = group.slice(1).map((item, index) => ({
+        product: item.opportunity.product,
+        offer: item.offer,
+        role: "recommendation" as const,
+        position: index + 1
+      }));
       try {
-        const result = await this.orchestrator.execute({ opportunity, offer, product: opportunity.product, audience: input.audience, platforms: input.platforms, scheduledAt: input.scheduledAt, idempotencyKey });
-        outcomes.push({ productId: opportunity.product.id, offerId: offer.id, score: opportunity.score, status: "completed", idempotencyKey, result });
-        const audit = auditByProductId.get(opportunity.product.id);
-        if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: offer.id, status: "completed", campaignId: result.campaign.id, observedAt: new Date().toISOString() });
+        const result = await this.orchestrator.execute({
+          opportunity: primary.opportunity,
+          offer: primary.offer,
+          product: primary.opportunity.product,
+          audience: input.audience,
+          platforms: input.platforms,
+          scheduledAt: input.scheduledAt,
+          idempotencyKey: primary.idempotencyKey,
+          ...(storyProducts.length ? { storyProducts } : {})
+        });
+        for (const item of group) {
+          outcomes.push({ productId: item.opportunity.product.id, offerId: item.offer.id, score: item.opportunity.score, status: "completed", idempotencyKey: item.idempotencyKey, result });
+          const audit = auditByProductId.get(item.opportunity.product.id);
+          if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: item.offer.id, status: "completed", campaignId: result.campaign.id, observedAt: new Date().toISOString() });
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        outcomes.push({ productId: opportunity.product.id, offerId: offer.id, score: opportunity.score, status: "failed", idempotencyKey, error: message });
-        const audit = auditByProductId.get(opportunity.product.id);
-        if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: offer.id, status: "failed", error: message, observedAt: new Date().toISOString() });
+        for (const item of group) {
+          outcomes.push({ productId: item.opportunity.product.id, offerId: item.offer.id, score: item.opportunity.score, status: "failed", idempotencyKey: item.idempotencyKey, error: message });
+          const audit = auditByProductId.get(item.opportunity.product.id);
+          if (audit && this.decisionAudits) await this.decisionAudits.updateOutcome(audit.auditId, { offerId: item.offer.id, status: "failed", error: message, observedAt: new Date().toISOString() });
+        }
       }
     }
     return { selected: selection.selected, rejected: selection.rejected, audit: selection.audit, outcomes, recoveredRunCount };
