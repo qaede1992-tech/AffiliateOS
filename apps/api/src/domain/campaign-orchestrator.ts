@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { AffiliateOffer, AudienceSegment, ContentPlatform, Product } from "@affiliateos/shared";
 import type { CampaignService, TrackingService } from "./campaigns.js";
+import type { ContentStoryService } from "./content-story.js";
 import type { ContentService } from "./content.js";
 import { publisherSupportsContent, type DistributionEngine, type DistributionPlan } from "./distribution-engine.js";
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
@@ -17,6 +18,7 @@ export type CampaignOrchestratorInput = {
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyKey?: string;
+  storyProducts?: Array<{ product: Product; offer: AffiliateOffer; role: "primary" | "recommendation" | "alternative" | "comparison"; position: number }>;
 };
 
 export type GeneratedCampaignContent = {
@@ -66,6 +68,7 @@ export type CampaignOrchestrationResult = {
   campaign: Awaited<ReturnType<CampaignService["create"]>>;
   offerAttachment: Awaited<ReturnType<CampaignService["attachOffer"]>>;
   trackingLink: Awaited<ReturnType<TrackingService["create"]>>;
+  trackingLinks: Awaited<ReturnType<TrackingService["create"]>>[];
   content: Awaited<ReturnType<ContentService["create"]>>[];
   distribution: DistributionPlan[];
 };
@@ -78,7 +81,8 @@ export class CampaignOrchestrator {
     private readonly contentGenerator: CampaignContentGenerator = new DeterministicCampaignContentGenerator(),
     private readonly distribution?: DistributionEngine,
     private readonly autonomousRuns?: AutonomousRunService,
-    private readonly mediaAssets?: MediaAssetRepository
+    private readonly mediaAssets?: MediaAssetRepository,
+    private readonly contentStory?: ContentStoryService
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
@@ -177,8 +181,34 @@ export class CampaignOrchestrator {
         }
       }
 
+      const trackingLinks = [trackingLink];
+      if (input.storyProducts?.length) {
+        if (!this.contentStory) throw new Error("Multi-product story orchestration requires a content story service.");
+        const storyItems = [{ product: liveProduct, offer: executionOffer, role: "primary" as const, position: 0 }, ...input.storyProducts.filter((item) => item.product.id !== liveProduct.id).sort((a, b) => a.position - b.position)];
+        const seen = new Set<string>();
+        for (const item of storyItems) {
+          if (seen.has(item.product.id)) throw new Error("Multi-product story cannot contain duplicate products.");
+          seen.add(item.product.id);
+          if (item.product.id !== liveProduct.id) {
+            const liveStoryProduct = await this.content.validateProductForPublication(item.product.id);
+            if (liveStoryProduct.id !== item.product.id) throw new Error("Live story product is inconsistent.");
+            const liveStoryOffer = await this.campaigns.validateOfferForExecution(item.offer.id);
+            if (liveStoryOffer.productId !== item.product.id) throw new Error("Story affiliate offer must belong to its product.");
+            await this.campaigns.attachOffer(campaign.id, liveStoryOffer.id);
+            const existingStoryLinks = await this.tracking.list(campaign.id);
+            const storyLink = existingStoryLinks.find((link) => link.affiliateOfferId === liveStoryOffer.id && link.destinationUrl === liveStoryOffer.affiliateUrl && link.status === "active")
+              ?? await this.tracking.create({ affiliateOfferId: liveStoryOffer.id, campaignId: campaign.id, destinationUrl: liveStoryOffer.affiliateUrl!, code: trackingCodeCandidate(existingStoryLinks, input.idempotencyKey, campaign.id, liveStoryOffer.id) });
+            trackingLinks.push(storyLink);
+            item.product = liveStoryProduct;
+            item.offer = liveStoryOffer;
+          }
+        }
+        for (const item of content) {
+          await this.contentStory.replaceProducts(item.id, storyItems.map((story, index) => ({ productId: story.product.id, affiliateOfferId: story.offer.id, position: index, role: index === 0 ? "primary" : story.role })));
+        }
+      }
       if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "completed", { campaignId: campaign.id });
-      return { campaign, offerAttachment, trackingLink, content, distribution };
+      return { campaign, offerAttachment, trackingLink, trackingLinks, content, distribution };
     } catch (error) {
       if (run && ownsRunAttempt) await this.autonomousRuns!.transition(run.id, "failed", { campaignId: currentCampaignId, error: error instanceof Error ? error.message : String(error) });
       throw error;
