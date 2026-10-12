@@ -217,6 +217,43 @@ describe("AutonomousExecutionService", () => {
     assert.deepEqual(calls, ["product-1:offer-1", "product-2:offer-2"]);
   });
 
+  it("groups selected products from the same marketplace and category into one story", async () => {
+    const product1 = { ...product, category: "Beauty" };
+    const product2 = { ...product, id: "product-2", externalProductId: "external-2", name: "Second Beauty Product", category: "beauty" };
+    const offer1 = { ...offer, productId: product1.id };
+    const offer2 = { ...offer, id: "offer-2", productId: product2.id, externalOfferId: "external-offer-2" };
+    const opportunity1 = { ...opportunity, product: product1, offerId: offer1.id } as ScoredOpportunity;
+    const opportunity2 = { ...opportunity, product: product2, offerId: offer2.id, score: 75 } as ScoredOpportunity;
+    const calls: Array<{ productId: string; storyProducts?: Array<{ product: Product; offer: AffiliateOffer; role: string; position: number }> }> = [];
+    const selector = { select: () => ({ selected: [opportunity1, opportunity2], rejected: [], audit: [] }) } as unknown as AutonomousOpportunitySelector;
+    const orchestrator = {
+      execute: async (input: { product: Product; storyProducts?: Array<{ product: Product; offer: AffiliateOffer; role: "primary" | "recommendation" | "alternative" | "comparison"; position: number }> }) => {
+        calls.push({ productId: input.product.id, storyProducts: input.storyProducts });
+        return orchestrationResult;
+      }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(selector, orchestrator);
+    const result = await service.runOnce({
+      candidates: [{ product: product1, offers: [offer1] }, { product: product2, offers: [offer2] }],
+      storyMaxProducts: 3,
+      idempotencyNamespace: "story-cycle"
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.productId, product1.id);
+    assert.deepEqual(calls[0]?.storyProducts?.map((item) => item.product.id), [product2.id]);
+    assert.equal(result.outcomes.length, 2);
+    assert.equal(result.outcomes.every((item) => item.status === "completed"), true);
+  });
+
+  it("rejects invalid story product limits", async () => {
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), { execute: async () => orchestrationResult } as unknown as CampaignOrchestrator);
+    await assert.rejects(
+      () => service.runOnce({ candidates: [], storyMaxProducts: 11 }),
+      /storyMaxProducts must be an integer between 1 and 10/
+    );
+  });
+
   it("fails a selected opportunity when its offer cannot be resolved", async () => {
     const selector = {
       select: () => ({ selected: [opportunity], rejected: [] })
