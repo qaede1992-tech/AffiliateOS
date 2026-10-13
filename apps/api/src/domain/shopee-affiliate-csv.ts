@@ -123,8 +123,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (!isShopeeUrl(productUrl)) problems.push("Link Produk bukan URL HTTPS Shopee yang valid");
     if (!isShopeeUrl(affiliateUrl)) problems.push("Link Komisi Ekstra bukan URL HTTPS Shopee yang valid");
     if (externalProductId && seenIds.has(externalProductId)) problems.push("ID Produk duplikat dalam file");
+    if (externalProductId) seenIds.add(externalProductId);
     if (problems.length > 0) { errors.push({ row: rowNumber, message: problems.join("; ") + "." }); return; }
-    seenIds.add(externalProductId);
     rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount: parseSales(get("Penjualan")), commissionRateBps: parseRateBps(get("Komisi hingga")), commissionAmountRupiah: parseRupiah(get("Komisi")), productUrl, affiliateUrl });
   });
   return { rows, errors };
