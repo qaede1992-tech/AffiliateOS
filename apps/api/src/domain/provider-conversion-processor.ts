@@ -53,6 +53,19 @@ export class ProviderConversionProcessor {
       offerId = await this.resolver.resolveOffer(offerReference);
       if (!affiliateId) throw new DomainError("PROVIDER_CONVERSION_AFFILIATE_UNKNOWN", "The provider affiliate reference could not be resolved.", 422);
       if (!offerId) throw new DomainError("PROVIDER_CONVERSION_OFFER_UNKNOWN", "The provider offer reference could not be resolved.", 422);
+
+      // When a provider supplies both its affiliate/offer references and a
+      // tracking reference, resolve both paths and fail closed if they disagree.
+      if (trackingReference && this.resolver.resolveTracking) {
+        if (trackingReference.length > 255) throw new DomainError("PROVIDER_CONVERSION_TRACKING_INVALID", "Provider conversion tracking reference is too long.", 422);
+        const resolved = await this.resolver.resolveTracking(accountScope.trim(), trackingReference);
+        if (!resolved) throw new DomainError("PROVIDER_CONVERSION_TRACKING_UNKNOWN", "The provider tracking reference could not be resolved.", 422);
+        if (resolved.affiliateId !== affiliateId || resolved.offerId !== offerId) {
+          throw new DomainError("PROVIDER_CONVERSION_TRACKING_REFERENCE_MISMATCH", "Provider affiliate/offer references do not match the supplied tracking reference.", 422);
+        }
+        affiliateOfferId = resolved.affiliateOfferId;
+        trackingLinkId = resolved.trackingLinkId;
+      }
     } else if (trackingReference && this.resolver.resolveTracking) {
       if (trackingReference.length > 255) throw new DomainError("PROVIDER_CONVERSION_TRACKING_INVALID", "Provider conversion tracking reference is too long.", 422);
       const resolved = await this.resolver.resolveTracking(accountScope.trim(), trackingReference);
