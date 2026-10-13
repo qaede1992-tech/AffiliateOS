@@ -86,14 +86,29 @@ export class ConversionService {
         422
       );
     }
+    // A replayed pending report must not downgrade a conversion that has
+    // already reached a terminal provider state. The provider contract used
+    // here does not expose a reliable status-update timestamp for ordering.
+    if (status === "pending" && existing.status !== "pending") {
+      return existing;
+    }
+
     const next: Conversion = { ...existing, status };
     return this.transactionManager.run(async ({ conversions, commissions }) => {
       await conversions.save(next);
       const commission = await commissions.findByConversionId(conversionId);
       if (commission) {
+        // Paid commissions are immutable here: corrections to a completed
+        // payout need a separate, explicit payout-reconciliation workflow.
+        if (commission.status === "paid") {
+          return next;
+        }
         await commissions.save({
           ...commission,
-          amountCents: commissionCents ?? commission.amountCents,
+          ...(status === "rejected" ? {} : { amountCents: commissionCents ?? commission.amountCents }),
+          // The current shared model has no "rejected" commission status.
+          // Keep rejected conversions out of analytics via conversion.status,
+          // and avoid implying the commission is payable.
           status: status === "approved" ? "approved" : "pending"
         });
       }
