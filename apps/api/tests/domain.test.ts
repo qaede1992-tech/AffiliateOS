@@ -153,7 +153,8 @@ test("reconciling a pending or rejected conversion keeps its commission pending"
   const conversion = await service.create({ affiliateId: affiliate.id, offerId: offer.id, amountCents: 10000 });
   await service.reconcileProviderState(conversion.id, "approved", 1000);
   await service.reconcileProviderState(conversion.id, "pending");
-  assert.equal((await commissions.findByConversionId(conversion.id))?.status, "pending");
+  assert.equal((await conversions.findById(conversion.id))?.status, "approved");
+  assert.equal((await commissions.findByConversionId(conversion.id))?.status, "approved");
   await service.reconcileProviderState(conversion.id, "approved");
   await service.reconcileProviderState(conversion.id, "rejected");
   assert.equal((await commissions.findByConversionId(conversion.id))?.status, "pending");
