@@ -186,6 +186,6 @@ test("reconciles a replayed pending provider state after an approved conversion"
   });
 
   assert.equal(pending.id, approved.id);
-  assert.equal((await services.conversions.list())[0]?.status, "pending");
-  assert.equal((await services.commissions.list())[0]?.status, "pending");
+  assert.equal((await services.conversions.list())[0]?.status, "approved");
+  assert.equal((await services.commissions.list())[0]?.status, "approved");
 });
