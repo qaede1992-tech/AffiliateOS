@@ -59,8 +59,9 @@ function parseRupiah(value: string): number | null {
   const normalized = value.trim().toUpperCase().replace(/^RP\s*/, "").replace(/\s/g, "");
   if (!normalized) return null;
   const abbreviated = normalized.match(/^(\d+(?:[.,]\d+)?)RB$/);
-  if (abbreviated) {
-    const amount = Number(abbreviated[1].replace(",", "."));
+  const abbreviatedAmount = abbreviated?.[1];
+  if (abbreviatedAmount !== undefined) {
+    const amount = Number(abbreviatedAmount.replace(",", "."));
     return Number.isFinite(amount) ? Math.round(amount * 1000) : null;
   }
   if (!/^\d[\d.]*$/.test(normalized)) return null;
@@ -80,8 +81,9 @@ function parseSales(value: string): ShopeeSalesValue {
   const normalized = sourceText.toUpperCase().replace(/\s/g, "");
   if (!normalized) return { value: null, quality: "missing", sourceText };
   const approximate = normalized.match(/^(\d+(?:[.,]\d+)?)RB\+?$/);
-  if (approximate) {
-    const count = Number(approximate[1].replace(",", ".")) * 1000;
+  const approximateSales = approximate?.[1];
+  if (approximateSales !== undefined) {
+    const count = Number(approximateSales.replace(",", ".")) * 1000;
     return { value: Number.isSafeInteger(Math.round(count)) ? Math.round(count) : null, quality: "lower_bound", sourceText };
   }
   if (!/^\d[\d.]*$/.test(normalized)) return { value: null, quality: "missing", sourceText };
