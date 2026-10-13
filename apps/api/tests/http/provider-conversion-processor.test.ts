@@ -94,8 +94,8 @@ test("resolves marketplace conversions from tracking references and preserves af
 
   let attributed: { conversionId: string; trackingLinkId: string } | undefined;
   const processor = new ProviderConversionProcessor(conversionService, {
-    resolveAffiliate: async () => undefined,
-    resolveOffer: async () => undefined,
+    resolveAffiliate: async (reference) => reference === "marketplace-affiliate-ref" ? affiliate.id : undefined,
+    resolveOffer: async (reference) => reference === "marketplace-offer-ref" ? offer.id : undefined,
     resolveTracking: async (accountScope, reference) => accountScope === "account-shopee" && reference === "track-399"
       ? { affiliateId: affiliate.id, offerId: offer.id, affiliateOfferId, trackingLinkId }
       : undefined
@@ -105,6 +105,8 @@ test("resolves marketplace conversions from tracking references and preserves af
 
   const conversion = await processor.process("account-shopee", {
     externalConversionId: "shopee-conv-399",
+    affiliateReference: "marketplace-affiliate-ref",
+    offerReference: "marketplace-offer-ref",
     trackingReference: "track-399",
     amountCents: 4999,
     occurredAt: "2026-09-20T10:00:00.000Z",
