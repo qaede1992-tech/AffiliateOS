@@ -32,8 +32,7 @@ function setup(conversionStatus: Conversion["status"], commissionStatus: Commiss
     save: async (entity: Commission) => { commissionSaves.push(entity); return entity; }
   };
   const transactionManager = {
-    run: async <T>(work: (repos: { conversions: typeof conversions; commissions: typeof commissions }) => Promise<T>) =>
-      work({ conversions, commissions })
+    run: async <T>(work: (repos: any) => Promise<T>) => work({ conversions, commissions })
   };
   const service = new ConversionService(
     conversions as never, commissions as never, {} as never, {} as never, {} as never, transactionManager as never
