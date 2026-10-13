@@ -33,10 +33,9 @@ jobs:
           tag_commit="$(git rev-list -n 1 "${tag}^{}" 2>/dev/null || true)"
 
           if [ -n "${tag_commit}" ] && [ "${tag_commit}" != "${GITHUB_SHA}" ]; then
-            echo "Release tag ${tag} points to ${tag_commit}; refreshing it to ${GITHUB_SHA}."
-            git push origin ":refs/tags/${tag}"
-            git tag -d "${tag}" >/dev/null 2>&1 || true
-            tag_commit=""
+            echo "Refusing to move existing release tag ${tag} from ${tag_commit} to ${GITHUB_SHA}."
+            echo "Release tags are immutable. Bump package.json version for a new release."
+            exit 1
           fi
 
           if [ -z "${tag_commit}" ]; then
@@ -47,7 +46,6 @@ jobs:
           else
             echo "Release tag ${tag} already points to the current release commit."
           fi
-
           tag_version="$(
             git show "${tag}:package.json" |
               node -e 'let input=""; process.stdin.on("data", chunk => { input += chunk; }); process.stdin.on("end", () => process.stdout.write(JSON.parse(input).version));'
