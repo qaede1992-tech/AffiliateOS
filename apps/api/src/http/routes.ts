@@ -102,14 +102,14 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         externalProductId: row.externalProductId,
         externalOfferId: `csv:${row.externalProductId}`,
         name: row.name,
-        priceCents: row.priceRupiah,
+        priceCents: row.priceRupiah * 100,
         currency: "IDR",
         productUrl: row.productUrl,
         affiliateUrl: row.affiliateUrl,
         availability: "unknown" as const,
         ...(row.soldCount.value !== null ? { soldCount: row.soldCount.value } : {}),
         ...(row.commissionRateBps !== null ? { commissionRateBps: row.commissionRateBps } : {}),
-        ...(row.commissionAmountRupiah !== null ? { commissionAmountCents: row.commissionAmountRupiah } : {}),
+        ...(row.commissionAmountRupiah !== null ? { commissionAmountCents: row.commissionAmountRupiah * 100 } : {}),
         metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality }
       }))
     });
