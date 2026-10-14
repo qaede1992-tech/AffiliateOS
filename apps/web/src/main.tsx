@@ -45,6 +45,10 @@ function App() {
   const [offerName, setOfferName] = useState("");
   const [offerRate, setOfferRate] = useState("");
   const [isCreatingOffer, setIsCreatingOffer] = useState(false);
+  const [conversionAffiliateId, setConversionAffiliateId] = useState("");
+  const [conversionOfferId, setConversionOfferId] = useState("");
+  const [conversionAmount, setConversionAmount] = useState("");
+  const [isCreatingConversion, setIsCreatingConversion] = useState(false);
   const [togglingMarketplaceSlug, setTogglingMarketplaceSlug] = useState<string | null>(null);
   const [autonomousStatus, setAutonomousStatus] = useState<{ running: boolean; active: boolean; lastStartedAt?: string; lastCompletedAt?: string; lastError?: string } | null>(null);
   const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
@@ -113,6 +117,27 @@ function App() {
       setError(requestError instanceof Error ? requestError.message : "Unable to create offer.");
     } finally {
       setIsCreatingOffer(false);
+    }
+  };
+
+  const handleCreateConversion = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsCreatingConversion(true);
+    setError(null);
+    try {
+      await api.createConversion({
+        affiliateId: conversionAffiliateId,
+        offerId: conversionOfferId,
+        amountCents: Math.round(Number(conversionAmount) * 100)
+      });
+      setConversionAffiliateId("");
+      setConversionOfferId("");
+      setConversionAmount("");
+      await loadDashboard();
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to create conversion.");
+    } finally {
+      setIsCreatingConversion(false);
     }
   };
 
@@ -249,6 +274,18 @@ This will allow AffiliateOS to use this marketplace connection for operational w
         <section className="workspace-grid">
           <article className="panel" id="conversions">
             <div className="panel-heading"><div><p className="eyebrow">Activity</p><h3>Recent conversions</h3></div><span>{data.conversions.length} total</span></div>
+            <form className="affiliate-form" onSubmit={handleCreateConversion}>
+              <select aria-label="Affiliate" value={conversionAffiliateId} onChange={(event) => setConversionAffiliateId(event.target.value)} required>
+                <option value="">Pilih affiliate</option>
+                {data.affiliates.map((affiliate) => <option key={affiliate.id} value={affiliate.id}>{affiliate.name}</option>)}
+              </select>
+              <select aria-label="Offer" value={conversionOfferId} onChange={(event) => setConversionOfferId(event.target.value)} required>
+                <option value="">Pilih offer aktif</option>
+                {data.offers.filter((offer) => offer.status === "active").map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}
+              </select>
+              <input aria-label="Nilai konversi dalam rupiah" type="number" min="0.01" step="0.01" placeholder="Nilai konversi (IDR)" value={conversionAmount} onChange={(event) => setConversionAmount(event.target.value)} required />
+              <button type="submit" disabled={isCreatingConversion || data.affiliates.length === 0 || !data.offers.some((offer) => offer.status === "active")}>{isCreatingConversion ? "Menyimpan..." : "Catat konversi"}</button>
+            </form>
             {data.conversions.length === 0 ? <p className="empty">No conversions recorded yet.</p> : <div className="record-list">{data.conversions.slice(0, 5).map((conversion) => <div className="record" key={conversion.id}><div><strong>{money(conversion.amountCents)}</strong><small>{conversion.id.slice(0, 8)}</small></div><span className={`badge ${conversion.status}`}>{conversion.status}</span></div>)}</div>}
           </article>
           <article className="panel" id="commissions">
