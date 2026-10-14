@@ -761,6 +761,8 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv imports valid S
   assert.equal(offersResponse.json().data.length, 1);
   assert.equal(offersResponse.json().data[0].affiliateUrl, "https://s.shopee.co.id/abc123");
   assert.equal(offersResponse.json().data[0].commissionRateBps, 450);
+  assert.equal(productsResponse.json().data[0].priceCents, 3750000);
+  assert.equal(offersResponse.json().data[0].commissionAmountCents, 150000);
   await app.close();
 });
 
