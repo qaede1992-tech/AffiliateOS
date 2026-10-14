@@ -726,3 +726,65 @@ test("GET /api/v1/autonomous/performance-index requires an authorized operator",
   assert.ok(Array.isArray((response.json() as { data: unknown[] }).data));
   await operatorApp.close();
 });
+
+
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv imports valid Shopee CSV rows", async () => {
+  const app = createApp();
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "CSV Import Partner", email: "csv-import@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '123,"Produk CSV","37,5RB","10RB+","Toko Uji","4,5%","Rp1.500","https://shopee.co.id/product/1/123","https://s.shopee.co.id/abc123"',
+  ].join("\n");
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "test-export.csv" },
+  });
+  assert.equal(response.statusCode, 201);
+  const body = response.json();
+  assert.equal(body.importedProducts, 1);
+  assert.equal(body.importedOffers, 1);
+  assert.equal(body.csv.rowsParsed, 1);
+  assert.deepEqual(body.csv.errors, []);
+  const productsResponse = await app.inject({ method: "GET", url: "/api/v1/products" });
+  assert.equal(productsResponse.statusCode, 200);
+  assert.equal(productsResponse.json().data.length, 1);
+  assert.equal(productsResponse.json().data[0].externalProductId, "123");
+  const offersResponse = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(offersResponse.statusCode, 200);
+  assert.equal(offersResponse.json().data.length, 1);
+  assert.equal(offersResponse.json().data[0].affiliateUrl, "https://s.shopee.co.id/abc123");
+  assert.equal(offersResponse.json().data[0].commissionRateBps, 450);
+  assert.equal(productsResponse.json().data[0].priceCents, 3750000);
+  assert.equal(offersResponse.json().data[0].commissionAmountCents, 150000);
+  await app.close();
+});
+
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects invalid CSV without importing rows", async () => {
+  const app = createApp();
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "CSV Invalid Partner", email: "csv-invalid@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv: "ID Produk,Nama Produk\n123,Produk" },
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error, "INVALID_SHOPEE_AFFILIATE_CSV");
+  const productsResponse = await app.inject({ method: "GET", url: "/api/v1/products" });
+  assert.equal(productsResponse.json().data.length, 0);
+  const offersResponse = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(offersResponse.json().data.length, 0);
+  await app.close();
+});
