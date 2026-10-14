@@ -49,9 +49,64 @@ jobs:
       - name: Check migrations
         run: npm run db:check
       - name: Configure CI database environment
-        run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
+        run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\\n' > .env
+      - name: Prepare Supabase role fixtures
+        run: |
+          psql "postgresql://affiliateos:affiliateos@localhost:5432/affiliateos" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO anon;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO authenticated;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO anon;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO authenticated;
+          SQL
       - name: Apply migrations
         run: npm run db:migrate
+      - name: Verify Supabase role grants are revoked
+        run: |
+          psql "postgresql://affiliateos:affiliateos@localhost:5432/affiliateos" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $test$
+          BEGIN
+            IF EXISTS (
+              SELECT 1
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public'
+                AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                AND (
+                  has_table_privilege('anon', c.oid, 'SELECT')
+                  OR has_table_privilege('anon', c.oid, 'INSERT')
+                  OR has_table_privilege('anon', c.oid, 'UPDATE')
+                  OR has_table_privilege('anon', c.oid, 'DELETE')
+                  OR has_table_privilege('authenticated', c.oid, 'SELECT')
+                  OR has_table_privilege('authenticated', c.oid, 'INSERT')
+                  OR has_table_privilege('authenticated', c.oid, 'UPDATE')
+                  OR has_table_privilege('authenticated', c.oid, 'DELETE')
+                )
+            ) THEN
+              RAISE EXCEPTION 'Supabase anon/authenticated table privileges were not revoked';
+            END IF;
+
+            IF EXISTS (
+              SELECT 1
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public'
+                AND c.relkind = 'S'
+                AND (
+                  has_sequence_privilege('anon', c.oid, 'USAGE')
+                  OR has_sequence_privilege('anon', c.oid, 'SELECT')
+                  OR has_sequence_privilege('anon', c.oid, 'UPDATE')
+                  OR has_sequence_privilege('authenticated', c.oid, 'USAGE')
+                  OR has_sequence_privilege('authenticated', c.oid, 'SELECT')
+                  OR has_sequence_privilege('authenticated', c.oid, 'UPDATE')
+                )
+            ) THEN
+              RAISE EXCEPTION 'Supabase anon/authenticated sequence privileges were not revoked';
+            END IF;
+          END
+          $test$;
+          SQL
       - name: Verify migrated database
         run: npm run db:verify
 
