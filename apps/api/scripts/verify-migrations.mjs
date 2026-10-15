@@ -200,35 +200,34 @@ try {
   }
 
   const { rows: contentProductConstraints } = await client.query(
-    `SELECT c.conname, c.contype, array_agg(a.attname ORDER BY k.ordinality) AS columns,
-            tn.nspname AS referenced_schema, t.relname AS referenced_table,
-            array_agg(ta.attname ORDER BY k.ordinality) FILTER (WHERE ta.attname IS NOT NULL) AS referenced_columns
+    `SELECT c.conname, c.contype, pg_get_constraintdef(c.oid, true) AS definition,
+            tn.nspname AS referenced_schema, t.relname AS referenced_table
        FROM pg_constraint c
        JOIN pg_class r ON r.oid = c.conrelid
        JOIN pg_namespace rn ON rn.oid = r.relnamespace
-       LEFT JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON true
-       LEFT JOIN pg_attribute a ON a.attrelid = r.oid AND a.attnum = k.attnum
        LEFT JOIN pg_class t ON t.oid = c.confrelid
        LEFT JOIN pg_namespace tn ON tn.oid = t.relnamespace
-       LEFT JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ordinality) ON fk.ordinality = k.ordinality
-       LEFT JOIN pg_attribute ta ON ta.attrelid = t.oid AND ta.attnum = fk.attnum
-      WHERE rn.nspname = 'public' AND r.relname = 'content_products' AND c.contype IN ('f', 'u')
-      GROUP BY c.oid, c.conname, c.contype, tn.nspname, t.relname`
+      WHERE rn.nspname = 'public' AND r.relname = 'content_products' AND c.contype IN ('f', 'u')`
   );
-  const hasConstraint = (type, columns, referencedTable = null, referencedColumns = null) =>
-    contentProductConstraints.some((constraint) =>
-      constraint.contype === type &&
-      JSON.stringify(constraint.columns) === JSON.stringify(columns) &&
-      (referencedTable === null || (constraint.referenced_schema === "public" &&
-        constraint.referenced_table === referencedTable &&
-        JSON.stringify(constraint.referenced_columns) === JSON.stringify(referencedColumns)))
-    );
+  const normalizeConstraintDefinition = (definition) =>
+    definition.toLowerCase().replaceAll('"', "").replace(/\\s+/g, " ").trim();
+  const hasForeignKey = (column, table) => contentProductConstraints.some((constraint) =>
+    constraint.contype === "f" &&
+    constraint.referenced_schema === "public" &&
+    constraint.referenced_table === table &&
+    normalizeConstraintDefinition(constraint.definition).includes(
+      `foreign key (${column}) references ${table}(id)`
+    )
+  );
   for (const [column, table] of [["content_id", "content"], ["product_id", "products"], ["affiliate_offer_id", "affiliate_offers"]]) {
-    if (!hasConstraint("f", [column], table, ["id"])) {
+    if (!hasForeignKey(column, table)) {
       errors.push(`content_products.${column} is missing its expected foreign key to public.${table}(id).`);
     }
   }
-  if (!hasConstraint("u", ["content_id", "product_id"])) {
+  if (!contentProductConstraints.some((constraint) =>
+    constraint.contype === "u" &&
+    normalizeConstraintDefinition(constraint.definition).includes("unique (content_id, product_id)")
+  )) {
     errors.push("content_products is missing its unique constraint on (content_id, product_id).");
   }
 
@@ -236,7 +235,9 @@ try {
     `SELECT indexname, indexdef FROM pg_indexes
       WHERE schemaname = 'public' AND tablename = 'content_products'`
   );
-  const contentProductIndexDefs = new Map(contentProductIndexRows.map((row) => [row.indexname, row.indexdef]));
+  const contentProductIndexDefs = new Map(contentProductIndexRows.map((row) => [
+    row.indexname, normalizeConstraintDefinition(row.indexdef)
+  ]));
   for (const [name, requiredColumns] of [
     ["content_products_product_idx", "(product_id)"],
     ["content_products_offer_idx", "(affiliate_offer_id)"],
