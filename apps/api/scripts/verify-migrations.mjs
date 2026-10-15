@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
@@ -16,6 +17,49 @@ if (!Array.isArray(trackedMigrations) || trackedMigrations.length === 0) {
 const errors = [];
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
+
+function findCompensatedMigrationGaps({ missingMigrations, compensationTimestamp, appliedTimestamps, schemaObjectsPresent }) {
+  const compensatedTags = new Set();
+  if (compensationTimestamp !== null && appliedTimestamps.has(compensationTimestamp) && schemaObjectsPresent) {
+    for (const tag of [
+      "0056_tiktok_publication_approval_and_media_duration",
+      "0057_content_products_multi_product_story"
+    ]) {
+      if (missingMigrations.includes(tag)) compensatedTags.add(tag);
+    }
+  }
+  return compensatedTags;
+}
+
+// Fail closed if the historical-gap exception is accidentally broadened.
+const fixtureMissing = [
+  "0056_tiktok_publication_approval_and_media_duration",
+  "0057_content_products_multi_product_story"
+];
+assert.equal(findCompensatedMigrationGaps({
+  missingMigrations: fixtureMissing,
+  compensationTimestamp: 200,
+  appliedTimestamps: new Set([200]),
+  schemaObjectsPresent: true
+}).size, 2);
+assert.equal(findCompensatedMigrationGaps({
+  missingMigrations: fixtureMissing,
+  compensationTimestamp: 200,
+  appliedTimestamps: new Set(),
+  schemaObjectsPresent: true
+}).size, 0);
+assert.equal(findCompensatedMigrationGaps({
+  missingMigrations: fixtureMissing,
+  compensationTimestamp: 200,
+  appliedTimestamps: new Set([200]),
+  schemaObjectsPresent: false
+}).size, 0);
+assert.equal(findCompensatedMigrationGaps({
+  missingMigrations: ["0001_affiliateos_foundation"],
+  compensationTimestamp: 200,
+  appliedTimestamps: new Set([200]),
+  schemaObjectsPresent: true
+}).size, 0);
 
 for (const migration of trackedMigrations) {
   const timestamp = Number(migration.when);
@@ -145,15 +189,12 @@ try {
     const compensationTimestamp = compensationMigration ? Number(compensationMigration.when) : null;
     const schemaObjectsPresent =
       missingTables.length === 0 && missingIndexes.length === 0 && missingColumns.length === 0;
-    const compensatedTags = new Set();
-    if (compensationTimestamp !== null && appliedTimestamps.has(compensationTimestamp) && schemaObjectsPresent) {
-      for (const tag of [
-        "0056_tiktok_publication_approval_and_media_duration",
-        "0057_content_products_multi_product_story"
-      ]) {
-        if (missingMigrations.includes(tag)) compensatedTags.add(tag);
-      }
-    }
+    const compensatedTags = findCompensatedMigrationGaps({
+      missingMigrations,
+      compensationTimestamp,
+      appliedTimestamps,
+      schemaObjectsPresent
+    });
 
     const uncompensatedMigrations = missingMigrations.filter((tag) => !compensatedTags.has(tag));
     if (uncompensatedMigrations.length > 0) {
