@@ -60,6 +60,14 @@ jobs:
         run: npm run db:migrate
       - name: Verify migrated database
         run: npm run db:verify
+      - name: Simulate audited production migration drift
+        env:
+          CI_MIGRATION_DRIFT_TEST: "1"
+        run: node --env-file=.env apps/api/scripts/simulate-production-migration-drift.mjs
+      - name: Apply forward-only repair to drifted CI database
+        run: npm run db:migrate
+      - name: Verify repaired drifted database
+        run: npm run db:verify:applied
 
   containers:
     runs-on: ubuntu-latest
