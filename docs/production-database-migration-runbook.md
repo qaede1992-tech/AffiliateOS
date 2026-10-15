@@ -2,9 +2,9 @@
 
 This runbook is for an authorized operator applying AffiliateOS Drizzle migrations to the production PostgreSQL database. It does not authorize changing the database endpoint, role grants, RLS policies, or application deployment configuration.
 
-## Current known blocker (audited 2026-10-15)
+## Current known blocker (read-only audit reconfirmed 2026-10-16)
 
-The read-only production audit found 53 Drizzle ledger rows and did not find:
+The read-only production audit, reconfirmed on 2026-10-16, found 53 Drizzle ledger rows and still did not find:
 - `publication_jobs.tiktok_approval` (migration `0056_tiktok_publication_approval_and_media_duration`)
 - `media_assets.duration_seconds` (migration `0056_tiktok_publication_approval_and_media_duration`)
 - `content_products` (migration `0057_content_products_multi_product_story`)
