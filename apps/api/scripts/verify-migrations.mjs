@@ -19,14 +19,21 @@ const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
 function findCompensatedMigrationGaps({ missingMigrations, compensationTimestamp, appliedTimestamps, schemaObjectsPresent }) {
+  const expectedGapTags = [
+    "0056_tiktok_publication_approval_and_media_duration",
+    "0057_content_products_multi_product_story"
+  ];
   const compensatedTags = new Set();
-  if (compensationTimestamp !== null && appliedTimestamps.has(compensationTimestamp) && schemaObjectsPresent) {
-    for (const tag of [
-      "0056_tiktok_publication_approval_and_media_duration",
-      "0057_content_products_multi_product_story"
-    ]) {
-      if (missingMigrations.includes(tag)) compensatedTags.add(tag);
-    }
+  const exactHistoricalGapSet =
+    missingMigrations.length === expectedGapTags.length &&
+    expectedGapTags.every((tag) => missingMigrations.includes(tag));
+  if (
+    exactHistoricalGapSet &&
+    compensationTimestamp !== null &&
+    appliedTimestamps.has(compensationTimestamp) &&
+    schemaObjectsPresent
+  ) {
+    return new Set(expectedGapTags);
   }
   return compensatedTags;
 }
@@ -56,6 +63,28 @@ assert.equal(findCompensatedMigrationGaps({
 }).size, 0);
 assert.equal(findCompensatedMigrationGaps({
   missingMigrations: ["0001_affiliateos_foundation"],
+  compensationTimestamp: 200,
+  appliedTimestamps: new Set([200]),
+  schemaObjectsPresent: true
+}).size, 0);
+assert.equal(findCompensatedMigrationGaps({
+  missingMigrations: ["0056_tiktok_publication_approval_and_media_duration"],
+  compensationTimestamp: 200,
+  appliedTimestamps: new Set([200]),
+  schemaObjectsPresent: true
+}).size, 0);
+assert.equal(findCompensatedMigrationGaps({
+  missingMigrations: ["0057_content_products_multi_product_story"],
+  compensationTimestamp: 200,
+  appliedTimestamps: new Set([200]),
+  schemaObjectsPresent: true
+}).size, 0);
+assert.equal(findCompensatedMigrationGaps({
+  missingMigrations: [
+    "0056_tiktok_publication_approval_and_media_duration",
+    "0057_content_products_multi_product_story",
+    "0001_affiliateos_foundation"
+  ],
   compensationTimestamp: 200,
   appliedTimestamps: new Set([200]),
   schemaObjectsPresent: true
