@@ -210,7 +210,7 @@ try {
       WHERE rn.nspname = 'public' AND r.relname = 'content_products' AND c.contype IN ('f', 'u')`
   );
   const normalizeConstraintDefinition = (definition) =>
-    definition.toLowerCase().replaceAll('"', "").replace(/\\s+/g, " ").trim();
+    definition.toLowerCase().replaceAll('"', "").replace(/\s+/g, " ").trim();
   const hasForeignKey = (column, table) => contentProductConstraints.some((constraint) =>
     constraint.contype === "f" &&
     constraint.referenced_schema === "public" &&
