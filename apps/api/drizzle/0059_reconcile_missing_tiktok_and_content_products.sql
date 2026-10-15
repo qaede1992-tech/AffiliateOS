@@ -1,6 +1,8 @@
 -- Forward-only reconciliation for production databases where 0056/0057 are
 -- absent from the Drizzle ledger and their schema objects are absent.
--- On a clean database, these IF NOT EXISTS clauses are no-ops after 0056/0057.
+-- Journal timestamps for 0056/0057 are lower than a later historical entry, so
+-- Drizzle may skip them even on a clean database. This forward migration must
+-- create the expected objects whether or not 0056/0057 ran.
 -- Do not use this migration to conceal partial or incompatible pre-existing objects;
 -- the production preflight must confirm the audited starting state first.
 ALTER TABLE publication_jobs
