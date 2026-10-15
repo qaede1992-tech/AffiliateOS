@@ -49,7 +49,7 @@ jobs:
       - name: Check migrations
         run: npm run db:check
       - name: Configure CI database environment
-        run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\\n' > .env
+        run: printf '%s\n' 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos' > .env
       - name: Prepare Supabase role fixtures
         run: |
           psql "postgresql://affiliateos:affiliateos@localhost:5432/affiliateos" -v ON_ERROR_STOP=1 <<'SQL'
