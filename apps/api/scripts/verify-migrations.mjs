@@ -13,24 +13,54 @@ if (!Array.isArray(trackedMigrations) || trackedMigrations.length === 0) {
   throw new Error("Drizzle migration journal has no tracked migrations.");
 }
 
-const migrationDirectory = new URL("../drizzle/", import.meta.url);
-const trackedMigrationHashes = [];
+const errors = [];
+const migrationByTimestamp = new Map();
+const trackedMigrationHashes = new Map();
+
 for (const migration of trackedMigrations) {
-  const migrationPath = new URL(`${migration.tag}.sql`, migrationDirectory);
+  const timestamp = Number(migration.when);
+  if (!Number.isSafeInteger(timestamp)) {
+    errors.push(`Migration ${migration.tag} has an invalid timestamp: ${migration.when}.`);
+    continue;
+  }
+  if (migrationByTimestamp.has(timestamp)) {
+    errors.push(`Journal timestamp ${timestamp} is duplicated by ${migrationByTimestamp.get(timestamp).tag} and ${migration.tag}.`);
+    continue;
+  }
+
+  const migrationPath = new URL(`${migration.tag}.sql`, new URL("../drizzle/", import.meta.url));
   const migrationSql = await readFile(migrationPath);
-  const hash = createHash("sha256").update(migrationSql).digest("hex");
-  trackedMigrationHashes.push({ tag: migration.tag, hash });
+  const sqlText = migrationSql.toString("utf8");
+  // Drizzle hashes the exact file bytes. Production migrations may have been
+  // applied from Windows checkouts (CRLF), while CI checks out LF files.
+  // Accept only hashes for byte-identical SQL with LF/CRLF line-ending styles.
+  const lfSql = sqlText.replace(/\r\n/g, "\n");
+  const hashVariants = new Set([
+    createHash("sha256").update(migrationSql).digest("hex"),
+    createHash("sha256").update(lfSql, "utf8").digest("hex"),
+    createHash("sha256").update(lfSql.replace(/\n/g, "\r\n"), "utf8").digest("hex")
+  ]);
+  migrationByTimestamp.set(timestamp, migration);
+  trackedMigrationHashes.set(timestamp, { tag: migration.tag, hashes: hashVariants });
 }
 
 const client = new Client({ connectionString });
 const expectedTables = [
   "affiliates", "offers", "conversions", "commissions", "marketplaces", "affiliate_accounts",
   "products", "affiliate_offers", "campaigns", "campaign_offers", "tracking_links", "clicks",
-  "social_accounts", "content", "oauth_states", "conversion_attributions", "provider_events", "publication_jobs", "media_assets", "publication_operations"
+  "social_accounts", "content", "oauth_states", "conversion_attributions", "provider_events",
+  "publication_jobs", "media_assets", "publication_operations", "content_products"
 ];
 const expectedIndexes = [
   "tracking_links_campaign_idx", "products_marketplace_external_unique", "commissions_conversion_unique",
-  "provider_events_account_external_unique", "provider_events_status_received_idx", "publication_jobs_idempotency_unique", "publication_jobs_due_idx", "publication_operations_provider_operation_unique", "media_assets_content_idx"
+  "provider_events_account_external_unique", "provider_events_status_received_idx",
+  "publication_jobs_idempotency_unique", "publication_jobs_due_idx",
+  "publication_operations_provider_operation_unique", "media_assets_content_idx",
+  "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx"
+];
+const expectedColumns = [
+  ["publication_jobs", "tiktok_approval"],
+  ["media_assets", "duration_seconds"]
 ];
 
 await client.connect();
@@ -42,7 +72,7 @@ try {
   const actualTables = new Set(tableRows.map((row) => row.table_name));
   const missingTables = expectedTables.filter((table) => !actualTables.has(table));
   if (missingTables.length > 0) {
-    throw new Error(`Missing expected tables: ${missingTables.join(", ")}.`);
+    errors.push(`Missing expected tables: ${missingTables.join(", ")}.`);
   }
 
   const { rows: indexRows } = await client.query(
@@ -52,31 +82,98 @@ try {
   const actualIndexes = new Set(indexRows.map((row) => row.indexname));
   const missingIndexes = expectedIndexes.filter((index) => !actualIndexes.has(index));
   if (missingIndexes.length > 0) {
-    throw new Error(`Missing expected indexes: ${missingIndexes.join(", ")}.`);
+    errors.push(`Missing expected indexes: ${missingIndexes.join(", ")}.`);
+  }
+
+  const { rows: columnRows } = await client.query(
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'))"
+  );
+  const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
+  const missingColumns = expectedColumns
+    .map(([table, column]) => `${table}.${column}`)
+    .filter((column) => !actualColumns.has(column));
+  if (missingColumns.length > 0) {
+    errors.push(`Missing expected columns: ${missingColumns.join(", ")}.`);
   }
 
   const { rows: migrationTableRows } = await client.query(
     "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
   );
-  if (migrationTableRows.length === 0) {
-    throw new Error("Drizzle migration ledger table does not exist.");
-  }
-  const migrationSchema = migrationTableRows[0].table_schema;
-  const { rows: migrationRows } = await client.query(
-    `SELECT id, hash FROM "${migrationSchema.replaceAll('"', '""')}"."__drizzle_migrations" ORDER BY id ASC`
-  );
-  const appliedMigrationHashes = migrationRows.map((row) => row.hash);
-  if (appliedMigrationHashes.length !== trackedMigrationHashes.length) {
-    throw new Error(`Drizzle migration ledger contains ${appliedMigrationHashes.length} migrations, but ${trackedMigrationHashes.length} are tracked.`);
-  }
+  if (migrationTableRows.length !== 1) {
+    errors.push(`Expected exactly one Drizzle migration ledger table, found ${migrationTableRows.length}; refusing to select a schema implicitly.`);
+  } else if (migrationTableRows[0].table_schema !== "drizzle") {
+    errors.push(`Expected Drizzle migration ledger in schema "drizzle", found schema "${migrationTableRows[0].table_schema}".`);
+  } else {
+    const migrationSchema = migrationTableRows[0].table_schema.replaceAll('"', '""');
+    const { rows: migrationRows } = await client.query(
+      `SELECT id, hash, created_at FROM "${migrationSchema}"."__drizzle_migrations" ORDER BY id ASC`
+    );
 
-  const mismatches = trackedMigrationHashes.filter((migration, index) => appliedMigrationHashes[index] !== migration.hash);
-  if (mismatches.length > 0) {
-    const details = mismatches.map((migration) => `${migration.tag} (${migration.hash})`).join(", ");
-    throw new Error(`Drizzle migration ledger hashes do not match tracked migration files: ${details}.`);
-  }
+    const appliedTimestamps = new Set();
+    for (const row of migrationRows) {
+      const timestamp = Number(row.created_at);
+      if (!Number.isSafeInteger(timestamp)) {
+        errors.push(`Ledger row id=${row.id} has invalid created_at timestamp ${row.created_at}.`);
+        continue;
+      }
+      if (appliedTimestamps.has(timestamp)) {
+        errors.push(`Ledger contains duplicate created_at timestamp ${timestamp}.`);
+        continue;
+      }
+      appliedTimestamps.add(timestamp);
 
-  console.log(`PostgreSQL schema and Drizzle migration ledger verified (${appliedMigrationHashes.length} migrations, hashes match).`);
+      const tracked = trackedMigrationHashes.get(timestamp);
+      if (!tracked) {
+        errors.push(`Ledger row id=${row.id} has timestamp ${timestamp}, which is absent from the checked-out migration journal.`);
+        continue;
+      }
+      if (!tracked.hashes.has(row.hash)) {
+        errors.push(`Hash mismatch for ${tracked.tag} at timestamp ${timestamp}: ledger hash does not match the checked-out SQL file under LF or CRLF line endings.`);
+      }
+    }
+
+    const missingMigrations = [...migrationByTimestamp.entries()]
+      .filter(([timestamp]) => !appliedTimestamps.has(timestamp))
+      .map(([, migration]) => migration.tag);
+
+    // Production's audited ledger has historical gaps for 0056/0057. Accept
+    // those two exact gaps only when the forward-only 0059 reconciliation is
+    // recorded, its SQL hash passed the check above, and every required schema
+    // object is present. This does not insert or fabricate historical ledger rows.
+    const compensationTag = "0059_reconcile_missing_tiktok_and_content_products";
+    const compensationMigration = trackedMigrations.find((migration) => migration.tag === compensationTag);
+    const compensationTimestamp = compensationMigration ? Number(compensationMigration.when) : null;
+    const schemaObjectsPresent =
+      missingTables.length === 0 && missingIndexes.length === 0 && missingColumns.length === 0;
+    const compensatedTags = new Set();
+    if (compensationTimestamp !== null && appliedTimestamps.has(compensationTimestamp) && schemaObjectsPresent) {
+      for (const tag of [
+        "0056_tiktok_publication_approval_and_media_duration",
+        "0057_content_products_multi_product_story"
+      ]) {
+        if (missingMigrations.includes(tag)) compensatedTags.add(tag);
+      }
+    }
+
+    const uncompensatedMigrations = missingMigrations.filter((tag) => !compensatedTags.has(tag));
+    if (uncompensatedMigrations.length > 0) {
+      errors.push(`Journal migrations missing from the database ledger without an approved compensation: ${uncompensatedMigrations.join(", ")}.`);
+    }
+
+    const expectedLedgerRows = trackedMigrations.length - compensatedTags.size;
+    if (migrationRows.length !== expectedLedgerRows) {
+      errors.push(`Drizzle migration ledger contains ${migrationRows.length} rows; expected ${expectedLedgerRows} rows for ${trackedMigrations.length} journal entries and ${compensatedTags.size} explicitly compensated historical gaps.`);
+    }
+    if (compensatedTags.size > 0) {
+      console.warn(`Historical migration ledger gaps explicitly compensated by ${compensationTag}: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
+    }
+  }
 } finally {
   await client.end();
 }
+
+if (errors.length > 0) {
+  throw new Error(`PostgreSQL schema and Drizzle migration ledger verification failed:\n- ${errors.join("\n- ")}`);
+}
+
+console.log(`PostgreSQL schema and Drizzle migration ledger verified (${trackedMigrations.length} migrations; timestamp-based hash matching passed).`);
