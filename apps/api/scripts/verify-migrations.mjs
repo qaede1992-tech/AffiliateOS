@@ -140,6 +140,114 @@ try {
     errors.push(`Missing expected columns: ${missingColumns.join(", ")}.`);
   }
 
+  // Verify the reconciled objects' definitions, not only their names. This is
+  // intentionally read-only and fails closed on incompatible partial schemas.
+  const { rows: repairedColumnRows } = await client.query(
+    `SELECT table_name, column_name, data_type, udt_name, is_nullable, column_default
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND ((table_name = 'publication_jobs' AND column_name = 'tiktok_approval')
+          OR (table_name = 'media_assets' AND column_name = 'duration_seconds'))`
+  );
+  const repairedColumns = new Map(repairedColumnRows.map((row) => [
+    `${row.table_name}.${row.column_name}`, row
+  ]));
+  for (const [key, expected] of [
+    ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
+    ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }]
+  ]) {
+    const actual = repairedColumns.get(key);
+    if (!actual) {
+      errors.push(`Missing required column definition: ${key}.`);
+      continue;
+    }
+    for (const [property, value] of Object.entries(expected)) {
+      if (actual[property] !== value) {
+        errors.push(`Incompatible definition for ${key}: expected ${property}=${value}, found ${actual[property]}.`);
+      }
+    }
+  }
+
+  const { rows: contentProductColumnRows } = await client.query(
+    `SELECT column_name, data_type, udt_name, is_nullable, column_default
+       FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'content_products'`
+  );
+  const contentProductColumns = new Map(contentProductColumnRows.map((row) => [row.column_name, row]));
+  const expectedContentProductColumns = {
+    content_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "NO" },
+    product_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "NO" },
+    affiliate_offer_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "YES" },
+    position: { data_type: "integer", udt_name: "int4", is_nullable: "NO", defaultIncludes: "0" },
+    role: { data_type: "character varying", udt_name: "varchar", is_nullable: "NO", defaultIncludes: "recommendation" },
+    created_at: { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "NO" }
+  };
+  for (const [column, expected] of Object.entries(expectedContentProductColumns)) {
+    const actual = contentProductColumns.get(column);
+    if (!actual) {
+      errors.push(`content_products is missing required column ${column}.`);
+      continue;
+    }
+    for (const [property, value] of Object.entries(expected)) {
+      if (property === "defaultIncludes") {
+        if (!actual.column_default?.includes(value)) {
+          errors.push(`content_products.${column} has unexpected default: ${actual.column_default}.`);
+        }
+      } else if (actual[property] !== value) {
+        errors.push(`content_products.${column} expected ${property}=${value}, found ${actual[property]}.`);
+      }
+    }
+  }
+
+  const { rows: contentProductConstraints } = await client.query(
+    `SELECT c.conname, c.contype, array_agg(a.attname ORDER BY k.ordinality) AS columns,
+            tn.nspname AS referenced_schema, t.relname AS referenced_table,
+            array_agg(ta.attname ORDER BY k.ordinality) FILTER (WHERE ta.attname IS NOT NULL) AS referenced_columns
+       FROM pg_constraint c
+       JOIN pg_class r ON r.oid = c.conrelid
+       JOIN pg_namespace rn ON rn.oid = r.relnamespace
+       LEFT JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON true
+       LEFT JOIN pg_attribute a ON a.attrelid = r.oid AND a.attnum = k.attnum
+       LEFT JOIN pg_class t ON t.oid = c.confrelid
+       LEFT JOIN pg_namespace tn ON tn.oid = t.relnamespace
+       LEFT JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ordinality) ON fk.ordinality = k.ordinality
+       LEFT JOIN pg_attribute ta ON ta.attrelid = t.oid AND ta.attnum = fk.attnum
+      WHERE rn.nspname = 'public' AND r.relname = 'content_products' AND c.contype IN ('f', 'u')
+      GROUP BY c.oid, c.conname, c.contype, tn.nspname, t.relname`
+  );
+  const hasConstraint = (type, columns, referencedTable = null, referencedColumns = null) =>
+    contentProductConstraints.some((constraint) =>
+      constraint.contype === type &&
+      JSON.stringify(constraint.columns) === JSON.stringify(columns) &&
+      (referencedTable === null || (constraint.referenced_schema === "public" &&
+        constraint.referenced_table === referencedTable &&
+        JSON.stringify(constraint.referenced_columns) === JSON.stringify(referencedColumns)))
+    );
+  for (const [column, table] of [["content_id", "content"], ["product_id", "products"], ["affiliate_offer_id", "affiliate_offers"]]) {
+    if (!hasConstraint("f", [column], table, ["id"])) {
+      errors.push(`content_products.${column} is missing its expected foreign key to public.${table}(id).`);
+    }
+  }
+  if (!hasConstraint("u", ["content_id", "product_id"])) {
+    errors.push("content_products is missing its unique constraint on (content_id, product_id).");
+  }
+
+  const { rows: contentProductIndexRows } = await client.query(
+    `SELECT indexname, indexdef FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'content_products'`
+  );
+  const contentProductIndexDefs = new Map(contentProductIndexRows.map((row) => [row.indexname, row.indexdef]));
+  for (const [name, requiredColumns] of [
+    ["content_products_product_idx", "(product_id)"],
+    ["content_products_offer_idx", "(affiliate_offer_id)"],
+    ["content_products_content_position_idx", "(content_id, position)"]
+  ]) {
+    const definition = contentProductIndexDefs.get(name);
+    if (!definition || !definition.includes(requiredColumns)) {
+      errors.push(`Missing or incompatible index definition for ${name}; expected columns ${requiredColumns}.`);
+    }
+  }
+
   const { rows: migrationTableRows } = await client.query(
     "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
   );
