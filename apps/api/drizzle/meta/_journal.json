@@ -386,6 +386,20 @@
       "when": 1791763200000,
       "tag": "0057_content_products_multi_product_story",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1794050404000,
+      "tag": "0058_restrict_public_api_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1794050405000,
+      "tag": "0059_reconcile_missing_tiktok_and_content_products",
+      "breakpoints": true
     }
   ]
 }
