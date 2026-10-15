@@ -90,8 +90,10 @@ try {
   const { rows: migrationTableRows } = await client.query(
     "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
   );
-  if (migrationTableRows.length === 0) {
-    errors.push("Drizzle migration ledger table does not exist.");
+  if (migrationTableRows.length !== 1) {
+    errors.push(`Expected exactly one Drizzle migration ledger table, found ${migrationTableRows.length}; refusing to select a schema implicitly.`);
+  } else if (migrationTableRows[0].table_schema !== "drizzle") {
+    errors.push(`Expected Drizzle migration ledger in schema "drizzle", found schema "${migrationTableRows[0].table_schema}".`);
   } else {
     const migrationSchema = migrationTableRows[0].table_schema.replaceAll('"', '""');
     const { rows: migrationRows } = await client.query(
