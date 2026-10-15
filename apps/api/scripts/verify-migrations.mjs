@@ -30,9 +30,18 @@ for (const migration of trackedMigrations) {
 
   const migrationPath = new URL(`${migration.tag}.sql`, new URL("../drizzle/", import.meta.url));
   const migrationSql = await readFile(migrationPath);
-  const hash = createHash("sha256").update(migrationSql).digest("hex");
+  const sqlText = migrationSql.toString("utf8");
+  // Drizzle hashes the exact file bytes. Production migrations may have been
+  // applied from Windows checkouts (CRLF), while CI checks out LF files.
+  // Accept only hashes for byte-identical SQL with LF/CRLF line-ending styles.
+  const lfSql = sqlText.replace(/\r\n/g, "\n");
+  const hashVariants = new Set([
+    createHash("sha256").update(migrationSql).digest("hex"),
+    createHash("sha256").update(lfSql, "utf8").digest("hex"),
+    createHash("sha256").update(lfSql.replace(/\n/g, "\r\n"), "utf8").digest("hex")
+  ]);
   migrationByTimestamp.set(timestamp, migration);
-  trackedMigrationHashes.set(timestamp, { tag: migration.tag, hash });
+  trackedMigrationHashes.set(timestamp, { tag: migration.tag, hashes: hashVariants });
 }
 
 const client = new Client({ connectionString });
@@ -118,8 +127,8 @@ try {
         errors.push(`Ledger row id=${row.id} has timestamp ${timestamp}, which is absent from the checked-out migration journal.`);
         continue;
       }
-      if (row.hash !== tracked.hash) {
-        errors.push(`Hash mismatch for ${tracked.tag} at timestamp ${timestamp}: ledger hash does not match the checked-out SQL file.`);
+      if (!tracked.hashes.has(row.hash)) {
+        errors.push(`Hash mismatch for ${tracked.tag} at timestamp ${timestamp}: ledger hash does not match the checked-out SQL file under LF or CRLF line endings.`);
       }
     }
 
