@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import { Client } from "pg";
+
+if (process.env.CI_MIGRATION_DRIFT_TEST !== "1") {
+  throw new Error("Refusing destructive migration-drift simulation unless CI_MIGRATION_DRIFT_TEST=1.");
+}
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("DATABASE_URL is required.");
+
+const parsedUrl = new URL(connectionString);
+if (!["localhost", "127.0.0.1", "::1", "postgres"].includes(parsedUrl.hostname)) {
+  throw new Error(`Refusing to mutate non-local database host: ${parsedUrl.hostname}`);
+}
+
+const client = new Client({ connectionString });
+await client.connect();
+try {
+  const identity = await client.query("SELECT current_database() AS database, current_user AS role");
+  assert.equal(identity.rows[0].database, "affiliateos", "Drift simulation is restricted to the ephemeral affiliateos CI database.");
+
+  const ledger = await client.query(
+    "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations'"
+  );
+  assert.deepEqual(ledger.rows.map((row) => row.table_schema), ["drizzle"], "Expected exactly one Drizzle ledger in schema drizzle.");
+
+  await client.query("BEGIN");
+  try {
+    // Recreate the audited production condition only inside the ephemeral CI DB:
+    // historical 0056/0057 and candidate 0058/0059 ledger rows are absent,
+    // and their schema objects are absent. All other migration history remains.
+    await client.query("DROP TABLE IF EXISTS public.content_products");
+    await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
+    await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
+    await client.query(
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
+      [[1791676800000, 1791763200000, 1794050404000, 1794050405000]]
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+
+  const check = await client.query(`
+    SELECT
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='publication_jobs' AND column_name='tiktok_approval') AS has_tiktok_approval,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='media_assets' AND column_name='duration_seconds') AS has_duration_seconds,
+      to_regclass('public.content_products') IS NOT NULL AS has_content_products
+  `);
+  assert.deepEqual(check.rows[0], {
+    has_tiktok_approval: false,
+    has_duration_seconds: false,
+    has_content_products: false
+  });
+  console.log("Simulated production migration drift in ephemeral CI database; historical ledger entries were not fabricated.");
+} finally {
+  await client.end();
+}
