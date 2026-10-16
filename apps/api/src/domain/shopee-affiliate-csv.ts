@@ -128,7 +128,60 @@ function isShopeeUrl(value: string): boolean {
 
 /** Parses the CSV export from Shopee's mass affiliate-link tool; performs no persistence or URL fetching. */
 export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseResult {
-  const records = parseCsvRecords(input);
+  const initialRecords = parseCsvRecords(input);
+  const initialHeaders = initialRecords[0]?.map((header) => header.trim()) ?? [];
+  const previewHeaders = ["external_product_id", "name", "price_idr", "sold_count_value", "sold_count_quality", "shop_name", "commission_rate_bps", "commission_amount_idr", "product_url", "affiliate_url"] as const;
+  const isPreviewFormat = initialHeaders.some((header) => previewHeaders.includes(header as (typeof previewHeaders)[number]));
+  if (isPreviewFormat) {
+    const duplicateHeaders = initialHeaders.filter((header, index) => initialHeaders.indexOf(header) !== index);
+    if (duplicateHeaders.length > 0) return { rows: [], errors: [{ row: 1, message: `Header CSV duplikat: ${[...new Set(duplicateHeaders)].join(", ")}.` }] };
+    const missing = previewHeaders.filter((header) => !initialHeaders.includes(header));
+    if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom format preview tidak ditemukan: ${missing.join(", ")}.` }] };
+    const indexes = new Map(initialHeaders.map((header, index) => [header, index]));
+    const previewErrors: ShopeeAffiliateCsvParseResult["errors"] = [];
+    const normalizedRows: string[][] = [];
+    const csvEscape = (value: string) => /[",\\r\\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+    initialRecords.slice(1).forEach((record, index) => {
+      const rowNumber = index + 2;
+      if (record.length !== initialHeaders.length) {
+        previewErrors.push({ row: rowNumber, message: `Jumlah kolom tidak sesuai: diharapkan ${initialHeaders.length}, ditemukan ${record.length}.` });
+        return;
+      }
+      const get = (header: (typeof previewHeaders)[number]) => (record[indexes.get(header) ?? -1] ?? "").trim();
+      const id = get("external_product_id");
+      const name = get("name");
+      const price = get("price_idr");
+      const sales = get("sold_count_value");
+      const salesQuality = get("sold_count_quality");
+      const shop = get("shop_name");
+      const rate = get("commission_rate_bps");
+      const commission = get("commission_amount_idr");
+      const productUrl = get("product_url");
+      const affiliateUrl = get("affiliate_url");
+      const rowProblems: string[] = [];
+      if (!id) rowProblems.push("external_product_id kosong");
+      if (!name) rowProblems.push("name kosong");
+      if (!/^\\d+$/.test(price) || !Number.isSafeInteger(Number(price)) || !Number.isSafeInteger(Number(price) * 100)) rowProblems.push("price_idr tidak valid");
+      if (salesQuality !== "exact" && salesQuality !== "lower_bound" && salesQuality !== "missing") rowProblems.push("sold_count_quality harus exact, lower_bound, atau missing");
+      if (salesQuality !== "missing" && (!/^\\d+$/.test(sales) || !Number.isSafeInteger(Number(sales)))) rowProblems.push("sold_count_value tidak valid");
+      if (salesQuality === "missing" && sales !== "" && sales !== "0") rowProblems.push("sold_count_value harus kosong atau 0 jika quality missing");
+      if (!/^\\d+$/.test(rate) || !Number.isSafeInteger(Number(rate)) || Number(rate) > 10000) rowProblems.push("commission_rate_bps harus bilangan bulat antara 0 dan 10000");
+      if (!/^\\d+$/.test(commission) || !Number.isSafeInteger(Number(commission)) || !Number.isSafeInteger(Number(commission) * 100)) rowProblems.push("commission_amount_idr tidak valid");
+      if (Number.isSafeInteger(Number(price)) && Number.isSafeInteger(Number(commission)) && Number(commission) > Number(price)) rowProblems.push("Komisi tidak boleh melebihi harga produk");
+      if (!isShopeeUrl(productUrl)) rowProblems.push("product_url bukan URL HTTPS Shopee yang valid");
+      if (!isShopeeUrl(affiliateUrl)) rowProblems.push("affiliate_url bukan URL HTTPS Shopee yang valid");
+      if (rowProblems.length > 0) { previewErrors.push({ row: rowNumber, message: rowProblems.join("; ") + "." }); return; }
+      const ratePercent = (Number(rate) / 100).toString() + "%";
+      let salesText = "";
+      if (salesQuality === "exact") salesText = sales;
+      else if (salesQuality === "lower_bound") salesText = (Number(sales) / 1000).toString() + "RB+";
+      normalizedRows.push([id, name, price, salesText, shop, ratePercent, commission, productUrl, affiliateUrl]);
+    });
+    if (previewErrors.length > 0) return { rows: [], errors: previewErrors };
+    const canonicalCsv = [REQUIRED_HEADERS.join(","), ...normalizedRows.map((row) => row.map(csvEscape).join(","))].join("\\n");
+    return parseShopeeAffiliateCsv(canonicalCsv);
+  }
+  const records = initialRecords;
   if (records.length === 0) return { rows: [], errors: [{ row: 1, message: "File CSV kosong." }] };
   const headers = records[0]!.map((header) => header.trim());
   const duplicateHeaders = headers.filter((header, index) => headers.indexOf(header) !== index);
