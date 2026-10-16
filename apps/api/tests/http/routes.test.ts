@@ -788,3 +788,44 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects invalid
   assert.equal(offersResponse.json().data.length, 0);
   await app.close();
 });
+
+
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv is idempotent for repeated files", async () => {
+  const app = createApp();
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "CSV Idempotency Partner", email: "csv-idempotency@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '456,"Produk Idempoten","125RB","20","Toko Uji","5%","Rp2.000","https://shopee.co.id/product/1/456","https://s.shopee.co.id/idempotent456"',
+  ].join("\n");
+  const request = {
+    method: "POST" as const,
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "repeat-export.csv" },
+  };
+
+  const firstImport = await app.inject(request);
+  assert.equal(firstImport.statusCode, 201);
+  const firstProducts = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const firstOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(firstProducts.json().data.length, 1);
+  assert.equal(firstOffers.json().data.length, 1);
+  const firstProductId = firstProducts.json().data[0].id;
+  const firstOfferId = firstOffers.json().data[0].id;
+
+  const secondImport = await app.inject(request);
+  assert.equal(secondImport.statusCode, 201);
+  const secondProducts = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const secondOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(secondProducts.json().data.length, 1, "re-import must not duplicate products");
+  assert.equal(secondOffers.json().data.length, 1, "re-import must not duplicate affiliate offers");
+  assert.equal(secondProducts.json().data[0].id, firstProductId, "re-import must retain product identity");
+  assert.equal(secondOffers.json().data[0].id, firstOfferId, "re-import must retain offer identity");
+  assert.equal(secondOffers.json().data[0].affiliateUrl, "https://s.shopee.co.id/idempotent456");
+  await app.close();
+});
