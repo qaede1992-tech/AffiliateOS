@@ -77,7 +77,9 @@ function parseRupiah(value: string): number | null {
   const abbreviatedAmount = abbreviated?.[1];
   if (abbreviatedAmount !== undefined) {
     const amount = Number(abbreviatedAmount.replace(",", "."));
-    return Number.isFinite(amount) ? Math.round(amount * 1000) : null;
+    if (!Number.isFinite(amount)) return null;
+    const roundedAmount = Math.round(amount * 1000);
+    return Number.isSafeInteger(roundedAmount) ? roundedAmount : null;
   }
   if (!/^\d[\d.]*$/.test(normalized)) return null;
   const amount = Number(normalized.replace(/\./g, ""));
