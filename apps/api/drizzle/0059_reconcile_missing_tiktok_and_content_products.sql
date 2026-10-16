@@ -6,6 +6,9 @@
 -- Do not use this migration to conceal partial or incompatible pre-existing objects;
 -- the production preflight must confirm the audited starting state first.
 ALTER TABLE publication_jobs
+  ADD COLUMN IF NOT EXISTS confirmed_at timestamptz;
+
+ALTER TABLE publication_jobs
   ADD COLUMN IF NOT EXISTS tiktok_approval jsonb;
 
 ALTER TABLE media_assets
