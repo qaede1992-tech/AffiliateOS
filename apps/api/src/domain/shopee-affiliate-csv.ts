@@ -117,6 +117,10 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
   const seenIds = new Set<string>();
   records.slice(1).forEach((record, index) => {
     const rowNumber = index + 2;
+    if (record.length !== headers.length) {
+      errors.push({ row: rowNumber, message: `Jumlah kolom tidak sesuai: diharapkan ${headers.length}, ditemukan ${record.length}.` });
+      return;
+    }
     const get = (header: (typeof REQUIRED_HEADERS)[number]) => (record[indexes.get(header) ?? -1] ?? "").trim();
     const externalProductId = get("ID Produk");
     const name = get("Nama Produk");
