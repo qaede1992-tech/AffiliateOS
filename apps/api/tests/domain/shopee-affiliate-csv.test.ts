@@ -138,3 +138,33 @@ test("supports UTF-8 BOM and CRLF line endings", () => {
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0]?.priceRupiah, 107);
 });
+
+test("parses the previously shared normalized bulk-link preview CSV", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url",
+    '0,29302345742,"Duzi Pure, Susu Kuda",107000,10000,lower_bound,"Duzi Official Store",2350,24610,https://shopee.co.id/product/1135631643/29302345742,https://s.shopee.co.id/5AtE274BSv',
+    "1,45317937826,Dress Premium Malia,116000,72,exact,NajwaFashionMuslim,1150,12760,https://shopee.co.id/product/67693195/45317937826,https://s.shopee.co.id/1LgVT4ImFv",
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows[0]?.externalProductId, "29302345742");
+  assert.equal(result.rows[0]?.name, "Duzi Pure, Susu Kuda");
+  assert.equal(result.rows[0]?.priceRupiah, 107000);
+  assert.deepEqual(result.rows[0]?.soldCount, { value: 10000, quality: "lower_bound", sourceText: "10RB+" });
+  assert.equal(result.rows[0]?.commissionRateBps, 2350);
+  assert.equal(result.rows[0]?.commissionAmountRupiah, 24610);
+  assert.equal(result.rows[0]?.affiliateUrl, "https://s.shopee.co.id/5AtE274BSv");
+  assert.deepEqual(result.rows[1]?.soldCount, { value: 72, quality: "exact", sourceText: "72" });
+  assert.equal(result.rows[1]?.commissionRateBps, 1150);
+});
+
+test("rejects invalid normalized preview commission basis points", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url",
+    "0,29302345742,Produk,107000,10000,lower_bound,Toko,10001,24610,https://shopee.co.id/product/1135631643/29302345742,https://s.shopee.co.id/5AtE274BSv",
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /commission_rate_bps harus bilangan bulat/);
+});
