@@ -16,19 +16,31 @@ Panduan ini menjelaskan jalur manual yang disetujui untuk akun Shopee Affiliate 
 
 Jika akun tidak menyediakan ekspor/unduh yang sesuai, hentikan langkah ini dan catat pilihan yang benar-benar tersedia. Jangan mengganti jalur ini dengan scraping, browser automation, endpoint yang ditebak, atau kredensial Open API palsu.
 
-## 2. Kontrak parser saat ini (belum dikonfirmasi terhadap ekspor nyata)
+## 2. Format CSV yang dikenali parser
 
-Parser pada branch ini saat ini mengharapkan header berikut:
+Parser mendukung dua bentuk data:
+
+### A. Format header Shopee berbahasa Indonesia
 
 ```csv
 ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra
 ```
 
-Urutan kolom boleh berbeda karena parser memetakan berdasarkan nama header, tetapi semua sembilan header wajib ada dan tidak boleh duplikat. Setiap baris data harus memiliki jumlah kolom yang sama dengan header.
+Urutan kolom boleh berbeda karena parser memetakan berdasarkan nama header, tetapi semua sembilan header wajib ada dan tidak boleh duplikat. Parser menerima nilai harga/komisi Rupiah dengan pemisah ribuan titik, nilai singkat berakhiran `RB`, persentase komisi sampai 100%, dan jumlah penjualan eksak atau perkiraan berakhiran `RB`.
 
-Parser saat ini menerima nilai harga/komisi Rupiah dengan pemisah ribuan titik, nilai singkat berakhiran `RB`, persentase komisi sampai 100%, dan jumlah penjualan eksak atau perkiraan berakhiran `RB`. URL produk dan URL afiliasi harus HTTPS dan host-nya harus dikenali sebagai domain Shopee yang diizinkan.
+### B. Format preview bulk-link yang sebelumnya dibagikan
 
-**Penting:** daftar header dan aturan nilai di atas adalah kontrak kode saat ini, bukan pernyataan bahwa ekspor Shopee resmi pasti memakai format tersebut. Jangan menandai integrasi sebagai terverifikasi sampai contoh ekspor nyata dari akun proyek diuji.
+File `shopee_affiliate_import_preview.csv` yang ditemukan di Library percakapan menggunakan header:
+
+```csv
+index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url
+```
+
+Parser sekarang juga menerima bentuk ini. Kolom `index` boleh ada; field penting lain dipetakan berdasarkan nama header. `price_idr` dan `commission_amount_idr` harus berupa bilangan Rupiah bulat; `commission_rate_bps` harus bilangan bulat 0–10000; `sold_count_quality` harus `exact`, `lower_bound`, atau `missing`. Nilai `lower_bound` dipertahankan sebagai perkiraan batas bawah, bukan diubah menjadi jumlah pasti.
+
+Untuk kedua bentuk, setiap baris harus memiliki jumlah kolom yang sama dengan header, ID produk tidak boleh berulang, nominal komisi tidak boleh melebihi harga, dan URL produk/affiliate harus HTTPS pada host Shopee yang diizinkan.
+
+**Batas bukti:** file yang ditemukan bernama *preview* dan menggunakan skema normalisasi berbahasa Inggris. Dukungan parser terhadap skema tersebut memvalidasi struktur file yang kita miliki, tetapi tidak membuktikan bahwa file itu byte-per-byte merupakan ekspor asli Shopee atau bahwa setiap akun Shopee mengekspor format yang sama. Dokumentasi resmi yang ditemukan menyebut kolom `product_shortlink`, bukan kontrak header di atas. Integrasi ekspor resmi tetap belum terverifikasi sampai dibandingkan dengan file asli dari akun.
 
 ## 3. Impor ke AffiliateOS
 
