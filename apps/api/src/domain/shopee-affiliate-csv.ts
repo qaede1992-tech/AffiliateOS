@@ -104,6 +104,11 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
   const records = parseCsvRecords(input);
   if (records.length === 0) return { rows: [], errors: [{ row: 1, message: "File CSV kosong." }] };
   const headers = records[0]!.map((header) => header.trim());
+  const duplicateHeaders = headers.filter((header, index) => headers.indexOf(header) !== index);
+  if (duplicateHeaders.length > 0) {
+    const uniqueDuplicates = [...new Set(duplicateHeaders)];
+    return { rows: [], errors: [{ row: 1, message: `Header CSV duplikat: ${uniqueDuplicates.join(", ")}.` }] };
+  }
   const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
   if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom wajib tidak ditemukan: ${missing.join(", ")}.` }] };
   const indexes = new Map(headers.map((header, index) => [header, index]));
