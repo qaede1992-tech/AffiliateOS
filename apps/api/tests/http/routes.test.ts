@@ -921,7 +921,7 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv returns 400 for
   });
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().error, "INVALID_SHOPEE_AFFILIATE_CSV");
-  assert.match(response.json().message, /tanda kutip berada di tengah nilai/);
+  assert.match(response.json().message, /karakter setelah tanda kutip penutup/);
   const products = await app.inject({ method: "GET", url: "/api/v1/products" });
   const offers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
   assert.equal(products.json().data.length, 0);
