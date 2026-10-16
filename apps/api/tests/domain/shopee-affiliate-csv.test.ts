@@ -32,6 +32,14 @@ test("rejects duplicate IDs and non-Shopee affiliate URLs", () => {
   assert.match(result.errors[1]?.message ?? "", /duplikat/);
 });
 
+test("rejects commission amounts greater than product price before import", () => {
+  const row = '3,Produk,10RB,100,Toko,5%,Rp12.000,https://shopee.co.id/product/1/3,https://s.shopee.co.id/xyz';
+  const result = parseShopeeAffiliateCsv([headers, row].join("\\n"));
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0]?.message ?? "", /Komisi tidak boleh melebihi harga produk/);
+});
+
 test("supports UTF-8 BOM and CRLF line endings", () => {
   const csv = "\uFEFF" + headers + "\r\n" + '2,Produk,107,20,Toko,2%,Rp100,https://shopee.co.id/product/1/2,https://s.shopee.co.id/xyz\r\n';
   const result = parseShopeeAffiliateCsv(csv);
