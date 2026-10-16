@@ -105,7 +105,8 @@ function parseSales(value: string): ShopeeSalesValue {
     const count = Number(approximateSales.replace(",", ".")) * 1000;
     return { value: Number.isSafeInteger(Math.round(count)) ? Math.round(count) : null, quality: "lower_bound", sourceText };
   }
-  if (!/^\d[\d.]*$/.test(normalized)) return { value: null, quality: "missing", sourceText };
+  // Exact sales counts must use valid Indonesian thousands grouping.
+  if (!/^\d+(?:\.\d{3})*$/.test(normalized)) return { value: null, quality: "missing", sourceText };
   const count = Number(normalized.replace(/\./g, ""));
   return { value: Number.isSafeInteger(count) ? count : null, quality: "exact", sourceText };
 }
@@ -146,12 +147,14 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const priceRupiah = parseRupiah(get("Harga"));
     const commissionAmountRupiah = parseRupiah(get("Komisi"));
     const commissionRateBps = parseRateBps(get("Komisi hingga"));
+    const soldCount = parseSales(get("Penjualan"));
     const productUrl = get("Link Produk");
     const affiliateUrl = get("Link Komisi Ekstra");
     const problems: string[] = [];
     if (!externalProductId) problems.push("ID Produk kosong");
     if (!name) problems.push("Nama Produk kosong");
     if (priceRupiah === null) problems.push("Harga tidak dapat dibaca");
+    if (get("Penjualan") && soldCount.quality === "missing") problems.push("Penjualan tidak dapat dibaca");
     if (commissionAmountRupiah === null && get("Komisi")) problems.push("Komisi tidak dapat dibaca");
     if (commissionRateBps === null && get("Komisi hingga")) problems.push("Persentase komisi tidak dapat dibaca");
     if (priceRupiah !== null && commissionAmountRupiah !== null && commissionAmountRupiah > priceRupiah) problems.push("Komisi tidak boleh melebihi harga produk");
@@ -160,7 +163,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (externalProductId && seenIds.has(externalProductId)) problems.push("ID Produk duplikat dalam file");
     if (externalProductId) seenIds.add(externalProductId);
     if (problems.length > 0) { errors.push({ row: rowNumber, message: problems.join("; ") + "." }); return; }
-    rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount: parseSales(get("Penjualan")), commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl });
+    rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount, commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl });
   });
   return { rows, errors };
 }
