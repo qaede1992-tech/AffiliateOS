@@ -103,12 +103,17 @@ function parseSales(value: string): ShopeeSalesValue {
   const approximateSales = approximate?.[1];
   if (approximateSales !== undefined) {
     const count = Number(approximateSales.replace(",", ".")) * 1000;
-    return { value: Number.isSafeInteger(Math.round(count)) ? Math.round(count) : null, quality: "lower_bound", sourceText };
+    const roundedCount = Math.round(count);
+    return Number.isSafeInteger(roundedCount)
+      ? { value: roundedCount, quality: "lower_bound", sourceText }
+      : { value: null, quality: "missing", sourceText };
   }
   // Exact sales counts must use valid Indonesian thousands grouping.
   if (!/^\d+(?:\.\d{3})*$/.test(normalized)) return { value: null, quality: "missing", sourceText };
   const count = Number(normalized.replace(/\./g, ""));
-  return { value: Number.isSafeInteger(count) ? count : null, quality: "exact", sourceText };
+  return Number.isSafeInteger(count)
+    ? { value: count, quality: "exact", sourceText }
+    : { value: null, quality: "missing", sourceText };
 }
 
 function isShopeeUrl(value: string): boolean {
