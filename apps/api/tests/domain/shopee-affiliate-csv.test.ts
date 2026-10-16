@@ -96,6 +96,14 @@ test("rejects malformed thousands grouping in Rupiah values", () => {
   assert.match(result.errors[0]?.message ?? "", /Harga tidak dapat dibaca/);
 });
 
+test("rejects malformed thousands grouping in exact sales counts", () => {
+  const row = '8,Produk,10RB,1.2.3,Toko,5%,Rp500,https://shopee.co.id/product/1/8,https://s.shopee.co.id/xyz';
+  const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0]?.message ?? "", /Penjualan tidak dapat dibaca/);
+});
+
 test("rejects abbreviated currency values outside JavaScript's safe integer range", () => {
   const row = '6,Produk,999999999999999RB,100,Toko,5%,Rp500,https://shopee.co.id/product/1/6,https://s.shopee.co.id/xyz';
   const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
