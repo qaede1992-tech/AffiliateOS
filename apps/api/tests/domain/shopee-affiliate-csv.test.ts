@@ -23,7 +23,7 @@ test("rejects CSV rows with missing or extra columns", () => {
 test("rejects quotes embedded in an unquoted field", () => {
   const row = '1,Prod"uk,10RB,100,Toko,5%,Rp500,https://shopee.co.id/product/1/1,https://s.shopee.co.id/abc';
   assert.throws(
-    () => parseShopeeAffiliateCsv([headers, row].join("\\n")),
+    () => parseShopeeAffiliateCsv([headers, row].join("\n")),
     /tanda kutip berada di tengah nilai/
   );
 });
@@ -31,7 +31,7 @@ test("rejects quotes embedded in an unquoted field", () => {
 test("rejects characters after a closing quote before the delimiter", () => {
   const row = '1,"Produk"ekstra,10RB,100,Toko,5%,Rp500,https://shopee.co.id/product/1/1,https://s.shopee.co.id/abc';
   assert.throws(
-    () => parseShopeeAffiliateCsv([headers, row].join("\\n")),
+    () => parseShopeeAffiliateCsv([headers, row].join("\n")),
     /karakter setelah tanda kutip penutup/
   );
 });
