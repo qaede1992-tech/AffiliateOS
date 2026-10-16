@@ -81,7 +81,9 @@ function parseRupiah(value: string): number | null {
     const roundedAmount = Math.round(amount * 1000);
     return Number.isSafeInteger(roundedAmount) ? roundedAmount : null;
   }
-  if (!/^\d[\d.]*$/.test(normalized)) return null;
+  // Indonesian thousands separators must form three-digit groups; otherwise
+  // malformed values such as "1.2.3" could silently become 123.
+  if (!/^\d+(?:\.\d{3})*$/.test(normalized)) return null;
   const amount = Number(normalized.replace(/\./g, ""));
   return Number.isSafeInteger(amount) ? amount : null;
 }
