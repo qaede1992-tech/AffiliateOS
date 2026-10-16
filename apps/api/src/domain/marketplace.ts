@@ -70,7 +70,7 @@ export class MarketplaceService {
       const timestamp = now();
       account = await this.accounts.save({ id: randomUUID(), marketplaceId: connection.id, affiliateId: affiliate.id, name: "Shopee affiliate feed account", status: "active", configuration: {}, createdAt: timestamp, updatedAt: timestamp });
     } else if (account.affiliateId !== affiliate.id) {
-      account = await this.accounts.save({ ...account, affiliateId: affiliate.id, updatedAt: now() });
+      throw new DomainError("AFFILIATE_ACCOUNT_CONFLICT", "The Shopee affiliate feed is already bound to a different affiliate. Import must use the originally bound affiliate.", 409);
     }
     const conversionOffer = await this.ensureConversionOffer(account);
     let importedProducts = 0;
