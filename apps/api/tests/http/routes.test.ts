@@ -766,6 +766,34 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv imports valid S
   await app.close();
 });
 
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects commission above price before persisting anything", async () => {
+  const app = createApp();
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "CSV Commission Guard", email: "csv-commission-guard@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '987,"Komisi Tidak Valid","10RB","12","Toko Uji","5%","Rp12.000","https://shopee.co.id/product/1/987","https://s.shopee.co.id/invalid987"',
+  ].join("\n");
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "invalid-commission.csv" },
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error, "INVALID_SHOPEE_AFFILIATE_CSV");
+  assert.match(response.json().errors[0].message, /Komisi tidak boleh melebihi harga produk/);
+  const products = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const offers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(products.json().data.length, 0);
+  assert.equal(offers.json().data.length, 0);
+  await app.close();
+});
+
 test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects invalid CSV without importing rows", async () => {
   const app = createApp();
   const affiliateResponse = await app.inject({
