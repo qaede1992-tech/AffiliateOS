@@ -4,6 +4,12 @@ import { parseShopeeAffiliateCsv } from "../../src/domain/shopee-affiliate-csv.j
 
 const headers = "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra";
 
+test("rejects duplicate CSV headers instead of silently choosing one", () => {
+  const csv = [headers + ",Harga", "1,Produk,10RB,100,Toko,5%,Rp500,https://shopee.co.id/product/1/1,https://s.shopee.co.id/abc,999"].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /Header CSV duplikat: Harga/);
+});
 test("rejects files missing required Shopee headers", () => {
   const result = parseShopeeAffiliateCsv("ID Produk,Nama Produk\n1,Produk");
   assert.equal(result.rows.length, 0);
