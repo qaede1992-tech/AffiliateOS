@@ -328,8 +328,13 @@ try {
     const compensationTag = "0059_reconcile_missing_tiktok_and_content_products";
     const compensationMigration = trackedMigrations.find((migration) => migration.tag === compensationTag);
     const compensationTimestamp = compensationMigration ? Number(compensationMigration.when) : null;
+    // A compensation is valid only if every schema-definition assertion above passed,
+    // not merely when the expected object names exist. Any prior verifier error fails closed.
     const schemaObjectsPresent =
-      missingTables.length === 0 && missingIndexes.length === 0 && missingColumns.length === 0;
+      errors.length === 0 &&
+      missingTables.length === 0 &&
+      missingIndexes.length === 0 &&
+      missingColumns.length === 0;
     const compensatedTags = findCompensatedMigrationGaps({
       missingMigrations,
       compensationTimestamp,
