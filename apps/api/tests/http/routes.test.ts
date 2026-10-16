@@ -888,8 +888,9 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a diffe
   assert.equal(firstImport.statusCode, 201);
   const beforeOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
   assert.equal(beforeOffers.json().data.length, 1);
-  const originalOfferId = beforeOffers.json().data[0].id;
-  const originalAccountId = beforeOffers.json().data[0].affiliateAccountId;
+  const originalOffer = beforeOffers.json().data[0];
+  const originalOfferId = originalOffer.id;
+  const originalAccountId = originalOffer.affiliateAccountId;
 
   const conflictingImport = await app.inject({
     method: "POST",
@@ -903,5 +904,6 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a diffe
   assert.equal(afterOffers.json().data.length, 1);
   assert.equal(afterOffers.json().data[0].id, originalOfferId);
   assert.equal(afterOffers.json().data[0].affiliateAccountId, originalAccountId);
+  assert.deepEqual(afterOffers.json().data[0], originalOffer, "conflicting import must leave every existing offer field unchanged");
   await app.close();
 });
