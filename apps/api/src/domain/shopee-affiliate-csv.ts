@@ -79,13 +79,15 @@ function parseRupiah(value: string): number | null {
     const amount = Number(abbreviatedAmount.replace(",", "."));
     if (!Number.isFinite(amount)) return null;
     const roundedAmount = Math.round(amount * 1000);
-    return Number.isSafeInteger(roundedAmount) ? roundedAmount : null;
+    return Number.isSafeInteger(roundedAmount) && Number.isSafeInteger(roundedAmount * 100) ? roundedAmount : null;
   }
   // Indonesian thousands separators must form three-digit groups; otherwise
   // malformed values such as "1.2.3" could silently become 123.
   if (!/^\d+(?:\.\d{3})*$/.test(normalized)) return null;
   const amount = Number(normalized.replace(/\./g, ""));
-  return Number.isSafeInteger(amount) ? amount : null;
+  // Downstream stores Rupiah as integer cents (Rupiah * 100). Keep the scaled
+  // value within JavaScript's safe integer range before it reaches Drizzle.
+  return Number.isSafeInteger(amount) && Number.isSafeInteger(amount * 100) ? amount : null;
 }
 
 function parseRateBps(value: string): number | null {
