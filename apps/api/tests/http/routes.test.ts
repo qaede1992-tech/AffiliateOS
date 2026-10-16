@@ -907,3 +907,25 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a diffe
   assert.deepEqual(afterOffers.json().data[0], originalOffer, "conflicting import must leave every existing offer field unchanged");
   await app.close();
 });
+
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv returns 400 for malformed CSV quoting", async () => {
+  const app = createApp();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '987,"Produk"ekstra,10RB,12,Toko,5%,Rp500,https://shopee.co.id/product/1/987,https://s.shopee.co.id/malformed987',
+  ].join("\n");
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: "00000000-0000-4000-8000-000000000001", csv, sourceReference: "malformed.csv" },
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error, "INVALID_SHOPEE_AFFILIATE_CSV");
+  assert.match(response.json().message, /tanda kutip berada di tengah nilai/);
+  const products = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const offers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(products.json().data.length, 0);
+  assert.equal(offers.json().data.length, 0);
+  await app.close();
+});
+
