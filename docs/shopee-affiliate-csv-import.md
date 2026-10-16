@@ -7,12 +7,14 @@ Panduan ini menjelaskan jalur manual yang disetujui untuk akun Shopee Affiliate 
 ## 1. Ambil file dari Shopee
 
 1. Masuk ke akun Shopee Affiliate yang memang akan dipakai.
-2. Buka menu resmi **Penawaran Produk** dan gunakan opsi unduh/ekspor yang benar-benar tersedia untuk akun tersebut.
+2. Periksa opsi unduh/ekspor yang benar-benar tersedia di akun tersebut. Dokumentasi resmi Shopee tentang [Pedoman Pembuatan Link Pendek Affiliate](https://help.shopee.co.id/portal/10/article/184879-%5BShopee-Affiliate-Program%5D-Pedoman-Pembuatan-Link-Pendek-Affiliate) menyebut jalur **Kreatif > Tampilan Produk > Lihat Link** untuk mengunduh daftar halaman produk dari Product Feed; artikel tersebut menyebut kolom `product_shortlink`.
 3. Simpan file asli tanpa mengubah header, urutan kolom, pemisah, atau format angka.
 4. Sebelum membagikan contoh untuk debugging, samarkan nama toko/nama produk jika diperlukan dan hapus data pribadi. Pertahankan nama header persis, urutan/jumlah kolom, tanda kutip, format harga/komisi/penjualan, dan bentuk URL agar struktur file tetap bisa diuji.
 5. Jangan kirim token API, cookie sesi, kata sandi, atau kredensial Shopee.
 
-Jika akun tidak menyediakan ekspor/unduh, hentikan langkah ini dan catat pilihan yang benar-benar tersedia. Jangan mengganti jalur ini dengan scraping, browser automation, endpoint yang ditebak, atau kredensial Open API palsu.
+**Batas bukti:** artikel resmi yang ditemukan menjelaskan ekspor Product Feed dan kolom `product_shortlink`; artikel itu tidak mendokumentasikan sembilan header yang diwajibkan parser AffiliateOS. Jangan menganggap file Product Feed tersebut langsung kompatibel dengan importer ini. Periksa contoh ekspor aktual dari akun terlebih dahulu dan sesuaikan parser hanya berdasarkan bukti file tersebut.
+
+Jika akun tidak menyediakan ekspor/unduh yang sesuai, hentikan langkah ini dan catat pilihan yang benar-benar tersedia. Jangan mengganti jalur ini dengan scraping, browser automation, endpoint yang ditebak, atau kredensial Open API palsu.
 
 ## 2. Kontrak parser saat ini (belum dikonfirmasi terhadap ekspor nyata)
 
