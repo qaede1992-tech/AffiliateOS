@@ -829,3 +829,51 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv is idempotent f
   assert.equal(secondOffers.json().data[0].affiliateUrl, "https://s.shopee.co.id/idempotent456");
   await app.close();
 });
+
+
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a different affiliate without rebinding the account", async () => {
+  const app = createApp();
+  const firstAffiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "Original CSV Partner", email: "original-csv-partner@example.com" },
+  });
+  const secondAffiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "Different CSV Partner", email: "different-csv-partner@example.com" },
+  });
+  assert.equal(firstAffiliateResponse.statusCode, 201);
+  assert.equal(secondAffiliateResponse.statusCode, 201);
+  const firstAffiliate = firstAffiliateResponse.json();
+  const secondAffiliate = secondAffiliateResponse.json();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '789,"Produk Kepemilikan","50RB","12","Toko Uji","4%","Rp1.000","https://shopee.co.id/product/1/789","https://s.shopee.co.id/owner789"',
+  ].join("\\n");
+
+  const firstImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: firstAffiliate.id, csv, sourceReference: "owner-export.csv" },
+  });
+  assert.equal(firstImport.statusCode, 201);
+  const beforeOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(beforeOffers.json().data.length, 1);
+  const originalOfferId = beforeOffers.json().data[0].id;
+  const originalAccountId = beforeOffers.json().data[0].affiliateAccountId;
+
+  const conflictingImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: secondAffiliate.id, csv, sourceReference: "other-owner-export.csv" },
+  });
+  assert.equal(conflictingImport.statusCode, 409);
+  assert.equal(conflictingImport.json().error, "AFFILIATE_ACCOUNT_CONFLICT");
+
+  const afterOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(afterOffers.json().data.length, 1);
+  assert.equal(afterOffers.json().data[0].id, originalOfferId);
+  assert.equal(afterOffers.json().data[0].affiliateAccountId, originalAccountId);
+  await app.close();
+});
