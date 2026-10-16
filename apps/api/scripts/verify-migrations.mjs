@@ -132,6 +132,7 @@ const expectedIndexes = [
   "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx"
 ];
 const expectedColumns = [
+  ["publication_jobs", "confirmed_at"],
   ["publication_jobs", "tiktok_approval"],
   ["media_assets", "duration_seconds"]
 ];
@@ -159,7 +160,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
@@ -175,13 +176,15 @@ try {
     `SELECT table_name, column_name, data_type, udt_name, is_nullable, column_default
        FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND ((table_name = 'publication_jobs' AND column_name = 'tiktok_approval')
+        AND ((table_name = 'publication_jobs' AND column_name = 'confirmed_at')
+          OR (table_name = 'publication_jobs' AND column_name = 'tiktok_approval')
           OR (table_name = 'media_assets' AND column_name = 'duration_seconds'))`
   );
   const repairedColumns = new Map(repairedColumnRows.map((row) => [
     `${row.table_name}.${row.column_name}`, row
   ]));
   for (const [key, expected] of [
+    ["publication_jobs.confirmed_at", { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "YES" }],
     ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
     ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }]
   ]) {
