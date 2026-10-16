@@ -898,7 +898,7 @@ test("CSV import reuses the canonical offer created by the JSON feed import", as
   const csv = [
     "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
     '456,"Produk Sama","125RB","20","Toko Uji","5%","Rp2.000","https://shopee.co.id/product/1/456","https://s.shopee.co.id/crossformat456"',
-  ].join("\\n");
+  ].join("\n");
   const csvImport = await app.inject({
     method: "POST",
     url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
