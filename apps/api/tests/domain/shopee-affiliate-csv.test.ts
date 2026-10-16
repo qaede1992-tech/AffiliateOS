@@ -88,6 +88,14 @@ test("rejects commission rates above 100 percent", () => {
   assert.match(result.errors[0]?.message ?? "", /Persentase komisi tidak dapat dibaca/);
 });
 
+test("rejects malformed thousands grouping in Rupiah values", () => {
+  const row = '7,Produk,1.2.3,100,Toko,5%,Rp500,https://shopee.co.id/product/1/7,https://s.shopee.co.id/xyz';
+  const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0]?.message ?? "", /Harga tidak dapat dibaca/);
+});
+
 test("rejects abbreviated currency values outside JavaScript's safe integer range", () => {
   const row = '6,Produk,999999999999999RB,100,Toko,5%,Rp500,https://shopee.co.id/product/1/6,https://s.shopee.co.id/xyz';
   const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
