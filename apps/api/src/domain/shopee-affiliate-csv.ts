@@ -29,17 +29,32 @@ function parseCsvRecords(input: string): string[][] {
   let record: string[] = [];
   let field = "";
   let quoted = false;
+  let afterClosingQuote = false;
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i];
     if (quoted) {
       if (char === '"') {
         if (text[i + 1] === '"') { field += '"'; i += 1; }
-        else quoted = false;
+        else { quoted = false; afterClosingQuote = true; }
       } else field += char;
       continue;
     }
-    if (char === '"' && field.length === 0) quoted = true;
-    else if (char === ",") { record.push(field); field = ""; }
+    if (afterClosingQuote) {
+      if (char === ",") { record.push(field); field = ""; afterClosingQuote = false; }
+      else if (char === "\n" || char === "\r") {
+        if (char === "\r" && text[i + 1] === "\n") i += 1;
+        record.push(field);
+        if (record.some((value) => value.trim() !== "")) records.push(record);
+        record = []; field = ""; afterClosingQuote = false;
+      } else {
+        throw new Error("CSV tidak valid: terdapat karakter setelah tanda kutip penutup.");
+      }
+      continue;
+    }
+    if (char === '"') {
+      if (field.length !== 0) throw new Error("CSV tidak valid: tanda kutip berada di tengah nilai tanpa escape.");
+      quoted = true;
+    } else if (char === ",") { record.push(field); field = ""; }
     else if (char === "\n" || char === "\r") {
       if (char === "\r" && text[i + 1] === "\n") i += 1;
       record.push(field);
