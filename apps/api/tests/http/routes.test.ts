@@ -850,7 +850,7 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a diffe
   const csv = [
     "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
     '789,"Produk Kepemilikan","50RB","12","Toko Uji","4%","Rp1.000","https://shopee.co.id/product/1/789","https://s.shopee.co.id/owner789"',
-  ].join("\\n");
+  ].join("\n");
 
   const firstImport = await app.inject({
     method: "POST",
