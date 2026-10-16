@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { Client } from "pg";
 
+if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
+  throw new Error("Refusing destructive migration-drift simulation outside a GitHub Actions CI runner.");
+}
 if (process.env.CI_MIGRATION_DRIFT_TEST !== "1") {
   throw new Error("Refusing destructive migration-drift simulation unless CI_MIGRATION_DRIFT_TEST=1.");
 }
