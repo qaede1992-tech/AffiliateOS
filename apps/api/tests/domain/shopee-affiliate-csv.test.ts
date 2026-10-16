@@ -120,6 +120,18 @@ test("rejects abbreviated currency values outside JavaScript's safe integer rang
   assert.match(result.errors[0]?.message ?? "", /Harga tidak dapat dibaca/);
 });
 
+test("rejects Rupiah values that become unsafe when converted to integer cents", () => {
+  const rows = [
+    '10,Produk Harga Terlalu Besar,100000000000000,100,Toko,5%,Rp500,https://shopee.co.id/product/1/10,https://s.shopee.co.id/unsafe10',
+    '11,Produk Komisi Terlalu Besar,1000,100,Toko,5%,100000000000000,https://shopee.co.id/product/1/11,https://s.shopee.co.id/unsafe11',
+  ];
+  const result = parseShopeeAffiliateCsv([headers, ...rows].join("\n"));
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 2);
+  assert.match(result.errors[0]?.message ?? "", /Harga tidak dapat dibaca/);
+  assert.match(result.errors[1]?.message ?? "", /Komisi tidak dapat dibaca/);
+});
+
 test("supports UTF-8 BOM and CRLF line endings", () => {
   const csv = "\uFEFF" + headers + "\r\n" + '2,Produk,107,20,Toko,2%,Rp100,https://shopee.co.id/product/1/2,https://s.shopee.co.id/xyz\r\n';
   const result = parseShopeeAffiliateCsv(csv);
