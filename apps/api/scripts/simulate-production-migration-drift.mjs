@@ -32,6 +32,7 @@ try {
     // historical 0056/0057 and candidate 0058/0059 ledger rows are absent,
     // and their schema objects are absent. All other migration history remains.
     await client.query("DROP TABLE IF EXISTS public.content_products");
+    await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
     await client.query(
@@ -46,11 +47,13 @@ try {
 
   const check = await client.query(`
     SELECT
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='publication_jobs' AND column_name='confirmed_at') AS has_confirmed_at,
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='publication_jobs' AND column_name='tiktok_approval') AS has_tiktok_approval,
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='media_assets' AND column_name='duration_seconds') AS has_duration_seconds,
       to_regclass('public.content_products') IS NOT NULL AS has_content_products
   `);
   assert.deepEqual(check.rows[0], {
+    has_confirmed_at: false,
     has_tiktok_approval: false,
     has_duration_seconds: false,
     has_content_products: false
