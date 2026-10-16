@@ -144,7 +144,7 @@ test("parses the previously shared normalized bulk-link preview CSV", () => {
     "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url",
     '0,29302345742,"Duzi Pure, Susu Kuda",107000,10000,lower_bound,"Duzi Official Store",2350,24610,https://shopee.co.id/product/1135631643/29302345742,https://s.shopee.co.id/5AtE274BSv',
     "1,45317937826,Dress Premium Malia,116000,72,exact,NajwaFashionMuslim,1150,12760,https://shopee.co.id/product/67693195/45317937826,https://s.shopee.co.id/1LgVT4ImFv",
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.errors.length, 0);
   assert.equal(result.rows.length, 2);
@@ -163,7 +163,7 @@ test("rejects invalid normalized preview commission basis points", () => {
   const csv = [
     "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url",
     "0,29302345742,Produk,107000,10000,lower_bound,Toko,10001,24610,https://shopee.co.id/product/1135631643/29302345742,https://s.shopee.co.id/5AtE274BSv",
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.rows.length, 0);
   assert.match(result.errors[0]?.message ?? "", /commission_rate_bps harus bilangan bulat/);
