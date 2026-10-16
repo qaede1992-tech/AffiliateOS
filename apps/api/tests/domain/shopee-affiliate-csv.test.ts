@@ -34,7 +34,7 @@ test("rejects duplicate IDs and non-Shopee affiliate URLs", () => {
 
 test("rejects commission amounts greater than product price before import", () => {
   const row = '3,Produk,10RB,100,Toko,5%,Rp12.000,https://shopee.co.id/product/1/3,https://s.shopee.co.id/xyz';
-  const result = parseShopeeAffiliateCsv([headers, row].join("\\n"));
+  const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
   assert.equal(result.rows.length, 0);
   assert.equal(result.errors.length, 1);
   assert.match(result.errors[0]?.message ?? "", /Komisi tidak boleh melebihi harga produk/);
