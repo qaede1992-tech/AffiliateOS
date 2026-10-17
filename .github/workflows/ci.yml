@@ -46,7 +46,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://affiliateos:affiliateos@localhost:5432/affiliateos
         run: |
-          printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\\n' > .env
+          printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
           npm run db:migrate
           timeout --signal=TERM --kill-after=30s 15m npm test
       - name: Typecheck
