@@ -122,7 +122,7 @@ function isShopeeUrl(value: string): boolean {
   try {
     const url = new URL(value);
     const host = url.hostname.toLowerCase();
-    return url.protocol === "https:" && (host === "shopee.co.id" || host === "s.shopee.co.id" || host === "shopee.ee" || host === "shope.ee" || host.endsWith(".shopee.co.id"));
+    return url.protocol === "https:" && url.username === "" && url.password === "" && url.port === "" && (host === "shopee.co.id" || host === "s.shopee.co.id" || host === "shopee.ee" || host === "shope.ee" || host.endsWith(".shopee.co.id"));
   } catch { return false; }
 }
 
