@@ -788,3 +788,32 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects invalid
   assert.equal(offersResponse.json().data.length, 0);
   await app.close();
 });
+
+
+test("Shopee CSV import refuses to rebind an existing feed account to another affiliate", async () => {
+  const app = createApp();
+  const createAffiliate = async (name: string, email: string) => {
+    const response = await app.inject({ method: "POST", url: "/api/v1/affiliates", payload: { name, email } });
+    assert.equal(response.statusCode, 201);
+    return response.json();
+  };
+  const firstAffiliate = await createAffiliate("Original CSV Partner", "original-csv@example.com");
+  const secondAffiliate = await createAffiliate("Different CSV Partner", "different-csv@example.com");
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '987,"Produk Terikat","Rp37.500","10RB+","Toko Uji","4,5%","Rp1.500","https://shopee.co.id/product/1/987","https://s.shopee.co.id/abc987"',
+  ].join("\\n");
+  const importCsv = (affiliateId: string) => app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId, csv },
+  });
+  const firstImport = await importCsv(firstAffiliate.id);
+  assert.equal(firstImport.statusCode, 201);
+  const rejectedImport = await importCsv(secondAffiliate.id);
+  assert.equal(rejectedImport.statusCode, 409);
+  assert.equal(rejectedImport.json().error, "AFFILIATE_ACCOUNT_CONFLICT");
+  const account = await app.inject({ method: "GET", url: "/api/v1/marketplaces/shopee-affiliate-feed/account" });
+  assert.notEqual(account.statusCode, 404);
+  await app.close();
+});
