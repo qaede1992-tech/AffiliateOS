@@ -126,7 +126,7 @@ function isShopeeUrl(value: string): boolean {
   } catch { return false; }
 }
 
-/** Parses the CSV export from Shopee's mass affiliate-link tool; performs no persistence or URL fetching. */
+/** Parses supported Shopee affiliate CSV shapes; performs no persistence or URL fetching. */
 export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseResult {
   const initialRecords = parseCsvRecords(input);
   const initialHeaders = initialRecords[0]?.map((header) => header.trim()) ?? [];
