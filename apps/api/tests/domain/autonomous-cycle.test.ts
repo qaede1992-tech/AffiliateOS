@@ -16,7 +16,7 @@ describe("autonomous cycle", () => {
     };
     const calls: unknown[] = [];
     const execution = {
-      async runOnce(input: { candidates: unknown[] }) {
+      async runOnce(input: { candidates: unknown[]; requirePublishableMedia?: boolean; requireCommissionSignal?: boolean }) {
         calls.push(input);
         return { selected: [], rejected: [], outcomes: [] };
       }
@@ -30,6 +30,8 @@ describe("autonomous cycle", () => {
     assert.equal(result.execution.outcomes.length, 0);
     assert.equal(calls.length, 1);
     assert.equal((calls[0] as { candidates: unknown[] }).candidates.length, 2);
+    assert.equal((calls[0] as { requirePublishableMedia?: boolean }).requirePublishableMedia, true);
+    assert.equal((calls[0] as { requireCommissionSignal?: boolean }).requireCommissionSignal, true);
     assert.ok(new Date(result.completedAt).getTime() >= new Date(result.startedAt).getTime());
     assert.equal(service.skipReason, undefined);
   });
