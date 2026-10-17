@@ -185,7 +185,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
         priceRupiah: priceValue,
         soldCount: {
           value: salesQuality === "missing" ? null : salesValue,
-          quality: salesQuality,
+          quality: salesQuality as ShopeeSalesValue["quality"],
           sourceText,
         },
         commissionRateBps: rateValue,
