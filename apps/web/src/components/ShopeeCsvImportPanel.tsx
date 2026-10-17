@@ -91,7 +91,11 @@ export function ShopeeCsvImportPanel({ affiliates, onImported }: Props) {
       setFileSize(0);
       const input = document.getElementById("shopee-csv-file") as HTMLInputElement | null;
       if (input) input.value = "";
-      await onImported();
+      try {
+        await onImported();
+      } catch {
+        setError("CSV berhasil diimpor, tetapi dashboard gagal dimuat ulang. Muat ulang dashboard untuk memverifikasi hasil.");
+      }
     } catch (requestError) {
       const apiError = requestError as ApiErrorWithDetails;
       setError(apiError instanceof Error ? apiError.message : "Impor CSV Shopee gagal.");
