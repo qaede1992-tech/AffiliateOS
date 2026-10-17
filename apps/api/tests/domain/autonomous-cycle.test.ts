@@ -16,7 +16,7 @@ describe("autonomous cycle", () => {
     };
     const calls: unknown[] = [];
     const execution = {
-      async runOnce(input: { candidates: unknown[] }) {
+      async runOnce(input: { candidates: unknown[]; requirePublishableMedia?: boolean; requireCommissionSignal?: boolean }) {
         calls.push(input);
         return { selected: [], rejected: [], outcomes: [] };
       }
@@ -30,8 +30,40 @@ describe("autonomous cycle", () => {
     assert.equal(result.execution.outcomes.length, 0);
     assert.equal(calls.length, 1);
     assert.equal((calls[0] as { candidates: unknown[] }).candidates.length, 2);
+    assert.equal((calls[0] as { requirePublishableMedia?: boolean }).requirePublishableMedia, true);
+    assert.equal((calls[0] as { requireCommissionSignal?: boolean }).requireCommissionSignal, true);
     assert.ok(new Date(result.completedAt).getTime() >= new Date(result.startedAt).getTime());
     assert.equal(service.skipReason, undefined);
+  });
+
+
+  it("applies the same mandatory safety gates to preview and execution", async () => {
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() {
+        return [{ product: { id: "product-preview" } as never, offers: [] }];
+      }
+    };
+    const previewCalls: unknown[] = [];
+    const execution = {
+      async previewSelection(input: { candidates: unknown[]; requirePublishableMedia?: boolean; requireCommissionSignal?: boolean }) {
+        previewCalls.push(input);
+        return { selected: [], rejected: [], audit: [] };
+      },
+      async runOnce(input: { candidates: unknown[]; requirePublishableMedia?: boolean; requireCommissionSignal?: boolean }) {
+        previewCalls.push(input);
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const service = new AutonomousCycleService(candidates, execution);
+
+    await service.previewSelection();
+    await service.runOnce();
+
+    assert.equal(previewCalls.length, 2);
+    for (const call of previewCalls) {
+      assert.equal((call as { requirePublishableMedia?: boolean }).requirePublishableMedia, true);
+      assert.equal((call as { requireCommissionSignal?: boolean }).requireCommissionSignal, true);
+    }
   });
 
   it("derives publication time from a configured delay", async () => {
