@@ -139,8 +139,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom format preview tidak ditemukan: ${missing.join(", ")}.` }] };
     const indexes = new Map(initialHeaders.map((header, index) => [header, index]));
     const previewErrors: ShopeeAffiliateCsvParseResult["errors"] = [];
-    const normalizedRows: string[][] = [];
-    const csvEscape = (value: string) => /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+    const previewRows: ParsedShopeeAffiliateCsvRow[] = [];
+    const seenPreviewIds = new Set<string>();
     initialRecords.slice(1).forEach((record, index) => {
       const rowNumber = index + 2;
       if (record.length !== initialHeaders.length) {
@@ -159,27 +159,43 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const productUrl = get("product_url");
       const affiliateUrl = get("affiliate_url");
       const rowProblems: string[] = [];
+      const priceValue = Number(price);
+      const salesValue = Number(sales);
+      const rateValue = Number(rate);
+      const commissionValue = Number(commission);
       if (!id) rowProblems.push("external_product_id kosong");
       if (!name) rowProblems.push("name kosong");
-      if (!/^\d+$/.test(price) || !Number.isSafeInteger(Number(price)) || !Number.isSafeInteger(Number(price) * 100)) rowProblems.push("price_idr tidak valid");
+      if (!/^\\d+$/.test(price) || !Number.isSafeInteger(priceValue) || !Number.isSafeInteger(priceValue * 100)) rowProblems.push("price_idr tidak valid");
       if (salesQuality !== "exact" && salesQuality !== "lower_bound" && salesQuality !== "missing") rowProblems.push("sold_count_quality harus exact, lower_bound, atau missing");
-      if (salesQuality !== "missing" && (!/^\d+$/.test(sales) || !Number.isSafeInteger(Number(sales)))) rowProblems.push("sold_count_value tidak valid");
+      if (salesQuality !== "missing" && (!/^\\d+$/.test(sales) || !Number.isSafeInteger(salesValue))) rowProblems.push("sold_count_value tidak valid");
       if (salesQuality === "missing" && sales !== "" && sales !== "0") rowProblems.push("sold_count_value harus kosong atau 0 jika quality missing");
-      if (!/^\d+$/.test(rate) || !Number.isSafeInteger(Number(rate)) || Number(rate) > 10000) rowProblems.push("commission_rate_bps harus bilangan bulat antara 0 dan 10000");
-      if (!/^\d+$/.test(commission) || !Number.isSafeInteger(Number(commission)) || !Number.isSafeInteger(Number(commission) * 100)) rowProblems.push("commission_amount_idr tidak valid");
-      if (Number.isSafeInteger(Number(price)) && Number.isSafeInteger(Number(commission)) && Number(commission) > Number(price)) rowProblems.push("Komisi tidak boleh melebihi harga produk");
+      if (!/^\\d+$/.test(rate) || !Number.isSafeInteger(rateValue) || rateValue > 10000) rowProblems.push("commission_rate_bps harus bilangan bulat antara 0 dan 10000");
+      if (!/^\\d+$/.test(commission) || !Number.isSafeInteger(commissionValue) || !Number.isSafeInteger(commissionValue * 100)) rowProblems.push("commission_amount_idr tidak valid");
+      if (Number.isSafeInteger(priceValue) && Number.isSafeInteger(commissionValue) && commissionValue > priceValue) rowProblems.push("Komisi tidak boleh melebihi harga produk");
       if (!isShopeeUrl(productUrl)) rowProblems.push("product_url bukan URL HTTPS Shopee yang valid");
       if (!isShopeeUrl(affiliateUrl)) rowProblems.push("affiliate_url bukan URL HTTPS Shopee yang valid");
+      if (id && seenPreviewIds.has(id)) rowProblems.push("external_product_id duplikat dalam file");
+      if (id) seenPreviewIds.add(id);
       if (rowProblems.length > 0) { previewErrors.push({ row: rowNumber, message: rowProblems.join("; ") + "." }); return; }
-      const ratePercent = (Number(rate) / 100).toString() + "%";
-      let salesText = "";
-      if (salesQuality === "exact") salesText = sales;
-      else if (salesQuality === "lower_bound") salesText = (Number(sales) / 1000).toString() + "RB+";
-      normalizedRows.push([id, name, price, salesText, shop, ratePercent, commission, productUrl, affiliateUrl]);
+      const sourceText = salesQuality === "missing" ? "" : salesQuality === "exact" ? sales : salesValue % 1000 === 0 ? `${salesValue / 1000}RB+` : `${salesValue}+`;
+      previewRows.push({
+        externalProductId: id,
+        name,
+        shopName: shop,
+        priceRupiah: priceValue,
+        soldCount: {
+          value: salesQuality === "missing" ? null : salesValue,
+          quality: salesQuality,
+          sourceText,
+        },
+        commissionRateBps: rateValue,
+        commissionAmountRupiah: commissionValue,
+        productUrl,
+        affiliateUrl,
+      });
     });
     if (previewErrors.length > 0) return { rows: [], errors: previewErrors };
-    const canonicalCsv = [REQUIRED_HEADERS.join(","), ...normalizedRows.map((row) => row.map(csvEscape).join(","))].join("\n");
-    return parseShopeeAffiliateCsv(canonicalCsv);
+    return { rows: previewRows, errors: [] };
   }
   const records = initialRecords;
   if (records.length === 0) return { rows: [], errors: [{ row: 1, message: "File CSV kosong." }] };
