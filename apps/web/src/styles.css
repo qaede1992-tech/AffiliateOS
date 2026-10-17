@@ -200,3 +200,19 @@ nav { display: grid; gap: 5px; }
   .public-footer { flex-direction: column; }
   .public-footer nav { flex-wrap: wrap; }
 }
+
+
+.shopee-import-panel { grid-column: 1 / -1; }
+.shopee-import-panel .affiliate-form label { color: #596669; font-size: 12px; font-weight: 700; }
+.shopee-import-panel .affiliate-form select,
+.shopee-import-panel .affiliate-form input[type="file"] { width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid #c7c1b5; border-radius: 8px; background: rgba(255,255,255,.4); color: inherit; font: inherit; }
+.shopee-file-summary { display: grid; gap: 4px; padding: 12px; border: 1px solid #d8d2c7; overflow-wrap: anywhere; }
+.shopee-file-summary small, .shopee-import-note, .shopee-import-success small { color: #7d8788; font-size: 11px; line-height: 1.6; }
+.shopee-import-note { margin-top: 14px; }
+.shopee-import-error, .shopee-import-success { margin-top: 16px; padding: 14px; border: 1px solid #c7c1b5; background: rgba(255,253,247,.5); }
+.shopee-import-error { border-left: 4px solid #a65c50; }
+.shopee-import-error p { margin: 7px 0; color: #7d514b; font-size: 12px; line-height: 1.5; }
+.shopee-import-error ul { max-height: 220px; overflow: auto; padding-left: 20px; color: #7d514b; font-size: 12px; line-height: 1.6; }
+.shopee-import-success { border-left: 4px solid #52765e; }
+.shopee-import-counts { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 12px 0; }
+.shopee-import-counts span { display: flex; gap: 7px; color: #596669; font-size: 12px; }
