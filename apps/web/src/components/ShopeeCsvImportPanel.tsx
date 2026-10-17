@@ -18,7 +18,7 @@ type Props = {
   onImported: () => Promise<void>;
 };
 
-const MAX_CSV_BYTES = 1_048_576;
+const MAX_CSV_BYTES = 450 * 1024;
 
 export function ShopeeCsvImportPanel({ affiliates, onImported }: Props) {
   const [affiliateId, setAffiliateId] = useState("");
@@ -45,7 +45,7 @@ export function ShopeeCsvImportPanel({ affiliates, onImported }: Props) {
       return;
     }
     if (file.size === 0 || file.size > MAX_CSV_BYTES) {
-      setError("Ukuran file harus lebih dari 0 byte dan maksimal 1 MiB.");
+      setError("Ukuran file harus lebih dari 0 byte dan maksimal 450 KiB agar aman terhadap overhead JSON.");
       event.currentTarget.value = "";
       return;
     }
@@ -116,7 +116,7 @@ export function ShopeeCsvImportPanel({ affiliates, onImported }: Props) {
         </select>
         <label htmlFor="shopee-csv-file">File CSV dari Shopee Affiliate</label>
         <input id="shopee-csv-file" type="file" accept=".csv,text/csv" onChange={(event) => void selectFile(event)} disabled={busy} />
-        {fileName && <div className="shopee-file-summary"><strong>{fileName}</strong><small>{fileSize.toLocaleString("id-ID")} byte · batas 1 MiB</small></div>}
+        {fileName && <div className="shopee-file-summary"><strong>{fileName}</strong><small>{fileSize.toLocaleString("id-ID")} byte · batas 450 KiB</small></div>}
         <button type="button" onClick={() => void importCsv()} disabled={busy || !affiliateId || !csv || !fileName || affiliates.length === 0}>
           {busy ? "Memvalidasi dan mengimpor…" : "Validasi & impor CSV"}
         </button>
