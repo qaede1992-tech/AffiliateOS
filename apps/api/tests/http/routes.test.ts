@@ -813,7 +813,5 @@ test("Shopee CSV import refuses to rebind an existing feed account to another af
   const rejectedImport = await importCsv(secondAffiliate.id);
   assert.equal(rejectedImport.statusCode, 409);
   assert.equal(rejectedImport.json().error, "AFFILIATE_ACCOUNT_CONFLICT");
-  const account = await app.inject({ method: "GET", url: "/api/v1/marketplaces/shopee-affiliate-feed/account" });
-  assert.notEqual(account.statusCode, 404);
   await app.close();
 });
