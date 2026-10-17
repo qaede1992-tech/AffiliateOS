@@ -171,6 +171,30 @@ test("parses the previously shared normalized bulk-link preview CSV", () => {
   assert.equal(result.rows[1]?.commissionRateBps, 1150);
 });
 
+test("preserves non-thousand lower-bound sales values from normalized preview CSV", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url",
+    "0,29302345742,Produk,107000,1050,lower_bound,Toko,2350,24610,https://shopee.co.id/product/1135631643/29302345742,https://s.shopee.co.id/5AtE274BSv",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.rows.length, 1);
+  assert.deepEqual(result.rows[0]?.soldCount, { value: 1050, quality: "lower_bound", sourceText: "1050+" });
+});
+
+test("rejects duplicate product IDs in normalized preview CSV", () => {
+  const row = "0,29302345742,Produk,107000,10000,lower_bound,Toko,2350,24610,https://shopee.co.id/product/1135631643/29302345742,https://s.shopee.co.id/5AtE274BSv";
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url",
+    row,
+    row,
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0]?.message ?? "", /external_product_id duplikat/);
+});
+
 test("rejects invalid normalized preview commission basis points", () => {
   const csv = [
     "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url",
