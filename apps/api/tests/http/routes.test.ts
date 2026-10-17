@@ -802,7 +802,7 @@ test("Shopee CSV import refuses to rebind an existing feed account to another af
   const csv = [
     "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
     '987,"Produk Terikat","Rp37.500","10RB+","Toko Uji","4,5%","Rp1.500","https://shopee.co.id/product/1/987","https://s.shopee.co.id/abc987"',
-  ].join("\\n");
+  ].join("\n");
   const importCsv = (affiliateId: string) => app.inject({
     method: "POST",
     url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
