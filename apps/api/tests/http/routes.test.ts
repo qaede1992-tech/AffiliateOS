@@ -766,6 +766,34 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv imports valid S
   await app.close();
 });
 
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects commission above price before persisting anything", async () => {
+  const app = createApp();
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "CSV Commission Guard", email: "csv-commission-guard@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '987,"Komisi Tidak Valid","10RB","12","Toko Uji","5%","Rp12.000","https://shopee.co.id/product/1/987","https://s.shopee.co.id/invalid987"',
+  ].join("\n");
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "invalid-commission.csv" },
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error, "INVALID_SHOPEE_AFFILIATE_CSV");
+  assert.match(response.json().errors[0].message, /Komisi tidak boleh melebihi harga produk/);
+  const products = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const offers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(products.json().data.length, 0);
+  assert.equal(offers.json().data.length, 0);
+  await app.close();
+});
+
 test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects invalid CSV without importing rows", async () => {
   const app = createApp();
   const affiliateResponse = await app.inject({
@@ -790,28 +818,227 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects invalid
 });
 
 
-test("Shopee CSV import refuses to rebind an existing feed account to another affiliate", async () => {
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv is idempotent for repeated files", async () => {
   const app = createApp();
-  const createAffiliate = async (name: string, email: string) => {
-    const response = await app.inject({ method: "POST", url: "/api/v1/affiliates", payload: { name, email } });
-    assert.equal(response.statusCode, 201);
-    return response.json();
-  };
-  const firstAffiliate = await createAffiliate("Original CSV Partner", "original-csv@example.com");
-  const secondAffiliate = await createAffiliate("Different CSV Partner", "different-csv@example.com");
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "CSV Idempotency Partner", email: "csv-idempotency@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
   const csv = [
     "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
-    '987,"Produk Terikat","Rp37.500","10RB+","Toko Uji","4,5%","Rp1.500","https://shopee.co.id/product/1/987","https://s.shopee.co.id/abc987"',
+    '456,"Produk Idempoten","125RB","20","Toko Uji","5%","Rp2.000","https://shopee.co.id/product/1/456","https://s.shopee.co.id/idempotent456"',
   ].join("\n");
-  const importCsv = (affiliateId: string) => app.inject({
+  const request = {
+    method: "POST" as const,
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "repeat-export.csv" },
+  };
+
+  const firstImport = await app.inject(request);
+  assert.equal(firstImport.statusCode, 201);
+  const firstProducts = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const firstOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(firstProducts.json().data.length, 1);
+  assert.equal(firstOffers.json().data.length, 1);
+  const firstProductId = firstProducts.json().data[0].id;
+  const firstOfferId = firstOffers.json().data[0].id;
+
+  const secondImport = await app.inject(request);
+  assert.equal(secondImport.statusCode, 201);
+  const secondProducts = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const secondOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(secondProducts.json().data.length, 1, "re-import must not duplicate products");
+  assert.equal(secondOffers.json().data.length, 1, "re-import must not duplicate affiliate offers");
+  assert.equal(secondProducts.json().data[0].id, firstProductId, "re-import must retain product identity");
+  assert.equal(secondOffers.json().data[0].id, firstOfferId, "re-import must retain offer identity");
+  assert.equal(secondOffers.json().data[0].affiliateUrl, "https://s.shopee.co.id/idempotent456");
+  await app.close();
+});
+
+
+test("CSV import reuses the canonical offer created by the JSON feed import", async () => {
+  const app = createApp();
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "Cross Format Partner", email: "cross-format@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+  const productUrl = "https://shopee.co.id/product/1/456";
+  const affiliateUrl = "https://s.shopee.co.id/crossformat456";
+
+  const jsonImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import",
+    payload: {
+      affiliateId: affiliate.id,
+      items: [{
+        externalProductId: "456",
+        name: "Produk Sama",
+        priceCents: 12500000,
+        currency: "IDR",
+        productUrl,
+        affiliateUrl,
+        availability: "unknown",
+        commissionRateBps: 500,
+        commissionAmountCents: 200000,
+      }],
+    },
+  });
+  assert.equal(jsonImport.statusCode, 201);
+  const initialOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(initialOffers.json().data.length, 1);
+  const originalOfferId = initialOffers.json().data[0].id;
+  assert.equal(initialOffers.json().data[0].externalOfferId, "feed:456");
+
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '456,"Produk Sama","125RB","20","Toko Uji","5%","Rp2.000","https://shopee.co.id/product/1/456","https://s.shopee.co.id/crossformat456"',
+  ].join("\n");
+  const csvImport = await app.inject({
     method: "POST",
     url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
-    payload: { affiliateId, csv },
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "cross-format.csv" },
   });
-  const firstImport = await importCsv(firstAffiliate.id);
+  assert.equal(csvImport.statusCode, 201);
+  const finalProducts = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const finalOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(finalProducts.json().data.length, 1, "cross-format import must not duplicate products");
+  assert.equal(finalOffers.json().data.length, 1, "cross-format import must not duplicate affiliate offers");
+  assert.equal(finalOffers.json().data[0].id, originalOfferId, "cross-format import must retain offer identity");
+  assert.equal(finalOffers.json().data[0].affiliateUrl, affiliateUrl);
+  await app.close();
+});
+
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a different affiliate without rebinding the account", async () => {
+  const app = createApp();
+  const firstAffiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "Original CSV Partner", email: "original-csv-partner@example.com" },
+  });
+  const secondAffiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "Different CSV Partner", email: "different-csv-partner@example.com" },
+  });
+  assert.equal(firstAffiliateResponse.statusCode, 201);
+  assert.equal(secondAffiliateResponse.statusCode, 201);
+  const firstAffiliate = firstAffiliateResponse.json();
+  const secondAffiliate = secondAffiliateResponse.json();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '789,"Produk Kepemilikan","50RB","12","Toko Uji","4%","Rp1.000","https://shopee.co.id/product/1/789","https://s.shopee.co.id/owner789"',
+  ].join("\n");
+
+  const firstImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: firstAffiliate.id, csv, sourceReference: "owner-export.csv" },
+  });
   assert.equal(firstImport.statusCode, 201);
-  const rejectedImport = await importCsv(secondAffiliate.id);
-  assert.equal(rejectedImport.statusCode, 409);
-  assert.equal(rejectedImport.json().error, "AFFILIATE_ACCOUNT_CONFLICT");
+  const beforeOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(beforeOffers.json().data.length, 1);
+  const originalOffer = beforeOffers.json().data[0];
+  const originalOfferId = originalOffer.id;
+  const originalAccountId = originalOffer.affiliateAccountId;
+
+  const conflictingImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: secondAffiliate.id, csv, sourceReference: "other-owner-export.csv" },
+  });
+  assert.equal(conflictingImport.statusCode, 409);
+  assert.equal(conflictingImport.json().error, "AFFILIATE_ACCOUNT_CONFLICT");
+
+  const afterOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(afterOffers.json().data.length, 1);
+  assert.equal(afterOffers.json().data[0].id, originalOfferId);
+  assert.equal(afterOffers.json().data[0].affiliateAccountId, originalAccountId);
+  assert.deepEqual(afterOffers.json().data[0], originalOffer, "conflicting import must leave every existing offer field unchanged");
+  await app.close();
+});
+
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv returns 400 for malformed CSV quoting", async () => {
+  const app = createApp();
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '987,"Produk"ekstra,10RB,12,Toko,5%,Rp500,https://shopee.co.id/product/1/987,https://s.shopee.co.id/malformed987',
+  ].join("\n");
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: "00000000-0000-4000-8000-000000000001", csv, sourceReference: "malformed.csv" },
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error, "INVALID_SHOPEE_AFFILIATE_CSV");
+  assert.match(response.json().message, /karakter setelah tanda kutip penutup/);
+  const products = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const offers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(products.json().data.length, 0);
+  assert.equal(offers.json().data.length, 0);
+  await app.close();
+});
+
+
+
+test("CSV import adopts an existing legacy csv-prefixed offer instead of duplicating it", async () => {
+  const app = createApp();
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "Legacy CSV Partner", email: "legacy-csv-partner@example.com" },
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+  const productUrl = "https://shopee.co.id/product/1/456";
+  const affiliateUrl = "https://s.shopee.co.id/legacy456";
+
+  const legacyImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import",
+    payload: {
+      affiliateId: affiliate.id,
+      items: [{
+        externalProductId: "456",
+        externalOfferId: "csv:456",
+        name: "Produk Legacy",
+        priceCents: 12500000,
+        currency: "IDR",
+        productUrl,
+        affiliateUrl,
+        availability: "unknown",
+        commissionRateBps: 500,
+        commissionAmountCents: 200000,
+      }],
+    },
+  });
+  assert.equal(legacyImport.statusCode, 201);
+  const initialOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(initialOffers.json().data.length, 1);
+  const legacyOfferId = initialOffers.json().data[0].id;
+
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '456,"Produk Legacy","125RB","20","Toko Uji","5%","Rp2.000","https://shopee.co.id/product/1/456","https://s.shopee.co.id/legacy456"',
+  ].join("\n");
+  const csvImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "legacy-export.csv" },
+  });
+  assert.equal(csvImport.statusCode, 201);
+
+  const finalProducts = await app.inject({ method: "GET", url: "/api/v1/products" });
+  const finalOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+  assert.equal(finalProducts.json().data.length, 1);
+  assert.equal(finalOffers.json().data.length, 1, "legacy offer must be reused, not duplicated");
+  assert.equal(finalOffers.json().data[0].id, legacyOfferId);
+  assert.equal(finalOffers.json().data[0].externalOfferId, "feed:456", "legacy identifier should be canonicalized");
+  assert.equal(finalOffers.json().data[0].affiliateUrl, affiliateUrl);
   await app.close();
 });
