@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createApp } from "../../src/app.js";
+
+test("Shopee CSV import is idempotent when the same export is submitted twice", async () => {
+  const app = createApp();
+  try {
+    const affiliateResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/affiliates",
+      payload: { name: "Idempotent CSV Partner", email: "idempotent-csv@example.com" },
+    });
+    assert.equal(affiliateResponse.statusCode, 201);
+    const affiliate = affiliateResponse.json();
+
+    const csv = [
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+      '51510405637,"Keranjang Laundry","Rp13.000","718","U-Living","6,5%","Rp779","https://shopee.co.id/product/1431148808/51510405637","https://s.shopee.co.id/1BNAo1lYo8"',
+      '43551822948,"Mini Powerbank","Rp109.000","10RB+","Gojodoq","8,5%","Rp8.720","https://shopee.co.id/product/1412347694/43551822948","https://s.shopee.co.id/113kbimC97"',
+    ].join("\n");
+
+    const importCsv = () => app.inject({
+      method: "POST",
+      url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+      payload: { affiliateId: affiliate.id, csv, sourceReference: "repeat-export.csv" },
+    });
+
+    const first = await importCsv();
+    assert.equal(first.statusCode, 201);
+    const firstResult = first.json();
+    assert.equal(firstResult.importedProducts, 2);
+    assert.equal(firstResult.importedOffers, 2);
+
+    const second = await importCsv();
+    assert.equal(second.statusCode, 201);
+    const secondResult = second.json();
+    assert.equal(secondResult.importedProducts, 2);
+    assert.equal(secondResult.importedOffers, 2);
+    assert.deepEqual(secondResult.affiliateOfferIds, firstResult.affiliateOfferIds);
+
+    const products = await app.inject({ method: "GET", url: "/api/v1/products" });
+    const offers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+    assert.equal(products.statusCode, 200);
+    assert.equal(offers.statusCode, 200);
+    assert.equal(products.json().data.length, 2);
+    assert.equal(offers.json().data.length, 2);
+  } finally {
+    await app.close();
+  }
+});
