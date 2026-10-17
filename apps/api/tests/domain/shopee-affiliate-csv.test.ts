@@ -92,6 +92,14 @@ test("rejects malformed non-empty commission rates instead of silently dropping 
   assert.match(result.errors[0]?.message ?? "", /Persentase komisi tidak dapat dibaca/);
 });
 
+test("rejects exponent notation in commission rates", () => {
+  const row = '14,Produk,10RB,100,Toko,1e2%,Rp500,https://shopee.co.id/product/1/14,https://s.shopee.co.id/xyz';
+  const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0]?.message ?? "", /Persentase komisi tidak dapat dibaca/);
+});
+
 test("rejects commission rates above 100 percent", () => {
   const row = '5,Produk,10RB,100,Toko,125%,Rp500,https://shopee.co.id/product/1/5,https://s.shopee.co.id/xyz';
   const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
