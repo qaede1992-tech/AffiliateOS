@@ -122,7 +122,11 @@ test("real Shopee import rolls back every earlier write when the second offer in
           product(secondProductId, "Rollback probe second product"),
         ],
       }),
-      /injected failure on second Shopee offer/,
+      (error: Error & { cause?: unknown }) => {
+        const cause = error.cause instanceof Error ? error.cause.message : String(error.cause ?? "");
+        return /injected failure on second Shopee offer/.test(error.message)
+          || /injected failure on second Shopee offer/.test(cause);
+      },
     );
 
     assert.ok(await repositories.affiliates.findById(affiliateId), "the pre-existing affiliate should remain");
