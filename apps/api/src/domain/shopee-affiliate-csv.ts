@@ -92,7 +92,9 @@ function parseRupiah(value: string): number | null {
 
 function parseRateBps(value: string): number | null {
   const normalized = value.trim().replace(/%$/, "").replace(",", ".");
-  if (!normalized) return null;
+  // Accept ordinary decimal percentages only; Number() alone also accepts
+  // exponent notation (for example, "1e2"), which is not a valid CSV rate.
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
   const rate = Number(normalized);
   return Number.isFinite(rate) && rate >= 0 && rate <= 100 ? Math.round(rate * 100) : null;
 }
