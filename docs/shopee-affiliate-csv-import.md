@@ -44,6 +44,18 @@ Untuk kedua bentuk, setiap baris harus memiliki jumlah kolom yang sama dengan he
 
 ## 3. Impor ke AffiliateOS
 
+### Melalui dashboard
+
+1. Buka dashboard operator AffiliateOS di jalur `/app` dan masuk menggunakan autentikasi operator.
+2. Buka bagian **Impor CSV Shopee**.
+3. Pilih record affiliate yang memang terikat pada akun Shopee sumber file.
+4. Pilih file `.csv` yang asli. Antarmuka menerima file hingga 450 KiB untuk menjaga ukuran body JSON tetap di bawah batas API.
+5. Periksa nama dan ukuran file, lalu tekan **Validasi & impor CSV** dan konfirmasi.
+6. Jika validasi gagal, baca daftar baris dan alasan kesalahan; perbaiki sumber CSV, jangan mengedit angka atau URL secara spekulatif. Tidak ada data batch yang boleh tersimpan pada penolakan validasi.
+7. Jika impor berhasil, tinjau jumlah produk/offer yang diproses dan periksa daftar offer marketplace pada dashboard.
+
+### Melalui API
+
 Endpoint:
 
 `POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv`
