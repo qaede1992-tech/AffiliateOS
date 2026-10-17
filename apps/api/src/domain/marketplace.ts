@@ -77,12 +77,24 @@ export class MarketplaceService {
     } else if (connection.connectionMode !== "affiliate_feed") {
       throw new DomainError("MARKETPLACE_CONNECTION_CONFLICT", "The Shopee affiliate feed connection slug is already used by another connection type.", 409);
     }
-    let account = await this.accounts.findByMarketplace(connection.id);
+    // A marketplace feed may serve multiple internal affiliate profiles. Resolve the
+    // account by both marketplace and affiliate so imports never reassign the
+    // original account or its historical offers/conversions.
+    let account = (await this.accounts.list()).find((candidate) =>
+      candidate.marketplaceId === connection.id && candidate.affiliateId === affiliate.id
+    );
     if (!account) {
       const timestamp = now();
-      account = await this.accounts.save({ id: randomUUID(), marketplaceId: connection.id, affiliateId: affiliate.id, name: "Shopee affiliate feed account", status: "active", configuration: {}, createdAt: timestamp, updatedAt: timestamp });
-    } else if (account.affiliateId !== affiliate.id) {
-      throw new DomainError("AFFILIATE_ACCOUNT_CONFLICT", "The Shopee affiliate feed is already bound to a different affiliate. Import must use the originally bound affiliate.", 409);
+      account = await this.accounts.save({
+        id: randomUUID(),
+        marketplaceId: connection.id,
+        affiliateId: affiliate.id,
+        name: affiliate.name ? `Shopee Affiliate Feed - ${affiliate.name}` : "Shopee affiliate feed account",
+        status: "active",
+        configuration: {},
+        createdAt: timestamp,
+        updatedAt: timestamp
+      });
     }
     const conversionOffer = await this.ensureConversionOffer(account);
     let importedProducts = 0;
