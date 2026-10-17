@@ -78,6 +78,10 @@ Body JSON:
 - Impor ulang file yang sama harus idempoten; periksa bahwa jumlah produk/offer tidak bertambah hanya karena file yang sama diproses ulang.
 - Jangan menganggap produk sudah layak dipromosikan hanya karena berhasil diimpor. Tinjau offer, tautan afiliasi, kelayakan, dan alur downstream sesuai kontrol operator.
 
+### Dukungan beberapa profil affiliate internal
+
+Satu koneksi marketplace Shopee Affiliate Feed dapat memiliki akun internal terpisah untuk beberapa profil affiliate. Saat mengimpor, pilih profil affiliate yang sesuai dengan akun sumber CSV. Impor akan mencari atau membuat akun marketplace khusus untuk profil tersebut; impor tidak memindahkan offer lama dan tidak mengubah kepemilikan riwayat konversi/komisi. Akun yang lama dinonaktifkan tetap dipertahankan untuk menjaga data historis.
+
 ## 4. Checklist verifikasi sebelum mengaktifkan operasional
 
 - [ ] File berasal dari alur yang benar-benar tersedia di akun yang digunakan.

@@ -48,3 +48,54 @@ test("Shopee CSV import is idempotent when the same export is submitted twice", 
     await app.close();
   }
 });
+
+
+test("Shopee CSV import keeps affiliate accounts separate for the same marketplace feed", async () => {
+  const app = createApp();
+  try {
+    const createAffiliate = async (name: string, email: string) => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/v1/affiliates",
+        payload: { name, email },
+      });
+      assert.equal(response.statusCode, 201);
+      return response.json();
+    };
+    const oldAffiliate = await createAffiliate("Legacy Partner", "legacy-partner@example.com");
+    const newAffiliate = await createAffiliate("New Fashion IDN", "newfashion-test@example.com");
+    const csv = [
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+      '"51510405637","Keranjang Laundry","Rp13.000","718","U-Living","6,5%","Rp779","https://shopee.co.id/product/1431148808/51510405637","https://s.shopee.co.id/1BNAo1lYo8"',
+    ].join("\n");
+
+    const importFor = (affiliateId: string) => app.inject({
+      method: "POST",
+      url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+      payload: { affiliateId, csv, sourceReference: "multi-affiliate-export.csv" },
+    });
+
+    const first = await importFor(oldAffiliate.id);
+    assert.equal(first.statusCode, 201);
+    const firstOfferId = first.json().affiliateOfferIds[0];
+
+    const second = await importFor(newAffiliate.id);
+    assert.equal(second.statusCode, 201);
+    const secondOfferId = second.json().affiliateOfferIds[0];
+    assert.notEqual(secondOfferId, firstOfferId);
+
+    const verification = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers/verification" });
+    assert.equal(verification.statusCode, 200);
+    const oldOffer = verification.json().data.find((offer: { id: string }) => offer.id === firstOfferId);
+    const newOffer = verification.json().data.find((offer: { id: string }) => offer.id === secondOfferId);
+    assert.equal(oldOffer.affiliateId, oldAffiliate.id);
+    assert.equal(newOffer.affiliateId, newAffiliate.id);
+
+    const products = await app.inject({ method: "GET", url: "/api/v1/products" });
+    const offers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+    assert.equal(products.json().data.length, 1);
+    assert.equal(offers.json().data.length, 2);
+  } finally {
+    await app.close();
+  }
+});

@@ -914,7 +914,7 @@ test("CSV import reuses the canonical offer created by the JSON feed import", as
   await app.close();
 });
 
-test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a different affiliate without rebinding the account", async () => {
+test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv creates a separate account for a different affiliate", async () => {
   const app = createApp();
   const firstAffiliateResponse = await app.inject({
     method: "POST",
@@ -935,31 +935,35 @@ test("POST /api/v1/marketplaces/shopee-affiliate-feed/import-csv rejects a diffe
     '789,"Produk Kepemilikan","50RB","12","Toko Uji","4%","Rp1.000","https://shopee.co.id/product/1/789","https://s.shopee.co.id/owner789"',
   ].join("\n");
 
-  const firstImport = await app.inject({
+  const importFor = (affiliateId: string, sourceReference: string) => app.inject({
     method: "POST",
     url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
-    payload: { affiliateId: firstAffiliate.id, csv, sourceReference: "owner-export.csv" },
+    payload: { affiliateId, csv, sourceReference },
   });
+  const firstImport = await importFor(firstAffiliate.id, "owner-export.csv");
   assert.equal(firstImport.statusCode, 201);
+
   const beforeOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
   assert.equal(beforeOffers.json().data.length, 1);
   const originalOffer = beforeOffers.json().data[0];
-  const originalOfferId = originalOffer.id;
-  const originalAccountId = originalOffer.affiliateAccountId;
 
-  const conflictingImport = await app.inject({
-    method: "POST",
-    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
-    payload: { affiliateId: secondAffiliate.id, csv, sourceReference: "other-owner-export.csv" },
-  });
-  assert.equal(conflictingImport.statusCode, 409);
-  assert.equal(conflictingImport.json().error, "AFFILIATE_ACCOUNT_CONFLICT");
+  const secondImport = await importFor(secondAffiliate.id, "other-owner-export.csv");
+  assert.equal(secondImport.statusCode, 201);
 
   const afterOffers = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
-  assert.equal(afterOffers.json().data.length, 1);
-  assert.equal(afterOffers.json().data[0].id, originalOfferId);
-  assert.equal(afterOffers.json().data[0].affiliateAccountId, originalAccountId);
-  assert.deepEqual(afterOffers.json().data[0], originalOffer, "conflicting import must leave every existing offer field unchanged");
+  assert.equal(afterOffers.json().data.length, 2);
+  const retainedOriginal = afterOffers.json().data.find((offer: { id: string }) => offer.id === originalOffer.id);
+  const newOffer = afterOffers.json().data.find((offer: { id: string }) => offer.id !== originalOffer.id);
+  assert.deepEqual(retainedOriginal, originalOffer, "the original affiliate offer must remain unchanged");
+  assert.ok(newOffer);
+  assert.notEqual(newOffer.affiliateAccountId, originalOffer.affiliateAccountId, "the second affiliate must get a separate marketplace account");
+
+  const verification = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers/verification" });
+  assert.equal(verification.statusCode, 200);
+  const verifiedOriginal = verification.json().data.find((offer: { id: string }) => offer.id === originalOffer.id);
+  const verifiedNew = verification.json().data.find((offer: { id: string }) => offer.id === newOffer.id);
+  assert.equal(verifiedOriginal.affiliateId, firstAffiliate.id);
+  assert.equal(verifiedNew.affiliateId, secondAffiliate.id);
   await app.close();
 });
 
