@@ -83,7 +83,13 @@ export class MarketplaceService {
       const product = await this.persistProduct(connection, productInput);
       importedProducts += 1;
       const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;
-      const existing = await this.offers.findByAccountOffer(account.id, externalOfferId);
+      let existing = await this.offers.findByAccountOffer(account.id, externalOfferId);
+      // Older versions of the CSV endpoint used csv:<productId>. Adopt that
+      // row when the canonical feed:<productId> row does not exist, instead
+      // of creating a duplicate offer during the first post-upgrade import.
+      if (!existing && externalOfferId === `feed:${item.externalProductId}`) {
+        existing = await this.offers.findByAccountOffer(account.id, `csv:${item.externalProductId}`);
+      }
       const timestamp = now();
       const offer: AffiliateOffer = { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
       await this.offers.save(offer);
