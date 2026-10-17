@@ -1,26 +1,26 @@
 # Panduan operasional impor Shopee Affiliate CSV
 
-Status: **panduan sementara — format ekspor resmi belum diverifikasi**.
+Status: **panduan sementara — format ekspor resmi belum diverifikasi secara umum**.
 
-Panduan ini menjelaskan jalur manual yang disetujui untuk akun Shopee Affiliate yang tidak memiliki akses Open API. Panduan ini tidak mengasumsikan bahwa setiap akun Shopee menampilkan tombol ekspor atau menghasilkan format CSV yang sama.
+Panduan ini mendokumentasikan impor manual CSV untuk akun Shopee Affiliate biasa. Jangan mengasumsikan akun tersebut memiliki Open API, App ID/App Secret, menu Kreatif, atau akses Product Feed. Alur harus memakai file yang memang dapat diperoleh pengguna dari akun yang digunakan.
 
-## 1. Ambil file dari Shopee
+## 1. Siapkan file CSV yang benar-benar tersedia
 
 1. Masuk ke akun Shopee Affiliate yang memang akan dipakai.
-2. Periksa opsi unduh/ekspor yang benar-benar tersedia di akun tersebut. Dokumentasi resmi Shopee tentang [Pedoman Pembuatan Link Pendek Affiliate](https://help.shopee.co.id/portal/10/article/184879-%5BShopee-Affiliate-Program%5D-Pedoman-Pembuatan-Link-Pendek-Affiliate) menyebut jalur **Kreatif > Tampilan Produk > Lihat Link** untuk mengunduh daftar halaman produk dari Product Feed; artikel tersebut menyebut kolom `product_shortlink`.
-3. Simpan file asli tanpa mengubah header, urutan kolom, pemisah, atau format angka.
-4. Sebelum membagikan contoh untuk debugging, samarkan nama toko/nama produk jika diperlukan dan hapus data pribadi. Pertahankan nama header persis, urutan/jumlah kolom, tanda kutip, format harga/komisi/penjualan, dan bentuk URL agar struktur file tetap bisa diuji.
+2. Gunakan hanya pilihan daftar/unduh/ekspor yang benar-benar tersedia pada akun tersebut. Jangan mengarahkan pengguna ke menu Kreatif atau Product Feed jika menu itu tidak tersedia untuk akunnya.
+3. Fixture yang diuji untuk pekerjaan ini berasal dari file `LinkProdukSekaligus` yang dibagikan pemilik proyek. Pertahankan file asli tanpa mengubah header, urutan kolom, pemisah, tanda kutip, atau format angka.
+4. Sebelum membagikan contoh untuk debugging, samarkan data pribadi jika diperlukan. Pertahankan nama header persis, jumlah kolom, tanda kutip, format harga/komisi/penjualan, dan bentuk URL agar struktur file tetap bisa diuji.
 5. Jangan kirim token API, cookie sesi, kata sandi, atau kredensial Shopee.
 
-**Batas bukti:** artikel resmi yang ditemukan menjelaskan ekspor Product Feed dan kolom `product_shortlink`; artikel itu tidak mendokumentasikan sembilan header yang diwajibkan parser AffiliateOS. Jangan menganggap file Product Feed tersebut langsung kompatibel dengan importer ini. Periksa contoh ekspor aktual dari akun terlebih dahulu dan sesuaikan parser hanya berdasarkan bukti file tersebut.
+**Batas bukti:** pengujian membuktikan parser dapat membaca struktur file `LinkProdukSekaligus` yang tersedia dalam pekerjaan ini. Itu tidak membuktikan bahwa semua akun Affiliate biasa menyediakan file yang sama atau bahwa format tersebut merupakan kontrak ekspor resmi Shopee untuk semua akun. Jika akun tidak menyediakan file yang cocok, catat pilihan yang benar-benar tersedia dan jangan menebak format.
 
-Jika akun tidak menyediakan ekspor/unduh yang sesuai, hentikan langkah ini dan catat pilihan yang benar-benar tersedia. Jangan mengganti jalur ini dengan scraping, browser automation, endpoint yang ditebak, atau kredensial Open API palsu.
+Jangan mengganti alur ini dengan scraping, browser automation, endpoint privat yang ditebak, atau kredensial Open API palsu.
 
 ## 2. Format CSV yang dikenali parser
 
 Parser mendukung dua bentuk data:
 
-### A. Format header Shopee berbahasa Indonesia
+### A. Format header Indonesia dari file `LinkProdukSekaligus`
 
 ```csv
 ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra
@@ -36,11 +36,11 @@ File `shopee_affiliate_import_preview.csv` yang ditemukan di Library percakapan 
 index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url
 ```
 
-Parser sekarang juga menerima bentuk ini. Kolom `index` boleh ada; field penting lain dipetakan berdasarkan nama header. `price_idr` dan `commission_amount_idr` harus berupa bilangan Rupiah bulat; `commission_rate_bps` harus bilangan bulat 0–10000; `sold_count_quality` harus `exact`, `lower_bound`, atau `missing`. Nilai `lower_bound` dipertahankan sebagai perkiraan batas bawah, bukan diubah menjadi jumlah pasti.
+Parser juga menerima bentuk ini. Kolom `index` boleh ada; field penting lain dipetakan berdasarkan nama header. `price_idr` dan `commission_amount_idr` harus berupa bilangan Rupiah bulat; `commission_rate_bps` harus bilangan bulat 0–10000; `sold_count_quality` harus `exact`, `lower_bound`, atau `missing`. Nilai `lower_bound` dipertahankan sebagai perkiraan batas bawah, bukan diubah menjadi jumlah pasti.
 
 Untuk kedua bentuk, setiap baris harus memiliki jumlah kolom yang sama dengan header, ID produk tidak boleh berulang, nominal komisi tidak boleh melebihi harga, dan URL produk/affiliate harus HTTPS pada host Shopee yang diizinkan.
 
-**Batas bukti:** file yang ditemukan bernama *preview* dan menggunakan skema normalisasi berbahasa Inggris. Dukungan parser terhadap skema tersebut memvalidasi struktur file yang kita miliki, tetapi tidak membuktikan bahwa file itu byte-per-byte merupakan ekspor asli Shopee atau bahwa setiap akun Shopee mengekspor format yang sama. Dokumentasi resmi yang ditemukan menyebut kolom `product_shortlink`, bukan kontrak header di atas. Integrasi ekspor resmi tetap belum terverifikasi sampai dibandingkan dengan file asli dari akun.
+**Batas bukti:** format preview berbahasa Inggris adalah skema normalisasi yang pernah dibagikan, bukan bukti bahwa Shopee menyediakannya langsung kepada akun Affiliate biasa. Dukungan parser untuk format preview hanya membuktikan struktur file tersebut dapat diproses. Jangan menganggap kedua format tersedia pada semua akun.
 
 ## 3. Impor ke AffiliateOS
 
@@ -68,8 +68,8 @@ Body JSON:
 
 ## 4. Checklist verifikasi sebelum mengaktifkan operasional
 
-- [ ] File berasal dari fitur resmi yang benar-benar tersedia di akun.
-- [ ] Header dan jumlah kolom cocok dengan ekspor nyata; tidak sekadar fixture buatan.
+- [ ] File berasal dari alur yang benar-benar tersedia di akun yang digunakan.
+- [ ] Header dan jumlah kolom cocok dengan file asli; bukan hanya fixture buatan.
 - [ ] Harga, persentase/nominal komisi, penjualan, dan URL ditafsirkan dengan benar pada sampel yang representatif.
 - [ ] Impor kedua untuk file yang sama tidak menggandakan produk atau offer.
 - [ ] Konflik affiliate account ditolak dan tidak mengubah kepemilikan offer yang sudah ada.
@@ -79,4 +79,4 @@ Body JSON:
 
 ## 5. Batas perubahan
 
-Jalur ini menggunakan impor manual CSV. Jangan menambahkan Shopee Open API tanpa akses resmi yang benar-benar diberikan. Jangan menggunakan scraping, browser automation, atau kredensial palsu. Jangan mengubah alur TikTok, pipeline scoring/campaign/publication, atau database production sebagai bagian dari pekerjaan ini tanpa review dan persetujuan terpisah.
+Jalur ini menggunakan impor manual CSV dan tidak mensyaratkan Open API, App ID/App Secret, menu Kreatif, atau Product Feed. Jangan menggunakan scraping, browser automation, atau kredensial palsu. Jangan mengubah alur TikTok, pipeline scoring/campaign/publication, atau database production sebagai bagian dari pekerjaan ini tanpa review dan persetujuan terpisah.
