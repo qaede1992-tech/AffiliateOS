@@ -177,7 +177,7 @@ test("parses the actual LinkProdukSekaligus CSV with RB prices and affiliate lin
     '43551822948,"Gojodoq 5000mAh Mini Powerbank Lightning & USB-C","109,0RB","10RB+","Goojodoq In Indonesia","8,5%",Rp8.720,https://shopee.co.id/product/1412347694/43551822948,https://s.shopee.co.id/113kbimC97',
     '52454826619,"TUMS | Permen | Ultra | Asam Lambung | Maag | Gerd | Gas Relief","230,0RB","1RB+",havasu.id,"7,5%",Rp16.100,https://shopee.co.id/product/315495731/52454826619,https://s.shopee.co.id/qkKPPmpU6',
     '55512049095,"Kursi Lipat Lesehan Sofa Lantai Minimalis Floor Chair","55,0RB","4RB+",Aotanna,"7,5%",Rp3.850,https://shopee.co.id/product/1581199983/55512049095,https://s.shopee.co.id/gQuD6nSp5'
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.deepEqual(result.errors, []);
   assert.equal(result.rows.length, 4);
