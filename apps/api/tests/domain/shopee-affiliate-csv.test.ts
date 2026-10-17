@@ -69,7 +69,7 @@ test("rejects Shopee URLs containing user credentials or non-standard ports", ()
     '12,Produk Kredensial,10RB,100,Toko,5%,Rp500,https://shopee.co.id/product/1/12,https://user:password@s.shopee.co.id/affiliate',
     '13,Produk Port,10RB,100,Toko,5%,Rp500,https://shopee.co.id:8443/product/1/13,https://s.shopee.co.id/affiliate',
   ];
-  const result = parseShopeeAffiliateCsv([headers, ...rows].join("\\n"));
+  const result = parseShopeeAffiliateCsv([headers, ...rows].join("\n"));
   assert.equal(result.rows.length, 0);
   assert.equal(result.errors.length, 2);
   assert.match(result.errors[0]?.message ?? "", /URL HTTPS Shopee/);
