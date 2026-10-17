@@ -168,3 +168,35 @@ test("rejects invalid normalized preview commission basis points", () => {
   assert.equal(result.rows.length, 0);
   assert.match(result.errors[0]?.message ?? "", /commission_rate_bps harus bilangan bulat/);
 });
+
+
+test("parses the actual LinkProdukSekaligus CSV with RB prices and affiliate links", () => {
+  const csv = [
+    headers,
+    '51510405637,"U-Living Keranjang Laundry Dengan Roda dan Gagang Keranjang Pakaian Kotor Laundry Basket Kapasitas Besar STO052","13,0RB",718,"U-Living Authorized Store Surabaya","6,5%",Rp779,https://shopee.co.id/product/1431148808/51510405637,https://s.shopee.co.id/1BNAo1lYo8',
+    '43551822948,"Gojodoq 5000mAh Mini Powerbank Lightning & USB-C","109,0RB","10RB+","Goojodoq In Indonesia","8,5%",Rp8.720,https://shopee.co.id/product/1412347694/43551822948,https://s.shopee.co.id/113kbimC97',
+    '52454826619,"TUMS | Permen | Ultra | Asam Lambung | Maag | Gerd | Gas Relief","230,0RB","1RB+",havasu.id,"7,5%",Rp16.100,https://shopee.co.id/product/315495731/52454826619,https://s.shopee.co.id/qkKPPmpU6',
+    '55512049095,"Kursi Lipat Lesehan Sofa Lantai Minimalis Floor Chair","55,0RB","4RB+",Aotanna,"7,5%",Rp3.850,https://shopee.co.id/product/1581199983/55512049095,https://s.shopee.co.id/gQuD6nSp5'
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.rows.length, 4);
+  assert.deepEqual(result.rows.map((row) => row.externalProductId), [
+    "51510405637", "43551822948", "52454826619", "55512049095"
+  ]);
+  assert.deepEqual(result.rows.map((row) => row.priceRupiah), [13000, 109000, 230000, 55000]);
+  assert.deepEqual(result.rows.map((row) => row.commissionRateBps), [650, 850, 750, 750]);
+  assert.deepEqual(result.rows.map((row) => row.commissionAmountRupiah), [779, 8720, 16100, 3850]);
+  assert.deepEqual(result.rows.map((row) => row.soldCount), [
+    { value: 718, quality: "exact", sourceText: "718" },
+    { value: 10000, quality: "lower_bound", sourceText: "10RB+" },
+    { value: 1000, quality: "lower_bound", sourceText: "1RB+" },
+    { value: 4000, quality: "lower_bound", sourceText: "4RB+" }
+  ]);
+  assert.deepEqual(result.rows.map((row) => row.affiliateUrl), [
+    "https://s.shopee.co.id/1BNAo1lYo8",
+    "https://s.shopee.co.id/113kbimC97",
+    "https://s.shopee.co.id/qkKPPmpU6",
+    "https://s.shopee.co.id/gQuD6nSp5"
+  ]);
+});
