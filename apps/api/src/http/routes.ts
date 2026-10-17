@@ -100,7 +100,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
       items: parsed.rows.map((row) => ({
         externalProductId: row.externalProductId,
-        externalOfferId: `csv:${row.externalProductId}`,
+        externalOfferId: `feed:${row.externalProductId}`,
         name: row.name,
         priceCents: row.priceRupiah * 100,
         currency: "IDR",
