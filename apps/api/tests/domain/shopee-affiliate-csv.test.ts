@@ -64,6 +64,18 @@ test("rejects duplicate IDs and non-Shopee affiliate URLs", () => {
   assert.match(result.errors[1]?.message ?? "", /duplikat/);
 });
 
+test("rejects Shopee URLs containing user credentials or non-standard ports", () => {
+  const rows = [
+    '12,Produk Kredensial,10RB,100,Toko,5%,Rp500,https://shopee.co.id/product/1/12,https://user:password@s.shopee.co.id/affiliate',
+    '13,Produk Port,10RB,100,Toko,5%,Rp500,https://shopee.co.id:8443/product/1/13,https://s.shopee.co.id/affiliate',
+  ];
+  const result = parseShopeeAffiliateCsv([headers, ...rows].join("\\n"));
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 2);
+  assert.match(result.errors[0]?.message ?? "", /URL HTTPS Shopee/);
+  assert.match(result.errors[1]?.message ?? "", /URL HTTPS Shopee/);
+});
+
 test("rejects commission amounts greater than product price before import", () => {
   const row = '3,Produk,10RB,100,Toko,5%,Rp12.000,https://shopee.co.id/product/1/3,https://s.shopee.co.id/xyz';
   const result = parseShopeeAffiliateCsv([headers, row].join("\n"));
