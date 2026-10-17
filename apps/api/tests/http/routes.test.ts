@@ -1042,3 +1042,55 @@ test("CSV import adopts an existing legacy csv-prefixed offer instead of duplica
   assert.equal(finalOffers.json().data[0].affiliateUrl, affiliateUrl);
   await app.close();
 });
+
+
+test("Shopee CSV import leaves both canonical and legacy Shopee offers intact", async () => {
+  const app = createApp();
+  try {
+    const affiliateResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/affiliates",
+      payload: { name: "Dual Offer Partner", email: "dual-offer@example.com" },
+    });
+    assert.equal(affiliateResponse.statusCode, 201);
+    const affiliate = affiliateResponse.json();
+    const productUrl = "https://shopee.co.id/product/1/987";
+    const affiliateUrl = "https://s.shopee.co.id/abc987";
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/v1/marketplaces/shopee-affiliate-feed/import",
+      payload: {
+        affiliateId: affiliate.id,
+        items: [
+          { externalProductId: "987", externalOfferId: "feed:987", name: "Produk Kanonis", priceCents: 3750000, currency: "IDR", productUrl, affiliateUrl, commissionRateBps: 450, commissionAmountCents: 150000, availability: "unknown" },
+          { externalProductId: "987", externalOfferId: "csv:987", name: "Produk Legacy", priceCents: 3750000, currency: "IDR", productUrl, affiliateUrl, commissionRateBps: 450, commissionAmountCents: 150000, availability: "unknown" },
+        ],
+      },
+    });
+    assert.equal(seed.statusCode, 201);
+    const before = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+    assert.equal(before.statusCode, 200);
+    assert.equal(before.json().data.length, 2);
+    const beforeByExternalId = new Map(before.json().data.map((offer: { externalOfferId: string; id: string }) => [offer.externalOfferId, offer.id]));
+
+    const csv = [
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+      '"987","Produk Diperbarui","Rp37.500","10RB+","Toko Uji","4,5%","Rp1.500","https://shopee.co.id/product/1/987","https://s.shopee.co.id/abc987"',
+    ].join("\n");
+    const imported = await app.inject({
+      method: "POST",
+      url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+      payload: { affiliateId: affiliate.id, csv },
+    });
+    assert.equal(imported.statusCode, 201);
+
+    const after = await app.inject({ method: "GET", url: "/api/v1/affiliate-offers" });
+    assert.equal(after.statusCode, 200);
+    assert.equal(after.json().data.length, 2);
+    const afterByExternalId = new Map(after.json().data.map((offer: { externalOfferId: string; id: string }) => [offer.externalOfferId, offer.id]));
+    assert.equal(afterByExternalId.get("feed:987"), beforeByExternalId.get("feed:987"));
+    assert.equal(afterByExternalId.get("csv:987"), beforeByExternalId.get("csv:987"));
+  } finally {
+    await app.close();
+  }
+});
