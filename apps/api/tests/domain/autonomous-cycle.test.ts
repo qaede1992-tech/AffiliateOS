@@ -36,6 +36,36 @@ describe("autonomous cycle", () => {
     assert.equal(service.skipReason, undefined);
   });
 
+
+  it("applies the same mandatory safety gates to preview and execution", async () => {
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() {
+        return [{ product: { id: "product-preview" } as never, offers: [] }];
+      }
+    };
+    const previewCalls: unknown[] = [];
+    const execution = {
+      async previewSelection(input: { candidates: unknown[]; requirePublishableMedia?: boolean; requireCommissionSignal?: boolean }) {
+        previewCalls.push(input);
+        return { selected: [], rejected: [], audit: [] };
+      },
+      async runOnce(input: { candidates: unknown[]; requirePublishableMedia?: boolean; requireCommissionSignal?: boolean }) {
+        previewCalls.push(input);
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const service = new AutonomousCycleService(candidates, execution);
+
+    await service.previewSelection();
+    await service.runOnce();
+
+    assert.equal(previewCalls.length, 2);
+    for (const call of previewCalls) {
+      assert.equal((call as { requirePublishableMedia?: boolean }).requirePublishableMedia, true);
+      assert.equal((call as { requireCommissionSignal?: boolean }).requireCommissionSignal, true);
+    }
+  });
+
   it("derives publication time from a configured delay", async () => {
     const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
     let scheduledAt: string | undefined;
