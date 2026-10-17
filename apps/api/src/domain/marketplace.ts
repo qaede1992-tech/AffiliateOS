@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import type { AffiliateAccount, AffiliateOffer, Offer, CreateMarketplaceConnectionRequest, MarketplaceConnection, MarketplaceConnectionView, MarketplaceProviderInfo, MarketplaceProductInput, MarketplaceOfferInput, Product, ProductDiscoverySignals, UpdateMarketplaceConnectionRequest, ImportShopeeAffiliateFeedRequest, ImportShopeeAffiliateFeedResult } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import { MARKETPLACE_ENABLE_CONFIRMATION } from "./marketplace-confirmation.js";
-import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository, Repository } from "./repository.js";
+import type { AffiliateAccountRepository, AffiliateOfferRepository, MarketplaceConnectionRepository, ProductCatalogRepository, Repository, TransactionManager } from "./repository.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
 import type { MarketplaceProvider } from "./foundations.js";
 import type { ProviderEventSignatureHeaders } from "./foundations.js";
 const now = () => new Date().toISOString();
 const isUniqueViolation = (error: unknown): boolean => error instanceof Error && "code" in error && (error as { code?: unknown }).code === "23505";
 export class MarketplaceService {
-  constructor(private readonly registry: MarketplaceProviderRegistry, private readonly connections: MarketplaceConnectionRepository, private readonly products: ProductCatalogRepository, private readonly accounts: AffiliateAccountRepository, private readonly affiliates: Repository<import("@affiliateos/shared").Affiliate>, private readonly offers: AffiliateOfferRepository, private readonly conversionOffers: Repository<Offer>) {}
+  constructor(private readonly registry: MarketplaceProviderRegistry, private readonly connections: MarketplaceConnectionRepository, private readonly products: ProductCatalogRepository, private readonly accounts: AffiliateAccountRepository, private readonly affiliates: Repository<import("@affiliateos/shared").Affiliate>, private readonly offers: AffiliateOfferRepository, private readonly conversionOffers: Repository<Offer>, private readonly importTransactionManager?: Pick<TransactionManager, "runMarketplaceImport">) {}
   async listProviders(): Promise<MarketplaceProviderInfo[]> { const configured = await this.connections.list(); return this.registry.list().map((provider) => ({ slug: provider.slug, displayName: provider.displayName, connectionMode: provider.connectionMode, configured: configured.some((connection) => connection.providerSlug === provider.slug), capabilities: [...provider.capabilities], supportsConnectionTest: Boolean(provider.testConnection) })); }
   async listConnections(): Promise<MarketplaceConnectionView[]> { return (await this.connections.list()).map(this.toView); }
   async listProducts(): Promise<Product[]> { return this.products.list(); }
@@ -55,6 +55,18 @@ export class MarketplaceService {
   async getOffers(connectionSlug: string, externalProductId: string): Promise<AffiliateOffer[]> { const normalizedProductId = externalProductId.trim(); if (!normalizedProductId) throw new DomainError("INVALID_MARKETPLACE_PRODUCT", "Marketplace offer lookup requires an external product id.", 400); const { connection, provider } = await this.providerFor(connectionSlug); const product = await this.getProduct(connectionSlug, normalizedProductId); const account = await this.accountFor(connection); return Promise.all((await this.requireCapability<(id: string) => Promise<import("@affiliateos/shared").MarketplaceOfferInput[]>>(provider, "getOffers")(normalizedProductId)).map(async (input) => { validateMarketplaceOfferInput(input); const externalOfferId = input.externalOfferId.trim(); const existing = await this.offers.findByAccountOffer(account.id, externalOfferId); const timestamp = now(); const conversionOffer = await this.ensureConversionOffer(account);
       const offer: AffiliateOffer = { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: input.priceCents, currency: input.currency?.trim().toUpperCase(), commissionRateBps: input.commissionRateBps, commissionAmountCents: input.commissionAmountCents, availability: input.availability, availabilityMetadata: input.metadata ?? {}, affiliateUrl: existing?.affiliateUrl, affiliateLinkExpiresAt: input.affiliateLinkExpiresAt, affiliateLinkStatus: existing?.affiliateLinkStatus ?? "not_generated", status: input.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp }; try { return await this.offers.save(offer); } catch (error) { if (!existing && isUniqueViolation(error)) { const raced = await this.offers.findByAccountOffer(account.id, externalOfferId); if (raced) return this.offers.save({ ...raced, productId: product.id, conversionOfferId: conversionOffer.id, externalOfferId, priceCents: input.priceCents, currency: input.currency?.trim().toUpperCase(), commissionRateBps: input.commissionRateBps, commissionAmountCents: input.commissionAmountCents, availability: input.availability, availabilityMetadata: input.metadata ?? {}, affiliateLinkExpiresAt: input.affiliateLinkExpiresAt, status: input.availability === "out_of_stock" ? "inactive" : "active", updatedAt: timestamp }); } throw error; } })); }
   async importShopeeAffiliateFeed(input: ImportShopeeAffiliateFeedRequest): Promise<ImportShopeeAffiliateFeedResult> {
+    if (this.importTransactionManager?.runMarketplaceImport) {
+      return this.importTransactionManager.runMarketplaceImport(async (repositories) => {
+        const transactionalService = new MarketplaceService(this.registry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliates, repositories.affiliateOffers, repositories.offers);
+        return transactionalService.importShopeeAffiliateFeedInTransaction(input);
+      });
+    }
+    return this.importShopeeAffiliateFeedInTransaction(input);
+  }
+
+  private async importShopeeAffiliateFeedInTransaction(input: ImportShopeeAffiliateFeedRequest): Promise<ImportShopeeAffiliateFeedResult> {
+    // Validate the complete batch before the first write, including callers that bypass the HTTP CSV parser.
+    for (const item of input.items) validateShopeeFeedItem(item);
     const affiliate = await this.affiliates.findById(input.affiliateId);
     if (!affiliate) throw new DomainError("AFFILIATE_NOT_FOUND", "The affiliate account can only be bound to an existing affiliate.", 404);
     const slug = "shopee-affiliate-feed";
@@ -78,7 +90,6 @@ export class MarketplaceService {
     let skippedItems = 0;
     const affiliateOfferIds: string[] = [];
     for (const item of input.items) {
-      validateShopeeFeedItem(item);
       const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl: item.imageUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
       const product = await this.persistProduct(connection, productInput);
       importedProducts += 1;
