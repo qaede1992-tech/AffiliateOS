@@ -165,12 +165,12 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const commissionValue = Number(commission);
       if (!id) rowProblems.push("external_product_id kosong");
       if (!name) rowProblems.push("name kosong");
-      if (!/^\\d+$/.test(price) || !Number.isSafeInteger(priceValue) || !Number.isSafeInteger(priceValue * 100)) rowProblems.push("price_idr tidak valid");
+      if (!/^\d+$/.test(price) || !Number.isSafeInteger(priceValue) || !Number.isSafeInteger(priceValue * 100)) rowProblems.push("price_idr tidak valid");
       if (salesQuality !== "exact" && salesQuality !== "lower_bound" && salesQuality !== "missing") rowProblems.push("sold_count_quality harus exact, lower_bound, atau missing");
-      if (salesQuality !== "missing" && (!/^\\d+$/.test(sales) || !Number.isSafeInteger(salesValue))) rowProblems.push("sold_count_value tidak valid");
+      if (salesQuality !== "missing" && (!/^\d+$/.test(sales) || !Number.isSafeInteger(salesValue))) rowProblems.push("sold_count_value tidak valid");
       if (salesQuality === "missing" && sales !== "" && sales !== "0") rowProblems.push("sold_count_value harus kosong atau 0 jika quality missing");
-      if (!/^\\d+$/.test(rate) || !Number.isSafeInteger(rateValue) || rateValue > 10000) rowProblems.push("commission_rate_bps harus bilangan bulat antara 0 dan 10000");
-      if (!/^\\d+$/.test(commission) || !Number.isSafeInteger(commissionValue) || !Number.isSafeInteger(commissionValue * 100)) rowProblems.push("commission_amount_idr tidak valid");
+      if (!/^\d+$/.test(rate) || !Number.isSafeInteger(rateValue) || rateValue > 10000) rowProblems.push("commission_rate_bps harus bilangan bulat antara 0 dan 10000");
+      if (!/^\d+$/.test(commission) || !Number.isSafeInteger(commissionValue) || !Number.isSafeInteger(commissionValue * 100)) rowProblems.push("commission_amount_idr tidak valid");
       if (Number.isSafeInteger(priceValue) && Number.isSafeInteger(commissionValue) && commissionValue > priceValue) rowProblems.push("Komisi tidak boleh melebihi harga produk");
       if (!isShopeeUrl(productUrl)) rowProblems.push("product_url bukan URL HTTPS Shopee yang valid");
       if (!isShopeeUrl(affiliateUrl)) rowProblems.push("affiliate_url bukan URL HTTPS Shopee yang valid");
