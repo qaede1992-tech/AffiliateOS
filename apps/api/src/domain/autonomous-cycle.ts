@@ -60,7 +60,9 @@ export class AutonomousCycleService {
     const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: false });
     const result = await this.execution.previewSelection({
       ...input,
-      candidates: candidateList
+      candidates: candidateList,
+      requirePublishableMedia: true,
+      requireCommissionSignal: true
     });
     return {
       candidateCount: candidateList.length,
