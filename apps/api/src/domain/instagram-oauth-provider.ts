@@ -2,7 +2,7 @@ import type { SocialOAuthProvider } from "./oauth.js";
 
 type InstagramTokenResponse = {
  access_token?: string;
- user_id?: string;
+ user_id?: string | number;
  permissions?: string;
  error_type?: string;
  error_message?: string;
@@ -58,10 +58,11 @@ export class InstagramOAuthProvider implements SocialOAuthProvider {
     });
     const payload = await readJson<InstagramTokenResponse>(response);
     if (!response.ok || !payload.access_token) throw new Error(payload.error_message ?? payload.error_type ?? "Instagram OAuth token exchange failed.");
-    if (!payload.user_id) throw new Error("Instagram OAuth response did not include an account identifier.");
-    const credentialReference = `secret://affiliateos/social/instagram/${encodeURIComponent(payload.user_id)}`;
+    if (payload.user_id === undefined || payload.user_id === null || String(payload.user_id).trim() === "") throw new Error("Instagram OAuth response did not include an account identifier.");
+    const accountReference = String(payload.user_id).trim();
+    const credentialReference = `secret://affiliateos/social/instagram/${encodeURIComponent(accountReference)}`;
     return {
-      accountReference: payload.user_id,
+      accountReference,
       credentialReference,
       credential: {
         accessToken: payload.access_token
