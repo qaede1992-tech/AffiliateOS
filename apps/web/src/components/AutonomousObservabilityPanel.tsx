@@ -43,9 +43,11 @@ type AutonomousStatus = {
   lastError?: string;
 };
 
-const money = (cents: number) => new Intl.NumberFormat("en-US", {
+const money = (cents: number) => new Intl.NumberFormat("id-ID", {
   style: "currency",
-  currency: "USD"
+  currency: "IDR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0
 }).format(cents / 100);
 
 const shortId = (value: string) => value.slice(0, 8);
