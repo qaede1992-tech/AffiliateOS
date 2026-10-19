@@ -1,5 +1,13 @@
 # Production database migration runbook
 
+> **Audit update — 2026-10-19 (supersedes stale current-state counts below).** The latest read-only Supabase audit available to the project reports 54 rows in `drizzle.__drizzle_migrations`; the newest recorded migration is `0059_reconcile_missing_tiktok_and_content_products`. Migration `0060_test_data_retention_markers` is not recorded, and the latest column inspection found that `campaigns.is_test` is absent. The prior audit also found both test-marker columns absent; recheck both columns and both indexes against production immediately before any approved change. Therefore, do **not** run the test-data retention preview against production yet: it depends on those columns. This is a read-only finding only; no migration, data mutation, or deletion was performed.
+>
+> The historical audit below describes the earlier 2026-10-16 state (53 ledger rows and 0059 as a candidate). Treat those counts and the statement that 0059 is still a candidate as historical, not current. The production ledger now records 0059. The separate question of applying 0060 remains blocked until the exact approved release commit, migration selection behavior, backup/restore evidence, and production operator approval are confirmed. Do not infer that CI or a GitHub Release applied a migration to Supabase.
+>
+> **Release/deployment distinction:** repository workflows currently build and smoke-test immutable API/web images and run migrations against disposable PostgreSQL. They do not establish that Supabase production migrations or Blitz Cloud deployment were executed. Verify these separately in the actual production environment.
+
+# Production database migration runbook
+
 This runbook is for an authorized operator applying AffiliateOS Drizzle migrations to the production PostgreSQL database. It does not authorize changing the database endpoint, role grants, RLS policies, or application deployment configuration.
 
 ## Current known blocker (read-only audit reconfirmed 2026-10-16)
