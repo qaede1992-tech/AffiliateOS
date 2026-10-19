@@ -129,12 +129,15 @@ const expectedIndexes = [
   "provider_events_account_external_unique", "provider_events_status_received_idx",
   "publication_jobs_idempotency_unique", "publication_jobs_due_idx",
   "publication_operations_provider_operation_unique", "media_assets_content_idx",
-  "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx"
+  "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx",
+  "campaigns_test_created_idx", "autonomous_runs_test_created_idx"
 ];
 const expectedColumns = [
   ["publication_jobs", "confirmed_at"],
   ["publication_jobs", "tiktok_approval"],
-  ["media_assets", "duration_seconds"]
+  ["media_assets", "duration_seconds"],
+  ["campaigns", "is_test"],
+  ["autonomous_runs", "is_test"]
 ];
 
 await client.connect();
@@ -178,7 +181,9 @@ try {
       WHERE table_schema = 'public'
         AND ((table_name = 'publication_jobs' AND column_name = 'confirmed_at')
           OR (table_name = 'publication_jobs' AND column_name = 'tiktok_approval')
-          OR (table_name = 'media_assets' AND column_name = 'duration_seconds'))`
+          OR (table_name = 'media_assets' AND column_name = 'duration_seconds')
+          OR (table_name = 'campaigns' AND column_name = 'is_test')
+          OR (table_name = 'autonomous_runs' AND column_name = 'is_test'))`
   );
   const repairedColumns = new Map(repairedColumnRows.map((row) => [
     `${row.table_name}.${row.column_name}`, row
@@ -186,7 +191,9 @@ try {
   for (const [key, expected] of [
     ["publication_jobs.confirmed_at", { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "YES" }],
     ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
-    ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }]
+    ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }],
+    ["campaigns.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }],
+    ["autonomous_runs.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }]
   ]) {
     const actual = repairedColumns.get(key);
     if (!actual) {
@@ -196,6 +203,11 @@ try {
     for (const [property, value] of Object.entries(expected)) {
       if (actual[property] !== value) {
         errors.push(`Incompatible definition for ${key}: expected ${property}=${value}, found ${actual[property]}.`);
+      }
+    }
+    if (key === "campaigns.is_test" || key === "autonomous_runs.is_test") {
+      if (!actual.column_default || !actual.column_default.toLowerCase().includes("false")) {
+        errors.push(`${key} must have a false default; found ${actual.column_default}.`);
       }
     }
   }
