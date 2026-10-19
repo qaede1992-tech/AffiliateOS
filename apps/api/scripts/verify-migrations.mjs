@@ -363,11 +363,59 @@ try {
     const compensationTimestamp = compensationMigration ? Number(compensationMigration.when) : null;
     // A compensation is valid only if every schema-definition assertion above passed,
     // not merely when the expected object names exist. Any prior verifier error fails closed.
+    // Validate only the schema objects owned by the 0059 reconciliation here.
+    // The 0060 test-marker columns/indexes are checked separately and must not
+    // invalidate proof that 0059 compensated the exact historical 0056/0057 gap.
+    const expectedReconciliationColumns = [
+      ["publication_jobs.confirmed_at", { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "YES" }],
+      ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
+      ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }]
+    ];
+    const reconciliationColumnsPresent = expectedReconciliationColumns.every(([key, expected]) => {
+      const actual = repairedColumns.get(key);
+      return Boolean(actual) && Object.entries(expected).every(([property, value]) => actual[property] === value);
+    });
+    const reconciliationContentProductColumnsPresent = Object.entries({
+      content_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "NO" },
+      product_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "NO" },
+      affiliate_offer_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "YES" },
+      position: { data_type: "integer", udt_name: "int4", is_nullable: "NO", defaultIncludes: "0" },
+      role: { data_type: "character varying", udt_name: "varchar", is_nullable: "NO", defaultIncludes: "recommendation" },
+      created_at: { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "NO" }
+    }).every(([column, expected]) => {
+      const actual = contentProductColumns.get(column);
+      if (!actual) return false;
+      return Object.entries(expected).every(([property, value]) => {
+        if (property === "defaultIncludes") return actual.column_default?.includes(value) ?? false;
+        return actual[property] === value;
+      });
+    });
+    const reconciliationForeignKeysPresent = [
+      ["content_id", "content"],
+      ["product_id", "products"],
+      ["affiliate_offer_id", "affiliate_offers"]
+    ].every(([column, table]) => hasForeignKey(column, table));
+    const reconciliationUniqueConstraintPresent = contentProductConstraints.some((constraint) =>
+      constraint.contype === "u" &&
+      normalizeConstraintDefinition(constraint.definition).includes("unique (content_id, product_id)")
+    );
+    const reconciliationIndexesPresent = [
+      ["content_products_product_idx", "(product_id)"],
+      ["content_products_offer_idx", "(affiliate_offer_id)"],
+      ["content_products_content_position_idx", "(content_id, position)"]
+    ].every(([name, requiredColumns]) => {
+      const definition = contentProductIndexDefs.get(name);
+      return Boolean(definition) && definition.includes(requiredColumns);
+    });
     const schemaObjectsPresent =
-      errors.length === 0 &&
-      missingTables.length === 0 &&
-      missingIndexes.length === 0 &&
-      missingColumns.length === 0;
+      actualTables.has("publication_jobs") &&
+      actualTables.has("media_assets") &&
+      actualTables.has("content_products") &&
+      reconciliationColumnsPresent &&
+      reconciliationContentProductColumnsPresent &&
+      reconciliationForeignKeysPresent &&
+      reconciliationUniqueConstraintPresent &&
+      reconciliationIndexesPresent;
     const compensatedTags = findCompensatedMigrationGaps({
       missingMigrations,
       compensationTimestamp,
