@@ -42,7 +42,7 @@ export class CampaignService {
   async create(input: CreateCampaignRequest) {
     validateCampaignDates(input.startAt, input.endAt);
     const createdAt = now();
-    return this.campaigns.save({ id: randomUUID(), name: input.name, objective: input.objective, status: input.status ?? "draft", startAt: input.startAt, endAt: input.endAt, audience: input.audience ?? {}, createdAt, updatedAt: createdAt });
+    return this.campaigns.save({ id: randomUUID(), ...(input.isTest === true ? { isTest: true } : {}), name: input.name, objective: input.objective, status: input.status ?? "draft", startAt: input.startAt, endAt: input.endAt, audience: input.audience ?? {}, createdAt, updatedAt: createdAt });
   }
   async update(id: string, input: UpdateCampaignRequest) {
     const current = await this.get(id);

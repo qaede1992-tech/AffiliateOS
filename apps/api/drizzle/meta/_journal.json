@@ -393,6 +393,13 @@
       "when": 1794050405000,
       "tag": "0059_reconcile_missing_tiktok_and_content_products",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1794050405001,
+      "tag": "0060_test_data_retention_markers",
+      "breakpoints": true
     }
   ]
 }

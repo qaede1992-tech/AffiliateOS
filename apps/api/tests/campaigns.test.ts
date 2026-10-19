@@ -14,6 +14,13 @@ test("campaign creation persists in the service repository", async () => {
   assert.equal((await services.campaigns.get(campaign.id)).name, "Launch");
 });
 
+test("campaign creation preserves an explicit test marker", async () => {
+  const services = createInMemoryServices();
+  const campaign = await services.campaigns.create({ name: "Temporary test campaign", objective: "sales", isTest: true });
+  assert.equal(campaign.isTest, true);
+  assert.equal((await services.campaigns.get(campaign.id)).isTest, true);
+});
+
 test("campaign updates preserve the start/end date invariant", async () => {
   const services = createInMemoryServices();
   const campaign = await services.campaigns.create({ name: "Launch", objective: "sales", startAt: "2026-10-01T00:00:00.000Z", endAt: "2026-10-31T00:00:00.000Z" });

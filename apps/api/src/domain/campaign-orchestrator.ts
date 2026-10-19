@@ -18,6 +18,7 @@ export type CampaignOrchestratorInput = {
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyKey?: string;
+  isTest?: boolean;
   storyProducts?: Array<{ product: Product; offer: AffiliateOffer; role: "primary" | "recommendation" | "alternative" | "comparison"; position: number }>;
 };
 
@@ -100,7 +101,7 @@ export class CampaignOrchestrator {
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const run = input.idempotencyKey && this.autonomousRuns
-      ? await this.autonomousRuns.accept({ idempotencyKey: input.idempotencyKey, productId: input.product.id, offerId: input.offer.id, executionContext: { audience: input.audience ?? [], platforms: [...new Set(input.platforms ?? defaultPlatforms)], scheduledAt: input.scheduledAt } })
+      ? await this.autonomousRuns.accept({ idempotencyKey: input.idempotencyKey, productId: input.product.id, offerId: input.offer.id, isTest: input.isTest, executionContext: { audience: input.audience ?? [], platforms: [...new Set(input.platforms ?? defaultPlatforms)], scheduledAt: input.scheduledAt } })
       : undefined;
 
     if (run && run.opportunityProductId !== input.product.id) throw new Error("Autonomous run idempotency key is already bound to a different product.");
@@ -126,6 +127,7 @@ export class CampaignOrchestrator {
       }
       if (!campaign) {
         campaign = await this.campaigns.create({
+          isTest: input.isTest,
           name: input.campaignName ?? `Autonomous: ${input.product.name}`,
           objective: input.objective ?? "Drive qualified affiliate traffic and conversions",
           status: "draft",
