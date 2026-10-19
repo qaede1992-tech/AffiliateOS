@@ -128,7 +128,7 @@ jobs:
             const indexes = await client.query(
               "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('campaigns_test_created_idx', 'autonomous_runs_test_created_idx')"
             );
-            const actualIndexes = new Map(indexes.rows.map((row) => [row.indexname, row.indexdef.toLowerCase().replace(/\\s+/g, " ")]));
+            const actualIndexes = new Map(indexes.rows.map((row) => [row.indexname, row.indexdef.toLowerCase().replace(/\s+/g, " ")]));
             for (const [name, table] of [["campaigns_test_created_idx", "campaigns"], ["autonomous_runs_test_created_idx", "autonomous_runs"]]) {
               const definition = actualIndexes.get(name);
               assert.ok(definition, `Missing required index ${name}`);
