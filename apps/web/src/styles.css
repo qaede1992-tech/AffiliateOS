@@ -221,3 +221,94 @@ nav { display: grid; gap: 5px; }
 .campaign-history-control { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .campaign-history-control .secondary-button { padding: 6px 10px; border: 1px solid #c7c1b5; border-radius: 7px; background: transparent; color: #4f5b5d; font: inherit; font-size: 12px; }
 .campaign-history-control .analytics-note { margin: 0; }
+
+
+/* Compact operations UI: reduce visual density without hiding operational controls. */
+.app-shell { grid-template-columns: 216px minmax(0, 1fr); }
+.app-shell .sidebar { padding: 22px 16px; }
+.app-shell .sidebar-label { margin: 28px 0 10px; }
+.app-shell nav { gap: 2px; }
+.app-shell .nav-item { padding: 8px 10px; font-size: 13px; }
+.app-shell .content { padding: 28px clamp(18px, 3vw, 44px) 48px; }
+.app-shell .topbar { padding-bottom: 16px; }
+.app-shell .topbar h1 { font-size: clamp(2.15rem, 4vw, 3.5rem); }
+.app-shell .welcome { padding: 28px 0 24px; }
+.app-shell .welcome h2 { font-size: clamp(1.8rem, 3vw, 2.7rem); line-height: 1.08; }
+.app-shell .welcome .eyebrow,
+.app-shell .section-heading .eyebrow,
+.app-shell .panel-heading .eyebrow { margin-bottom: 8px; }
+.app-shell .welcome p:last-child { font-size: .92rem; line-height: 1.5; }
+.app-shell .metrics-grid { margin-bottom: 4px; }
+.app-shell .metric-card { min-height: 124px; padding: 16px; }
+.app-shell .metric-card strong { margin: 18px 0 6px; font-size: clamp(1.7rem, 2.4vw, 2.5rem); }
+.app-shell .workspace-grid { gap: 12px; padding-top: 22px; }
+.app-shell .panel { padding: 18px; }
+.app-shell .panel-heading { gap: 12px; padding-bottom: 14px; }
+.app-shell .panel-heading h3,
+.app-shell .summary-grid h3 { font-size: 1.35rem; }
+.app-shell .analytics-section { margin-top: 24px; padding: 18px; }
+.app-shell .section-heading { gap: 12px; padding-bottom: 14px; }
+.app-shell .analytics-table th,
+.app-shell .analytics-table td { padding: 10px 9px; }
+.app-shell .record { gap: 12px; padding: 12px 0; }
+.app-shell .record strong { font-size: 1.05rem; }
+.app-shell .summary-grid { gap: 12px; padding-top: 12px; }
+.app-shell .summary-grid article { padding: 18px; }
+.app-shell .affiliate-form { gap: 8px; margin-top: 12px; }
+.app-shell .affiliate-form input,
+.app-shell .affiliate-form select,
+.app-shell .affiliate-form button { padding: 9px 11px; }
+.app-shell .affiliate-list { gap: 6px; margin-top: 12px; }
+.app-shell .affiliate-row { gap: 10px; padding: 9px 0; }
+.app-shell .autonomous-observability-metrics { margin-top: 16px; }
+.app-shell .autonomous-observability-metrics .metric-card { min-height: 104px; }
+.app-shell .autonomous-observability-status { gap: 10px; margin-top: 16px; padding: 12px; }
+.app-shell .autonomous-audit-list { gap: 8px; margin-top: 12px; }
+.app-shell .autonomous-audit-card { padding: 14px; }
+.app-shell .autonomous-audit-grid { gap: 10px; margin-top: 12px; }
+.app-shell .autonomous-reasons { margin-top: 12px; padding-top: 10px; }
+
+@media (max-width: 1000px) {
+  .app-shell { grid-template-columns: 176px minmax(0, 1fr); }
+  .app-shell .sidebar { padding: 18px 12px; }
+  .app-shell .content { padding: 24px 20px 40px; }
+  .app-shell .nav-item { padding: 8px; font-size: 12px; }
+}
+
+@media (max-width: 680px) {
+  .app-shell .sidebar { padding: 14px 16px; gap: 12px; }
+  .app-shell .sidebar-label { margin: 16px 0 8px; }
+  .app-shell nav { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+  .app-shell .nav-item { flex: 0 0 auto; padding: 8px 10px; white-space: nowrap; }
+  .app-shell .content { padding: 20px 16px 36px; }
+  .app-shell .topbar { align-items: center; flex-direction: row; gap: 12px; }
+  .app-shell .topbar h1 { font-size: 2.2rem; }
+  .app-shell .date-label { text-align: right; }
+  .app-shell .welcome { padding: 24px 0 18px; }
+  .app-shell .welcome h2 { font-size: 1.8rem; }
+  .app-shell .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .metric-card,
+  .app-shell .metric-card:nth-child(2) { min-height: 104px; padding: 12px; border-top: 1px solid #c7c1b5; border-right: 1px solid #c7c1b5; }
+  .app-shell .metric-card:nth-child(even) { border-right: 0; }
+  .app-shell .metric-card:nth-child(-n+2) { border-top: 0; }
+  .app-shell .metric-card strong { margin: 14px 0 5px; font-size: clamp(1.35rem, 6vw, 1.8rem); overflow-wrap: anywhere; }
+  .app-shell .metric-card span { font-size: 9px; }
+  .app-shell .metric-card small { font-size: 9px; }
+  .app-shell .analytics-section { padding: 14px; }
+  .app-shell .panel { padding: 14px; }
+  .app-shell .summary-grid { grid-template-columns: 1fr; }
+  .app-shell .autonomous-observability-metrics { margin-left: -14px; margin-right: -14px; }
+  .app-shell .autonomous-observability-status,
+  .app-shell .autonomous-audit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .autonomous-audit-header { gap: 10px; }
+}
+
+@media (max-width: 380px) {
+  .app-shell .metrics-grid { grid-template-columns: 1fr; }
+  .app-shell .metric-card,
+  .app-shell .metric-card:nth-child(2),
+  .app-shell .metric-card:nth-child(even),
+  .app-shell .metric-card:nth-child(-n+2) { border-top: 1px solid #c7c1b5; border-right: 0; }
+  .app-shell .metric-card:first-child { border-top: 0; }
+  .app-shell .topbar { align-items: flex-start; flex-direction: column; }
+}
