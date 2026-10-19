@@ -70,6 +70,7 @@ jobs:
       - name: Verify expected pre-migration state (read-only)
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
         run: |
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
@@ -86,6 +87,8 @@ jobs:
           await client.connect();
           try {
             await client.query("SET default_transaction_read_only = on");
+            const identity = await client.query("SELECT current_database() AS database");
+            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Connected database name differs from the protected production database name; refusing migration");
             const { rows } = await client.query(
               'SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC'
             );
@@ -111,6 +114,7 @@ jobs:
       - name: Verify test-data retention columns and indexes
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
         run: |
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
@@ -120,6 +124,8 @@ jobs:
           await client.connect();
           try {
             await client.query("SET default_transaction_read_only = on");
+            const identity = await client.query("SELECT current_database() AS database");
+            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Post-migration connection reached an unexpected database");
             const columns = await client.query(
               "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
             );
