@@ -6,6 +6,7 @@ type DatabaseExecutor = any;
 type AutonomousRunRow = typeof autonomousRuns.$inferSelect;
 
 const toDomain = (row: AutonomousRunRow): AutonomousRun => ({
+  ...(row.isTest ? { isTest: true } : {}),
   id: row.id,
   idempotencyKey: row.idempotencyKey,
   opportunityProductId: row.opportunityProductId,
