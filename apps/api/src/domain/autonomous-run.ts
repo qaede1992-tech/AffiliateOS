@@ -4,6 +4,7 @@ import type { AudienceSegment, ContentPlatform, EntityId, IsoTimestamp } from "@
 export type AutonomousRunStatus = "accepted" | "processing" | "completed" | "failed";
 export interface AutonomousRunExecutionContext { audience: AudienceSegment[]; platforms: ContentPlatform[]; scheduledAt?: IsoTimestamp; }
 export interface AutonomousRun {
+  isTest?: boolean;
   id: EntityId; idempotencyKey: string; opportunityProductId: EntityId; offerId: EntityId; campaignId?: EntityId;
   status: AutonomousRunStatus; attemptCount: number; nextAttemptAt?: IsoTimestamp; lastError?: string;
   executionContext?: AutonomousRunExecutionContext; createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
@@ -66,7 +67,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     this.runs.set(current.idempotencyKey, claimed); return claimed;
   }
 }
-export function createAutonomousRun(input: { idempotencyKey: string; productId: EntityId; offerId: EntityId; executionContext?: AutonomousRunExecutionContext; now?: Date }): AutonomousRun {
+export function createAutonomousRun(input: { idempotencyKey: string; productId: EntityId; offerId: EntityId; executionContext?: AutonomousRunExecutionContext; isTest?: boolean; now?: Date }): AutonomousRun {
   const timestamp = (input.now ?? new Date()).toISOString();
-  return { id: randomUUID(), idempotencyKey: input.idempotencyKey, opportunityProductId: input.productId, offerId: input.offerId, status: "accepted", attemptCount: 0, executionContext: input.executionContext, createdAt: timestamp, updatedAt: timestamp };
+  return { ...(input.isTest === true ? { isTest: true } : {}), id: randomUUID(), idempotencyKey: input.idempotencyKey, opportunityProductId: input.productId, offerId: input.offerId, status: "accepted", attemptCount: 0, executionContext: input.executionContext, createdAt: timestamp, updatedAt: timestamp };
 }
