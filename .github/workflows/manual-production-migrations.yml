@@ -101,6 +101,45 @@ jobs:
       - name: Verify applied production schema and migration ledger
         run: npm run db:verify:applied
 
+      - name: Verify test-data retention columns and indexes
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { Client } from "pg";
+
+          const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
+          await client.connect();
+          try {
+            await client.query("SET default_transaction_read_only = on");
+            const columns = await client.query(
+              "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
+            );
+            const actualColumns = new Map(columns.rows.map((row) => [`${row.table_name}.${row.column_name}`, row]));
+            for (const key of ["campaigns.is_test", "autonomous_runs.is_test"]) {
+              const column = actualColumns.get(key);
+              assert.ok(column, `Missing required column ${key}`);
+              assert.equal(column.data_type, "boolean", `${key} must be boolean`);
+              assert.equal(column.is_nullable, "NO", `${key} must be NOT NULL`);
+              assert.match(column.column_default ?? "", /^false(?:::boolean)?$/i, `${key} must default to false`);
+            }
+
+            const indexes = await client.query(
+              "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('campaigns_test_created_idx', 'autonomous_runs_test_created_idx')"
+            );
+            const actualIndexes = new Map(indexes.rows.map((row) => [row.indexname, row.indexdef.toLowerCase().replace(/\\s+/g, " ")]));
+            for (const [name, table] of [["campaigns_test_created_idx", "campaigns"], ["autonomous_runs_test_created_idx", "autonomous_runs"]]) {
+              const definition = actualIndexes.get(name);
+              assert.ok(definition, `Missing required index ${name}`);
+              assert.ok(definition.includes(`on public.${table} using btree (is_test, created_at)`), `Index ${name} has an unexpected definition`);
+            }
+            console.log("Migration 0060 schema verified: both boolean markers and both expected indexes exist.");
+          } finally {
+            await client.end();
+          }
+          NODE
+
       - name: Remove temporary environment file
         if: always()
         run: rm -f .env
