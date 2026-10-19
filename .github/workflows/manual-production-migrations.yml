@@ -44,7 +44,7 @@ jobs:
           test -n "$PRODUCTION_DATABASE_HOST" || { echo "Missing environment variable PRODUCTION_DATABASE_HOST"; exit 1; }
           test -n "$PRODUCTION_DATABASE_NAME" || { echo "Missing environment variable PRODUCTION_DATABASE_NAME"; exit 1; }
           actual_host="$(node -e 'try { const u = new URL(process.env.PRODUCTION_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); process.stdout.write(u.hostname); } catch { process.exit(2); }')"
-          actual_database="$(node -e 'try { const u = new URL(process.env.PRODUCTION_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); process.stdout.write(decodeURIComponent(u.pathname.replace(/^\\//, ""))); } catch { process.exit(2); }')"
+          actual_database="$(node -e 'try { const u = new URL(process.env.PRODUCTION_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); process.stdout.write(decodeURIComponent(u.pathname.slice(1))); } catch { process.exit(2); }')"
           if [ "$actual_host" != "$PRODUCTION_DATABASE_HOST" ]; then
             echo "Database host does not match the explicitly configured production host; refusing to continue."
             exit 1
