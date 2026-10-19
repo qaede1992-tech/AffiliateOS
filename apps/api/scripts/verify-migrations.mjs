@@ -293,6 +293,27 @@ try {
     }
   }
 
+  // The test-data retention migration must create indexes on the intended
+  // tables and ordered columns, not merely reuse the expected index names.
+  const { rows: testDataIndexRows } = await client.query(
+    `SELECT indexname, indexdef FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND indexname = ANY($1::text[])`,
+    [["campaigns_test_created_idx", "autonomous_runs_test_created_idx"]]
+  );
+  const testDataIndexDefs = new Map(testDataIndexRows.map((row) => [
+    row.indexname, normalizeConstraintDefinition(row.indexdef)
+  ]));
+  for (const [name, table] of [
+    ["campaigns_test_created_idx", "campaigns"],
+    ["autonomous_runs_test_created_idx", "autonomous_runs"]
+  ]) {
+    const definition = testDataIndexDefs.get(name);
+    if (!definition || !definition.includes(`on public.${table} using btree (is_test, created_at)`)) {
+      errors.push(`Missing or incompatible index definition for ${name}; expected public.${table}(is_test, created_at).`);
+    }
+  }
+
   const { rows: migrationTableRows } = await client.query(
     "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
   );
