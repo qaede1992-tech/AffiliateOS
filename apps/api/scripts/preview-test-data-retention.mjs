@@ -34,26 +34,27 @@ if (!databaseUrl) {
       const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
 
       const campaigns = await client.query(
-        `SELECT c.id, c.name, c.status, c.updated_at,
+        `SELECT c.id, c.name, c.status, c.created_at,
           EXISTS (SELECT 1 FROM content x WHERE x.campaign_id = c.id) AS has_content,
           EXISTS (SELECT 1 FROM tracking_links t WHERE t.campaign_id = c.id) AS has_tracking_links,
-          EXISTS (SELECT 1 FROM campaign_offers co WHERE co.campaign_id = c.id) AS has_offer_links
+          EXISTS (SELECT 1 FROM campaign_offers co WHERE co.campaign_id = c.id) AS has_offer_links,
+          EXISTS (SELECT 1 FROM autonomous_runs r WHERE r.campaign_id = c.id) AS has_autonomous_runs
         FROM campaigns c
         WHERE c.is_test = true
-          AND c.updated_at < $1
+          AND c.created_at < $1
           AND c.status IN ('completed', 'archived')
-        ORDER BY c.updated_at ASC
+        ORDER BY c.created_at ASC
         LIMIT $2`,
         [cutoff, limit]
       );
 
       const runs = await client.query(
-        `SELECT r.id, r.status, r.updated_at, r.campaign_id
+        `SELECT r.id, r.status, r.created_at, r.campaign_id
         FROM autonomous_runs r
         WHERE r.is_test = true
-          AND r.updated_at < $1
+          AND r.created_at < $1
           AND r.status IN ('completed', 'failed')
-        ORDER BY r.updated_at ASC
+        ORDER BY r.created_at ASC
         LIMIT $2`,
         [cutoff, limit]
       );
@@ -63,13 +64,14 @@ if (!databaseUrl) {
         if (row.has_content) blockers.push("campaign has content; publication history must be reviewed");
         if (row.has_tracking_links) blockers.push("campaign has tracking links; click/attribution history must be preserved");
         if (row.has_offer_links) blockers.push("campaign has linked offers; relationship cleanup is not implemented");
-        return { id: row.id, name: row.name, status: row.status, updatedAt: row.updated_at, decision: blockers.length ? "blocked" : "candidate_for_manual_review", blockers };
+        if (row.has_autonomous_runs) blockers.push("campaign has autonomous runs; linked lifecycle requires review");
+        return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, decision: blockers.length ? "blocked" : "candidate_for_manual_review", blockers };
       });
 
       const runRows = runs.rows.map((row) => {
         const blockers = [];
         if (row.campaign_id) blockers.push("run references a campaign; linked lifecycle requires review");
-        return { id: row.id, status: row.status, updatedAt: row.updated_at, campaignId: row.campaign_id, decision: blockers.length ? "blocked" : "candidate_for_manual_review", blockers };
+        return { id: row.id, status: row.status, createdAt: row.created_at, campaignId: row.campaign_id, decision: blockers.length ? "blocked" : "candidate_for_manual_review", blockers };
       });
 
       await client.query("ROLLBACK");
@@ -78,6 +80,7 @@ if (!databaseUrl) {
         readOnly: true,
         deletionPerformed: false,
         retentionDays,
+        ageBasis: "created_at",
         cutoff,
         perEntityLimit: limit,
         note: "Candidates are not deletion approval. Review dependencies and retention policy before any future cleanup implementation.",
