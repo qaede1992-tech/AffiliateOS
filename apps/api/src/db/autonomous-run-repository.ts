@@ -22,6 +22,7 @@ const toDomain = (row: AutonomousRunRow): AutonomousRun => ({
 });
 
 const toRow = (run: AutonomousRun) => ({
+  isTest: run.isTest ?? false,
   id: run.id,
   idempotencyKey: run.idempotencyKey,
   opportunityProductId: run.opportunityProductId,
