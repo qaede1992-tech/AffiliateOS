@@ -20,7 +20,8 @@
     "db:check": "npm run db:check --workspace @affiliateos/api",
     "db:verify": "npm run db:verify --workspace @affiliateos/api",
     "db:verify:applied": "npm run db:verify:applied --workspace @affiliateos/api",
-    "production:preflight": "npm run production:preflight --workspace @affiliateos/api"
+    "production:preflight": "npm run production:preflight --workspace @affiliateos/api",
+    "test-data:retention:preview": "npm run test-data:retention:preview --workspace @affiliateos/api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
