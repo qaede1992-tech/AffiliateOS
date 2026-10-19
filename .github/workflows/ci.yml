@@ -73,6 +73,14 @@ jobs:
         run: npm run db:migrate
       - name: Verify repaired drifted database
         run: npm run db:verify:applied
+      - name: Simulate production state with migration 0060 pending
+        env:
+          CI_PENDING_0060_TEST: "1"
+        run: node --env-file=.env apps/api/scripts/simulate-pending-0060-migration.mjs
+      - name: Apply pending migration 0060 with the real Drizzle migrator
+        run: npm run db:migrate
+      - name: Verify migration 0060 was applied from the production-like state
+        run: npm run db:verify:applied
 
   containers:
     runs-on: ubuntu-latest
