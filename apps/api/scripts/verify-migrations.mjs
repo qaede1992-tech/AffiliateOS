@@ -361,6 +361,13 @@ try {
     const compensationTag = "0059_reconcile_missing_tiktok_and_content_products";
     const compensationMigration = trackedMigrations.find((migration) => migration.tag === compensationTag);
     const compensationTimestamp = compensationMigration ? Number(compensationMigration.when) : null;
+    const compensationLedgerRow = migrationRows.find(
+      (row) => Number(row.created_at) === compensationTimestamp
+    );
+    const compensationHashMatches = Boolean(
+      compensationLedgerRow &&
+      trackedMigrationHashes.get(compensationTimestamp)?.hashes.has(compensationLedgerRow.hash)
+    );
     // A compensation is valid only if every schema-definition assertion above passed,
     // not merely when the expected object names exist. Any prior verifier error fails closed.
     // Validate only the schema objects owned by the 0059 reconciliation here.
@@ -411,6 +418,7 @@ try {
       actualTables.has("publication_jobs") &&
       actualTables.has("media_assets") &&
       actualTables.has("content_products") &&
+      compensationHashMatches &&
       reconciliationColumnsPresent &&
       reconciliationContentProductColumnsPresent &&
       reconciliationForeignKeysPresent &&
