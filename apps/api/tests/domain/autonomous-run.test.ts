@@ -14,6 +14,14 @@ describe("autonomous run", () => {
     assert.equal(second.offerId, "offer-1");
   });
 
+  it("preserves an explicit test marker on an autonomous run", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const run = await service.accept({ idempotencyKey: "run-test-marker", productId: "product-1", offerId: "offer-1", isTest: true });
+    assert.equal(run.isTest, true);
+    assert.equal((await repository.findById(run.id))?.isTest, true);
+  });
+
   it("claims an accepted run exactly once", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);
