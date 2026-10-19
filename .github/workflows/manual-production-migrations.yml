@@ -37,16 +37,224 @@ jobs:
         env:
           PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           PRODUCTION_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
         run: |
           set -euo pipefail
           test -n "$PRODUCTION_DATABASE_URL" || { echo "Missing environment secret PRODUCTION_DATABASE_URL"; exit 1; }
           test -n "$PRODUCTION_DATABASE_HOST" || { echo "Missing environment variable PRODUCTION_DATABASE_HOST"; exit 1; }
-          actual_host="$(node -e 'try { const u = new URL(process.env.PRODUCTION_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); process.stdout.write(u.hostname); } catch { process.exit(2); }')"
+          test -n "$PRODUCTION_DATABASE_NAME" || { echo "Missing environment variable PRODUCTION_DATABASE_NAME"; exit 1; }
+          actual_identity="$(node -e 'try { const u = new URL(process.env.PRODUCTION_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); const db = decodeURIComponent(u.pathname.replace(/^\\//, "")); process.stdout.write(u.hostname + "\\n" + db); } catch { process.exit(2); }')"
+          actual_host="${actual_identity%%
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Configure migration process environment
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # The URL is supplied only as a protected GitHub Environment secret.
+          printf 'DATABASE_URL=%s\n' "$PRODUCTION_DATABASE_URL" > .env
+          chmod 600 .env
+
+      - name: Verify expected pre-migration state (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { readFile } from "node:fs/promises";
+          import { Client } from "pg";
+
+          const journal = JSON.parse(await readFile("apps/api/drizzle/meta/_journal.json", "utf8"));
+          const reconciliation = journal.entries.find((entry) => entry.tag === "0059_reconcile_missing_tiktok_and_content_products");
+          const target = journal.entries.find((entry) => entry.tag === "0060_test_data_retention_markers");
+          assert.ok(reconciliation, "Expected reconciliation migration 0059 in the checked-out journal");
+          assert.ok(target, "Expected target migration 0060 in the checked-out journal");
+
+          const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
+          await client.connect();
+          try {
+            await client.query("SET default_transaction_read_only = on");
+            const identity = await client.query("SELECT current_database() AS database");
+            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Connected database name differs from the protected production database name; refusing migration");
+            const { rows } = await client.query(
+              'SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC'
+            );
+            const timestamps = rows.map((row) => Number(row.created_at));
+            assert.ok(timestamps.includes(Number(reconciliation.when)), "Migration 0059 is not recorded; refusing automatic migration");
+            assert.ok(!timestamps.includes(Number(target.when)), "Migration 0060 is already recorded; refusing an unexpected state");
+            assert.equal(Math.max(...timestamps), Number(reconciliation.when), "Unexpected pending/history state; manual investigation required");
+            console.log("Pre-migration ledger state is exactly as expected: 0059 recorded, 0060 absent, no later ledger entry.");
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Check migration files and journal
+        run: npm run db:check
+
+      - name: Apply pending migrations
+        run: npm run db:migrate
+
+      - name: Verify applied production schema and migration ledger
+        run: npm run db:verify:applied
+
+      - name: Verify test-data retention columns and indexes
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { Client } from "pg";
+
+          const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
+          await client.connect();
+          try {
+            await client.query("SET default_transaction_read_only = on");
+            const identity = await client.query("SELECT current_database() AS database");
+            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Post-migration connection reached an unexpected database");
+            const columns = await client.query(
+              "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
+            );
+            const actualColumns = new Map(columns.rows.map((row) => [`${row.table_name}.${row.column_name}`, row]));
+            for (const key of ["campaigns.is_test", "autonomous_runs.is_test"]) {
+              const column = actualColumns.get(key);
+              assert.ok(column, `Missing required column ${key}`);
+              assert.equal(column.data_type, "boolean", `${key} must be boolean`);
+              assert.equal(column.is_nullable, "NO", `${key} must be NOT NULL`);
+              assert.match(column.column_default ?? "", /^false(?:::boolean)?$/i, `${key} must default to false`);
+            }
+
+            const indexes = await client.query(
+              "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('campaigns_test_created_idx', 'autonomous_runs_test_created_idx')"
+            );
+            const actualIndexes = new Map(indexes.rows.map((row) => [row.indexname, row.indexdef.toLowerCase().replace(/\s+/g, " ")]));
+            for (const [name, table] of [["campaigns_test_created_idx", "campaigns"], ["autonomous_runs_test_created_idx", "autonomous_runs"]]) {
+              const definition = actualIndexes.get(name);
+              assert.ok(definition, `Missing required index ${name}`);
+              assert.ok(definition.includes(`on public.${table} using btree (is_test, created_at)`), `Index ${name} has an unexpected definition`);
+            }
+            console.log("Migration 0060 schema verified: both boolean markers and both expected indexes exist.");
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Remove temporary environment file
+        if: always()
+        run: rm -f .env
+\\n'*}"
+          actual_database="${actual_identity#*
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Configure migration process environment
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # The URL is supplied only as a protected GitHub Environment secret.
+          printf 'DATABASE_URL=%s\n' "$PRODUCTION_DATABASE_URL" > .env
+          chmod 600 .env
+
+      - name: Verify expected pre-migration state (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { readFile } from "node:fs/promises";
+          import { Client } from "pg";
+
+          const journal = JSON.parse(await readFile("apps/api/drizzle/meta/_journal.json", "utf8"));
+          const reconciliation = journal.entries.find((entry) => entry.tag === "0059_reconcile_missing_tiktok_and_content_products");
+          const target = journal.entries.find((entry) => entry.tag === "0060_test_data_retention_markers");
+          assert.ok(reconciliation, "Expected reconciliation migration 0059 in the checked-out journal");
+          assert.ok(target, "Expected target migration 0060 in the checked-out journal");
+
+          const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
+          await client.connect();
+          try {
+            await client.query("SET default_transaction_read_only = on");
+            const { rows } = await client.query(
+              'SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC'
+            );
+            const timestamps = rows.map((row) => Number(row.created_at));
+            assert.ok(timestamps.includes(Number(reconciliation.when)), "Migration 0059 is not recorded; refusing automatic migration");
+            assert.ok(!timestamps.includes(Number(target.when)), "Migration 0060 is already recorded; refusing an unexpected state");
+            assert.equal(Math.max(...timestamps), Number(reconciliation.when), "Unexpected pending/history state; manual investigation required");
+            console.log("Pre-migration ledger state is exactly as expected: 0059 recorded, 0060 absent, no later ledger entry.");
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Check migration files and journal
+        run: npm run db:check
+
+      - name: Apply pending migrations
+        run: npm run db:migrate
+
+      - name: Verify applied production schema and migration ledger
+        run: npm run db:verify:applied
+
+      - name: Verify test-data retention columns and indexes
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { Client } from "pg";
+
+          const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
+          await client.connect();
+          try {
+            await client.query("SET default_transaction_read_only = on");
+            const columns = await client.query(
+              "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
+            );
+            const actualColumns = new Map(columns.rows.map((row) => [`${row.table_name}.${row.column_name}`, row]));
+            for (const key of ["campaigns.is_test", "autonomous_runs.is_test"]) {
+              const column = actualColumns.get(key);
+              assert.ok(column, `Missing required column ${key}`);
+              assert.equal(column.data_type, "boolean", `${key} must be boolean`);
+              assert.equal(column.is_nullable, "NO", `${key} must be NOT NULL`);
+              assert.match(column.column_default ?? "", /^false(?:::boolean)?$/i, `${key} must default to false`);
+            }
+
+            const indexes = await client.query(
+              "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('campaigns_test_created_idx', 'autonomous_runs_test_created_idx')"
+            );
+            const actualIndexes = new Map(indexes.rows.map((row) => [row.indexname, row.indexdef.toLowerCase().replace(/\s+/g, " ")]));
+            for (const [name, table] of [["campaigns_test_created_idx", "campaigns"], ["autonomous_runs_test_created_idx", "autonomous_runs"]]) {
+              const definition = actualIndexes.get(name);
+              assert.ok(definition, `Missing required index ${name}`);
+              assert.ok(definition.includes(`on public.${table} using btree (is_test, created_at)`), `Index ${name} has an unexpected definition`);
+            }
+            console.log("Migration 0060 schema verified: both boolean markers and both expected indexes exist.");
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Remove temporary environment file
+        if: always()
+        run: rm -f .env
+\\n'}"
           if [ "$actual_host" != "$PRODUCTION_DATABASE_HOST" ]; then
             echo "Database host does not match the explicitly configured production host; refusing to continue."
             exit 1
           fi
-          echo "Production database host matches the protected environment configuration."
+          if [ "$actual_database" != "$PRODUCTION_DATABASE_NAME" ]; then
+            echo "Database name in the protected URL does not match PRODUCTION_DATABASE_NAME; refusing to continue."
+            exit 1
+          fi
+          echo "Production database URL host and database name match the protected environment configuration."
 
       - name: Install locked dependencies
         run: npm ci
