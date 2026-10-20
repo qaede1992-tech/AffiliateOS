@@ -20,7 +20,7 @@ const normalizeBaseUrl = (value: string): string => {
 
 const validateSegment = (value: string, label: string): string => {
   const segment = value.trim();
-  if (!segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\\\\") || /[\\u0000-\\u001f]/.test(segment)) {
+  if (!segment || segment === "." || segment === ".." || segment.includes("/") || segment.includes("\\") || /[\u0000-\u001f]/.test(segment)) {
     throw new Error(`Invalid Storage ${label}.`);
   }
   return segment;
@@ -28,7 +28,7 @@ const validateSegment = (value: string, label: string): string => {
 
 const validateObjectKey = (key: string): string => {
   const segments = key.split("/");
-  if (!key || key.startsWith("/") || segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\\\"))) {
+  if (!key || key.startsWith("/") || segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\"))) {
     throw new Error("Invalid Storage object key.");
   }
   return key;
@@ -69,7 +69,7 @@ export class SupabaseStorageClient {
   async upload(input: { key: string; bytes: Uint8Array; contentType: string; upsert?: boolean }): Promise<StoredObject> {
     const key = validateObjectKey(input.key);
     if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0) throw new Error("Storage upload must contain non-empty bytes.");
-    if (!input.contentType.trim() || /[\\r\\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
+    if (!input.contentType.trim() || /[\r\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
     const url = `${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
     const response = await this.fetchImpl(url, {
       method: "POST",
