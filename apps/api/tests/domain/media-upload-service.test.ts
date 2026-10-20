@@ -37,37 +37,37 @@ const makeService = (options: { contentExists?: boolean; failSave?: boolean; max
 describe("MediaUploadService", () => {
   it("uploads validated image bytes and stores only a bucket/key reference in metadata", async () => {
     const { service, saved, uploaded } = makeService();
-    const asset = await service.upload({ contentId: "content-1", kind: "image", mimeType: "image/png", bytes: png });
+    const asset = await service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174000", kind: "image", mimeType: "image/png", bytes: png });
     assert.equal(uploaded.length, 1);
     assert.equal(saved.length, 1);
     assert.equal(asset.source, "object-storage");
-    assert.match(asset.reference, /^affiliate-media\/content\/content-1\//);
+    assert.match(asset.reference, /^affiliate-media\/content\/123e4567-e89b-42d3-a456-426614174000\//);
     assert.equal(asset.byteSize, png.byteLength);
     assert.equal(asset.mimeType, "image/png");
   });
 
-  it("rejects missing content, oversize files, unsupported types, and MIME/signature mismatch before upload", async () => {
-    const missing = makeService({ contentExists: false });
-    await assert.rejects(missing.service.upload({ contentId: "missing", kind: "image", mimeType: "image/png", bytes: png }), /does not exist/);
-    assert.equal(missing.uploaded.length, 0);
+  it("rejects 123e4567-e89b-42d3-a456-426614174001 content, oversize files, unsupported types, and MIME/signature mismatch before upload", async () => {
+    const 123e4567-e89b-42d3-a456-426614174001 = makeService({ contentExists: false });
+    await assert.rejects(123e4567-e89b-42d3-a456-426614174001.service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174001", kind: "image", mimeType: "image/png", bytes: png }), /does not exist/);
+    assert.equal(123e4567-e89b-42d3-a456-426614174001.uploaded.length, 0);
 
     const tooLarge = makeService({ maxImageBytes: 4 });
-    await assert.rejects(tooLarge.service.upload({ contentId: "content-1", kind: "image", mimeType: "image/png", bytes: png }), /size limit/);
+    await assert.rejects(tooLarge.service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174000", kind: "image", mimeType: "image/png", bytes: png }), /size limit/);
     assert.equal(tooLarge.uploaded.length, 0);
 
     const mismatch = makeService();
-    await assert.rejects(mismatch.service.upload({ contentId: "content-1", kind: "image", mimeType: "image/jpeg", bytes: png }), /does not match/);
+    await assert.rejects(mismatch.service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174000", kind: "image", mimeType: "image/jpeg", bytes: png }), /does not match/);
     assert.equal(mismatch.uploaded.length, 0);
 
     const unsupported = makeService();
-    await assert.rejects(unsupported.service.upload({ contentId: "content-1", kind: "video", mimeType: "image/png", bytes: png }), /not allowed/);
+    await assert.rejects(unsupported.service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174000", kind: "video", mimeType: "image/png", bytes: png }), /not allowed/);
     assert.equal(unsupported.uploaded.length, 0);
   });
 
   it("removes the uploaded object if metadata persistence fails", async () => {
     const { service, removed } = makeService({ failSave: true });
-    await assert.rejects(service.upload({ contentId: "content-1", kind: "image", mimeType: "image/png", bytes: png }), /metadata write failed/);
+    await assert.rejects(service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174000", kind: "image", mimeType: "image/png", bytes: png }), /metadata write failed/);
     assert.equal(removed.length, 1);
-    assert.match(removed[0], /^content\/content-1\//);
+    assert.match(removed[0], /^content\/123e4567-e89b-42d3-a456-426614174000\//);
   });
 });
