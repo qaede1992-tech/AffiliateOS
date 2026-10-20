@@ -91,9 +91,7 @@ jobs:
             const memberships = await client.query(`
               SELECT member.rolname AS member_role,
                      parent.rolname AS granted_role,
-                     m.admin_option,
-                     m.inherit_option,
-                     m.set_option
+                     m.admin_option
               FROM pg_auth_members m
               JOIN pg_roles member ON member.oid = m.member
               JOIN pg_roles parent ON parent.oid = m.roleid
