@@ -46,10 +46,10 @@ describe("MediaUploadService", () => {
     assert.equal(asset.mimeType, "image/png");
   });
 
-  it("rejects 123e4567-e89b-42d3-a456-426614174001 content, oversize files, unsupported types, and MIME/signature mismatch before upload", async () => {
-    const 123e4567-e89b-42d3-a456-426614174001 = makeService({ contentExists: false });
-    await assert.rejects(123e4567-e89b-42d3-a456-426614174001.service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174001", kind: "image", mimeType: "image/png", bytes: png }), /does not exist/);
-    assert.equal(123e4567-e89b-42d3-a456-426614174001.uploaded.length, 0);
+  it("rejects missing content, oversize files, unsupported types, and MIME/signature mismatch before upload", async () => {
+    const missing = makeService({ contentExists: false });
+    await assert.rejects(missing.service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174001", kind: "image", mimeType: "image/png", bytes: png }), /does not exist/);
+    assert.equal(missing.uploaded.length, 0);
 
     const tooLarge = makeService({ maxImageBytes: 4 });
     await assert.rejects(tooLarge.service.upload({ contentId: "123e4567-e89b-42d3-a456-426614174000", kind: "image", mimeType: "image/png", bytes: png }), /size limit/);
