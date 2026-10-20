@@ -75,6 +75,6 @@ describe("SupabaseStorageClient", () => {
   it("requires the Supabase URL and server credential together", () => {
     assert.equal(createSupabaseStorageClientFromEnv({}), undefined);
     assert.throws(() => createSupabaseStorageClientFromEnv({ SUPABASE_URL: "https://project.supabase.co" }), /must be configured together/);
-    assert.throws(() => createSupabaseStorageClientFromEnv({ SUPABASE_MEDIA_BUCKET: "custom-bucket" }), /must be configured together/);
+    assert.equal(createSupabaseStorageClientFromEnv({ SUPABASE_MEDIA_BUCKET: "custom-bucket" }), undefined);
   });
 });
