@@ -53,7 +53,7 @@ export class MediaUploadService {
   }
 
   async upload(input: MediaUploadInput): Promise<MediaAsset> {
-    if (!input.contentId.trim()) throw new Error("Content ID is required.");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.contentId)) throw new Error("A valid content UUID is required.");
     const content = await this.contentReader.get(input.contentId);
     if (!content) throw new Error("Media upload content does not exist.");
     if (!allowedTypes[input.kind]?.includes(input.mimeType)) throw new Error("Media type is not allowed for this asset kind.");
