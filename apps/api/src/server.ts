@@ -83,7 +83,11 @@ const services = createServices(
   {},
   persistence.autonomousExplorationStates,
   createOfficialTikTokContentPostingClient({ credentialResolver: socialCredentialResolver }),
-  createSupabaseStorageClientFromEnv(environment)
+  createSupabaseStorageClientFromEnv({
+    SUPABASE_URL: environment.SUPABASE_URL,
+    SUPABASE_STORAGE_SERVICE_KEY: environment.SUPABASE_STORAGE_SERVICE_KEY,
+    SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
+  })
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
