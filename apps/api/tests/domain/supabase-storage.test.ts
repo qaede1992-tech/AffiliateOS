@@ -35,6 +35,7 @@ describe("SupabaseStorageClient", () => {
   it("rejects invalid keys, empty uploads, and unsafe signed URL expiry", async () => {
     const client = makeClient();
     await assert.rejects(client.upload({ key: "../escape.jpg", bytes: new Uint8Array([1]), contentType: "image/jpeg" }), /Invalid Storage object key/);
+    await assert.rejects(client.upload({ key: "content/bad\\nkey.jpg", bytes: new Uint8Array([1]), contentType: "image/jpeg" }), /Invalid Storage object key/);
     await assert.rejects(client.upload({ key: "image.jpg", bytes: new Uint8Array(), contentType: "image/jpeg" }), /non-empty bytes/);
     await assert.rejects(client.createSignedUrl("image.jpg", 3601), /between 1 and 3600/);
   });
