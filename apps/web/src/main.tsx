@@ -314,27 +314,44 @@ This will allow AffiliateOS to use this marketplace connection for operational w
             <div className="affiliate-list">{data.affiliates.map((affiliate) => <div className="affiliate-row" key={affiliate.id}><div><strong>{affiliate.name}</strong><small>{affiliate.email}</small></div><div className="affiliate-meta"><span className={`badge ${affiliate.status}`}>{affiliate.status}</span><small>{affiliate.id.slice(0, 8)}</small></div></div>)}</div>
           </article>
 
-          <article id="offers">
-            <span className="eyebrow">Commercial</span><h3>Offers</h3><p>{data.offers.length} offers currently available in the system.</p>
-            <form className="affiliate-form" onSubmit={handleCreateOffer}><input type="text" placeholder="Offer name" value={offerName} onChange={(event) => setOfferName(event.target.value)} required /><input type="number" min="0" step="0.01" placeholder="Commission rate (%)" value={offerRate} onChange={(event) => setOfferRate(event.target.value)} required /><button type="submit" disabled={isCreatingOffer}>{isCreatingOffer ? "Adding..." : "Add Offer"}</button></form>
-            <div className="affiliate-list">{data.offers.map((offer) => <div className="affiliate-row" key={offer.id}><div><strong>{offer.name}</strong><small>{offer.commissionRateBps / 100}% commission</small></div><div className="affiliate-meta"><span className={`badge ${offer.status}`}>{offer.status}</span><small>{offer.id.slice(0, 8)}</small></div></div>)}</div>
-            <div className="affiliate-list" style={{ marginTop: "1rem" }}>
-              <p className="eyebrow">Marketplace affiliate offers</p>
-              {data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada affiliate offer marketplace.</p> : data.affiliateOfferVerification.map((offer) => (
-                <div className="affiliate-row" key={offer.id}>
-                  <div>
-                    <strong>{offer.productName ?? "Produk marketplace"}</strong>
-                    <small>Product ID: {offer.productExternalId ?? "—"} · Marketplace: {offer.marketplaceSlug ?? "—"}</small>
-                    <small>Affiliate: {offer.affiliateName ?? "Tidak terikat"} · Account: {offer.affiliateAccountName ?? offer.affiliateAccountId.slice(0, 8)}</small>
-                    <small>Commission: {offer.commissionRateBps !== undefined ? String(offer.commissionRateBps / 100) + "%" : "—"} · Link: {offer.affiliateUrl ?? "—"}</small>
-                  </div>
-                  <div className="affiliate-meta">
-                    <span className={`badge ${offer.status}`}>{offer.status}</span>
-                    <small>{offer.affiliateLinkStatus}</small>
-                  </div>
-                </div>
-              ))}
+          <article id="offers" className="offers-workspace">
+            <div className="offers-title-row">
+              <div><span className="eyebrow">Komersial</span><h3>Penawaran</h3><p>Kelola penawaran internal dan produk affiliate marketplace dari area yang berbeda.</p></div>
+              <span className="badge">{data.offers.length + data.affiliateOfferVerification.length} total</span>
             </div>
+            <div className="offers-overview" aria-label="Ringkasan penawaran">
+              <div><span>Penawaran internal</span><strong>{data.offers.length}</strong><small>{data.offers.filter((offer) => offer.status === "active").length} aktif</small></div>
+              <div><span>Produk marketplace</span><strong>{data.affiliateOfferVerification.length}</strong><small>Diimpor dari akun affiliate</small></div>
+            </div>
+            <section className="offers-subsection" aria-labelledby="internal-offers-heading">
+              <div className="offers-subsection-heading"><div><p className="eyebrow">Program</p><h4 id="internal-offers-heading">Penawaran internal</h4></div><span className="badge">{data.offers.length} data</span></div>
+              <p className="offers-help">Penawaran umum AffiliateOS dengan persentase komisi yang ditentukan di aplikasi.</p>
+              <form className="affiliate-form" onSubmit={handleCreateOffer}>
+                <input aria-label="Nama penawaran internal" type="text" placeholder="Nama penawaran" value={offerName} onChange={(event) => setOfferName(event.target.value)} required />
+                <input aria-label="Persentase komisi" type="number" min="0" step="0.01" placeholder="Komisi (%)" value={offerRate} onChange={(event) => setOfferRate(event.target.value)} required />
+                <button type="submit" disabled={isCreatingOffer}>{isCreatingOffer ? "Menyimpan..." : "Tambah penawaran"}</button>
+              </form>
+              {data.offers.length === 0 ? <p className="empty">Belum ada penawaran internal.</p> : <div className="offer-visibility-list">{data.offers.map((offer) => (
+                <div className="offer-visibility-card" key={offer.id}>
+                  <div className="offer-visibility-header"><div><strong>{offer.name}</strong><small>ID: {offer.id.slice(0, 8)}</small></div><span className={`badge ${offer.status}`}>{offer.status}</span></div>
+                  <div className="offer-visibility-details"><div><span>Komisi</span><strong>{(offer.commissionRateBps / 100).toLocaleString("id-ID")}%</strong></div><div><span>Status</span><strong>{offer.status}</strong></div></div>
+                </div>
+              ))}</div>}
+            </section>
+            <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading">
+              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{data.affiliateOfferVerification.length} produk</span></div>
+              <p className="offers-help">Produk dan tautan affiliate yang berasal dari feed marketplace, termasuk impor CSV Shopee. Data ini berbeda dari penawaran internal di atas.</p>
+              {data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
+                <div className="offer-visibility-card marketplace-offer-card" key={offer.id}>
+                  <div className="offer-visibility-header"><div><strong>{offer.productName ?? "Produk marketplace"}</strong><small>{offer.marketplaceSlug ?? "Marketplace tidak diketahui"} · ID produk: {offer.productExternalId ?? "—"}</small></div><span className={`badge ${offer.status}`}>{offer.status}</span></div>
+                  <div className="offer-visibility-details">
+                    <div><span>Akun affiliate</span><strong>{offer.affiliateAccountName ?? offer.affiliateAccountId.slice(0, 8)}</strong><small>{offer.affiliateName ?? "Affiliate belum terikat"}</small></div>
+                    <div><span>Komisi</span><strong>{offer.commissionRateBps !== undefined ? `${(offer.commissionRateBps / 100).toLocaleString("id-ID")}%` : "—"}</strong></div>
+                  </div>
+                  <div className="marketplace-offer-link"><span>Status tautan: <strong>{offer.affiliateLinkStatus}</strong></span><span className="marketplace-url-label">Tautan affiliate</span>{offer.affiliateUrl ? <a href={offer.affiliateUrl} target="_blank" rel="noreferrer">{offer.affiliateUrl}</a> : <small>Tautan affiliate belum tersedia.</small>}</div>
+                </div>
+              ))}</div>}
+            </section>
           </article>
         </section>
       </main>
