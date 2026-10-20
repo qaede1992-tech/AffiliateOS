@@ -71,6 +71,8 @@ export class SupabaseStorageClient {
     if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0) throw new Error("Storage upload must contain non-empty bytes.");
     if (!input.contentType.trim() || /[\r\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
     const url = `${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    const body = new ArrayBuffer(input.bytes.byteLength);
+    new Uint8Array(body).set(input.bytes);
     const response = await this.fetchImpl(url, {
       method: "POST",
       headers: this.headers({
@@ -78,7 +80,7 @@ export class SupabaseStorageClient {
         "x-upsert": input.upsert ? "true" : "false",
         "cache-control": "3600"
       }),
-      body: input.bytes
+      body
     });
     await this.assertSuccess(response, "upload");
     return { bucket: this.bucket, key };
