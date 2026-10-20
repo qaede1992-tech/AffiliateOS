@@ -129,12 +129,15 @@ const expectedIndexes = [
   "provider_events_account_external_unique", "provider_events_status_received_idx",
   "publication_jobs_idempotency_unique", "publication_jobs_due_idx",
   "publication_operations_provider_operation_unique", "media_assets_content_idx",
-  "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx"
+  "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx",
+  "campaigns_test_created_idx", "autonomous_runs_test_created_idx"
 ];
 const expectedColumns = [
   ["publication_jobs", "confirmed_at"],
   ["publication_jobs", "tiktok_approval"],
-  ["media_assets", "duration_seconds"]
+  ["media_assets", "duration_seconds"],
+  ["campaigns", "is_test"],
+  ["autonomous_runs", "is_test"]
 ];
 
 await client.connect();
@@ -160,7 +163,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
@@ -178,7 +181,9 @@ try {
       WHERE table_schema = 'public'
         AND ((table_name = 'publication_jobs' AND column_name = 'confirmed_at')
           OR (table_name = 'publication_jobs' AND column_name = 'tiktok_approval')
-          OR (table_name = 'media_assets' AND column_name = 'duration_seconds'))`
+          OR (table_name = 'media_assets' AND column_name = 'duration_seconds')
+          OR (table_name = 'campaigns' AND column_name = 'is_test')
+          OR (table_name = 'autonomous_runs' AND column_name = 'is_test'))`
   );
   const repairedColumns = new Map(repairedColumnRows.map((row) => [
     `${row.table_name}.${row.column_name}`, row
@@ -186,7 +191,9 @@ try {
   for (const [key, expected] of [
     ["publication_jobs.confirmed_at", { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "YES" }],
     ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
-    ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }]
+    ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }],
+    ["campaigns.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }],
+    ["autonomous_runs.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }]
   ]) {
     const actual = repairedColumns.get(key);
     if (!actual) {
@@ -196,6 +203,11 @@ try {
     for (const [property, value] of Object.entries(expected)) {
       if (actual[property] !== value) {
         errors.push(`Incompatible definition for ${key}: expected ${property}=${value}, found ${actual[property]}.`);
+      }
+    }
+    if (key === "campaigns.is_test" || key === "autonomous_runs.is_test") {
+      if (!actual.column_default || !actual.column_default.toLowerCase().includes("false")) {
+        errors.push(`${key} must have a false default; found ${actual.column_default}.`);
       }
     }
   }
@@ -281,6 +293,27 @@ try {
     }
   }
 
+  // The test-data retention migration must create indexes on the intended
+  // tables and ordered columns, not merely reuse the expected index names.
+  const { rows: testDataIndexRows } = await client.query(
+    `SELECT indexname, indexdef FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND indexname = ANY($1::text[])`,
+    [["campaigns_test_created_idx", "autonomous_runs_test_created_idx"]]
+  );
+  const testDataIndexDefs = new Map(testDataIndexRows.map((row) => [
+    row.indexname, normalizeConstraintDefinition(row.indexdef)
+  ]));
+  for (const [name, table] of [
+    ["campaigns_test_created_idx", "campaigns"],
+    ["autonomous_runs_test_created_idx", "autonomous_runs"]
+  ]) {
+    const definition = testDataIndexDefs.get(name);
+    if (!definition || !definition.includes(`on public.${table} using btree (is_test, created_at)`)) {
+      errors.push(`Missing or incompatible index definition for ${name}; expected public.${table}(is_test, created_at).`);
+    }
+  }
+
   const { rows: migrationTableRows } = await client.query(
     "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
   );
@@ -328,13 +361,69 @@ try {
     const compensationTag = "0059_reconcile_missing_tiktok_and_content_products";
     const compensationMigration = trackedMigrations.find((migration) => migration.tag === compensationTag);
     const compensationTimestamp = compensationMigration ? Number(compensationMigration.when) : null;
+    const compensationLedgerRow = migrationRows.find(
+      (row) => Number(row.created_at) === compensationTimestamp
+    );
+    const compensationHashMatches = Boolean(
+      compensationLedgerRow &&
+      trackedMigrationHashes.get(compensationTimestamp)?.hashes.has(compensationLedgerRow.hash)
+    );
     // A compensation is valid only if every schema-definition assertion above passed,
     // not merely when the expected object names exist. Any prior verifier error fails closed.
+    // Validate only the schema objects owned by the 0059 reconciliation here.
+    // The 0060 test-marker columns/indexes are checked separately and must not
+    // invalidate proof that 0059 compensated the exact historical 0056/0057 gap.
+    const expectedReconciliationColumns = [
+      ["publication_jobs.confirmed_at", { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "YES" }],
+      ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
+      ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }]
+    ];
+    const reconciliationColumnsPresent = expectedReconciliationColumns.every(([key, expected]) => {
+      const actual = repairedColumns.get(key);
+      return Boolean(actual) && Object.entries(expected).every(([property, value]) => actual[property] === value);
+    });
+    const reconciliationContentProductColumnsPresent = Object.entries({
+      content_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "NO" },
+      product_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "NO" },
+      affiliate_offer_id: { data_type: "uuid", udt_name: "uuid", is_nullable: "YES" },
+      position: { data_type: "integer", udt_name: "int4", is_nullable: "NO", defaultIncludes: "0" },
+      role: { data_type: "character varying", udt_name: "varchar", is_nullable: "NO", defaultIncludes: "recommendation" },
+      created_at: { data_type: "timestamp with time zone", udt_name: "timestamptz", is_nullable: "NO" }
+    }).every(([column, expected]) => {
+      const actual = contentProductColumns.get(column);
+      if (!actual) return false;
+      return Object.entries(expected).every(([property, value]) => {
+        if (property === "defaultIncludes") return actual.column_default?.includes(value) ?? false;
+        return actual[property] === value;
+      });
+    });
+    const reconciliationForeignKeysPresent = [
+      ["content_id", "content"],
+      ["product_id", "products"],
+      ["affiliate_offer_id", "affiliate_offers"]
+    ].every(([column, table]) => hasForeignKey(column, table));
+    const reconciliationUniqueConstraintPresent = contentProductConstraints.some((constraint) =>
+      constraint.contype === "u" &&
+      normalizeConstraintDefinition(constraint.definition).includes("unique (content_id, product_id)")
+    );
+    const reconciliationIndexesPresent = [
+      ["content_products_product_idx", "(product_id)"],
+      ["content_products_offer_idx", "(affiliate_offer_id)"],
+      ["content_products_content_position_idx", "(content_id, position)"]
+    ].every(([name, requiredColumns]) => {
+      const definition = contentProductIndexDefs.get(name);
+      return Boolean(definition) && definition.includes(requiredColumns);
+    });
     const schemaObjectsPresent =
-      errors.length === 0 &&
-      missingTables.length === 0 &&
-      missingIndexes.length === 0 &&
-      missingColumns.length === 0;
+      actualTables.has("publication_jobs") &&
+      actualTables.has("media_assets") &&
+      actualTables.has("content_products") &&
+      compensationHashMatches &&
+      reconciliationColumnsPresent &&
+      reconciliationContentProductColumnsPresent &&
+      reconciliationForeignKeysPresent &&
+      reconciliationUniqueConstraintPresent &&
+      reconciliationIndexesPresent;
     const compensatedTags = findCompensatedMigrationGaps({
       missingMigrations,
       compensationTimestamp,
