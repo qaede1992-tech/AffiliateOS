@@ -23,6 +23,7 @@ import { InstagramOAuthProvider } from "./domain/instagram-oauth-provider.js";
 import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClient } from "./domain/social-publisher-runtime.js";
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
+import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
@@ -81,7 +82,8 @@ const services = createServices(
   {},
   {},
   persistence.autonomousExplorationStates,
-  createOfficialTikTokContentPostingClient({ credentialResolver: socialCredentialResolver })
+  createOfficialTikTokContentPostingClient({ credentialResolver: socialCredentialResolver }),
+  createSupabaseStorageClientFromEnv(environment)
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
