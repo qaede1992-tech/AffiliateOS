@@ -38,7 +38,9 @@ if (!databaseUrl) {
           EXISTS (SELECT 1 FROM content x WHERE x.campaign_id = c.id) AS has_content,
           EXISTS (SELECT 1 FROM tracking_links t WHERE t.campaign_id = c.id) AS has_tracking_links,
           EXISTS (SELECT 1 FROM campaign_offers co WHERE co.campaign_id = c.id) AS has_offer_links,
-          EXISTS (SELECT 1 FROM autonomous_runs r WHERE r.campaign_id = c.id) AS has_autonomous_runs
+          EXISTS (SELECT 1 FROM autonomous_runs r WHERE r.campaign_id = c.id) AS has_autonomous_runs,
+          EXISTS (SELECT 1 FROM autonomous_action_outcomes o WHERE o.campaign_id = c.id) AS has_action_outcomes,
+          EXISTS (SELECT 1 FROM autonomous_decision_audits a WHERE a.outcome_campaign_id = c.id) AS has_decision_audits
         FROM campaigns c
         WHERE c.is_test = true
           AND c.created_at < $1
@@ -65,6 +67,8 @@ if (!databaseUrl) {
         if (row.has_tracking_links) blockers.push("campaign has tracking links; click/attribution history must be preserved");
         if (row.has_offer_links) blockers.push("campaign has linked offers; relationship cleanup is not implemented");
         if (row.has_autonomous_runs) blockers.push("campaign has autonomous runs; linked lifecycle requires review");
+        if (row.has_action_outcomes) blockers.push("campaign has autonomous action outcomes; decision history must be preserved");
+        if (row.has_decision_audits) blockers.push("campaign is referenced by autonomous decision audits; decision history must be preserved");
         return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, decision: blockers.length ? "blocked" : "candidate_for_manual_review", blockers };
       });
 
