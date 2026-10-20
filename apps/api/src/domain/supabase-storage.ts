@@ -28,7 +28,7 @@ const validateSegment = (value: string, label: string): string => {
 
 const validateObjectKey = (key: string): string => {
   const segments = key.split("/");
-  if (!key || key.startsWith("/") || segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\"))) {
+  if (!key || key.startsWith("/") || segments.some((segment) => !segment || segment === "." || segment === ".." || segment.includes("\\") || /[\\u0000-\\u001f\\u007f]/.test(segment))) {
     throw new Error("Invalid Storage object key.");
   }
   return key;
