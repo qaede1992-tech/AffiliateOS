@@ -56,6 +56,17 @@ describe("SupabaseStorageClient", () => {
     await assert.rejects(invalid.createSignedUrl("photo.jpg", 300), /unexpected origin/);
   });
 
+  it("rejects Supabase URLs that contain credentials or non-origin components", () => {
+    for (const supabaseUrl of [
+      "https://user:password@project.supabase.co",
+      "https://project.supabase.co/other-path",
+      "https://project.supabase.co?redirect=example",
+      "https://project.supabase.co#fragment"
+    ]) {
+      assert.throws(() => new SupabaseStorageClient({ supabaseUrl, serviceKey: "server-secret", bucket: "affiliate-media" }));
+    }
+  });
+
   it("requires all storage environment settings together", () => {
     assert.equal(createSupabaseStorageClientFromEnv({}), undefined);
     assert.throws(() => createSupabaseStorageClientFromEnv({ SUPABASE_URL: "https://project.supabase.co" }), /must be configured together/);
