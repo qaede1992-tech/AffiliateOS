@@ -15,7 +15,10 @@ const normalizeBaseUrl = (value: string): string => {
   if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
     throw new Error("Supabase Storage URL must use HTTPS.");
   }
-  return parsed.toString().replace(/\/$/, "");
+  if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== "/") {
+    throw new Error("Supabase Storage URL must be an origin without credentials, path, query, or fragment.");
+  }
+  return parsed.origin;
 };
 
 const validateSegment = (value: string, label: string): string => {
