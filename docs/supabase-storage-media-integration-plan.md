@@ -8,6 +8,7 @@ Status: proposal only. This document does not create a bucket, change production
 - The publisher executor resolves media asset records and passes their metadata to publisher adapters.
 - The API package currently has no Supabase client dependency or documented Storage-specific environment configuration.
 - The current `object-storage` source accepts an opaque reference, so it does not prove that the object exists or that it belongs to the expected content.
+- The current TikTok and Instagram adapters are URL-oriented in important paths: TikTok photo posting requires a URL, TikTok's default video transfer mode is `FILE_UPLOAD` and expects an HTTPS source it can download, while Instagram requires a public HTTPS media URL. The adapters do not yet resolve private Storage objects into a provider-compatible transfer flow.
 
 ## Target design
 
@@ -16,10 +17,12 @@ Status: proposal only. This document does not create a bucket, change production
 3. Perform uploads and deletes only through server-side API code. Never expose a Supabase service-role secret to the web app, logs, API responses, or client bundles.
 4. Validate media kind, MIME type, byte size, and duration before accepting an upload. Enforce configurable limits and reject unsupported types.
 5. Persist the storage bucket/key and verified metadata in `media_assets`; only mark an upload complete after Storage confirms success. If metadata persistence fails after upload, clean up the object or record it for retry.
-6. Resolve objects server-side for publication. Use short-lived signed URLs only for providers that require a fetchable URL; use upload/stream APIs when the provider supports them. Do not assume every social provider accepts the same media URL or upload protocol.
-7. Ensure authorization checks bind the asset to its content and account before issuing a signed URL or publishing. Do not accept arbitrary bucket/key values from untrusted callers.
-8. Add cleanup for abandoned uploads and deleted assets, with retries and observability that never logs credentials or signed URLs.
-9. Keep existing HTTPS URL assets compatible during migration; do not silently reinterpret existing references as Storage keys.
+6. Resolve objects server-side for publication. Use short-lived signed URLs only for providers that require a fetchable URL; use upload/stream APIs when the provider supports them. Provider pull URLs must remain reachable for the provider's full fetch window, so URL expiry and container-processing delays need tests.
+7. For TikTok `FILE_UPLOAD`, implement a bounded server-side download/stream from Storage into TikTok's upload URL, or explicitly generate a signed URL only for a supported pull-from-URL mode. Do not pass a private object key as if it were an HTTPS URL.
+8. For TikTok photo posts and Instagram media containers, provide a provider-compatible URL without making the bucket public. Confirm each provider's signed-URL/fetch requirements and expiration behavior before rollout.
+9. Ensure authorization checks bind the asset to its content and account before issuing a signed URL or publishing. Do not accept arbitrary bucket/key values from untrusted callers.
+10. Add cleanup for abandoned uploads and deleted assets, with retries and observability that never logs credentials or signed URLs.
+11. Keep existing HTTPS URL assets compatible during migration; do not silently reinterpret existing references as Storage keys.
 
 ## Proposed configuration
 
