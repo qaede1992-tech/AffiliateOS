@@ -67,8 +67,14 @@ describe("SupabaseStorageClient", () => {
     }
   });
 
-  it("requires all storage environment settings together", () => {
+  it("defaults the bucket when URL and server credential are configured", () => {
+    const client = createSupabaseStorageClientFromEnv({ SUPABASE_URL: "https://project.supabase.co", SUPABASE_STORAGE_SERVICE_KEY: "server-secret" });
+    assert.ok(client);
+  });
+
+  it("requires the Supabase URL and server credential together", () => {
     assert.equal(createSupabaseStorageClientFromEnv({}), undefined);
     assert.throws(() => createSupabaseStorageClientFromEnv({ SUPABASE_URL: "https://project.supabase.co" }), /must be configured together/);
+    assert.throws(() => createSupabaseStorageClientFromEnv({ SUPABASE_MEDIA_BUCKET: "custom-bucket" }), /must be configured together/);
   });
 });
