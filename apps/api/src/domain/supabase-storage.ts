@@ -131,10 +131,9 @@ export const createSupabaseStorageClientFromEnv = (
   const supabaseUrl = env.SUPABASE_URL?.trim();
   const serviceKey = env.SUPABASE_STORAGE_SERVICE_KEY?.trim();
   const configuredBucket = env.SUPABASE_MEDIA_BUCKET?.trim();
-  if (!supabaseUrl && !serviceKey) {
-    if (configuredBucket) throw new Error("SUPABASE_URL and SUPABASE_STORAGE_SERVICE_KEY must be configured together.");
-    return undefined;
-  }
+  // A bucket name alone is only a harmless default; storage is disabled until both
+  // server credentials are supplied. This keeps the API bootable without Storage.
+  if (!supabaseUrl && !serviceKey) return undefined;
   if (!supabaseUrl || !serviceKey) {
     throw new Error("SUPABASE_URL and SUPABASE_STORAGE_SERVICE_KEY must be configured together.");
   }
