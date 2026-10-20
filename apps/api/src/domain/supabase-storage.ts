@@ -130,10 +130,13 @@ export const createSupabaseStorageClientFromEnv = (
 ): SupabaseStorageClient | undefined => {
   const supabaseUrl = env.SUPABASE_URL?.trim();
   const serviceKey = env.SUPABASE_STORAGE_SERVICE_KEY?.trim();
-  const bucket = env.SUPABASE_MEDIA_BUCKET?.trim();
-  if (!supabaseUrl && !serviceKey && !bucket) return undefined;
-  if (!supabaseUrl || !serviceKey || !bucket) {
-    throw new Error("SUPABASE_URL, SUPABASE_STORAGE_SERVICE_KEY, and SUPABASE_MEDIA_BUCKET must be configured together.");
+  const configuredBucket = env.SUPABASE_MEDIA_BUCKET?.trim();
+  if (!supabaseUrl && !serviceKey) {
+    if (configuredBucket) throw new Error("SUPABASE_URL and SUPABASE_STORAGE_SERVICE_KEY must be configured together.");
+    return undefined;
   }
-  return new SupabaseStorageClient({ supabaseUrl, serviceKey, bucket, fetchImpl });
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("SUPABASE_URL and SUPABASE_STORAGE_SERVICE_KEY must be configured together.");
+  }
+  return new SupabaseStorageClient({ supabaseUrl, serviceKey, bucket: configuredBucket || "affiliate-media", fetchImpl });
 };
