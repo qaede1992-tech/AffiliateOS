@@ -1,0 +1,74 @@
+name: Manual Staging Database Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging_project_ref:
+        description: "Enter the exact staging Supabase project ref: vjevwdgkcywwnedumtsi"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: affiliateos-staging-database-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: ${{ inputs.confirm_staging_project_ref == 'vjevwdgkcywwnedumtsi' }}
+    runs-on: ubuntu-latest
+    environment: staging-migrations
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validate staging database identity
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_DATABASE_URL" || { echo "Missing STAGING_DATABASE_URL in protected staging-migrations environment."; exit 1; }
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          const url = new URL(process.env.STAGING_DATABASE_URL);
+          assert.ok(["postgres:", "postgresql:"].includes(url.protocol), "Expected a PostgreSQL URL.");
+          assert.equal(url.hostname, "aws-0-ap-southeast-2.pooler.supabase.com", "Unexpected host; refusing to run migrations.");
+          assert.equal(url.port, "5432", "Unexpected port; refusing to run migrations.");
+          assert.equal(decodeURIComponent(url.pathname.slice(1)), "postgres", "Unexpected database; refusing to run migrations.");
+          assert.equal(decodeURIComponent(url.username), "postgres.vjevwdgkcywwnedumtsi", "Username must identify the AffiliateOS-Staging project.");
+          assert.ok(!url.password.includes("[YOUR-PASSWORD]"), "Replace the dashboard password placeholder in the secret.");
+          console.log("Staging connection identity validated (credentials are not printed).");
+          NODE
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Configure staging migration environment
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          printf 'DATABASE_URL=%s\n' "$STAGING_DATABASE_URL" > .env
+          chmod 600 .env
+
+      - name: Check migration files and journal
+        run: npm run db:check
+
+      - name: Apply Drizzle migrations to staging
+        run: npm run db:migrate
+
+      - name: Verify applied staging schema and migration ledger
+        run: npm run db:verify:applied
+
+      - name: Remove temporary connection file
+        if: always()
+        run: rm -f .env
