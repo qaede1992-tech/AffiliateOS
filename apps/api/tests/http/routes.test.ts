@@ -1177,3 +1177,27 @@ test("media upload route is registered and fails closed when storage is not conf
   assert.equal(response.json().error, "MEDIA_UPLOAD_UNAVAILABLE");
   await app.close();
 });
+
+test("media upload route accepts payloads above the global 1 MiB limit before failing closed", async () => {
+  const app = createApp(undefined, {
+    auth: { enabled: true, token: "test-api-token", operatorId: "operator-test", role: "operator" }
+  });
+  const bytes = Buffer.alloc(1_100_000, 0);
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/content/media-upload?contentId=123e4567-e89b-42d3-a456-426614174000&kind=image",
+    headers: {
+      authorization: "Bearer test-api-token",
+      "content-type": "application/octet-stream",
+      "x-media-mime-type": "image/png",
+      "content-length": String(bytes.byteLength)
+    },
+    payload: bytes
+  });
+  // The route-level limit should permit this payload; with no Storage service configured,
+  // the expected response is the explicit unavailable response, not Fastify's 413.
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.json().error, "MEDIA_UPLOAD_UNAVAILABLE");
+  await app.close();
+});
+
