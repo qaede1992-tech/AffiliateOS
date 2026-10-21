@@ -36,7 +36,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         return reply.status(400).send({ error: "INVALID_MEDIA_KIND", message: "A supported media kind is required." });
       }
       const mimeType = request.headers["content-type"];
-      if (typeof mimeType !== "string" || mimeType.includes(";")) {
+      if (typeof mimeType !== "string" || mimeType.trim().toLowerCase() !== "application/octet-stream") {
         return reply.status(415).send({ error: "UNSUPPORTED_MEDIA_TYPE", message: "Send the file as application/octet-stream and declare its media type with X-Media-Mime-Type." });
       }
       const declaredMimeType = request.headers["x-media-mime-type"];
