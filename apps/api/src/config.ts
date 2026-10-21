@@ -57,7 +57,19 @@ const environmentSchema = z.object({
   INSTAGRAM_CLIENT_SECRET: z.string().optional(),
   SOCIAL_CREDENTIALS_JSON: z.string().optional(),
   SOCIAL_CREDENTIAL_STORE_PATH: z.string().trim().default("/var/lib/affiliateos/secrets/social-credentials.enc"),
-  SOCIAL_CREDENTIAL_STORE_KEY: z.string().trim().min(32).optional()
+  SOCIAL_CREDENTIAL_STORE_KEY: z.string().trim().min(32).optional(),
+  SUPABASE_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+  SUPABASE_STORAGE_SERVICE_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
+  SUPABASE_MEDIA_BUCKET: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("affiliate-media"))
+}).superRefine((value, context) => {
+  const storageConfigured = Boolean(value.SUPABASE_URL || value.SUPABASE_STORAGE_SERVICE_KEY);
+  if (storageConfigured && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["SUPABASE_STORAGE_SERVICE_KEY"],
+      message: "SUPABASE_URL and SUPABASE_STORAGE_SERVICE_KEY must be configured together."
+    });
+  }
 });
 
 export const environment = environmentSchema.parse(process.env);
