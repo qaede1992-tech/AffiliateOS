@@ -67,6 +67,68 @@ describe("SupabaseStorageClient", () => {
     }
   });
 
+  it("bounds streaming uploads with a timeout and preserves caller cancellation", async () => {
+    const controller = new AbortController();
+    let upstreamSignal: AbortSignal | null = null;
+    let requestInit: RequestInit | undefined;
+    const client = makeClient(async (_input, init) => {
+      requestInit = init;
+      upstreamSignal = init?.signal as AbortSignal;
+      return new Response(null, { status: 200 });
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) { stream.enqueue(new Uint8Array([1])); stream.close(); }
+    });
+    await client.uploadStream({
+      key: "content-1/video.mp4",
+      body,
+      contentType: "video/mp4",
+      contentLength: 1,
+      signal: controller.signal
+    });
+    assert.ok(upstreamSignal);
+    assert.notEqual(upstreamSignal, controller.signal);
+    assert.equal(upstreamSignal.aborted, false);
+    assert.equal((requestInit?.headers as Record<string, string>)["Content-Length"], "1");
+    assert.equal((requestInit as RequestInit & { duplex?: string }).duplex, "half");
+    assert.ok(requestInit?.body instanceof ReadableStream, "Storage receives a stream, not a buffered byte array");
+    controller.abort(new Error("client disconnected"));
+    assert.equal(upstreamSignal.aborted, true);
+  });
+
+  it("aborts a stalled Storage request when the configured upload timeout expires", async () => {
+    const client = new SupabaseStorageClient({
+      supabaseUrl: "https://project.supabase.co",
+      serviceKey: "server-secret",
+      bucket: "affiliate-media",
+      uploadTimeoutMs: 10,
+      fetchImpl: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        if (signal.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      })
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) { stream.enqueue(new Uint8Array([1])); stream.close(); }
+    });
+    await assert.rejects(
+      client.uploadStream({ key: "content-1/video.mp4", body, contentType: "video/mp4", contentLength: 1 }),
+      (error: unknown) => error instanceof Error && error.name === "TimeoutError"
+    );
+  });
+
+  it("rejects invalid Storage upload timeout configuration", () => {
+    assert.throws(() => new SupabaseStorageClient({
+      supabaseUrl: "https://project.supabase.co",
+      serviceKey: "server-secret",
+      bucket: "affiliate-media",
+      uploadTimeoutMs: 0
+    }), /timeout must be a positive safe integer/);
+  });
+
   it("defaults the bucket when URL and server credential are configured", () => {
     const client = createSupabaseStorageClientFromEnv({ SUPABASE_URL: "https://project.supabase.co", SUPABASE_STORAGE_SERVICE_KEY: "server-secret" });
     assert.ok(client);
