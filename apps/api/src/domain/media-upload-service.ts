@@ -70,6 +70,8 @@ export class MediaUploadService {
     if (input.durationSeconds !== undefined && (!Number.isSafeInteger(input.durationSeconds) || input.durationSeconds < 0)) throw new Error("Media duration must be a non-negative integer.");
 
     const reader = input.body.getReader();
+    const cancelOnAbort = () => { void reader.cancel(new Error("Media upload was cancelled.")); };
+    input.signal?.addEventListener("abort", cancelOnAbort, { once: true });
     let total = 0;
     let prefix = new Uint8Array(0);
     let validated = false;
@@ -128,10 +130,13 @@ export class MediaUploadService {
       };
       return await this.mediaAssets.save(asset);
     } catch (error) {
-      if (stored) {
-        try { await this.storage.remove(stored.key); } catch {}
-      }
+      // The upstream may have accepted part or all of the stream before returning
+      // an error, so clean up the deterministic key even when uploadStream rejects.
+      try { await this.storage.remove(key); } catch {}
       throw error;
+    } finally {
+      input.signal?.removeEventListener("abort", cancelOnAbort);
+      try { reader.releaseLock(); } catch {}
     }
   }
 
