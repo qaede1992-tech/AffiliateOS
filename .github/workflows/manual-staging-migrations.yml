@@ -72,20 +72,34 @@ jobs:
             connectionTimeoutMillis: 10000,
             application_name: "affiliateos-staging-migration-preflight"
           });
+          let connected = false;
           try {
             await client.connect();
+            connected = true;
             const result = await client.query("select current_database() as database, current_user as role");
             const row = result.rows[0];
-            if (row.database !== "postgres" || row.role !== "postgres.vjevwdgkcywwnedumtsi") {
-              throw new Error("Connected database identity does not match the expected staging database and role.");
+            const databaseMatches = row.database === "postgres";
+            const roleMatches = row.role === "postgres.vjevwdgkcywwnedumtsi";
+            console.log("PostgreSQL connection succeeded.");
+            console.log(JSON.stringify({
+              databaseMatches,
+              roleMatches,
+              actualDatabase: row.database,
+              actualRole: row.role,
+              expectedDatabase: "postgres",
+              expectedRole: "postgres.vjevwdgkcywwnedumtsi"
+            }));
+            if (!databaseMatches || !roleMatches) {
+              console.error("Connected to PostgreSQL, but staging database identity did not match.");
+              process.exitCode = 1;
             }
-            console.log("PostgreSQL connection succeeded; database and role match staging.");
           } catch (error) {
             console.error("Staging PostgreSQL preflight failed:", JSON.stringify({
+              connected,
               name: error?.name ?? "Error",
               code: error?.code ?? null,
               severity: error?.severity ?? null,
-              message: "Connection failed; detailed message suppressed to avoid leaking credentials."
+              message: "PostgreSQL operation failed; detailed message suppressed to avoid leaking credentials."
             }));
             process.exitCode = 1;
           } finally {
