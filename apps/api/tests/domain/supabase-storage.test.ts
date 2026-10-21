@@ -67,6 +67,30 @@ describe("SupabaseStorageClient", () => {
     }
   });
 
+  it("bounds streaming uploads with a timeout and preserves caller cancellation", async () => {
+    const controller = new AbortController();
+    let upstreamSignal: AbortSignal | null = null;
+    const client = makeClient(async (_input, init) => {
+      upstreamSignal = init?.signal as AbortSignal;
+      return new Response(null, { status: 200 });
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(stream) { stream.enqueue(new Uint8Array([1])); stream.close(); }
+    });
+    await client.uploadStream({
+      key: "content-1/video.mp4",
+      body,
+      contentType: "video/mp4",
+      contentLength: 1,
+      signal: controller.signal
+    });
+    assert.ok(upstreamSignal);
+    assert.notEqual(upstreamSignal, controller.signal);
+    assert.equal(upstreamSignal.aborted, false);
+    controller.abort(new Error("client disconnected"));
+    assert.equal(upstreamSignal.aborted, true);
+  });
+
   it("defaults the bucket when URL and server credential are configured", () => {
     const client = createSupabaseStorageClientFromEnv({ SUPABASE_URL: "https://project.supabase.co", SUPABASE_STORAGE_SERVICE_KEY: "server-secret" });
     assert.ok(client);
