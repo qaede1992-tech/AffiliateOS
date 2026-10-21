@@ -79,17 +79,18 @@ jobs:
             const result = await client.query("select current_database() as database, current_user as role");
             const row = result.rows[0];
             const databaseMatches = row.database === "postgres";
-            const roleMatches = row.role === "postgres.vjevwdgkcywwnedumtsi";
+            // Supabase's session pooler username includes the project ref and is
+            // validated above. PostgreSQL may report current_user as "postgres"
+            // after pooler authentication, so do not compare it to the pooler login.
             console.log("PostgreSQL connection succeeded.");
             console.log(JSON.stringify({
               databaseMatches,
-              roleMatches,
+              effectiveDatabaseRole: row.role,
               actualDatabase: row.database,
-              actualRole: row.role,
               expectedDatabase: "postgres",
-              expectedRole: "postgres.vjevwdgkcywwnedumtsi"
+              poolerLoginValidated: true
             }));
-            if (!databaseMatches || !roleMatches) {
+            if (!databaseMatches) {
               console.error("Connected to PostgreSQL, but staging database identity did not match.");
               process.exitCode = 1;
             }
