@@ -57,7 +57,7 @@ jobs:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           set -euo pipefail
-          printf 'DATABASE_URL=%s\\n' "$STAGING_DATABASE_URL" > .env
+          printf 'DATABASE_URL=%s\n' "$STAGING_DATABASE_URL" > .env
           chmod 600 .env
 
       - name: Probe staging PostgreSQL connection
