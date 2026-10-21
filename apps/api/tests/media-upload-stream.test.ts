@@ -79,7 +79,7 @@ test("stream upload rejects a false signature and removes the partial object", a
 test("stream upload rejects an over-limit declared length before reading body", async () => {
   const fixture = createService({ maxImageBytes: 8 });
   let read = false;
-  const body = new ReadableStream<Uint8Array>({ pull(controller) { read = true; controller.enqueue(pngHeader); controller.close(); } });
+  const body = new ReadableStream<Uint8Array>({ pull(controller) { read = true; controller.enqueue(pngHeader); controller.close(); } }, { highWaterMark: 0 });
   await assert.rejects(fixture.service.uploadStream({
     contentId, kind: "image", mimeType: "image/png", contentLength: 12, body
   }), /size limit/i);
