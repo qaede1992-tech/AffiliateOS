@@ -1140,6 +1140,23 @@ test("media upload rejects viewer role before applying the global body limit", a
 });
 
 
+
+test("media upload rejects non-octet-stream content types", async () => {
+  const app = createApp(undefined, {
+    auth: { enabled: true, token: "test-api-token", operatorId: "operator-test", role: "operator" }
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/content/media-upload?contentId=123e4567-e89b-42d3-a456-426614174000&kind=image",
+    headers: { authorization: "Bearer test-api-token", "content-type": "application/json" },
+    payload: { unexpected: "json body" }
+  });
+  assert.equal(response.statusCode, 415);
+  assert.equal(response.json().error, "UNSUPPORTED_MEDIA_TYPE");
+  await app.close();
+});
+
+
 test("media upload route is registered and fails closed when storage is not configured", async () => {
   const app = createApp(undefined, {
     auth: { enabled: true, token: "test-api-token", operatorId: "operator-test", role: "operator" }
