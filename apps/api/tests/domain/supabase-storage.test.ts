@@ -70,7 +70,9 @@ describe("SupabaseStorageClient", () => {
   it("bounds streaming uploads with a timeout and preserves caller cancellation", async () => {
     const controller = new AbortController();
     let upstreamSignal: AbortSignal | null = null;
+    let requestInit: RequestInit | undefined;
     const client = makeClient(async (_input, init) => {
+      requestInit = init;
       upstreamSignal = init?.signal as AbortSignal;
       return new Response(null, { status: 200 });
     });
@@ -87,6 +89,9 @@ describe("SupabaseStorageClient", () => {
     assert.ok(upstreamSignal);
     assert.notEqual(upstreamSignal, controller.signal);
     assert.equal(upstreamSignal.aborted, false);
+    assert.equal((requestInit?.headers as Record<string, string>)["Content-Length"], "1");
+    assert.equal((requestInit as RequestInit & { duplex?: string }).duplex, "half");
+    assert.ok(requestInit?.body instanceof ReadableStream, "Storage receives a stream, not a buffered byte array");
     controller.abort(new Error("client disconnected"));
     assert.equal(upstreamSignal.aborted, true);
   });
