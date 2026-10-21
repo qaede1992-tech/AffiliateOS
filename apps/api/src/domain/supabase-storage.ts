@@ -89,6 +89,23 @@ export class SupabaseStorageClient {
     return { bucket: this.bucket, key };
   }
 
+  async uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<StoredObject> {
+    const key = validateObjectKey(input.key);
+    if (!input.contentType.trim() || /[\\r\\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
+    if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0) throw new Error("Storage stream content length must be a positive safe integer.");
+    const url = `${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    const init = {
+      method: "POST",
+      headers: this.headers({ "Content-Type": input.contentType, "Content-Length": String(input.contentLength), "x-upsert": "false", "cache-control": "3600" }),
+      body: input.body,
+      signal: input.signal,
+      duplex: "half"
+    } as RequestInit & { duplex: "half" };
+    const response = await this.fetchImpl(url, init);
+    await this.assertSuccess(response, "stream upload");
+    return { bucket: this.bucket, key };
+  }
+
   async remove(key: string): Promise<void> {
     const safeKey = validateObjectKey(key);
     const response = await this.fetchImpl(`${this.endpoint("object")}/${encodeURIComponent(this.bucket)}`, {
