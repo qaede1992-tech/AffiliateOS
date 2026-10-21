@@ -29,7 +29,7 @@ export function createApp(services: Services = createInMemoryServices(), options
     origin: corsOrigin,
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "X-Media-Mime-Type"],
     optionsSuccessStatus: 204
   });
   app.addHook("onSend", async (request, reply) => { reply.header("X-Content-Type-Options", "nosniff"); reply.header("X-Frame-Options", "DENY"); reply.header("Referrer-Policy", "no-referrer"); reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()"); if (!isHealthEndpoint(request.url)) reply.header("Cache-Control", "no-store"); if (production) reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); });
