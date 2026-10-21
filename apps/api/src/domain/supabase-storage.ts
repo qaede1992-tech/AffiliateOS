@@ -3,6 +3,8 @@ export interface SupabaseStorageConfig {
   serviceKey: string;
   bucket: string;
   fetchImpl?: typeof fetch;
+  /** Override for deterministic tests; production defaults to two minutes. */
+  uploadTimeoutMs?: number;
 }
 
 export interface StoredObject {
@@ -46,6 +48,7 @@ export class SupabaseStorageClient {
   private readonly bucket: string;
   private readonly serviceKey: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly uploadTimeoutMs: number;
 
   constructor(config: SupabaseStorageConfig) {
     this.baseUrl = normalizeBaseUrl(config.supabaseUrl);
@@ -53,6 +56,10 @@ export class SupabaseStorageClient {
     this.serviceKey = config.serviceKey.trim();
     if (!this.serviceKey) throw new Error("Supabase Storage server credential is required.");
     this.fetchImpl = config.fetchImpl ?? fetch;
+    this.uploadTimeoutMs = config.uploadTimeoutMs ?? 120_000;
+    if (!Number.isSafeInteger(this.uploadTimeoutMs) || this.uploadTimeoutMs <= 0) {
+      throw new Error("Supabase Storage upload timeout must be a positive safe integer.");
+    }
   }
 
   private endpoint(path: string): string {
@@ -86,6 +93,27 @@ export class SupabaseStorageClient {
       body
     });
     await this.assertSuccess(response, "upload");
+    return { bucket: this.bucket, key };
+  }
+
+  async uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<StoredObject> {
+    const key = validateObjectKey(input.key);
+    if (!input.contentType.trim() || /[\r\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
+    if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0) throw new Error("Storage stream content length must be a positive safe integer.");
+    const url = `${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    // Bound stalled upstream uploads while still honoring client disconnect cancellation.
+    // AbortSignal.any preserves either cancellation source without buffering the stream.
+    const timeoutSignal = AbortSignal.timeout(this.uploadTimeoutMs);
+    const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal;
+    const init = {
+      method: "POST",
+      headers: this.headers({ "Content-Type": input.contentType, "Content-Length": String(input.contentLength), "x-upsert": "false", "cache-control": "3600" }),
+      body: input.body,
+      signal,
+      duplex: "half"
+    } as RequestInit & { duplex: "half" };
+    const response = await this.fetchImpl(url, init);
+    await this.assertSuccess(response, "stream upload");
     return { bucket: this.bucket, key };
   }
 
