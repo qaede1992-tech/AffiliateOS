@@ -81,15 +81,11 @@ jobs:
             }
             console.log("PostgreSQL connection succeeded; database and role match staging.");
           } catch (error) {
-            const message = String(error?.message ?? "Unknown database connection error")
-              .replace(/postgres(?:ql)?:\\/\\/[^\\s]+/gi, "[REDACTED_CONNECTION_URL]")
-              .replace(/password\\s*=\\s*[^\\s]+/gi, "password=[REDACTED]")
-              .slice(0, 500);
             console.error("Staging PostgreSQL preflight failed:", JSON.stringify({
               name: error?.name ?? "Error",
               code: error?.code ?? null,
               severity: error?.severity ?? null,
-              message
+              message: "Connection failed; detailed message suppressed to avoid leaking credentials."
             }));
             process.exitCode = 1;
           } finally {
