@@ -5,12 +5,13 @@ import { MediaUploadService } from "../src/domain/media-upload-service.js";
 const contentId = "123e4567-e89b-42d3-a456-426614174000";
 const pngHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
-function createService(options: { failMetadata?: boolean; maxImageBytes?: number } = {}) {
+function createService(options: { failMetadata?: boolean; failStorage?: boolean; maxImageBytes?: number } = {}) {
   const saved: unknown[] = [];
   const removed: string[] = [];
   let storedBytes = 0;
   const storage = {
     async uploadStream(input: { key: string; body: ReadableStream<Uint8Array> }) {
+      if (options.failStorage) throw new Error("storage unavailable");
       const reader = input.body.getReader();
       try {
         while (true) {
@@ -91,6 +92,28 @@ test("stream upload removes object if metadata persistence fails", async () => {
     contentId, kind: "image", mimeType: "image/png", contentLength: pngHeader.byteLength,
     body: streamOf(pngHeader, 5)
   }), /metadata unavailable/);
+  assert.equal(fixture.saved.length, 0);
+  assert.equal(fixture.removed.length, 1);
+});
+
+
+test("stream upload rejects an oversized chunk even when Content-Length is within limit", async () => {
+  const fixture = createService({ maxImageBytes: 16 });
+  const oversized = new Uint8Array(20).fill(0x41);
+  await assert.rejects(fixture.service.uploadStream({
+    contentId, kind: "image", mimeType: "image/png", contentLength: 16,
+    body: streamOf(oversized, 20)
+  }), /size limit/i);
+  assert.equal(fixture.saved.length, 0);
+  assert.equal(fixture.removed.length, 1);
+});
+
+test("stream upload attempts cleanup when the Storage provider rejects the request", async () => {
+  const fixture = createService({ failStorage: true });
+  await assert.rejects(fixture.service.uploadStream({
+    contentId, kind: "image", mimeType: "image/png", contentLength: pngHeader.byteLength,
+    body: streamOf(pngHeader)
+  }), /storage unavailable/);
   assert.equal(fixture.saved.length, 0);
   assert.equal(fixture.removed.length, 1);
 });
