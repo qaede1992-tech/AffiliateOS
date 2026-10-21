@@ -151,6 +151,7 @@ test("stream upload cancels its reader when the request signal is aborted", asyn
   });
   controller.abort();
   await assert.rejects(pending);
+  assert.equal(cancelled, true);
   assert.equal(fixture.saved.length, 0);
   assert.equal(fixture.removed.length, 1);
 });
