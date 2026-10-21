@@ -1,13 +1,13 @@
 # Supabase Storage Media Integration Plan
 
-Status: implementation in progress on draft PR #437. The storage adapter, upload-domain validation foundation, and optional environment-schema validation are implemented; the latest CI run for runtime configuration is still in progress. The HTTP upload route and publisher integration are not implemented yet. This work does not create a bucket, change production configuration, or apply database migrations.
+Status: storage foundation merged from PR #437; streaming upload route is in progress on draft PR #440. The private Storage adapter, upload-domain validation, optional environment configuration, and authenticated streaming route are implemented. Content ownership authorization and provider-specific publisher integration remain incomplete. No bucket, production configuration, or database migration has been changed.
 
 ## Current implementation findings
 
 - `media_assets` stores media metadata and a `source` / `reference`; it does not itself upload or retrieve binary files.
 - The publisher executor resolves media asset records and passes their metadata to publisher adapters.
 - A dependency-free server-side Supabase Storage REST adapter now exists in `apps/api/src/domain/supabase-storage.ts`; its service credential remains server-only.
-- `.env.example` documents the optional `SUPABASE_URL`, `SUPABASE_STORAGE_SERVICE_KEY`, and `SUPABASE_MEDIA_BUCKET` settings as blank placeholders. `apps/api/src/config.ts` now parses these settings and rejects a partial URL/service-key pair; the runtime server does not yet construct or inject the Storage client.
+- `.env.example` documents the optional `SUPABASE_URL`, `SUPABASE_STORAGE_SERVICE_KEY`, and `SUPABASE_MEDIA_BUCKET` settings as blank placeholders. `apps/api/src/config.ts` validates the URL/service-key pair, and the runtime server constructs/injects the Storage client only when configured.
 - `MediaUploadService` validates content UUID/existence, allowed MIME type, basic file signature, byte limits, and duration, then uploads and persists bucket/key metadata with best-effort cleanup if metadata persistence fails. It is a domain foundation only; no HTTP route calls it yet.
 - The current `object-storage` source accepts an opaque reference, so it does not prove that an arbitrary persisted reference points to an existing object or that it is safe to publish.
 - The current TikTok and Instagram adapters are URL-oriented in important paths: TikTok photo posting requires a URL, TikTok's default video transfer mode is `FILE_UPLOAD` and expects an HTTPS source it can download, while Instagram requires a public HTTPS media URL. The adapters do not yet resolve private Storage objects into a provider-compatible transfer flow.
@@ -42,10 +42,10 @@ Use the existing secret-management/deployment mechanism. Do not put credentials 
 1. [x] Inspect provider-specific media flow and service/container wiring.
 2. [x] Add the dependency-free Supabase Storage adapter and upload-domain validation foundation with unit tests.
 3. [x] Add optional storage settings to runtime configuration and validate that the URL and server credential are configured together. Storage client construction/injection remains pending.
-4. [ ] Add a dedicated API upload route with authentication, content ownership checks, bounded streaming, request limits, and safe error mapping. Do not raise the global 1 MiB body limit.
+4. [x] Add a dedicated API upload route with authentication, bounded streaming, a route-level request limit, and safe error mapping; the global 1 MiB body limit remains unchanged. [ ] Add content ownership authorization before production readiness.
 5. [ ] Integrate upload completion/deletion with `media_assets`, including compensation/retry behavior.
 6. [ ] Update publisher adapters one platform at a time, matching provider media-transfer contracts.
-7. [ ] Add tests for streaming limits, missing objects, cross-content access, signed URL expiry, Storage failures, DB failures, cleanup, and existing URL compatibility.
+7. [x] Add tests for streaming limits, content length/signature validation, cancellation, Storage/metadata failures, cleanup, auth-before-body parsing, role denial, content type rejection, and the route-level limit above 1 MiB. [ ] Add tests for cross-content authorization, signed URL expiry, and existing URL compatibility.
 8. [x] Validate the adapter/domain foundation in CI: test, typecheck, build, migration checks, migration simulation, and API/web container smoke tests passed for commit `b4653489df0dc12792e7b83d217f014feecae5bd`. [ ] Confirm the same checks pass for the later runtime-configuration commit `31129ab1aa690557c062ebf15245b32b65d63f0b`.
 
 ## Safety and rollout gates
