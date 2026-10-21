@@ -1098,3 +1098,43 @@ test("Shopee CSV import leaves both canonical and legacy Shopee offers intact", 
     await app.close();
   }
 });
+
+
+test("media upload rejects unauthenticated requests before parsing the upload body", async () => {
+  const app = createApp(undefined, {
+    auth: { enabled: true, token: "test-api-token", operatorId: "operator-test", role: "operator" }
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/content/media-upload?contentId=123e4567-e89b-42d3-a456-426614174000&kind=image",
+    headers: {
+      "content-type": "application/octet-stream",
+      "x-media-mime-type": "image/png",
+      "content-length": "1100000"
+    },
+    payload: Buffer.alloc(1_100_000)
+  });
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.json().error, "UNAUTHORIZED");
+  await app.close();
+});
+
+test("media upload rejects viewer role before applying the global body limit", async () => {
+  const app = createApp(undefined, {
+    auth: { enabled: true, token: "test-api-token", operatorId: "viewer-test", role: "viewer" }
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/content/media-upload?contentId=123e4567-e89b-42d3-a456-426614174000&kind=image",
+    headers: {
+      authorization: "Bearer test-api-token",
+      "content-type": "application/octet-stream",
+      "x-media-mime-type": "image/png",
+      "content-length": "1100000"
+    },
+    payload: Buffer.alloc(1_100_000)
+  });
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.json().error, "FORBIDDEN");
+  await app.close();
+});
