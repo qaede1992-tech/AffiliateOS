@@ -1138,3 +1138,25 @@ test("media upload rejects viewer role before applying the global body limit", a
   assert.equal(response.json().error, "FORBIDDEN");
   await app.close();
 });
+
+
+test("media upload route is registered and fails closed when storage is not configured", async () => {
+  const app = createApp(undefined, {
+    auth: { enabled: true, token: "test-api-token", operatorId: "operator-test", role: "operator" }
+  });
+  const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/content/media-upload?contentId=123e4567-e89b-42d3-a456-426614174000&kind=image",
+    headers: {
+      authorization: "Bearer test-api-token",
+      "content-type": "application/octet-stream",
+      "x-media-mime-type": "image/png",
+      "content-length": String(bytes.byteLength)
+    },
+    payload: bytes
+  });
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.json().error, "MEDIA_UPLOAD_UNAVAILABLE");
+  await app.close();
+});
