@@ -10,9 +10,69 @@ import { auditSecurityEvent } from "./app-audit.js";
 import { requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
+import { Readable } from "node:stream";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
+  // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
+  app.register(async (mediaApp) => {
+    mediaApp.addContentTypeParser("application/octet-stream", (_request, payload, done) => {
+      // No parseAs option: preserve the incoming Node stream instead of buffering it.
+      done(null, payload);
+    });
+    mediaApp.addHook("onRequest", async (request, reply) => {
+      if (request.url.split("?", 1)[0] !== "/api/v1/content/media-upload") return;
+      const role = request.auth?.role;
+      if (role !== "admin" && role !== "operator") {
+        auditSecurityEvent(request.log, request, "authorization_denied", { reason: "media_upload_requires_operator" });
+        return reply.status(403).send({ error: "FORBIDDEN", message: "Operator authorization is required." });
+      }
+    });
+    mediaApp.post<{ Querystring: { contentId?: string; kind?: string }; Body: unknown }>("/api/v1/content/media-upload", async (request, reply) => {
+      if (!services.mediaUpload) return reply.status(503).send({ error: "MEDIA_UPLOAD_UNAVAILABLE", message: "Media upload is not configured." });
+      const contentId = typeof request.query.contentId === "string" ? request.query.contentId.trim() : "";
+      const kind = request.query.kind;
+      if (!["image", "thumbnail", "video"].includes(kind ?? "")) {
+        return reply.status(400).send({ error: "INVALID_MEDIA_KIND", message: "A supported media kind is required." });
+      }
+      const mimeType = request.headers["content-type"];
+      if (typeof mimeType !== "string" || mimeType.includes(";")) {
+        return reply.status(415).send({ error: "UNSUPPORTED_MEDIA_TYPE", message: "Send the file as application/octet-stream and declare its media type with X-Media-Mime-Type." });
+      }
+      const declaredMimeType = request.headers["x-media-mime-type"];
+      if (typeof declaredMimeType !== "string") {
+        return reply.status(400).send({ error: "MEDIA_MIME_TYPE_REQUIRED", message: "X-Media-Mime-Type is required." });
+      }
+      const rawLength = request.headers["content-length"];
+      const contentLength = typeof rawLength === "string" && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+      if (!Number.isSafeInteger(contentLength) || contentLength <= 0) {
+        return reply.status(411).send({ error: "CONTENT_LENGTH_REQUIRED", message: "A valid Content-Length header is required." });
+      }
+      if (!(request.body instanceof Readable)) {
+        return reply.status(400).send({ error: "MEDIA_STREAM_UNAVAILABLE", message: "The request body could not be streamed." });
+      }
+      const body = Readable.toWeb(request.body) as ReadableStream<Uint8Array>;
+      try {
+        const asset = await services.mediaUpload.uploadStream({
+          contentId,
+          kind: kind as "image" | "thumbnail" | "video",
+          mimeType: declaredMimeType,
+          body,
+          contentLength,
+          signal: request.raw.signal
+        });
+        return reply.status(201).send(asset);
+      } catch (error) {
+        request.log.warn({ errorName: error instanceof Error ? error.name : "UnknownError" }, "media upload rejected");
+        const message = error instanceof Error ? error.message : "";
+        if (/does not exist/i.test(message)) return reply.status(404).send({ error: "CONTENT_NOT_FOUND", message: "The target content does not exist." });
+        if (/required|UUID|not allowed|MIME type|signature|size limit|Content-Length|duration/i.test(message)) {
+          return reply.status(400).send({ error: "INVALID_MEDIA_UPLOAD", message: "The media upload failed validation." });
+        }
+        return reply.status(502).send({ error: "MEDIA_UPLOAD_FAILED", message: "The media upload could not be completed." });
+      }
+    });
+  });
   app.get<{ Params: { code: string } }>("/r/:code", async (request, reply) => { const destination = await services.tracking.redirect(request.params.code, { source: "public-redirect", ...(typeof request.headers["user-agent"] === "string" ? { userAgent: request.headers["user-agent"] } : {}), ...(typeof request.headers.referer === "string" ? { referer: request.headers.referer } : {}) }); return reply.redirect(destination, 302); });
   app.post("/api/v1/publication-jobs/:jobId/confirm", writeGuard, async (request) => { const { jobId } = publicationJobIdSchema.parse(request.params); const approval = tiktokPublicationApprovalSchema.parse(request.body); const job = await services.publicationJobs.confirmWithApproval(jobId, approval); auditSecurityEvent(request.log, request, "publication_job_confirmed", { jobId, privacyLevel: approval.privacyLevel, commercialDisclosureEnabled: approval.commercialDisclosureEnabled }); return job; });
   app.get("/api/v1/publication-jobs", writeGuard, async () => list(await services.publicationJobs.list()));
