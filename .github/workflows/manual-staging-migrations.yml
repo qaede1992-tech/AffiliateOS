@@ -57,13 +57,52 @@ jobs:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           set -euo pipefail
-          printf 'DATABASE_URL=%s\n' "$STAGING_DATABASE_URL" > .env
+          printf 'DATABASE_URL=%s\\n' "$STAGING_DATABASE_URL" > .env
           chmod 600 .env
+
+      - name: Probe staging PostgreSQL connection
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const client = new pg.Client({
+            connectionString: process.env.STAGING_DATABASE_URL,
+            connectionTimeoutMillis: 10000,
+            application_name: "affiliateos-staging-migration-preflight"
+          });
+          try {
+            await client.connect();
+            const result = await client.query("select current_database() as database, current_user as role");
+            const row = result.rows[0];
+            if (row.database !== "postgres" || row.role !== "postgres.vjevwdgkcywwnedumtsi") {
+              throw new Error("Connected database identity does not match the expected staging database and role.");
+            }
+            console.log("PostgreSQL connection succeeded; database and role match staging.");
+          } catch (error) {
+            const message = String(error?.message ?? "Unknown database connection error")
+              .replace(/postgres(?:ql)?:\\/\\/[^\\s]+/gi, "[REDACTED_CONNECTION_URL]")
+              .replace(/password\\s*=\\s*[^\\s]+/gi, "password=[REDACTED]")
+              .slice(0, 500);
+            console.error("Staging PostgreSQL preflight failed:", JSON.stringify({
+              name: error?.name ?? "Error",
+              code: error?.code ?? null,
+              severity: error?.severity ?? null,
+              message
+            }));
+            process.exitCode = 1;
+          } finally {
+            await client.end().catch(() => {});
+          }
+          NODE
 
       - name: Check migration files and journal
         run: npm run db:check
 
       - name: Apply Drizzle migrations to staging
+        env:
+          DEBUG: drizzle-kit:*
         run: npm run db:migrate
 
       - name: Verify applied staging schema and migration ledger
