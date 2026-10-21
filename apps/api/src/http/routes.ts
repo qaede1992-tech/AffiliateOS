@@ -28,7 +28,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         return reply.status(403).send({ error: "FORBIDDEN", message: "Operator authorization is required." });
       }
     });
-    mediaApp.post<{ Querystring: { contentId?: string; kind?: string }; Body: unknown }>("/api/v1/content/media-upload", async (request, reply) => {
+    mediaApp.post<{ Querystring: { contentId?: string; kind?: string }; Body: unknown }>("/api/v1/content/media-upload", { bodyLimit: 100 * 1024 * 1024 }, async (request, reply) => {
       if (!services.mediaUpload) return reply.status(503).send({ error: "MEDIA_UPLOAD_UNAVAILABLE", message: "Media upload is not configured." });
       const contentId = typeof request.query.contentId === "string" ? request.query.contentId.trim() : "";
       const kind = request.query.kind;
