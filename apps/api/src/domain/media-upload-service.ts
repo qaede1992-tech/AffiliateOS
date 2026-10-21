@@ -82,7 +82,8 @@ export class MediaUploadService {
           if (result.done) {
             ended = true;
             if (total !== input.contentLength) throw new Error("Media upload length does not match Content-Length.");
-            if (!validated || !matchesSignature(input.mimeType, prefix)) throw new Error("Media content does not match its declared MIME type.");
+            if (!validated && matchesSignature(input.mimeType, prefix)) validated = true;
+            if (!validated) throw new Error("Media content does not match its declared MIME type.");
             controller.close();
             return;
           }
