@@ -134,10 +134,14 @@ test("stream upload cancels its reader when the request signal is aborted", asyn
   const fixture = createService();
   const controller = new AbortController();
   let cancelled = false;
+  let emitted = false;
   const body = new ReadableStream<Uint8Array>({
     pull(streamController) {
-      streamController.enqueue(pngHeader);
-      // Keep the source open until the service cancels it.
+      if (!emitted) {
+        emitted = true;
+        streamController.enqueue(pngHeader);
+      }
+      // Leave the stream open after its first chunk so abort can cancel it.
     },
     cancel() { cancelled = true; }
   });
