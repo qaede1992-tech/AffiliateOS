@@ -52,6 +52,88 @@ export class MediaUploadService {
     }
   }
 
+  async uploadStream(input: {
+    contentId: string;
+    kind: MediaAssetKind;
+    mimeType: string;
+    body: ReadableStream<Uint8Array>;
+    contentLength: number;
+    signal?: AbortSignal;
+    durationSeconds?: number;
+  }): Promise<MediaAsset> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.contentId)) throw new Error("A valid content UUID is required.");
+    const content = await this.contentReader.get(input.contentId);
+    if (!content) throw new Error("Media upload content does not exist.");
+    if (!allowedTypes[input.kind]?.includes(input.mimeType)) throw new Error("Media type is not allowed for this asset kind.");
+    const limit = input.kind === "video" ? this.policy.maxVideoBytes : this.policy.maxImageBytes;
+    if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0 || input.contentLength > limit) throw new Error("Media upload exceeds the configured size limit.");
+    if (input.durationSeconds !== undefined && (!Number.isSafeInteger(input.durationSeconds) || input.durationSeconds < 0)) throw new Error("Media duration must be a non-negative integer.");
+
+    const reader = input.body.getReader();
+    let total = 0;
+    let prefix = new Uint8Array(0);
+    let validated = false;
+    let ended = false;
+    const boundedBody = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          if (input.signal?.aborted) throw new Error("Media upload was cancelled.");
+          const result = await reader.read();
+          if (result.done) {
+            ended = true;
+            if (total !== input.contentLength) throw new Error("Media upload length does not match Content-Length.");
+            if (!validated || !matchesSignature(input.mimeType, prefix)) throw new Error("Media content does not match its declared MIME type.");
+            controller.close();
+            return;
+          }
+          const chunk = result.value;
+          total += chunk.byteLength;
+          if (total > limit || total > input.contentLength) throw new Error("Media upload exceeds the configured size limit.");
+          if (!validated) {
+            const needed = Math.max(0, 12 - prefix.byteLength);
+            const head = chunk.slice(0, needed);
+            const combined = new Uint8Array(prefix.byteLength + head.byteLength);
+            combined.set(prefix);
+            combined.set(head, prefix.byteLength);
+            prefix = combined;
+            if (prefix.byteLength >= 12) {
+              if (!matchesSignature(input.mimeType, prefix)) throw new Error("Media content does not match its declared MIME type.");
+              validated = true;
+            }
+          }
+          controller.enqueue(chunk);
+        } catch (error) {
+          try { await reader.cancel(); } catch {}
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        try { await reader.cancel(reason); } catch {}
+      }
+    });
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const key = `content/${input.contentId}/${id}.${extensionByType[input.mimeType]}`;
+    let stored: { bucket: string; key: string } | undefined;
+    try {
+      stored = await this.storage.uploadStream({ key, body: boundedBody, contentType: input.mimeType, contentLength: input.contentLength, signal: input.signal });
+      if (!ended || total !== input.contentLength) throw new Error("Media stream did not complete.");
+      const asset: MediaAsset = {
+        id, contentId: input.contentId, kind: input.kind, source: "object-storage",
+        reference: `${stored.bucket}/${stored.key}`, mimeType: input.mimeType, byteSize: total,
+        ...(input.durationSeconds === undefined ? {} : { durationSeconds: input.durationSeconds }),
+        createdAt: now, updatedAt: now
+      };
+      return await this.mediaAssets.save(asset);
+    } catch (error) {
+      if (stored) {
+        try { await this.storage.remove(stored.key); } catch {}
+      }
+      throw error;
+    }
+  }
+
   async upload(input: MediaUploadInput): Promise<MediaAsset> {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.contentId)) throw new Error("A valid content UUID is required.");
     const content = await this.contentReader.get(input.contentId);
