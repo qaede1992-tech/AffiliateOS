@@ -52,6 +52,11 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         return reply.status(400).send({ error: "MEDIA_STREAM_UNAVAILABLE", message: "The request body could not be streamed." });
       }
       const body = Readable.toWeb(request.body) as ReadableStream<Uint8Array>;
+      const abortController = new AbortController();
+      const abortUpload = () => abortController.abort(new Error("Media upload client disconnected."));
+      const onResponseClose = () => { if (!reply.raw.writableEnded) abortUpload(); };
+      request.raw.once("aborted", abortUpload);
+      reply.raw.once("close", onResponseClose);
       try {
         const asset = await services.mediaUpload.uploadStream({
           contentId,
@@ -59,7 +64,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           mimeType: declaredMimeType,
           body,
           contentLength,
-          signal: request.raw.signal
+          signal: abortController.signal
         });
         return reply.status(201).send(asset);
       } catch (error) {
@@ -70,6 +75,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           return reply.status(400).send({ error: "INVALID_MEDIA_UPLOAD", message: "The media upload failed validation." });
         }
         return reply.status(502).send({ error: "MEDIA_UPLOAD_FAILED", message: "The media upload could not be completed." });
+      } finally {
+        request.raw.removeListener("aborted", abortUpload);
+        reply.raw.removeListener("close", onResponseClose);
       }
     });
   });
