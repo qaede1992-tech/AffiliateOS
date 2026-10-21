@@ -91,7 +91,7 @@ export class SupabaseStorageClient {
 
   async uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<StoredObject> {
     const key = validateObjectKey(input.key);
-    if (!input.contentType.trim() || /[\\r\\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
+    if (!input.contentType.trim() || /[\r\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
     if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0) throw new Error("Storage stream content length must be a positive safe integer.");
     const url = `${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
     const init = {
