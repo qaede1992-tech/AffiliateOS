@@ -94,11 +94,15 @@ export class SupabaseStorageClient {
     if (!input.contentType.trim() || /[\r\n]/.test(input.contentType)) throw new Error("Invalid media content type.");
     if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0) throw new Error("Storage stream content length must be a positive safe integer.");
     const url = `${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    // Bound stalled upstream uploads while still honoring client disconnect cancellation.
+    // AbortSignal.any preserves either cancellation source without buffering the stream.
+    const timeoutSignal = AbortSignal.timeout(120_000);
+    const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal;
     const init = {
       method: "POST",
       headers: this.headers({ "Content-Type": input.contentType, "Content-Length": String(input.contentLength), "x-upsert": "false", "cache-control": "3600" }),
       body: input.body,
-      signal: input.signal,
+      signal,
       duplex: "half"
     } as RequestInit & { duplex: "half" };
     const response = await this.fetchImpl(url, init);
