@@ -60,10 +60,45 @@ jobs:
           printf 'DATABASE_URL=%s\n' "$STAGING_DATABASE_URL" > .env
           chmod 600 .env
 
+      - name: Probe staging PostgreSQL connection
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import pg from "pg";
+          const client = new pg.Client({
+            connectionString: process.env.STAGING_DATABASE_URL,
+            connectionTimeoutMillis: 10000,
+            application_name: "affiliateos-staging-migration-preflight"
+          });
+          try {
+            await client.connect();
+            const result = await client.query("select current_database() as database, current_user as role");
+            const row = result.rows[0];
+            if (row.database !== "postgres" || row.role !== "postgres.vjevwdgkcywwnedumtsi") {
+              throw new Error("Connected database identity does not match the expected staging database and role.");
+            }
+            console.log("PostgreSQL connection succeeded; database and role match staging.");
+          } catch (error) {
+            console.error("Staging PostgreSQL preflight failed:", JSON.stringify({
+              name: error?.name ?? "Error",
+              code: error?.code ?? null,
+              severity: error?.severity ?? null,
+              message: "Connection failed; detailed message suppressed to avoid leaking credentials."
+            }));
+            process.exitCode = 1;
+          } finally {
+            await client.end().catch(() => {});
+          }
+          NODE
+
       - name: Check migration files and journal
         run: npm run db:check
 
       - name: Apply Drizzle migrations to staging
+        env:
+          DEBUG: drizzle-kit:*
         run: npm run db:migrate
 
       - name: Verify applied staging schema and migration ledger
