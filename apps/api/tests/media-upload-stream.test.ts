@@ -117,3 +117,36 @@ test("stream upload attempts cleanup when the Storage provider rejects the reque
   assert.equal(fixture.saved.length, 0);
   assert.equal(fixture.removed.length, 1);
 });
+
+
+test("stream upload rejects a body shorter than its declared Content-Length", async () => {
+  const fixture = createService();
+  const shortBody = streamOf(pngHeader.slice(0, 8), 4);
+  await assert.rejects(fixture.service.uploadStream({
+    contentId, kind: "image", mimeType: "image/png", contentLength: 12,
+    body: shortBody
+  }), /length does not match|MIME type/i);
+  assert.equal(fixture.saved.length, 0);
+  assert.equal(fixture.removed.length, 1);
+});
+
+test("stream upload cancels its reader when the request signal is aborted", async () => {
+  const fixture = createService();
+  const controller = new AbortController();
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(streamController) {
+      streamController.enqueue(pngHeader);
+      // Keep the source open until the service cancels it.
+    },
+    cancel() { cancelled = true; }
+  });
+  const pending = fixture.service.uploadStream({
+    contentId, kind: "image", mimeType: "image/png", contentLength: 24,
+    body, signal: controller.signal
+  });
+  controller.abort();
+  await assert.rejects(pending);
+  assert.equal(fixture.saved.length, 0);
+  assert.equal(fixture.removed.length, 1);
+});
