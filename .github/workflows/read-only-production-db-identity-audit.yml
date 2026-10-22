@@ -1,0 +1,160 @@
+name: Read-only Production Database Identity Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shares the protected production environment, but this workflow only runs read-only SELECTs.
+concurrency:
+  group: affiliateos-production-database-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: production-migrations
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validate protected database target without printing URL
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PRODUCTION_DATABASE_HOST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_DATABASE_URL" || { echo "Missing environment secret PRODUCTION_DATABASE_URL"; exit 1; }
+          test -n "$PRODUCTION_DATABASE_HOST" || { echo "Missing environment variable PRODUCTION_DATABASE_HOST"; exit 1; }
+          test -n "$PRODUCTION_DATABASE_NAME" || { echo "Missing environment variable PRODUCTION_DATABASE_NAME"; exit 1; }
+          actual_host="$(node -e 'try { const u = new URL(process.env.PRODUCTION_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); process.stdout.write(u.hostname); } catch { process.exit(2); }')"
+          actual_database="$(node -e 'try { const u = new URL(process.env.PRODUCTION_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) process.exit(2); process.stdout.write(decodeURIComponent(u.pathname.slice(1))); } catch { process.exit(2); }')"
+          test "$actual_host" = "$PRODUCTION_DATABASE_HOST" || { echo "Configured host mismatch; refusing audit"; exit 1; }
+          test "$actual_database" = "$PRODUCTION_DATABASE_NAME" || { echo "Configured database mismatch; refusing audit"; exit 1; }
+          echo "Protected database target matches configured host and database name."
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Audit connected role and object-creator context (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { Client } from "pg";
+
+          const client = new Client({
+            connectionString: process.env.DATABASE_URL,
+            connectionTimeoutMillis: 10000,
+            application_name: "affiliateos-read-only-production-identity-audit"
+          });
+          await client.connect();
+          try {
+            await client.query("SET default_transaction_read_only = on");
+            await client.query("BEGIN READ ONLY");
+            const identity = await client.query(`
+              SELECT current_database() AS database,
+                     current_user AS current_user,
+                     session_user AS session_user,
+                     current_schema() AS current_schema,
+                     current_setting('transaction_read_only') AS transaction_read_only
+            `);
+            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME,
+              "Connected database differs from protected configured database; refusing audit");
+            assert.equal(identity.rows[0].transaction_read_only, "on",
+              "Read-only session could not be confirmed");
+
+            console.log("Connection identity (no connection string or credentials):");
+            console.log(JSON.stringify(identity.rows[0], null, 2));
+
+            const roleDetails = await client.query(`
+              SELECT rolname, rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls
+              FROM pg_roles
+              WHERE rolname IN (current_user, session_user)
+              ORDER BY rolname
+            `);
+            console.log("Connected role attributes:");
+            console.log(JSON.stringify(roleDetails.rows, null, 2));
+
+            const memberships = await client.query(`
+              WITH RECURSIVE role_tree AS (
+                SELECT r.oid AS member_oid,
+                       r.rolname AS member_role,
+                       m.roleid AS granted_oid,
+                       parent.rolname AS granted_role,
+                       m.admin_option,
+                       1 AS depth,
+                       ARRAY[r.oid, m.roleid] AS path
+                FROM pg_roles r
+                JOIN pg_auth_members m ON m.member = r.oid
+                JOIN pg_roles parent ON parent.oid = m.roleid
+                WHERE r.rolname IN (current_user, session_user)
+                UNION ALL
+                SELECT rt.member_oid,
+                       rt.member_role,
+                       m.roleid,
+                       parent.rolname,
+                       m.admin_option,
+                       rt.depth + 1,
+                       rt.path || m.roleid
+                FROM role_tree rt
+                JOIN pg_auth_members m ON m.member = rt.granted_oid
+                JOIN pg_roles parent ON parent.oid = m.roleid
+                WHERE NOT m.roleid = ANY(rt.path)
+              )
+              SELECT member_role, granted_role, admin_option, depth
+              FROM role_tree
+              ORDER BY member_role, depth, granted_role
+            `);
+            console.log("Direct and inherited role memberships for connected roles:");
+            console.log(JSON.stringify(memberships.rows, null, 2));
+
+            const ownership = await client.query(`
+              SELECT n.nspname AS schema_name,
+                     pg_get_userbyid(c.relowner) AS owner_role,
+                     c.relkind,
+                     count(*)::int AS object_count
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public'
+                AND c.relkind IN ('r','p','v','m','S','f')
+              GROUP BY n.nspname, pg_get_userbyid(c.relowner), c.relkind
+              ORDER BY owner_role, c.relkind
+            `);
+            console.log("Public schema object ownership summary:");
+            console.log(JSON.stringify(ownership.rows, null, 2));
+
+            const defaults = await client.query(`
+              SELECT pg_get_userbyid(d.defaclrole) AS creator_role,
+                     n.nspname AS schema_name,
+                     d.defaclobjtype AS object_type,
+                     d.defaclacl::text AS default_acl
+              FROM pg_default_acl d
+              LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
+              WHERE n.nspname = 'public'
+                AND pg_get_userbyid(d.defaclrole) IN (current_user, session_user, 'postgres', 'supabase_admin')
+              ORDER BY creator_role, object_type
+            `);
+            console.log("Public schema default ACLs for inspected creator roles:");
+            console.log(JSON.stringify(defaults.rows, null, 2));
+
+            await client.query("COMMIT");
+          } catch (error) {
+            try { await client.query("ROLLBACK"); } catch {}
+            throw error;
+          } finally {
+            await client.end();
+          }
+          NODE
