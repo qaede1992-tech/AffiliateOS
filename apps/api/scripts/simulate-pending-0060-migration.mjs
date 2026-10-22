@@ -42,7 +42,7 @@ try {
     await client.query("ALTER TABLE public.autonomous_runs DROP COLUMN IF EXISTS is_test");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [migration0060, migration0061]
+      [[migration0060, migration0061]]
     );
     await client.query("COMMIT");
   } catch (error) {
