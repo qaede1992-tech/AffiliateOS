@@ -22,9 +22,40 @@ BEGIN
   END IF;
 END $$;
 
--- The primary key enforces this pair's uniqueness; remove the redundant index
--- if the older Drizzle schema created it separately.
-DROP INDEX IF EXISTS public.campaign_offers_unique;
+-- The primary key enforces this pair's uniqueness. Older databases may have
+-- created campaign_offers_unique as either a standalone index or a
+-- constraint-backed unique index, so remove it according to its ownership.
+DO $
+DECLARE
+  unique_index_oid oid;
+  owning_constraint_name text;
+BEGIN
+  SELECT idx.oid
+    INTO unique_index_oid
+  FROM pg_class idx
+  JOIN pg_namespace ns ON ns.oid = idx.relnamespace
+  WHERE ns.nspname = 'public'
+    AND idx.relname = 'campaign_offers_unique'
+    AND idx.relkind = 'i';
+
+  IF unique_index_oid IS NOT NULL THEN
+    SELECT c.conname
+      INTO owning_constraint_name
+    FROM pg_constraint c
+    WHERE c.conindid = unique_index_oid
+      AND c.contype = 'u'
+      AND c.conrelid = 'public.campaign_offers'::regclass;
+
+    IF owning_constraint_name IS NOT NULL THEN
+      EXECUTE format(
+        'ALTER TABLE public.campaign_offers DROP CONSTRAINT %I',
+        owning_constraint_name
+      );
+    ELSE
+      DROP INDEX public.campaign_offers_unique;
+    END IF;
+  END IF;
+END $;
 
 DO $$
 DECLARE
