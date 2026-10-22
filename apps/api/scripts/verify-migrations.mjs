@@ -402,10 +402,13 @@ try {
       ["product_id", "products"],
       ["affiliate_offer_id", "affiliate_offers"]
     ].every(([column, table]) => hasForeignKey(column, table));
-    const reconciliationUniqueConstraintPresent = contentProductConstraints.some((constraint) =>
-      constraint.contype === "u" &&
-      normalizeConstraintDefinition(constraint.definition).includes("unique (content_id, product_id)")
-    );
+    const reconciliationUniqueConstraintPresent = contentProductConstraints.some((constraint) => {
+      const definition = normalizeConstraintDefinition(constraint.definition);
+      return (
+        (constraint.contype === "u" && definition.includes("unique (content_id, product_id)")) ||
+        (constraint.contype === "p" && definition.includes("primary key (content_id, product_id)"))
+      );
+    });
     const reconciliationIndexesPresent = [
       ["content_products_product_idx", "(product_id)"],
       ["content_products_offer_idx", "(affiliate_offer_id)"],
