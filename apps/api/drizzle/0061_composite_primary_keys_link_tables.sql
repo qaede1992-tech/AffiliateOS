@@ -25,7 +25,7 @@ END $$;
 -- The primary key enforces this pair's uniqueness. Older databases may have
 -- created campaign_offers_unique as either a standalone index or a
 -- constraint-backed unique index, so remove it according to its ownership.
-DO $
+DO $$
 DECLARE
   unique_index_oid oid;
   owning_constraint_name text;
@@ -55,7 +55,7 @@ BEGIN
       DROP INDEX public.campaign_offers_unique;
     END IF;
   END IF;
-END $;
+END $$;
 
 DO $$
 DECLARE
