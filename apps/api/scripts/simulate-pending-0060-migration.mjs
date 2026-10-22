@@ -29,8 +29,10 @@ try {
   const timestamps = ledger.rows.map((row) => Number(row.created_at));
   const migration0059 = 1794050405000;
   const migration0060 = 1794050405001;
+  const migration0061 = 1794050405002;
   assert.ok(timestamps.includes(migration0059), "Expected migration 0059 to remain recorded.");
   assert.ok(timestamps.includes(migration0060), "Expected migration 0060 to have been applied before simulation.");
+  assert.ok(timestamps.includes(migration0061), "Expected migration 0061 to have been applied before simulation.");
 
   await client.query("BEGIN");
   try {
@@ -39,8 +41,8 @@ try {
     await client.query("ALTER TABLE public.campaigns DROP COLUMN IF EXISTS is_test");
     await client.query("ALTER TABLE public.autonomous_runs DROP COLUMN IF EXISTS is_test");
     await client.query(
-      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = $1',
-      [migration0060]
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
+      [[migration0060, migration0061]]
     );
     await client.query("COMMIT");
   } catch (error) {

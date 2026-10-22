@@ -251,7 +251,7 @@ try {
        JOIN pg_namespace rn ON rn.oid = r.relnamespace
        LEFT JOIN pg_class t ON t.oid = c.confrelid
        LEFT JOIN pg_namespace tn ON tn.oid = t.relnamespace
-      WHERE rn.nspname = 'public' AND r.relname = 'content_products' AND c.contype IN ('f', 'u')`
+      WHERE rn.nspname = 'public' AND r.relname = 'content_products' AND c.contype IN ('f', 'u', 'p')`
   );
   const normalizeConstraintDefinition = (definition) =>
     definition.toLowerCase().replaceAll('"', "").replace(/\s+/g, " ").trim();
@@ -268,11 +268,14 @@ try {
       errors.push(`content_products.${column} is missing its expected foreign key to public.${table}(id).`);
     }
   }
-  if (!contentProductConstraints.some((constraint) =>
-    constraint.contype === "u" &&
-    normalizeConstraintDefinition(constraint.definition).includes("unique (content_id, product_id)")
-  )) {
-    errors.push("content_products is missing its unique constraint on (content_id, product_id).");
+  if (!contentProductConstraints.some((constraint) => {
+    const definition = normalizeConstraintDefinition(constraint.definition);
+    return (
+      (constraint.contype === "u" && definition.includes("unique (content_id, product_id)")) ||
+      (constraint.contype === "p" && definition.includes("primary key (content_id, product_id)"))
+    );
+  })) {
+    errors.push("content_products is missing its unique or primary key constraint on (content_id, product_id).");
   }
 
   const { rows: contentProductIndexRows } = await client.query(
@@ -402,10 +405,13 @@ try {
       ["product_id", "products"],
       ["affiliate_offer_id", "affiliate_offers"]
     ].every(([column, table]) => hasForeignKey(column, table));
-    const reconciliationUniqueConstraintPresent = contentProductConstraints.some((constraint) =>
-      constraint.contype === "u" &&
-      normalizeConstraintDefinition(constraint.definition).includes("unique (content_id, product_id)")
-    );
+    const reconciliationUniqueConstraintPresent = contentProductConstraints.some((constraint) => {
+      const definition = normalizeConstraintDefinition(constraint.definition);
+      return (
+        (constraint.contype === "u" && definition.includes("unique (content_id, product_id)")) ||
+        (constraint.contype === "p" && definition.includes("primary key (content_id, product_id)"))
+      );
+    });
     const reconciliationIndexesPresent = [
       ["content_products_product_idx", "(product_id)"],
       ["content_products_offer_idx", "(affiliate_offer_id)"],

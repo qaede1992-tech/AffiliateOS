@@ -400,6 +400,13 @@
       "when": 1794050405001,
       "tag": "0060_test_data_retention_markers",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1794050405002,
+      "tag": "0061_composite_primary_keys_link_tables",
+      "breakpoints": true
     }
   ]
 }
