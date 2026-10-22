@@ -144,11 +144,33 @@ jobs:
               FROM pg_default_acl d
               LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
               WHERE n.nspname = 'public'
-                AND pg_get_userbyid(d.defaclrole) IN (current_user, session_user, 'postgres', 'supabase_admin')
               ORDER BY creator_role, object_type
             `);
-            console.log("Public schema default ACLs for inspected creator roles:");
+            console.log("All public schema default ACLs by creator role (metadata only):");
             console.log(JSON.stringify(defaults.rows, null, 2));
+
+            const schemaAcl = await client.query(`
+              SELECT n.nspname AS schema_name,
+                     pg_get_userbyid(n.nspowner) AS schema_owner,
+                     n.nspacl::text AS schema_acl
+              FROM pg_namespace n
+              WHERE n.nspname = 'public'
+            `);
+            console.log("Public schema ownership and ACL (metadata only):");
+            console.log(JSON.stringify(schemaAcl.rows, null, 2));
+
+            const routineOwnership = await client.query(`
+              SELECT n.nspname AS schema_name,
+                     pg_get_userbyid(p.proowner) AS owner_role,
+                     count(*)::int AS routine_count
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'public'
+              GROUP BY n.nspname, pg_get_userbyid(p.proowner)
+              ORDER BY owner_role
+            `);
+            console.log("Public routine ownership summary (metadata only):");
+            console.log(JSON.stringify(routineOwnership.rows, null, 2));
 
             const rlsCoverage = await client.query(`
               SELECT count(*) FILTER (WHERE c.relrowsecurity)::int AS rls_enabled_tables,
