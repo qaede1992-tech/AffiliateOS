@@ -150,6 +150,19 @@ jobs:
             console.log("Public schema default ACLs for inspected creator roles:");
             console.log(JSON.stringify(defaults.rows, null, 2));
 
+            const rlsCoverage = await client.query(`
+              SELECT count(*) FILTER (WHERE c.relrowsecurity)::int AS rls_enabled_tables,
+                     count(*) FILTER (WHERE c.relforcerowsecurity)::int AS rls_forced_tables,
+                     count(*)::int AS public_tables,
+                     (SELECT count(*)::int FROM pg_policies p WHERE p.schemaname = 'public') AS public_policy_count
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public'
+                AND c.relkind IN ('r', 'p')
+            `);
+            console.log("Public table RLS coverage and policy counts (metadata only):");
+            console.log(JSON.stringify(rlsCoverage.rows, null, 2));
+
             const effectiveRelationPrivileges = await client.query(`
               SELECT role_name,
                      count(*) FILTER (WHERE has_table_privilege(role_name, c.oid, 'SELECT'))::int AS select_relations,
