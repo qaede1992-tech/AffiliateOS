@@ -89,16 +89,36 @@ jobs:
             console.log(JSON.stringify(roleDetails.rows, null, 2));
 
             const memberships = await client.query(`
-              SELECT member.rolname AS member_role,
-                     parent.rolname AS granted_role,
-                     m.admin_option
-              FROM pg_auth_members m
-              JOIN pg_roles member ON member.oid = m.member
-              JOIN pg_roles parent ON parent.oid = m.roleid
-              WHERE member.rolname IN (current_user, session_user)
-              ORDER BY member.rolname, parent.rolname
+              WITH RECURSIVE role_tree AS (
+                SELECT r.oid AS member_oid,
+                       r.rolname AS member_role,
+                       m.roleid AS granted_oid,
+                       parent.rolname AS granted_role,
+                       m.admin_option,
+                       1 AS depth,
+                       ARRAY[r.oid, m.roleid] AS path
+                FROM pg_roles r
+                JOIN pg_auth_members m ON m.member = r.oid
+                JOIN pg_roles parent ON parent.oid = m.roleid
+                WHERE r.rolname IN (current_user, session_user)
+                UNION ALL
+                SELECT rt.member_oid,
+                       rt.member_role,
+                       m.roleid,
+                       parent.rolname,
+                       m.admin_option,
+                       rt.depth + 1,
+                       rt.path || m.roleid
+                FROM role_tree rt
+                JOIN pg_auth_members m ON m.member = rt.granted_oid
+                JOIN pg_roles parent ON parent.oid = m.roleid
+                WHERE NOT m.roleid = ANY(rt.path)
+              )
+              SELECT member_role, granted_role, admin_option, depth
+              FROM role_tree
+              ORDER BY member_role, depth, granted_role
             `);
-            console.log("Direct role memberships for connected roles:");
+            console.log("Direct and inherited role memberships for connected roles:");
             console.log(JSON.stringify(memberships.rows, null, 2));
 
             const ownership = await client.query(`
