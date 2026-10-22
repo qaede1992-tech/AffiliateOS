@@ -150,6 +150,53 @@ jobs:
             console.log("Public schema default ACLs for inspected creator roles:");
             console.log(JSON.stringify(defaults.rows, null, 2));
 
+            const effectiveRelationPrivileges = await client.query(`
+              SELECT role_name,
+                     count(*) FILTER (WHERE has_table_privilege(role_name, c.oid, 'SELECT'))::int AS select_relations,
+                     count(*) FILTER (WHERE has_table_privilege(role_name, c.oid, 'INSERT'))::int AS insert_relations,
+                     count(*) FILTER (WHERE has_table_privilege(role_name, c.oid, 'UPDATE'))::int AS update_relations,
+                     count(*) FILTER (WHERE has_table_privilege(role_name, c.oid, 'DELETE'))::int AS delete_relations,
+                     count(*) FILTER (WHERE has_table_privilege(role_name, c.oid, 'TRUNCATE'))::int AS truncate_relations
+              FROM (VALUES ('anon'), ('authenticated'), ('service_role')) AS roles(role_name)
+              CROSS JOIN pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public'
+                AND c.relkind IN ('r','p','v','m','f')
+              GROUP BY role_name
+              ORDER BY role_name
+            `);
+            console.log("Effective privileges on existing public relations (counts only):");
+            console.log(JSON.stringify(effectiveRelationPrivileges.rows, null, 2));
+
+            const effectiveSequencePrivileges = await client.query(`
+              SELECT role_name,
+                     count(*) FILTER (WHERE has_sequence_privilege(role_name, c.oid, 'USAGE'))::int AS usage_sequences,
+                     count(*) FILTER (WHERE has_sequence_privilege(role_name, c.oid, 'SELECT'))::int AS select_sequences,
+                     count(*) FILTER (WHERE has_sequence_privilege(role_name, c.oid, 'UPDATE'))::int AS update_sequences
+              FROM (VALUES ('anon'), ('authenticated'), ('service_role')) AS roles(role_name)
+              CROSS JOIN pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public'
+                AND c.relkind = 'S'
+              GROUP BY role_name
+              ORDER BY role_name
+            `);
+            console.log("Effective privileges on existing public sequences (counts only):");
+            console.log(JSON.stringify(effectiveSequencePrivileges.rows, null, 2));
+
+            const effectiveRoutinePrivileges = await client.query(`
+              SELECT role_name,
+                     count(*) FILTER (WHERE has_function_privilege(role_name, p.oid, 'EXECUTE'))::int AS executable_routines
+              FROM (VALUES ('anon'), ('authenticated'), ('service_role')) AS roles(role_name)
+              CROSS JOIN pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'public'
+              GROUP BY role_name
+              ORDER BY role_name
+            `);
+            console.log("Effective EXECUTE privileges on existing public routines (counts only):");
+            console.log(JSON.stringify(effectiveRoutinePrivileges.rows, null, 2));
+
             await client.query("COMMIT");
           } catch (error) {
             try { await client.query("ROLLBACK"); } catch {}
