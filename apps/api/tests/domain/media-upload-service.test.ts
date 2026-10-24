@@ -119,6 +119,52 @@ describe("MediaUploadService", () => {
     assert.equal(removed.length, 0);
   });
 
+  it("preserves a MIME-signature validation error when Storage wraps the stream failure", async () => {
+    const removed: string[] = [];
+    const storage = {
+      async uploadStream(input: { key: string; body: ReadableStream<Uint8Array> }) {
+        const reader = input.body.getReader();
+        try {
+          while (true) {
+            const result = await reader.read();
+            if (result.done) break;
+          }
+        } catch {
+          // Mimic fetch/Storage wrapping a failed request stream in TypeError.
+          throw new TypeError("media upload rejected");
+        }
+        return { bucket: "affiliate-media", key: input.key };
+      },
+      async remove(key: string) { removed.push(key); }
+    } as unknown as SupabaseStorageClient;
+    const repository: MediaAssetRepository = {
+      async listByContent() { return []; },
+      async findById() { return undefined; },
+      async save(asset) { return asset; }
+    };
+    const service = new MediaUploadService(
+      { async get(id) { return { id }; } },
+      repository,
+      storage,
+      { maxImageBytes: 1024, maxVideoBytes: 4096 }
+    );
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0x6e, 0x6f, 0x74, 0x20, 0x61, 0x20, 0x70, 0x6e, 0x67]));
+        controller.close();
+      }
+    });
+    await assert.rejects(service.uploadStream({
+      contentId: "123e4567-e89b-42d3-a456-426614174000",
+      kind: "image",
+      mimeType: "image/png",
+      body,
+      contentLength: 9
+    }), /does not match its declared MIME type/);
+    assert.equal(removed.length, 1);
+    assert.ok(removed[0].startsWith("content/123e4567-e89b-42d3-a456-426614174000/"));
+  });
+
   it("cleans up a streamed object if streamed metadata persistence fails", async () => {
     const removed: string[] = [];
     const storage = {
