@@ -5,7 +5,7 @@ import { MediaUploadService } from "../src/domain/media-upload-service.js";
 const contentId = "123e4567-e89b-42d3-a456-426614174000";
 const pngHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
-function createService(options: { failMetadata?: boolean; failStorage?: boolean; maxImageBytes?: number } = {}) {
+function createService(options: { failMetadata?: boolean; failStorage?: boolean; failStorageAfterPartial?: boolean; maxImageBytes?: number } = {}) {
   const saved: unknown[] = [];
   const removed: string[] = [];
   let storedBytes = 0;
@@ -18,6 +18,7 @@ function createService(options: { failMetadata?: boolean; failStorage?: boolean;
           const item = await reader.read();
           if (item.done) break;
           storedBytes += item.value.byteLength;
+          if (options.failStorageAfterPartial) throw new Error("storage stream failed after accepting partial bytes");
         }
       } finally {
         reader.releaseLock();
@@ -118,6 +119,20 @@ test("stream upload attempts cleanup when the Storage provider rejects the reque
   assert.equal(fixture.removed.length, 1);
 });
 
+
+
+test("stream upload removes a partially accepted Storage object when the provider fails mid-stream", async () => {
+  const fixture = createService({ failStorageAfterPartial: true });
+  const payload = new Uint8Array([...pngHeader, ...new Uint8Array(32).fill(0x5a)]);
+  await assert.rejects(fixture.service.uploadStream({
+    contentId, kind: "image", mimeType: "image/png", contentLength: payload.byteLength,
+    body: streamOf(payload, 12)
+  }), /storage stream failed after accepting partial bytes/);
+  assert.ok(fixture.storedBytes > 0, "the fake Storage provider must accept some bytes before failing");
+  assert.equal(fixture.saved.length, 0, "metadata must not be saved after a partial Storage failure");
+  assert.equal(fixture.removed.length, 1, "the deterministic object key must be removed after partial acceptance");
+  assert.match(fixture.removed[0]!, new RegExp("^content/" + contentId + "/"));
+});
 
 test("stream upload rejects a body shorter than its declared Content-Length", async () => {
   const fixture = createService();
