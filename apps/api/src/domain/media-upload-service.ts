@@ -76,6 +76,7 @@ export class MediaUploadService {
     let prefix = new Uint8Array(0);
     let validated = false;
     let ended = false;
+    let validationError: Error | undefined;
     const boundedBody = new ReadableStream<Uint8Array>({
       async pull(controller) {
         try {
@@ -83,15 +84,15 @@ export class MediaUploadService {
           const result = await reader.read();
           if (result.done) {
             ended = true;
-            if (total !== input.contentLength) throw new Error("Media upload length does not match Content-Length.");
+            if (total !== input.contentLength) { validationError = new Error("Media upload length does not match Content-Length."); throw validationError; }
             if (!validated && matchesSignature(input.mimeType, prefix)) validated = true;
-            if (!validated) throw new Error("Media content does not match its declared MIME type.");
+            if (!validated) { validationError = new Error("Media content does not match its declared MIME type."); throw validationError; }
             controller.close();
             return;
           }
           const chunk = result.value;
           total += chunk.byteLength;
-          if (total > limit || total > input.contentLength) throw new Error("Media upload exceeds the configured size limit.");
+          if (total > limit || total > input.contentLength) { validationError = new Error("Media upload exceeds the configured size limit."); throw validationError; }
           if (!validated) {
             const needed = Math.max(0, 12 - prefix.byteLength);
             const head = chunk.slice(0, needed);
@@ -100,7 +101,7 @@ export class MediaUploadService {
             combined.set(head, prefix.byteLength);
             prefix = combined;
             if (prefix.byteLength >= 12) {
-              if (!matchesSignature(input.mimeType, prefix)) throw new Error("Media content does not match its declared MIME type.");
+              if (!matchesSignature(input.mimeType, prefix)) { validationError = new Error("Media content does not match its declared MIME type."); throw validationError; }
               validated = true;
             }
           }
@@ -133,6 +134,9 @@ export class MediaUploadService {
       // The upstream may have accepted part or all of the stream before returning
       // an error, so clean up the deterministic key even when uploadStream rejects.
       try { await this.storage.remove(key); } catch {}
+      // Fetch/Storage may wrap a source-stream validation failure in a TypeError.
+      // Preserve the domain validation error so the HTTP layer returns 400, not 502.
+      if (validationError) throw validationError;
       throw error;
     } finally {
       input.signal?.removeEventListener("abort", cancelOnAbort);
