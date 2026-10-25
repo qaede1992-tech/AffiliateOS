@@ -1,5 +1,5 @@
 import type { EntityId } from "@affiliateos/shared";
-import type { Affiliate, Campaign, CampaignOffer, Click, Commission, Content, ContentProduct, Conversion, Offer, Product, TrackingLink, SocialAccount } from "@affiliateos/shared";
+import type { Affiliate, AffiliateOffer, Campaign, CampaignOffer, Click, Commission, Content, ContentProduct, Conversion, Offer, Product, TrackingLink, SocialAccount } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
