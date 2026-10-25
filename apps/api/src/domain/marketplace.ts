@@ -101,6 +101,44 @@ export class MarketplaceService {
     let importedOffers = 0;
     let skippedItems = 0;
     const affiliateOfferIds: string[] = [];
+    const normalizedProductIds = input.items.map((item) => item.externalProductId.trim());
+    const externalOfferIds = input.items.map((item) => item.externalOfferId?.trim() || `feed:${item.externalProductId.trim()}`);
+    const hasDuplicateProductIds = new Set(normalizedProductIds).size !== normalizedProductIds.length;
+    const hasDuplicateOfferIds = new Set(externalOfferIds).size !== externalOfferIds.length;
+    if (this.products.upsertManyByMarketplaceProduct && this.offers.findByAccountOffers && this.offers.saveManyById && !hasDuplicateProductIds && !hasDuplicateOfferIds) {
+      const productEntities: Product[] = input.items.map((item) => {
+        const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl: item.imageUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+        validateMarketplaceProductInput(productInput);
+        const timestamp = now();
+        return { id: randomUUID(), marketplaceId: connection.id, externalProductId: item.externalProductId.trim(), name: item.name.trim(), description: item.description?.trim(), category: item.category?.trim(), priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: item.ratingMilli, reviewCount: item.reviewCount ?? 0, soldCount: item.soldCount ?? 0, discoverySignals: normalizeDiscoverySignals(productInput.metadata), imageUrl: item.imageUrl, videoUrl: item.videoUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: timestamp, updatedAt: timestamp };
+      });
+      const savedProducts = await this.products.upsertManyByMarketplaceProduct(productEntities);
+      const productByExternalId = new Map(savedProducts.map((product) => [product.externalProductId, product]));
+      const offerIdsToFind = [...externalOfferIds];
+      input.items.forEach((item, index) => {
+        if (externalOfferIds[index] === `feed:${item.externalProductId.trim()}`) offerIdsToFind.push(`csv:${item.externalProductId.trim()}`);
+      });
+      const existingOffers = await this.offers.findByAccountOffers(account.id, [...new Set(offerIdsToFind)]);
+      const existingByExternalId = new Map(existingOffers.map((offer) => [offer.externalOfferId, offer]));
+      const offersToSave: AffiliateOffer[] = input.items.map((item, index) => {
+        const externalOfferId = externalOfferIds[index]!;
+        const existing = existingByExternalId.get(externalOfferId) ?? (externalOfferId === `feed:${item.externalProductId.trim()}` ? existingByExternalId.get(`csv:${item.externalProductId.trim()}`) : undefined);
+        const product = productByExternalId.get(item.externalProductId.trim());
+        if (!product) throw new Error("Bulk Shopee import did not return every saved product.");
+        const timestamp = now();
+        return { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
+      });
+      const savedOffers = await this.offers.saveManyById(offersToSave);
+      const savedByExternalId = new Map(savedOffers.map((offer) => [offer.externalOfferId, offer]));
+      for (const externalOfferId of externalOfferIds) {
+        const offer = savedByExternalId.get(externalOfferId);
+        if (!offer) throw new Error("Bulk Shopee import did not return every saved affiliate offer.");
+        affiliateOfferIds.push(offer.id);
+      }
+      importedProducts = savedProducts.length;
+      importedOffers = savedOffers.length;
+      return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds };
+    }
     for (const item of input.items) {
       const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl: item.imageUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
       const product = await this.persistProduct(connection, productInput);
