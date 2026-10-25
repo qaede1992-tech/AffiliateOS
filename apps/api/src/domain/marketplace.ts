@@ -122,7 +122,7 @@ export class MarketplaceService {
       const existingByExternalId = new Map(existingOffers.map((offer) => [offer.externalOfferId, offer]));
       const offersToSave: AffiliateOffer[] = input.items.map((item, index) => {
         const externalOfferId = externalOfferIds[index]!;
-        const existing = existingByExternalId.get(externalOfferId) ?? (externalOfferId === `feed:${item.externalProductId.trim()}` ? existingByExternalId.get(`csv:${item.externalProductId.trim()}`) : undefined);
+        const existing = existingByExternalId.get(externalOfferId) ?? (externalOfferId === `feed:${item.externalProductId}` ? existingByExternalId.get(`csv:${item.externalProductId}`) : undefined);
         const product = productByExternalId.get(item.externalProductId.trim());
         if (!product) throw new Error("Bulk Shopee import did not return every saved product.");
         const timestamp = now();
