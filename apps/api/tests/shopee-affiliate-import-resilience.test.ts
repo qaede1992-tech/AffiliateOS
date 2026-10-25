@@ -10,7 +10,7 @@ import {
   InMemoryRepository
 } from "../src/domain/repository.js";
 import type { Affiliate } from "@affiliateos/shared";
-import { createApp } from "../src/http/app.js";
+import { createApp } from "../src/app.js";
 
 function setup() {
   const connections = new InMemoryMarketplaceConnectionRepository();
