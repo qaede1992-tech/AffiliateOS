@@ -102,7 +102,7 @@ export class MarketplaceService {
     let skippedItems = 0;
     const affiliateOfferIds: string[] = [];
     const normalizedProductIds = input.items.map((item) => item.externalProductId.trim());
-    const externalOfferIds = input.items.map((item) => item.externalOfferId?.trim() || `feed:${item.externalProductId.trim()}`);
+    const externalOfferIds = input.items.map((item) => item.externalOfferId?.trim() || `feed:${item.externalProductId}`);
     const hasDuplicateProductIds = new Set(normalizedProductIds).size !== normalizedProductIds.length;
     const hasDuplicateOfferIds = new Set(externalOfferIds).size !== externalOfferIds.length;
     if (this.products.upsertManyByMarketplaceProduct && this.offers.findByAccountOffers && this.offers.saveManyById && !hasDuplicateProductIds && !hasDuplicateOfferIds) {
@@ -116,7 +116,7 @@ export class MarketplaceService {
       const productByExternalId = new Map(savedProducts.map((product) => [product.externalProductId, product]));
       const offerIdsToFind = [...externalOfferIds];
       input.items.forEach((item, index) => {
-        if (externalOfferIds[index] === `feed:${item.externalProductId.trim()}`) offerIdsToFind.push(`csv:${item.externalProductId.trim()}`);
+        if (externalOfferIds[index] === `feed:${item.externalProductId}`) offerIdsToFind.push(`csv:${item.externalProductId}`);
       });
       const existingOffers = await this.offers.findByAccountOffers(account.id, [...new Set(offerIdsToFind)]);
       const existingByExternalId = new Map(existingOffers.map((offer) => [offer.externalOfferId, offer]));
