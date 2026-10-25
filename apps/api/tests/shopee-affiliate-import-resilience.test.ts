@@ -134,7 +134,7 @@ test("CSV HTTP endpoint accepts a 1,000-row file and safely re-imports it", asyn
         `https://s.shopee.co.id/bulk-${id}`
       ].join(",");
     });
-    const csv = [header, ...rows].join("\\n");
+    const csv = [header, ...rows].join("\n");
     const request = {
       method: "POST" as const,
       url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
