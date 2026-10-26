@@ -26,7 +26,7 @@ try {
     CROSS JOIN (VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) AS p(privilege)
     WHERE n.nspname = 'public'
       AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-      AND has_table_privilege(r.rolname, c.oid, p.privilege)
+      AND has_table_privilege(r.rolname::name, c.oid, p.privilege)
     ORDER BY c.relname, r.rolname, p.privilege
   `);
   const { rows: sequenceRows } = await client.query(`
@@ -37,7 +37,7 @@ try {
     CROSS JOIN (VALUES ('USAGE'), ('SELECT'), ('UPDATE')) AS p(privilege)
     WHERE n.nspname = 'public'
       AND c.relkind = 'S'
-      AND has_sequence_privilege(r.rolname, c.oid, p.privilege)
+      AND has_sequence_privilege(r.rolname::name, c.oid, p.privilege)
     ORDER BY c.relname, r.rolname, p.privilege
   `);
   const { rows: routineRows } = await client.query(`
@@ -46,7 +46,7 @@ try {
     JOIN pg_namespace n ON n.oid = p.pronamespace
     CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
     WHERE n.nspname = 'public'
-      AND has_function_privilege(r.rolname, p.oid, 'EXECUTE')
+      AND has_function_privilege(r.rolname::name, p.oid, 'EXECUTE')
     ORDER BY p.proname, r.rolname
   `);
   const { rows: defaultAclRows } = await client.query(`
