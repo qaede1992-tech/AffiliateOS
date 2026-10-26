@@ -161,8 +161,7 @@ describe("MediaUploadService", () => {
       body,
       contentLength: 9
     }), /does not match its declared MIME type/);
-    assert.equal(removed.length, 1);
-    assert.ok(removed[0].startsWith("content/123e4567-e89b-42d3-a456-426614174000/"));
+    assert.equal(removed.length, 0, "Storage must not be called for structurally invalid media");
   });
 
   it("cleans up a streamed object if streamed metadata persistence fails", async () => {
