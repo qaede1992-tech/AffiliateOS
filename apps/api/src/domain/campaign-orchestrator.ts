@@ -48,11 +48,12 @@ const trackingCodeCandidate = (existing: Awaited<ReturnType<TrackingService["lis
 export class DeterministicCampaignContentGenerator implements CampaignContentGenerator {
   generate(input: { product: Product; offer: AffiliateOffer; opportunity: ScoredOpportunity; platform: ContentPlatform }): GeneratedCampaignContent {
     const productName = input.product.name.trim();
-    const price = new Intl.NumberFormat("en-US", { style: "currency", currency: input.offer.currency ?? input.product.currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
-    const title = `${productName}: worth a look?`;
-    const caption = `${productName} is currently available for ${price}. ${input.opportunity.reasons.slice(0, 2).join(" ")} Check the offer and compare the details before buying.`;
-    const script = `Hook: Looking for ${productName}?\nHighlight: ${input.product.description?.trim() || "See the product details and current offer."}\nValue: Current offer price is ${price}.\nCTA: Check the offer through the link.`;
-    return { platform: input.platform, title, caption, script, cta: "Check the offer" };
+    const currency = input.offer.currency ?? input.product.currency;
+    const price = new Intl.NumberFormat("id-ID", { style: "currency", currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
+    const title = productName;
+    const caption = `${productName}. Harga pada katalog saat ini ${price}. Periksa kembali harga, spesifikasi, dan ketersediaan pada halaman produk sebelum membeli.`;
+    const script = `Pembuka: Sedang mencari ${productName}?\nDetail: ${input.product.description?.trim() || "Lihat detail produk dan penawaran yang tersedia."}\nHarga: Harga pada katalog saat ini ${price}; cek kembali harga terbaru pada halaman produk.\nAjakan: Buka tautan untuk melihat detail penawaran.`;
+    return { platform: input.platform, title, caption, script, cta: "Lihat detail produk" };
   }
 }
 
