@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { Client } from "pg";
 
 if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
@@ -87,11 +88,11 @@ try {
   await client.query("BEGIN");
   try {
     await client.query("SET LOCAL ROLE affiliateos_runtime");
-    const id = "11111111-2222-4333-8444-555555555555";
+    const id = randomUUID();
     const inserted = await client.query(
       "INSERT INTO public.affiliates (id, name, email, status, created_at) " +
       "VALUES ($1, $2, $3, $4, now()) RETURNING id",
-      [id, "CI runtime role fixture", "ci-runtime-role@example.invalid", "active"]
+      [id, "CI runtime role fixture", "ci-runtime-" + id + "@example.invalid", "active"]
     );
     assert.equal(inserted.rowCount, 1, "Runtime role must be able to insert through RLS.");
     const updated = await client.query(
