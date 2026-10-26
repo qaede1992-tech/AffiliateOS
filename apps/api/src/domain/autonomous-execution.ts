@@ -16,6 +16,8 @@ export type AutonomousExecutionInput = {
   scheduledAt?: string;
   idempotencyNamespace?: string;
   requirePublishableMedia?: boolean;
+  /** When false, autonomous runs may create drafts but must not schedule publication. */
+  publicationEnabled?: boolean;
   requireCommissionSignal?: boolean;
   /** Maximum products per automatically grouped story; set to 1 to disable grouping. */
   storyMaxProducts?: number;
@@ -69,7 +71,7 @@ export class AutonomousExecutionService {
         if (scored.offerId !== run.offerId) continue;
         const opportunity: ScoredOpportunity = scored;
         try {
-          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: run.idempotencyKey });
+          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: input.publicationEnabled === false ? undefined : (context?.scheduledAt ?? input.scheduledAt), idempotencyKey: run.idempotencyKey });
           recoveredKeys.add(run.idempotencyKey);
           recoveredRunCount += 1;
         } catch {
@@ -176,7 +178,7 @@ export class AutonomousExecutionService {
           product: primary.opportunity.product,
           audience: input.audience,
           platforms: input.platforms,
-          scheduledAt: input.scheduledAt,
+          scheduledAt: input.publicationEnabled === false ? undefined : input.scheduledAt,
           idempotencyKey: primary.idempotencyKey,
           ...(storyProducts.length ? { storyProducts } : {})
         });
