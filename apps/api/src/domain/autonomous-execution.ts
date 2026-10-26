@@ -59,9 +59,16 @@ export class AutonomousExecutionService {
       const recoverable = await this.autonomousRuns.listRecoverable();
       for (const run of recoverable) {
         const candidate = input.candidates.find((item) => item.product.id === run.opportunityProductId);
-        const offer = candidate?.offers.find((item) => item.id === run.offerId);
-        if (!candidate || !offer) continue;
-        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active" || !isExecutableAffiliateOffer(candidate.product.id, offer)) continue;
+        if (!candidate) continue;
+        const offer = candidate.offers.find((item) => item.id === run.offerId);
+        if (!offer) {
+          await this.autonomousRuns.markUnrecoverable(run.id, "The original affiliate offer is no longer available under the active marketplace account.");
+          continue;
+        }
+        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active" || !isExecutableAffiliateOffer(candidate.product.id, offer)) {
+          await this.autonomousRuns.markUnrecoverable(run.id, "The original product or affiliate offer is no longer eligible for autonomous execution.");
+          continue;
+        }
         const performanceSignal = performance.get(candidate.product.marketplaceId + ":" + candidate.product.id) ?? performance.get(candidate.product.id);
         if (performanceSignal?.anomaly === "halt" || performanceSignal?.anomalyRecovery === "recovering") continue;
         const context = run.executionContext;
