@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { Client } from "pg";
 
 // This deliberately removes migration 0060's schema objects and its ledger row.
- // Later ledger rows are also removed so Drizzle can replay migrations in
- // timestamp order instead of treating a later timestamp as already applied.
+// Later ledger rows are also removed so Drizzle can replay migrations in
+// timestamp order instead of treating a later timestamp as already applied.
 if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
   throw new Error("Refusing the pending-0060 simulation outside a GitHub Actions CI runner.");
 }
