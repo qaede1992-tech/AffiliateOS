@@ -253,6 +253,37 @@ try {
        LEFT JOIN pg_namespace tn ON tn.oid = t.relnamespace
       WHERE rn.nspname = 'public' AND r.relname = 'content_products' AND c.contype IN ('f', 'u', 'p')`
   );
+
+  // Migration 0061 requires composite primary keys on both link tables.
+  // A UNIQUE constraint alone is not equivalent for schema-contract purposes.
+  const { rows: compositePrimaryKeyRows } = await client.query(
+    `SELECT r.relname AS table_name,
+            array_agg(a.attname::text ORDER BY k.ordinality)::text[] AS columns
+       FROM pg_constraint c
+       JOIN pg_class r ON r.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = r.relnamespace
+       JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality) ON true
+       JOIN pg_attribute a ON a.attrelid = r.oid AND a.attnum = k.attnum
+      WHERE n.nspname = 'public'
+        AND c.contype = 'p'
+        AND r.relname = ANY($1::text[])
+      GROUP BY r.relname`,
+    [[ "campaign_offers", "content_products" ]]
+  );
+  const compositePrimaryKeys = new Map(
+    compositePrimaryKeyRows.map((row) => [row.table_name, row.columns])
+  );
+  for (const [table, expectedColumns] of [
+    ["campaign_offers", ["campaign_id", "affiliate_offer_id"]],
+    ["content_products", ["content_id", "product_id"]]
+  ]) {
+    const actualColumns = compositePrimaryKeys.get(table);
+    if (!actualColumns || JSON.stringify(actualColumns) !== JSON.stringify(expectedColumns)) {
+      errors.push(
+        `Expected public.${table} primary key (${expectedColumns.join(", ")}); found ${actualColumns ? `(${actualColumns.join(", ")})` : "no primary key"}.`
+      );
+    }
+  }
   const normalizeConstraintDefinition = (definition) =>
     definition.toLowerCase().replaceAll('"', "").replace(/\s+/g, " ").trim();
   const hasForeignKey = (column, table) => contentProductConstraints.some((constraint) =>
