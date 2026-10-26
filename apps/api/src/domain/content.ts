@@ -35,14 +35,17 @@ export class ContentService {
     if (!content.productId) throw new DomainError("CONTENT_PRODUCT_REQUIRED", "Content must reference a product before product media can be attached.", 400);
     const product = await this.products.findById(content.productId);
     if (!product) throw new DomainError("PRODUCT_NOT_FOUND", "The content product does not exist.", 404);
+    const selected = [...new Set(kinds)].map((kind) => {
+      const reference = kind === "image" ? product.imageUrl : product.videoUrl;
+      if (!reference) throw new DomainError("PRODUCT_MEDIA_NOT_AVAILABLE", `The product has no ${kind} URL to attach.`, 409);
+      if (!isPublicMediaUrl(reference)) throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `Product ${kind} media must use a valid HTTPS URL.`, 400);
+      return { kind, reference };
+    });
     const existing = await this.mediaAssets.listByContent(content.id);
     const mediaAssetIds = [...(content.mediaAssetIds ?? [])];
     const attached: string[] = [];
     const nowAt = now();
-    for (const kind of [...new Set(kinds)]) {
-      const reference = kind === "image" ? product.imageUrl : product.videoUrl;
-      if (!reference) throw new DomainError("PRODUCT_MEDIA_NOT_AVAILABLE", `The product has no ${kind} URL to attach.`, 409);
-      if (!isPublicMediaUrl(reference)) throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `Product ${kind} media must use a valid HTTPS URL.`, 400);
+    for (const { kind, reference } of selected) {
       let asset = existing.find((candidate) => candidate.kind === kind && candidate.source === "url" && candidate.reference === reference);
       if (!asset) {
         asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind, source: "url", reference, createdAt: nowAt, updatedAt: nowAt });
