@@ -23,6 +23,9 @@ export class AutonomousRunService {
       const concurrent = await this.runs.findByIdempotencyKey(input.idempotencyKey); if (concurrent) return concurrent; throw error;
     }
   }
+  async hasCompletedOpportunity(productId: EntityId, offerId: EntityId): Promise<boolean> {
+    return this.runs.hasCompletedOpportunity ? this.runs.hasCompletedOpportunity(productId, offerId) : false;
+  }
   async findById(id: EntityId): Promise<AutonomousRun> {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
     if (!run) throw new DomainError("AUTONOMOUS_RUN_NOT_FOUND", "The autonomous run does not exist.", 404);
