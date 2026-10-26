@@ -258,7 +258,7 @@ try {
   // A UNIQUE constraint alone is not equivalent for schema-contract purposes.
   const { rows: compositePrimaryKeyRows } = await client.query(
     `SELECT r.relname AS table_name,
-            array_agg(a.attname ORDER BY k.ordinality) AS columns
+            array_agg(a.attname::text ORDER BY k.ordinality)::text[] AS columns
        FROM pg_constraint c
        JOIN pg_class r ON r.oid = c.conrelid
        JOIN pg_namespace n ON n.oid = r.relnamespace
