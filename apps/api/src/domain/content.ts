@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Campaign, Content, CreateContentRequest, CreateSocialAccountRequest, Product, SocialAccount, SocialAccountView, UpdateContentRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
+import { isPublicMediaUrl, type MediaAssetRepository } from "./media-asset.js";
 import type { Repository, SocialAccountRepository } from "./repository.js";
 
 const now = () => new Date().toISOString();
@@ -17,7 +18,7 @@ function isOpaqueCredentialReference(value: string): boolean { return /^(?:[a-z]
 export function validateOpaqueCredentialReference(value: string | undefined): void { if (value !== undefined && (!value.trim() || !isOpaqueCredentialReference(value.trim()))) throw new DomainError("INVALID_SOCIAL_CREDENTIAL_REFERENCE", "Social credential references must be opaque secret-manager references.", 400); }
 
 export class ContentService {
-  constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>) {}
+  constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>, private readonly mediaAssets?: MediaAssetRepository) {}
   async list(campaignId?: string) { const items = await this.contents.list(); if (campaignId) { await this.getCampaign(campaignId); return items.filter((item) => item.campaignId === campaignId); } return items; }
   async get(id: string) { const content = await this.contents.findById(id); if (!content) throw new DomainError("CONTENT_NOT_FOUND", "The content does not exist.", 404); return content; }
   async validateProductForPublication(productId: string): Promise<Product> {
@@ -28,6 +29,31 @@ export class ContentService {
   }
   async validatePublicationEligibility(content: Content): Promise<void> { if (content.contentType !== "affiliate-promotion" || !content.productId) return; await this.validateProductForPublication(content.productId); }
   async create(input: CreateContentRequest) { await this.validateReferences(input.campaignId, input.productId); const nextStatus = input.status ?? "draft"; validateContentTiming(nextStatus, input.scheduledAt, input.publishedAt); const draftContent = { productId: input.productId, contentType: input.contentType } as Content; if (nextStatus === "scheduled" || nextStatus === "published") await this.validatePublicationEligibility(draftContent); const createdAt = now(); return this.contents.save({ id: randomUUID(), productId: input.productId, campaignId: input.campaignId, socialAccountId: input.socialAccountId, mediaAssetIds: input.mediaAssetIds ? [...input.mediaAssetIds] : undefined, platform: input.platform, contentType: input.contentType, title: input.title, caption: input.caption, script: input.script, cta: input.cta, status: input.status ?? "draft", scheduledAt: input.scheduledAt, publishedAt: input.publishedAt, createdAt, updatedAt: createdAt }); }
+  async attachProductMedia(id: string, kinds: Array<"image" | "video">) {
+    if (!this.mediaAssets) throw new DomainError("CONTENT_MEDIA_UNAVAILABLE", "Content media assets are not configured.", 503);
+    const content = await this.get(id);
+    if (!content.productId) throw new DomainError("CONTENT_PRODUCT_REQUIRED", "Content must reference a product before product media can be attached.", 400);
+    const product = await this.products.findById(content.productId);
+    if (!product) throw new DomainError("PRODUCT_NOT_FOUND", "The content product does not exist.", 404);
+    const existing = await this.mediaAssets.listByContent(content.id);
+    const mediaAssetIds = [...(content.mediaAssetIds ?? [])];
+    const attached: string[] = [];
+    const nowAt = now();
+    for (const kind of [...new Set(kinds)]) {
+      const reference = kind === "image" ? product.imageUrl : product.videoUrl;
+      if (!reference) throw new DomainError("PRODUCT_MEDIA_NOT_AVAILABLE", `The product has no ${kind} URL to attach.`, 409);
+      if (!isPublicMediaUrl(reference)) throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `Product ${kind} media must use a valid HTTPS URL.`, 400);
+      let asset = existing.find((candidate) => candidate.kind === kind && candidate.source === "url" && candidate.reference === reference);
+      if (!asset) {
+        asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind, source: "url", reference, createdAt: nowAt, updatedAt: nowAt });
+        existing.push(asset);
+      }
+      if (!mediaAssetIds.includes(asset.id)) mediaAssetIds.push(asset.id);
+      attached.push(asset.id);
+    }
+    const updated = await this.update(content.id, { mediaAssetIds });
+    return { content: updated, attachedMediaAssetIds: attached };
+  }
   async update(id: string, input: UpdateContentRequest) { const current = await this.get(id); const productId = input.productId ?? current.productId; await this.validateReferences(input.campaignId ?? current.campaignId, productId); const nextStatus = input.status ?? current.status; validateContentTransition(current.status, input.status); validateContentTiming(nextStatus, input.scheduledAt ?? current.scheduledAt, input.publishedAt ?? current.publishedAt); const nextContent = { ...current, ...input, productId, mediaAssetIds: input.mediaAssetIds ? [...input.mediaAssetIds] : current.mediaAssetIds, updatedAt: now() }; if (nextStatus === "scheduled" || nextStatus === "published") await this.validatePublicationEligibility(nextContent); return this.contents.save(nextContent); }
   private async getCampaign(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
   private async validateReferences(campaignId?: string, productId?: string) { if (campaignId) await this.getCampaign(campaignId); if (productId && !(await this.products.findById(productId))) throw new DomainError("PRODUCT_NOT_FOUND", "The product does not exist.", 404); }
