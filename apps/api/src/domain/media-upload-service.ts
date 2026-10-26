@@ -93,7 +93,14 @@ export class MediaUploadService {
     const id = randomUUID();
     const now = new Date().toISOString();
     const key = `content/${input.contentId}/${id}.${extensionByType[input.mimeType]}`;
-    const stored = await this.storage.upload({ key, bytes, contentType: input.mimeType });
+    let stored: { bucket: string; key: string };
+    try {
+      stored = await this.storage.upload({ key, bytes, contentType: input.mimeType });
+    } catch (error) {
+      // A provider can accept an object and still return an error; compensate by key.
+      try { await this.storage.remove(key); } catch {}
+      throw error;
+    }
     const asset: MediaAsset = {
       id, contentId: input.contentId, kind: input.kind, source: "object-storage",
       reference: `${stored.bucket}/${stored.key}`, mimeType: input.mimeType, byteSize: total,
