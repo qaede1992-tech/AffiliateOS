@@ -521,7 +521,7 @@ describe("campaign orchestrator", () => {
 
     assert.equal(generated.title, productIdr.name);
     assert.match(generated.caption, /Harga pada katalog saat ini/);
-    assert.match(generated.caption, /Rp\\s?55\\.000/);
+    assert.match(generated.caption, /Rp\s?55\.000/);
     assert.match(generated.script, /Sedang mencari/);
     assert.equal(generated.cta, "Lihat detail produk");
     assert.doesNotMatch(generated.caption, /Strong commission potential/);
