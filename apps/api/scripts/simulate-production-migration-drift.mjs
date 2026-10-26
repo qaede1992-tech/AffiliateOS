@@ -30,16 +30,17 @@ try {
   try {
     // Recreate the audited production condition only inside the ephemeral CI DB:
     // historical 0056/0057 and candidate 0058/0059 ledger rows are absent,
-    // and their schema objects are absent. If a later migration has already
-    // been applied, remove its ledger row too so Drizzle can replay the
-    // forward repair migration in timestamp order. All unrelated history remains.
+    // and their schema objects are absent. Remove every later reconciliation
+    // migration ledger row as well, including 0063, so Drizzle can replay the
+    // entire forward repair chain. Its indexes are intentionally left in place;
+    // 0063 uses CREATE INDEX IF NOT EXISTS and must remain safely repeatable.
     await client.query("DROP TABLE IF EXISTS public.content_products");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[1791676800000, 1791763200000, 1794050404000, 1794050405000, 1794050405001, 1794050405002, 1794050405003]]
+      [[1791676800000, 1791763200000, 1794050404000, 1794050405000, 1794050405001, 1794050405002, 1794050405003, 1794050405004]]
     );
     await client.query("COMMIT");
   } catch (error) {
