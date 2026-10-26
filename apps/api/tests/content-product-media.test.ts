@@ -42,7 +42,7 @@ test("attaches a product image URL and reuses it on repeated selection", async (
 });
 
 test("attaches video URL without disturbing manually assigned media IDs", async () => {
-  const { service, mediaAssets, contentId, contents, content } = setup({
+  const { service, mediaAssets, contentId, contents, content } = await setup({
     videoUrl: "https://cdn.example/video.mp4", mediaAssetIds: [manualAssetId]
   });
   await mediaAssets.save({
