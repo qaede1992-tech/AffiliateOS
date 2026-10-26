@@ -53,6 +53,7 @@ export class AutonomousExecutionService {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const recoveredKeys = new Set<string>();
+    const recoveredOpportunityKeys = new Set<string>();
     let recoveredRunCount = 0;
     if (this.autonomousRuns) {
       const recoverable = await this.autonomousRuns.listRecoverable();
@@ -73,16 +74,26 @@ export class AutonomousExecutionService {
         try {
           await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: input.publicationEnabled === false ? undefined : (context?.scheduledAt ?? input.scheduledAt), idempotencyKey: run.idempotencyKey });
           recoveredKeys.add(run.idempotencyKey);
+          recoveredOpportunityKeys.add(`${candidate.product.id}:${offer.id}`);
           recoveredRunCount += 1;
         } catch {
           // Keep the run recoverable for a later cycle; the orchestrator records the failure state.
         }
       }
     }
+    const selectionCandidates = await Promise.all(input.candidates.map(async (candidate) => {
+      const offers = await Promise.all(candidate.offers.map(async (candidateOffer) => {
+        const key = `${candidate.product.id}:${candidateOffer.id}`;
+        if (recoveredOpportunityKeys.has(key)) return undefined;
+        if (this.autonomousRuns && await this.autonomousRuns.hasCompletedOpportunity(candidate.product.id, candidateOffer.id)) return undefined;
+        return candidateOffer;
+      }));
+      return { ...candidate, offers: offers.filter((candidateOffer): candidateOffer is AffiliateOffer => candidateOffer !== undefined) };
+    }));
     const adaptiveExplorationRates = this.adaptiveExploration
-      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      ? await this.adaptiveExploration.getRates(selectionCandidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
-    const selection = this.selector.select(input.candidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates);
+    const selection = this.selector.select(selectionCandidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates);
     const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
@@ -109,7 +120,7 @@ export class AutonomousExecutionService {
       for (const audit of audits) auditByProductId.set(audit.productId, audit);
     }
     const candidatesByOpportunity = new Map(
-      input.candidates.flatMap((candidate) =>
+      selectionCandidates.flatMap((candidate) =>
         candidate.offers.map((offer) => [`${candidate.product.id}:${offer.id}`, { candidate, offer }] as const)
       )
     );
