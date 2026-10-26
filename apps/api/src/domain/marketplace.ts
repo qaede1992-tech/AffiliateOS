@@ -13,6 +13,19 @@ export class MarketplaceService {
   async listProviders(): Promise<MarketplaceProviderInfo[]> { const configured = await this.connections.list(); return this.registry.list().map((provider) => ({ slug: provider.slug, displayName: provider.displayName, connectionMode: provider.connectionMode, configured: configured.some((connection) => connection.providerSlug === provider.slug), capabilities: [...provider.capabilities], supportsConnectionTest: Boolean(provider.testConnection) })); }
   async listConnections(): Promise<MarketplaceConnectionView[]> { return (await this.connections.list()).map(this.toView); }
   async listProducts(): Promise<Product[]> { return this.products.list(); }
+  async updateProductMedia(productId: string, input: { imageUrl?: string | null; videoUrl?: string | null }): Promise<Product> {
+    const id = productId.trim();
+    if (!id) throw new DomainError("INVALID_PRODUCT_ID", "Product ID is required.", 400);
+    const product = await this.products.findById(id);
+    if (!product) throw new DomainError("PRODUCT_NOT_FOUND", "The product does not exist.", 404);
+    for (const [field, value] of [["imageUrl", input.imageUrl], ["videoUrl", input.videoUrl]] as const) {
+      if (value === undefined || value === null) continue;
+      let url: URL;
+      try { url = new URL(value); } catch { throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `${field} must be a valid HTTPS URL.`, 400); }
+      if (url.protocol !== "https:" || !url.hostname || url.username || url.password) throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `${field} must be a valid HTTPS URL without embedded credentials.`, 400);
+    }
+    return this.products.save({ ...product, imageUrl: input.imageUrl === undefined ? product.imageUrl : input.imageUrl === null ? null as unknown as string : input.imageUrl, videoUrl: input.videoUrl === undefined ? product.videoUrl : input.videoUrl === null ? null as unknown as string : input.videoUrl, updatedAt: now() });
+  }
   async listAffiliateOffers(): Promise<AffiliateOffer[]> { return this.offers.list(); }
   async listAffiliateOfferVerification() {
     const offers = await this.offers.list();
