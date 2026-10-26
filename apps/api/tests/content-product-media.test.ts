@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Content, Product } from "@affiliateos/shared";
+import type { Campaign, Content, Product } from "@affiliateos/shared";
 import { ContentService } from "../src/domain/content.js";
 import { InMemoryMediaAssetRepository, InMemoryRepository } from "../src/domain/repository.js";
 
@@ -14,7 +14,8 @@ function setup(options: { imageUrl?: string; videoUrl?: string; mediaAssetIds?: 
     externalProductId: "test-product", name: "Test product", priceCents: 1000,
     currency: "IDR", reviewCount: 0, soldCount: 0, productUrl: "https://shop.example/product",
     status: "active", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
-    ...options
+    ...(options.imageUrl === undefined ? {} : { imageUrl: options.imageUrl }),
+    ...(options.videoUrl === undefined ? {} : { videoUrl: options.videoUrl })
   };
   const content: Content = {
     id: contentId, productId, platform: "instagram", contentType: "affiliate-promotion",
@@ -23,7 +24,7 @@ function setup(options: { imageUrl?: string; videoUrl?: string; mediaAssetIds?: 
   };
   const contents = new InMemoryRepository<Content>();
   const products = new InMemoryRepository<Product>();
-  const campaigns = new InMemoryRepository<{ id: string }>();
+  const campaigns = new InMemoryRepository<Campaign>();
   const mediaAssets = new InMemoryMediaAssetRepository();
   contents.save(content);
   products.save(product);
