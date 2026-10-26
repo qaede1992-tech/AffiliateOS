@@ -66,6 +66,33 @@ describe("autonomous cycle", () => {
     }
   });
 
+  it("supports draft-only cycles without requiring media or scheduling publication", async () => {
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: { id: "draft-product" } as never, offers: [] }]; }
+    };
+    const calls: Array<{ type: string; publicationEnabled?: boolean; scheduledAt?: string; requirePublishableMedia?: boolean }> = [];
+    const execution = {
+      async previewSelection(input: { publicationEnabled?: boolean; requirePublishableMedia?: boolean }) {
+        calls.push({ type: "preview", publicationEnabled: input.publicationEnabled, requirePublishableMedia: input.requirePublishableMedia });
+        return { selected: [], rejected: [], audit: [] };
+      },
+      async runOnce(input: { publicationEnabled?: boolean; scheduledAt?: string; requirePublishableMedia?: boolean }) {
+        calls.push({ type: "run", publicationEnabled: input.publicationEnabled, scheduledAt: input.scheduledAt, requirePublishableMedia: input.requirePublishableMedia });
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const service = new AutonomousCycleService(candidates, execution);
+
+    await service.previewSelection({ publicationEnabled: false });
+    const result = await service.runOnce({ publicationEnabled: false, publicationDelayMs: 60_000 });
+
+    assert.ok(result);
+    assert.equal(calls[0]?.requirePublishableMedia, false);
+    assert.equal(calls[1]?.publicationEnabled, false);
+    assert.equal(calls[1]?.scheduledAt, undefined);
+    assert.equal(calls[1]?.requirePublishableMedia, false);
+  });
+
   it("derives publication time from a configured delay", async () => {
     const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
     let scheduledAt: string | undefined;
