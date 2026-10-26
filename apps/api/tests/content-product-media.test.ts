@@ -8,7 +8,7 @@ const productId = "11111111-1111-4111-8111-111111111111";
 const contentId = "22222222-2222-4222-8222-222222222222";
 const manualAssetId = "33333333-3333-4333-8333-333333333333";
 
-function setup(options: { imageUrl?: string; videoUrl?: string; mediaAssetIds?: string[] } = {}) {
+async function setup(options: { imageUrl?: string; videoUrl?: string; mediaAssetIds?: string[] } = {}) {
   const product: Product = {
     id: productId, marketplaceId: "44444444-4444-4444-8444-444444444444",
     externalProductId: "test-product", name: "Test product", priceCents: 1000,
@@ -26,14 +26,14 @@ function setup(options: { imageUrl?: string; videoUrl?: string; mediaAssetIds?: 
   const products = new InMemoryRepository<Product>();
   const campaigns = new InMemoryRepository<Campaign>();
   const mediaAssets = new InMemoryMediaAssetRepository();
-  void contents.save(content);
-  void products.save(product);
+  await contents.save(content);
+  await products.save(product);
   const service = new ContentService(contents, campaigns, products, mediaAssets);
   return { service, contents, mediaAssets, product, content, contentId };
 }
 
 test("attaches a product image URL and reuses it on repeated selection", async () => {
-  const { service, mediaAssets, contentId } = setup({ imageUrl: "https://cdn.example/image.jpg" });
+  const { service, mediaAssets, contentId } = await setup({ imageUrl: "https://cdn.example/image.jpg" });
   const first = await service.attachProductMedia(contentId, ["image"]);
   const second = await service.attachProductMedia(contentId, ["image"]);
   assert.equal((await mediaAssets.listByContent(contentId)).length, 1);
@@ -57,7 +57,7 @@ test("attaches video URL without disturbing manually assigned media IDs", async 
 });
 
 test("rejects a selected product media kind when its URL is missing", async () => {
-  const { service, mediaAssets, contentId } = setup();
+  const { service, mediaAssets, contentId } = await setup();
   await assert.rejects(
     service.attachProductMedia(contentId, ["image"]),
     (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "PRODUCT_MEDIA_NOT_AVAILABLE")
