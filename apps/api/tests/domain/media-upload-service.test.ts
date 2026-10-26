@@ -4,7 +4,7 @@ import type { MediaAsset, MediaAssetRepository } from "../../src/domain/media-as
 import { MediaUploadService } from "../../src/domain/media-upload-service.js";
 import type { SupabaseStorageClient, StoredObject } from "../../src/domain/supabase-storage.js";
 
-const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+const png = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64"));
 const makeService = (options: { contentExists?: boolean; failSave?: boolean; maxImageBytes?: number } = {}) => {
   const saved: MediaAsset[] = [];
   const uploaded: Array<{ key: string; bytes: Uint8Array; contentType: string }> = [];
@@ -119,7 +119,7 @@ describe("MediaUploadService", () => {
     assert.equal(removed.length, 0);
   });
 
-  it("preserves a MIME-signature validation error when Storage wraps the stream failure", async () => {
+  it("rejects structurally invalid media before calling Storage", async () => {
     const removed: string[] = [];
     const storage = {
       async uploadStream(input: { key: string; body: ReadableStream<Uint8Array> }) {
