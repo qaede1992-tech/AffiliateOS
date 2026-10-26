@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AffiliateOffer, Campaign, Content, Product, TrackingLink } from "@affiliateos/shared";
-import { CampaignOrchestrator } from "../../src/domain/campaign-orchestrator.js";
+import { CampaignOrchestrator, DeterministicCampaignContentGenerator } from "../../src/domain/campaign-orchestrator.js";
 import { AutonomousRunService } from "../../src/domain/autonomous-run-service.js";
 import { InMemoryAutonomousRunRepository } from "../../src/domain/autonomous-run.js";
 import type { ScoredOpportunity } from "../../src/domain/opportunity-scoring.js";
@@ -497,6 +497,34 @@ describe("campaign orchestrator", () => {
     assert.equal(content.created.length, firstContentCount);
     assert.equal(stories.length, firstStoryCount);
     assert.equal(stories[0]?.map((item) => item.productId).join(","), [product.id, secondProduct.id].join(","));
+  });
+
+  it("generates Indonesian campaign copy without exposing internal scoring reasons", () => {
+    const productIdr: Product = {
+      ...product,
+      name: "Kursi Lipat Lesehan Sofa Lantai Minimalis Floor Chair",
+      currency: "IDR",
+      priceCents: 5_500_000
+    };
+    const offerIdr: AffiliateOffer = {
+      ...offer,
+      productId: productIdr.id,
+      currency: "IDR",
+      priceCents: 5_500_000
+    };
+    const generated = new DeterministicCampaignContentGenerator().generate({
+      product: productIdr,
+      offer: offerIdr,
+      opportunity: { ...opportunity, product: productIdr, offerId: offerIdr.id, reasons: ["Strong commission potential"] },
+      platform: "instagram"
+    });
+
+    assert.equal(generated.title, productIdr.name);
+    assert.match(generated.caption, /Harga pada katalog saat ini/);
+    assert.match(generated.caption, /Rp\s?55\.000/);
+    assert.match(generated.script, /Sedang mencari/);
+    assert.equal(generated.cta, "Lihat detail produk");
+    assert.doesNotMatch(generated.caption, /Strong commission potential/);
   });
 
 });
