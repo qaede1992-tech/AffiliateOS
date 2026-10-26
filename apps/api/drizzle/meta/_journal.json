@@ -414,6 +414,13 @@
       "when": 1794050405003,
       "tag": "0062_runtime_role_rls_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794050405004,
+      "tag": "0063_index_uncovered_foreign_keys",
+      "breakpoints": true
     }
   ]
 }
