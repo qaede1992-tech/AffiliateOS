@@ -64,23 +64,13 @@ describe("MediaUploadService", () => {
     assert.equal(unsupported.uploaded.length, 0);
   });
 
-  it("streams validated PNG chunks to Storage before saving metadata", async () => {
+  it("uploads the fully validated PNG bytes to Storage before saving metadata", async () => {
     const saved: MediaAsset[] = [];
-    const storageCalls: Array<{ contentType: string; contentLength: number; chunks: number }> = [];
+    const storageCalls: Array<{ contentType: string; contentLength: number }> = [];
     const removed: string[] = [];
     const storage = {
-      async uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number }) {
-        const reader = input.body.getReader();
-        let chunks = 0;
-        let total = 0;
-        while (true) {
-          const result = await reader.read();
-          if (result.done) break;
-          chunks += 1;
-          total += result.value.byteLength;
-        }
-        storageCalls.push({ contentType: input.contentType, contentLength: total, chunks });
-        assert.equal(total, input.contentLength);
+      async upload(input: { key: string; bytes: Uint8Array; contentType: string }) {
+        storageCalls.push({ contentType: input.contentType, contentLength: input.bytes.byteLength });
         return { bucket: "affiliate-media", key: input.key };
       },
       async remove(key: string) { removed.push(key); }
@@ -113,7 +103,6 @@ describe("MediaUploadService", () => {
     assert.equal(storageCalls.length, 1);
     assert.equal(storageCalls[0].contentType, "image/png");
     assert.equal(storageCalls[0].contentLength, png.byteLength);
-    assert.equal(storageCalls[0].chunks, 2);
     assert.equal(saved.length, 1);
     assert.equal(asset.byteSize, png.byteLength);
     assert.equal(removed.length, 0);
@@ -167,9 +156,7 @@ describe("MediaUploadService", () => {
   it("cleans up a streamed object if streamed metadata persistence fails", async () => {
     const removed: string[] = [];
     const storage = {
-      async uploadStream(input: { key: string; body: ReadableStream<Uint8Array> }) {
-        const reader = input.body.getReader();
-        while (!(await reader.read()).done) { /* consume stream to simulate completed Storage upload */ }
+      async upload(input: { key: string; bytes: Uint8Array }) {
         return { bucket: "affiliate-media", key: input.key };
       },
       async remove(key: string) { removed.push(key); }
