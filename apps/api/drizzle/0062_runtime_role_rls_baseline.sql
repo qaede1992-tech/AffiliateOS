@@ -8,7 +8,7 @@ $$;
 
 -- Keep the role non-owner and unable to perform DDL or bypass RLS, even if it
 -- existed before this migration. LOGIN is provisioned separately per environment.
-ALTER ROLE affiliateos_runtime NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+ALTER ROLE affiliateos_runtime NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
 
 GRANT USAGE ON SCHEMA public TO affiliateos_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO affiliateos_runtime;
