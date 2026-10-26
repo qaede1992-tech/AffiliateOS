@@ -14,6 +14,7 @@ export type ParsedShopeeAffiliateCsvRow = {
   commissionAmountRupiah: number | null;
   productUrl: string;
   affiliateUrl: string;
+  imageUrl?: string;
 };
 
 export type ShopeeAffiliateCsvParseResult = {
@@ -128,6 +129,13 @@ function isShopeeUrl(value: string): boolean {
   } catch { return false; }
 }
 
+function isHttpsImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.length > 0 && url.username === "" && url.password === "";
+  } catch { return false; }
+}
+
 /** Parses supported Shopee affiliate CSV shapes; performs no persistence or URL fetching. */
 export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseResult {
   const initialRecords = parseCsvRecords(input);
@@ -160,6 +168,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const commission = get("commission_amount_idr");
       const productUrl = get("product_url");
       const affiliateUrl = get("affiliate_url");
+      const imageUrl = (record[indexes.get("image_url") ?? -1] ?? "").trim();
       const rowProblems: string[] = [];
       const priceValue = Number(price);
       const salesValue = Number(sales);
@@ -176,6 +185,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       if (Number.isSafeInteger(priceValue) && Number.isSafeInteger(commissionValue) && commissionValue > priceValue) rowProblems.push("Komisi tidak boleh melebihi harga produk");
       if (!isShopeeUrl(productUrl)) rowProblems.push("product_url bukan URL HTTPS Shopee yang valid");
       if (!isShopeeUrl(affiliateUrl)) rowProblems.push("affiliate_url bukan URL HTTPS Shopee yang valid");
+      if (imageUrl && !isHttpsImageUrl(imageUrl)) rowProblems.push("image_url harus berupa URL HTTPS yang valid tanpa kredensial");
       if (id && seenPreviewIds.has(id)) rowProblems.push("external_product_id duplikat dalam file");
       if (id) seenPreviewIds.add(id);
       if (rowProblems.length > 0) { previewErrors.push({ row: rowNumber, message: rowProblems.join("; ") + "." }); return; }
@@ -194,6 +204,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
         commissionAmountRupiah: commissionValue,
         productUrl,
         affiliateUrl,
+        ...(imageUrl ? { imageUrl } : {}),
       });
     });
     if (previewErrors.length > 0) return { rows: [], errors: previewErrors };
@@ -228,6 +239,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const soldCount = parseSales(get("Penjualan"));
     const productUrl = get("Link Produk");
     const affiliateUrl = get("Link Komisi Ekstra");
+    const imageUrl = (record[indexes.get("Link Gambar") ?? indexes.get("image_url") ?? -1] ?? "").trim();
     const problems: string[] = [];
     if (!externalProductId) problems.push("ID Produk kosong");
     if (!name) problems.push("Nama Produk kosong");
@@ -238,10 +250,11 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (priceRupiah !== null && commissionAmountRupiah !== null && commissionAmountRupiah > priceRupiah) problems.push("Komisi tidak boleh melebihi harga produk");
     if (!isShopeeUrl(productUrl)) problems.push("Link Produk bukan URL HTTPS Shopee yang valid");
     if (!isShopeeUrl(affiliateUrl)) problems.push("Link Komisi Ekstra bukan URL HTTPS Shopee yang valid");
+    if (imageUrl && !isHttpsImageUrl(imageUrl)) problems.push("Link Gambar harus berupa URL HTTPS yang valid tanpa kredensial");
     if (externalProductId && seenIds.has(externalProductId)) problems.push("ID Produk duplikat dalam file");
     if (externalProductId) seenIds.add(externalProductId);
     if (problems.length > 0) { errors.push({ row: rowNumber, message: problems.join("; ") + "." }); return; }
-    rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount, commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl });
+    rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount, commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl, ...(imageUrl ? { imageUrl } : {}) });
   });
   return { rows, errors };
 }
