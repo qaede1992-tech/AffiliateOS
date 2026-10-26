@@ -23,6 +23,15 @@ test("marketplace endpoints normalize products, persist offers, and generate moc
   const discover = await app.inject({ method: "POST", url: "/api/v1/marketplaces/test-catalog/products/discover" });
   assert.equal(discover.statusCode, 200);
   assert.equal(discover.json().data[0].name, "Test kettle");
+  const discoveredProduct = discover.json().data[0];
+  const mediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://cdn.example.test/product.jpg", videoUrl: "https://cdn.example.test/product.mp4" } });
+  assert.equal(mediaUpdate.statusCode, 200);
+  assert.equal(mediaUpdate.json().imageUrl, "https://cdn.example.test/product.jpg");
+  assert.equal(mediaUpdate.json().videoUrl, "https://cdn.example.test/product.mp4");
+  assert.equal(mediaUpdate.json().productUrl, discoveredProduct.productUrl);
+  const invalidMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "http://not-secure.example.test/product.jpg" } });
+  assert.equal(invalidMediaUpdate.statusCode, 400);
+
   const link = await app.inject({ method: "POST", url: "/api/v1/marketplaces/test-catalog/products/sku-1/offers/offer-1/affiliate-link" });
   assert.equal(link.statusCode, 200);
   assert.equal(link.json().affiliateLinkStatus, "active");
