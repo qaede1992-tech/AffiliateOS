@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
 import { Client } from "pg";
 
+if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
+  throw new Error("Refusing to run the public-schema privilege guard outside a GitHub Actions CI runner.");
+}
+
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required.");
+
+const parsedUrl = new URL(connectionString);
+if (!["localhost", "127.0.0.1", "::1", "postgres"].includes(parsedUrl.hostname)) {
+  throw new Error(`Refusing to inspect non-local database host: ${parsedUrl.hostname}`);
+}
 
 const client = new Client({ connectionString });
 await client.connect();
@@ -11,6 +20,7 @@ try {
     "SELECT current_database() AS database, current_user AS role"
   );
   assert.equal(identityRows[0]?.database, "affiliateos", "Privilege verification is restricted to the ephemeral affiliateos CI database.");
+  assert.equal(identityRows[0]?.role, "affiliateos", "Privilege verification must use the dedicated CI database role.");
 
   const { rows: roleRows } = await client.query(
     "SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[]) ORDER BY rolname",
