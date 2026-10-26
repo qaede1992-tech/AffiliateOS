@@ -68,6 +68,9 @@ export class MediaUploadService {
     const reader = input.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
+    const cancelOnAbort = () => { void reader.cancel(new Error("Media upload was cancelled.")); };
+    input.signal?.addEventListener("abort", cancelOnAbort, { once: true });
+    if (input.signal?.aborted) cancelOnAbort();
     try {
       while (true) {
         if (input.signal?.aborted) throw new Error("Media upload was cancelled.");
@@ -78,6 +81,7 @@ export class MediaUploadService {
         chunks.push(result.value);
       }
     } finally {
+      input.signal?.removeEventListener("abort", cancelOnAbort);
       try { reader.releaseLock(); } catch {}
     }
     if (total !== input.contentLength) throw new Error("Media upload length does not match Content-Length.");
