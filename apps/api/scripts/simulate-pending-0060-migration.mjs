@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { Client } from "pg";
 
-// This deliberately removes only migration 0060's schema objects and ledger
-// row, then lets the real Drizzle migrator re-apply it in the CI database.
+// This deliberately removes migration 0060's schema objects and its ledger row.
+ // Later ledger rows are also removed so Drizzle can replay migrations in
+ // timestamp order instead of treating a later timestamp as already applied.
 if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
   throw new Error("Refusing the pending-0060 simulation outside a GitHub Actions CI runner.");
 }
@@ -30,9 +31,11 @@ try {
   const migration0059 = 1794050405000;
   const migration0060 = 1794050405001;
   const migration0061 = 1794050405002;
+  const migration0062 = 1794050405003;
   assert.ok(timestamps.includes(migration0059), "Expected migration 0059 to remain recorded.");
   assert.ok(timestamps.includes(migration0060), "Expected migration 0060 to have been applied before simulation.");
   assert.ok(timestamps.includes(migration0061), "Expected migration 0061 to have been applied before simulation.");
+  assert.ok(timestamps.includes(migration0062), "Expected migration 0062 to have been applied before simulation.");
 
   await client.query("BEGIN");
   try {
@@ -42,7 +45,7 @@ try {
     await client.query("ALTER TABLE public.autonomous_runs DROP COLUMN IF EXISTS is_test");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[migration0060, migration0061]]
+      [[migration0060, migration0061, migration0062]]
     );
     await client.query("COMMIT");
   } catch (error) {
