@@ -60,7 +60,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const conversions = new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, repositories.affiliateOffers, transactionManager);
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
-  const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products);
+  const content = new ContentService(repositories.contents, repositories.campaigns, repositories.products, repositories.mediaAssets);
   const mediaUpload = mediaStorage ? new MediaUploadService(content, repositories.mediaAssets, mediaStorage, mediaUploadPolicy) : undefined;
   const contentStory = new ContentStoryService(repositories.contents, repositories.products, repositories.affiliateOffers, repositories.contentProducts);
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
