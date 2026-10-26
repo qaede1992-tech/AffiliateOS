@@ -26,10 +26,10 @@ function setup(options: { imageUrl?: string; videoUrl?: string; mediaAssetIds?: 
   const products = new InMemoryRepository<Product>();
   const campaigns = new InMemoryRepository<Campaign>();
   const mediaAssets = new InMemoryMediaAssetRepository();
-  contents.save(content);
-  products.save(product);
+  void contents.save(content);
+  void products.save(product);
   const service = new ContentService(contents, campaigns, products, mediaAssets);
-  return { service, contents, mediaAssets, product, content };
+  return { service, contents, mediaAssets, product, content, contentId };
 }
 
 test("attaches a product image URL and reuses it on repeated selection", async () => {
@@ -61,6 +61,41 @@ test("rejects a selected product media kind when its URL is missing", async () =
   await assert.rejects(
     service.attachProductMedia(contentId, ["image"]),
     (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "PRODUCT_MEDIA_NOT_AVAILABLE")
+  );
+  assert.equal((await mediaAssets.listByContent(contentId)).length, 0);
+});
+
+test("does not partially attach image when a requested video URL is missing", async () => {
+  const { service, mediaAssets, contentId } = setup({ imageUrl: "https://cdn.example/image.jpg" });
+  await assert.rejects(service.attachProductMedia(contentId, ["image", "video"]));
+  assert.equal((await mediaAssets.listByContent(contentId)).length, 0);
+});
+
+test("attaches a changed product URL as a new asset without deleting the previous one", async () => {
+  const { service, mediaAssets, product, contentId } = setup({ imageUrl: "https://cdn.example/old.jpg" });
+  const first = await service.attachProductMedia(contentId, ["image"]);
+  await service.update(contentId, { productId: product.id });
+  const updatedProduct = { ...product, imageUrl: "https://cdn.example/new.jpg" };
+  const products = new InMemoryRepository<Product>();
+  await products.save(updatedProduct);
+  const content = await service.get(contentId);
+  const serviceWithChangedProduct = new ContentService(
+    new InMemoryRepository<Content>(), new InMemoryRepository<Campaign>(), products, mediaAssets
+  );
+  const contents = new InMemoryRepository<Content>();
+  await contents.save(content);
+  const serviceWithExistingContent = new ContentService(contents, new InMemoryRepository<Campaign>(), products, mediaAssets);
+  const second = await serviceWithExistingContent.attachProductMedia(contentId, ["image"]);
+  assert.notDeepEqual(first.attachedMediaAssetIds, second.attachedMediaAssetIds);
+  assert.equal((await mediaAssets.listByContent(contentId)).length, 2);
+  void serviceWithChangedProduct;
+});
+
+test("rejects an insecure product media URL", async () => {
+  const { service, mediaAssets, contentId } = setup({ imageUrl: "http://cdn.example/image.jpg" });
+  await assert.rejects(
+    service.attachProductMedia(contentId, ["image"]),
+    (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "INVALID_PRODUCT_MEDIA_URL")
   );
   assert.equal((await mediaAssets.listByContent(contentId)).length, 0);
 });
