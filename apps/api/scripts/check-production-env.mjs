@@ -14,8 +14,31 @@ for (const [name, check] of required) {
   const value = process.env[name]?.trim();
   if (!value || !check(value)) failures.push(name);
 }
+
+const migrationDatabaseUrl = process.env.MIGRATION_DATABASE_URL?.trim();
+if (migrationDatabaseUrl) {
+  let runtimeIdentity;
+  let migrationIdentity;
+  try {
+    const runtimeUrl = new URL(process.env.DATABASE_URL ?? "");
+    const migrationUrl = new URL(migrationDatabaseUrl);
+    if (!["postgres:", "postgresql:"].includes(migrationUrl.protocol)) {
+      throw new Error("invalid protocol");
+    }
+    runtimeIdentity = runtimeUrl.hostname + ":" +
+      (runtimeUrl.port || "5432") + runtimeUrl.pathname + ":" + decodeURIComponent(runtimeUrl.username);
+    migrationIdentity = migrationUrl.hostname + ":" +
+      (migrationUrl.port || "5432") + migrationUrl.pathname + ":" + decodeURIComponent(migrationUrl.username);
+  } catch {
+    failures.push("MIGRATION_DATABASE_URL(valid PostgreSQL URL)");
+  }
+  if (runtimeIdentity && migrationIdentity && runtimeIdentity === migrationIdentity) {
+    failures.push("MIGRATION_DATABASE_URL(different database role from DATABASE_URL)");
+  }
+}
+
 if (failures.length > 0) {
-  console.error(`Production preflight failed: ${failures.join(", ")}`);
+  console.error("Production preflight failed: " + failures.join(", "));
   process.exit(1);
 }
 
@@ -41,7 +64,7 @@ if (process.env.AUTONOMOUS_CYCLE_ENABLED === "true") {
   }
 
   if (autonomousFailures.length > 0) {
-    console.error(`Production preflight failed: autonomous activation requires ${autonomousFailures.join(", ")}.`);
+    console.error("Production configuration preflight failed: autonomous activation requires " + autonomousFailures.join(", ") + ".");
     process.exit(1);
   }
 }
