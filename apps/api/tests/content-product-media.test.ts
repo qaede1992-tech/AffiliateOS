@@ -66,13 +66,13 @@ test("rejects a selected product media kind when its URL is missing", async () =
 });
 
 test("does not partially attach image when a requested video URL is missing", async () => {
-  const { service, mediaAssets, contentId } = setup({ imageUrl: "https://cdn.example/image.jpg" });
+  const { service, mediaAssets, contentId } = await setup({ imageUrl: "https://cdn.example/image.jpg" });
   await assert.rejects(service.attachProductMedia(contentId, ["image", "video"]));
   assert.equal((await mediaAssets.listByContent(contentId)).length, 0);
 });
 
 test("attaches a changed product URL as a new asset without deleting the previous one", async () => {
-  const { service, mediaAssets, product, contentId } = setup({ imageUrl: "https://cdn.example/old.jpg" });
+  const { service, mediaAssets, product, contentId } = await setup({ imageUrl: "https://cdn.example/old.jpg" });
   const first = await service.attachProductMedia(contentId, ["image"]);
   const updatedProduct = { ...product, imageUrl: "https://cdn.example/new.jpg" };
   const products = new InMemoryRepository<Product>();
@@ -87,7 +87,7 @@ test("attaches a changed product URL as a new asset without deleting the previou
 });
 
 test("rejects an insecure product media URL", async () => {
-  const { service, mediaAssets, contentId } = setup({ imageUrl: "http://cdn.example/image.jpg" });
+  const { service, mediaAssets, contentId } = await setup({ imageUrl: "http://cdn.example/image.jpg" });
   await assert.rejects(
     service.attachProductMedia(contentId, ["image"]),
     (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "INVALID_PRODUCT_MEDIA_URL")
