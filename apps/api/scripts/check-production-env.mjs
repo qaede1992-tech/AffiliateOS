@@ -25,9 +25,9 @@ if (migrationDatabaseUrl) {
     if (!["postgres:", "postgresql:"].includes(migrationUrl.protocol)) {
       throw new Error("invalid protocol");
     }
-    runtimeIdentity = runtimeUrl.protocol + "//" + runtimeUrl.hostname + ":" +
+    runtimeIdentity = runtimeUrl.hostname + ":" +
       (runtimeUrl.port || "5432") + runtimeUrl.pathname + ":" + decodeURIComponent(runtimeUrl.username);
-    migrationIdentity = migrationUrl.protocol + "//" + migrationUrl.hostname + ":" +
+    migrationIdentity = migrationUrl.hostname + ":" +
       (migrationUrl.port || "5432") + migrationUrl.pathname + ":" + decodeURIComponent(migrationUrl.username);
   } catch {
     failures.push("MIGRATION_DATABASE_URL(valid PostgreSQL URL)");
