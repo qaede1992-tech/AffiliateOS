@@ -116,6 +116,35 @@ describe("AutonomousExecutionService", () => {
     assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
   });
 
+  it("terminalizes recoverable runs when their original offer is no longer available", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { audience: ["electronics"], platforms: ["instagram"] },
+      now: new Date("2026-10-08T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "previous offer unavailable" }, new Date("2026-10-08T09:01:00.000Z"));
+
+    const orchestrator = { execute: async () => orchestrationResult } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [] }],
+      idempotencyNamespace: "current-cycle",
+      publicationEnabled: false
+    });
+
+    assert.equal(result.recoveredRunCount, 0);
+    const stored = await runService.findById(accepted.id);
+    assert.equal(stored.status, "failed");
+    assert.equal(stored.attemptCount, 8);
+    assert.match(stored.lastError ?? "", /no longer available under the active marketplace account/);
+    assert.equal((await runService.listRecoverable(new Date("2026-10-27T00:00:00.000Z"))).length, 0);
+  });
+
   it("does not restore a stale scheduled publication time when recovering in draft-only mode", async () => {
     const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
     const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
