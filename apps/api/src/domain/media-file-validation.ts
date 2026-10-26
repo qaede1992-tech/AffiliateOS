@@ -34,15 +34,24 @@ const isJpeg = (bytes: Uint8Array): boolean => {
     if (bytes[offset] !== 0xff) return false;
     while (offset < bytes.length && bytes[offset] === 0xff) offset++;
     const marker = bytes[offset++];
+    if (marker === undefined) return false;
     if (marker === 0xd9 || marker === 0xda) return hasFrame && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
     if (offset + 2 > bytes.length) return false;
-    const length = (bytes[offset] << 8) | bytes[offset + 1];
+    const lengthHigh = bytes[offset];
+    const lengthLow = bytes[offset + 1];
+    if (lengthHigh === undefined || lengthLow === undefined) return false;
+    const length = (lengthHigh << 8) | lengthLow;
     if (length < 2 || offset + length > bytes.length) return false;
     if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
       if (length < 8) return false;
-      const height = (bytes[offset + 3] << 8) | bytes[offset + 4];
-      const width = (bytes[offset + 5] << 8) | bytes[offset + 6];
+      const heightHigh = bytes[offset + 3];
+      const heightLow = bytes[offset + 4];
+      const widthHigh = bytes[offset + 5];
+      const widthLow = bytes[offset + 6];
+      if (heightHigh === undefined || heightLow === undefined || widthHigh === undefined || widthLow === undefined) return false;
+      const height = (heightHigh << 8) | heightLow;
+      const width = (widthHigh << 8) | widthLow;
       if (width === 0 || height === 0) return false;
       hasFrame = true;
     }
