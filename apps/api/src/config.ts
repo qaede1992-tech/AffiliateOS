@@ -36,6 +36,7 @@ const environmentSchema = z.object({
   API_AUTH_OPERATOR_ID: z.string().trim().min(1).default("development-operator"),
   API_AUTH_OPERATOR_ROLE: z.enum(["admin", "operator", "viewer"]).default("admin"),
   AUTONOMOUS_CYCLE_ENABLED: booleanEnvironment,
+  AUTONOMOUS_PUBLICATION_ENABLED: booleanEnvironment,
   AUTONOMOUS_CYCLE_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000),
   AUTONOMOUS_MINIMUM_SCORE: z.coerce.number().min(0).max(100).default(60),
   AUTONOMOUS_MAXIMUM_RESULTS: z.coerce.number().int().min(1).max(1000).default(10),

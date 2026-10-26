@@ -61,7 +61,7 @@ export class AutonomousCycleService {
     const result = await this.execution.previewSelection({
       ...input,
       candidates: candidateList,
-      requirePublishableMedia: true,
+      requirePublishableMedia: input.publicationEnabled === false ? false : true,
       requireCommissionSignal: true
     });
     return {
@@ -85,17 +85,18 @@ export class AutonomousCycleService {
 
     try {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
-      const scheduledAt = input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs);
+      const publicationEnabled = input.publicationEnabled ?? true;
+      const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
       const executionInput: AutonomousExecutionInput = {
         ...input,
         scheduledAt,
         candidates: candidateList,
-        requirePublishableMedia: true,
+        requirePublishableMedia: publicationEnabled,
         requireCommissionSignal: true
       };
       const result = await this.execution.runOnce(executionInput);
       const explorationEvaluation = this.explorationEvaluation ? await this.explorationEvaluation.run() : undefined;
-      const optimization = this.optimization ? await this.optimization.run(new Date()) : undefined;
+      const optimization = this.optimization ? await this.optimization.run(new Date(), { allowMutations: publicationEnabled }) : undefined;
       return {
         startedAt,
         completedAt: new Date().toISOString(),
