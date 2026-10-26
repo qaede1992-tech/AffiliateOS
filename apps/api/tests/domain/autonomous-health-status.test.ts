@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { determineAutonomousHealthStatus } from "../src/domain/autonomous-health-status.js";
+import { determineAutonomousHealthStatus } from "../../src/domain/autonomous-health-status.js";
 
 test("unsupported publishers do not degrade autonomous health", () => {
   assert.equal(determineAutonomousHealthStatus({
