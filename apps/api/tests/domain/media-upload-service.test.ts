@@ -4,7 +4,7 @@ import type { MediaAsset, MediaAssetRepository } from "../../src/domain/media-as
 import { MediaUploadService } from "../../src/domain/media-upload-service.js";
 import type { SupabaseStorageClient, StoredObject } from "../../src/domain/supabase-storage.js";
 
-const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+const png = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64"));
 const makeService = (options: { contentExists?: boolean; failSave?: boolean; maxImageBytes?: number } = {}) => {
   const saved: MediaAsset[] = [];
   const uploaded: Array<{ key: string; bytes: Uint8Array; contentType: string }> = [];
@@ -64,23 +64,13 @@ describe("MediaUploadService", () => {
     assert.equal(unsupported.uploaded.length, 0);
   });
 
-  it("streams validated PNG chunks to Storage before saving metadata", async () => {
+  it("uploads the fully validated PNG bytes to Storage before saving metadata", async () => {
     const saved: MediaAsset[] = [];
-    const storageCalls: Array<{ contentType: string; contentLength: number; chunks: number }> = [];
+    const storageCalls: Array<{ contentType: string; contentLength: number }> = [];
     const removed: string[] = [];
     const storage = {
-      async uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number }) {
-        const reader = input.body.getReader();
-        let chunks = 0;
-        let total = 0;
-        while (true) {
-          const result = await reader.read();
-          if (result.done) break;
-          chunks += 1;
-          total += result.value.byteLength;
-        }
-        storageCalls.push({ contentType: input.contentType, contentLength: total, chunks });
-        assert.equal(total, input.contentLength);
+      async upload(input: { key: string; bytes: Uint8Array; contentType: string }) {
+        storageCalls.push({ contentType: input.contentType, contentLength: input.bytes.byteLength });
         return { bucket: "affiliate-media", key: input.key };
       },
       async remove(key: string) { removed.push(key); }
@@ -113,13 +103,12 @@ describe("MediaUploadService", () => {
     assert.equal(storageCalls.length, 1);
     assert.equal(storageCalls[0].contentType, "image/png");
     assert.equal(storageCalls[0].contentLength, png.byteLength);
-    assert.equal(storageCalls[0].chunks, 2);
     assert.equal(saved.length, 1);
     assert.equal(asset.byteSize, png.byteLength);
     assert.equal(removed.length, 0);
   });
 
-  it("preserves a MIME-signature validation error when Storage wraps the stream failure", async () => {
+  it("rejects structurally invalid media before calling Storage", async () => {
     const removed: string[] = [];
     const storage = {
       async uploadStream(input: { key: string; body: ReadableStream<Uint8Array> }) {
@@ -161,16 +150,13 @@ describe("MediaUploadService", () => {
       body,
       contentLength: 9
     }), /does not match its declared MIME type/);
-    assert.equal(removed.length, 1);
-    assert.ok(removed[0].startsWith("content/123e4567-e89b-42d3-a456-426614174000/"));
+    assert.equal(removed.length, 0, "Storage must not be called for structurally invalid media");
   });
 
   it("cleans up a streamed object if streamed metadata persistence fails", async () => {
     const removed: string[] = [];
     const storage = {
-      async uploadStream(input: { key: string; body: ReadableStream<Uint8Array> }) {
-        const reader = input.body.getReader();
-        while (!(await reader.read()).done) { /* consume stream to simulate completed Storage upload */ }
+      async upload(input: { key: string; bytes: Uint8Array }) {
         return { bucket: "affiliate-media", key: input.key };
       },
       async remove(key: string) { removed.push(key); }
