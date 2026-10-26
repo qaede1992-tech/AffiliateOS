@@ -24,7 +24,7 @@ export class MarketplaceService {
       try { url = new URL(value); } catch { throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `${field} must be a valid HTTPS URL.`, 400); }
       if (url.protocol !== "https:" || !url.hostname || url.username || url.password) throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `${field} must be a valid HTTPS URL without embedded credentials.`, 400);
     }
-    return this.products.save({ ...product, imageUrl: input.imageUrl === undefined ? product.imageUrl : input.imageUrl ?? undefined, videoUrl: input.videoUrl === undefined ? product.videoUrl : input.videoUrl ?? undefined, updatedAt: now() });
+    return this.products.save({ ...product, imageUrl: input.imageUrl === undefined ? product.imageUrl : input.imageUrl === null ? null as unknown as string : input.imageUrl, videoUrl: input.videoUrl === undefined ? product.videoUrl : input.videoUrl === null ? null as unknown as string : input.videoUrl, updatedAt: now() });
   }
   async listAffiliateOffers(): Promise<AffiliateOffer[]> { return this.offers.list(); }
   async listAffiliateOfferVerification() {
