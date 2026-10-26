@@ -81,6 +81,24 @@ export class AutonomousRunService {
     return this.runs.save(reset);
   }
 
+  async markUnrecoverable(id: EntityId, error: string, now = new Date()): Promise<AutonomousRun> {
+    const run = await this.findById(id);
+    if (run.status === "completed") return run;
+    const terminal: AutonomousRun = {
+      ...run,
+      status: "failed",
+      attemptCount: AUTONOMOUS_RUN_MAX_ATTEMPTS,
+      nextAttemptAt: undefined,
+      lastError: error,
+      updatedAt: now.toISOString()
+    };
+    if (this.runs.transition) {
+      const transitioned = await this.runs.transition(id, [run.status], terminal, run.attemptCount);
+      return transitioned ?? this.findById(id);
+    }
+    return this.runs.save(terminal);
+  }
+
   async transition(id: EntityId, status: AutonomousRunStatus, details: { campaignId?: EntityId; error?: string } = {}, now = new Date()) {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
     if (!run) throw new DomainError("AUTONOMOUS_RUN_NOT_FOUND", "The autonomous run does not exist.", 404);
