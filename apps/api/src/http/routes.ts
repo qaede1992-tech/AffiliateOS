@@ -9,6 +9,7 @@ import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
+import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
@@ -98,12 +99,12 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       services.publisherReadiness.list()
     ]);
     const scheduler = services.autonomousScheduler.status;
-    const blockedPublishers = publishers.filter((publisher) => publisher.status !== "ready");
-    const status = !scheduler.running
-      ? "disabled"
-      : scheduler.lastError || blockedPublishers.length || recoverable.length
-        ? "degraded"
-        : "healthy";
+    const status = determineAutonomousHealthStatus({
+      schedulerRunning: scheduler.running,
+      schedulerLastError: scheduler.lastError,
+      publisherStatuses: publishers.map((publisher) => publisher.status),
+      recoverableRunCount: recoverable.length
+    });
     return {
       status,
       scheduler: {
