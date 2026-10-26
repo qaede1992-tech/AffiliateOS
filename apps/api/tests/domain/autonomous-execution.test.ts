@@ -116,6 +116,39 @@ describe("AutonomousExecutionService", () => {
     assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
   });
 
+  it("does not restore a stale scheduled publication time when recovering in draft-only mode", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-scheduled-run:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { audience: ["electronics"], platforms: ["instagram"], scheduledAt: "2026-10-20T12:00:00.000Z" },
+      now: new Date("2026-10-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "no publishable destination" }, new Date("2026-10-20T09:01:00.000Z"));
+
+    const scheduledValues: Array<string | undefined> = [];
+    const orchestrator = {
+      execute: async (input: { scheduledAt?: string }) => {
+        scheduledValues.push(input.scheduledAt);
+        return orchestrationResult;
+      }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [offer] }],
+      idempotencyNamespace: "draft-only-cycle",
+      publicationEnabled: false,
+      requirePublishableMedia: false
+    });
+
+    assert.equal(result.recoveredRunCount, 1);
+    assert.ok(scheduledValues.length >= 1);
+    assert.ok(scheduledValues.every((value) => value === undefined));
+  });
+
   it("does not recover persisted runs while the product is in anomaly halt or recovery", async () => {
     for (const anomaly of ["halt", undefined] as const) {
       const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
