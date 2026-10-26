@@ -52,6 +52,19 @@ test("GET /r/:code is public and returns a tracking-link error without authentic
   await app.close();
 });
 
+test("GET / is a public liveness endpoint for deployment probes", async () => {
+  const app = createApp(undefined, {
+    auth: { enabled: true, token: "test-api-token", operatorId: "operator-test", role: "operator" },
+  });
+
+  const response = await app.inject({ method: "GET", url: "/" });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { status: "ok", service: "affiliateos-api" });
+
+  await app.close();
+});
+
 test("GET /api/v1/health returns health status and configured CORS origin", async () => {
   const app = createApp();
 
