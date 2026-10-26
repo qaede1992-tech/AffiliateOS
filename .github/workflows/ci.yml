@@ -46,6 +46,7 @@ jobs:
           DATABASE_URL: postgresql://affiliateos:affiliateos@localhost:5432/affiliateos
         run: |
           printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
+          node --env-file=.env apps/api/scripts/prepare-public-schema-privilege-check.mjs
           npm run db:migrate
           timeout --signal=TERM --kill-after=30s 15m npm test
       - name: Typecheck
@@ -64,6 +65,8 @@ jobs:
         run: npm run db:migrate
       - name: Verify migrated database
         run: npm run db:verify
+      - name: Verify public-schema privileges
+        run: node --env-file=.env apps/api/scripts/check-public-schema-privileges.mjs
       - name: Simulate audited production migration drift
         env:
           CI_MIGRATION_DRIFT_TEST: "1"
@@ -72,6 +75,8 @@ jobs:
         run: npm run db:migrate
       - name: Verify repaired drifted database
         run: npm run db:verify:applied
+      - name: Verify public-schema privileges after forward repair
+        run: node --env-file=.env apps/api/scripts/check-public-schema-privileges.mjs
       - name: Simulate production state with migration 0060 pending
         env:
           CI_PENDING_0060_TEST: "1"
@@ -80,6 +85,8 @@ jobs:
         run: npm run db:migrate
       - name: Verify migration 0060 was applied from the production-like state
         run: npm run db:verify:applied
+      - name: Verify public-schema privileges after migration 0060
+        run: node --env-file=.env apps/api/scripts/check-public-schema-privileges.mjs
 
   containers:
     runs-on: ubuntu-latest
