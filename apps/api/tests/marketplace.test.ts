@@ -77,6 +77,20 @@ test("marketplace persistence recovers from concurrent unique inserts", async ()
 });
 
 
+test("marketplace lookup prefers the active affiliate account over an inactive historical account", async () => {
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
+  await repos.marketplaceConnections.save(connection);
+  await repos.affiliateAccounts.save({ id: "00000000-0000-4000-8000-000000000041", marketplaceId: connection.id, name: "Old inactive account", status: "inactive", configuration: {}, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" });
+  await repos.affiliateAccounts.save({ id: "00000000-0000-4000-8000-000000000042", marketplaceId: connection.id, name: "Current active account", status: "active", affiliateId: "00000000-0000-4000-8000-000000000043", configuration: {}, createdAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z" });
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), repos.marketplaceConnections, repos.products, repos.affiliateAccounts, repos.affiliates, repos.affiliateOffers, repos.offers);
+
+  const account = await service.getAffiliateAccount(connection.slug);
+
+  assert.equal(account.id, "00000000-0000-4000-8000-000000000042");
+  assert.equal(account.status, "active");
+});
+
 test("marketplace account binding persists the internal affiliate identity", async () => {
   const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
   const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
