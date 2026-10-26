@@ -3,26 +3,17 @@ import assert from "node:assert/strict";
 import { MediaUploadService } from "../src/domain/media-upload-service.js";
 
 const contentId = "123e4567-e89b-42d3-a456-426614174000";
-const pngHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+const pngHeader = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64"));
 
 function createService(options: { failMetadata?: boolean; failStorage?: boolean; failStorageAfterPartial?: boolean; maxImageBytes?: number } = {}) {
   const saved: unknown[] = [];
   const removed: string[] = [];
   let storedBytes = 0;
   const storage = {
-    async uploadStream(input: { key: string; body: ReadableStream<Uint8Array> }) {
+    async upload(input: { key: string; bytes: Uint8Array }) {
       if (options.failStorage) throw new Error("storage unavailable");
-      const reader = input.body.getReader();
-      try {
-        while (true) {
-          const item = await reader.read();
-          if (item.done) break;
-          storedBytes += item.value.byteLength;
-          if (options.failStorageAfterPartial) throw new Error("storage stream failed after accepting partial bytes");
-        }
-      } finally {
-        reader.releaseLock();
-      }
+      storedBytes += input.bytes.byteLength;
+      if (options.failStorageAfterPartial) throw new Error("storage stream failed after accepting partial bytes");
       return { bucket: "private-media", key: input.key };
     },
     async remove(key: string) { removed.push(key); }
@@ -66,15 +57,16 @@ test("stream upload validates signature across chunk boundaries and saves metada
   assert.equal(asset.reference.startsWith("private-media/content/"), true);
 });
 
-test("stream upload rejects a false signature and removes the partial object", async () => {
+test("stream upload rejects a signature-only PNG before writing to Storage", async () => {
   const fixture = createService();
-  const falseHeader = new Uint8Array(12).fill(0x41);
+  const falseHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
   await assert.rejects(fixture.service.uploadStream({
     contentId, kind: "image", mimeType: "image/png", contentLength: falseHeader.byteLength,
     body: streamOf(falseHeader, 4)
   }), /signature|MIME type/i);
   assert.equal(fixture.saved.length, 0);
-  assert.equal(fixture.removed.length, 1);
+  assert.equal(fixture.storedBytes, 0, "invalid media must be rejected before Storage writes");
+  assert.equal(fixture.removed.length, 0, "no object exists to clean up before Storage is called");
 });
 
 test("stream upload rejects an over-limit declared length before reading body", async () => {
@@ -106,7 +98,7 @@ test("stream upload rejects an oversized chunk even when Content-Length is withi
     body: streamOf(oversized, 20)
   }), /size limit/i);
   assert.equal(fixture.saved.length, 0);
-  assert.equal(fixture.removed.length, 1);
+  assert.equal(fixture.removed.length, 0);
 });
 
 test("stream upload attempts cleanup when the Storage provider rejects the request", async () => {
@@ -121,14 +113,14 @@ test("stream upload attempts cleanup when the Storage provider rejects the reque
 
 
 
-test("stream upload removes a partially accepted Storage object when the provider fails mid-stream", async () => {
+test("stream upload removes an object if Storage fails after accepting the payload", async () => {
   const fixture = createService({ failStorageAfterPartial: true });
   const payload = new Uint8Array([...pngHeader, ...new Uint8Array(32).fill(0x5a)]);
   await assert.rejects(fixture.service.uploadStream({
     contentId, kind: "image", mimeType: "image/png", contentLength: payload.byteLength,
     body: streamOf(payload, 12)
   }), /storage stream failed after accepting partial bytes/);
-  assert.ok(fixture.storedBytes > 0, "the fake Storage provider must accept some bytes before failing");
+  assert.ok(fixture.storedBytes > 0, "the fake Storage provider must accept the payload before failing");
   assert.equal(fixture.saved.length, 0, "metadata must not be saved after a partial Storage failure");
   assert.equal(fixture.removed.length, 1, "the deterministic object key must be removed after partial acceptance");
   assert.match(fixture.removed[0]!, new RegExp("^content/" + contentId + "/"));
