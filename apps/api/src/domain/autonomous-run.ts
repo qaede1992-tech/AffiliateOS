@@ -11,6 +11,7 @@ export interface AutonomousRun {
 }
 export interface AutonomousRunRepository {
   findByIdempotencyKey(key: string): Promise<AutonomousRun | undefined>;
+  hasCompletedOpportunity?(productId: EntityId, offerId: EntityId): Promise<boolean>;
   findById?(id: EntityId): Promise<AutonomousRun | undefined>;
   save(run: AutonomousRun): Promise<AutonomousRun>;
   saveIfAbsent?(run: AutonomousRun): Promise<AutonomousRun>;
@@ -22,6 +23,9 @@ export interface AutonomousRunRepository {
 export class InMemoryAutonomousRunRepository implements AutonomousRunRepository {
   private readonly runs = new Map<string, AutonomousRun>();
   async findByIdempotencyKey(key: string) { return this.runs.get(key); }
+  async hasCompletedOpportunity(productId: EntityId, offerId: EntityId) {
+    return [...this.runs.values()].some((run) => run.status === "completed" && run.opportunityProductId === productId && run.offerId === offerId);
+  }
   async findById(id: EntityId) { return [...this.runs.values()].find((run) => run.id === id); }
   async save(run: AutonomousRun) { this.runs.set(run.idempotencyKey, run); return run; }
   async saveIfAbsent(run: AutonomousRun) { const existing = this.runs.get(run.idempotencyKey); if (existing) return existing; this.runs.set(run.idempotencyKey, run); return run; }
