@@ -117,9 +117,9 @@ test("Instagram resolves Supabase object-storage media to signed HTTPS and recor
     mediaUrlResolver: async () => "https://storage.example/signed/photo.jpg?token=temporary",
     graphBaseUrl: "https://graph.instagram.com/v25.0",
     fetchImpl: async (input, init) => {
-      const url = String(input);
-      calls.push({ url, init });
-      if (url.endsWith("/media")) return instagramJson({ id: "container-123" });
+      const url = new URL(String(input));
+      calls.push({ url: url.toString(), init });
+      if (url.pathname.endsWith("/media") && !url.pathname.endsWith("/media_publish")) return instagramJson({ id: "container-123" });
       if (url.includes("/container-123?")) return instagramJson({ id: "container-123", status_code: "FINISHED" });
       if (url.includes("/media_publish")) return instagramJson({ id: "published-media-123" });
       throw new Error("Unexpected Instagram request");
