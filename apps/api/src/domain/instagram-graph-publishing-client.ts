@@ -10,6 +10,7 @@ type InstagramContainerStatusResponse = { id?: string; status_code?: string; sta
 
 export type InstagramGraphPublishingClientConfiguration = {
   accessTokenResolver: (account: SocialAccount) => Promise<string>;
+  mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
   fetchImpl?: typeof fetch;
   graphBaseUrl?: string;
 };
@@ -27,8 +28,11 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     const accessToken = await this.configuration.accessTokenResolver(input.account);
     const asset = input.mediaAssets.find((candidate) => candidate.kind === "image" || candidate.kind === "video");
     if (!asset) throw new Error("Instagram publishing requires an image or video media asset.");
-    if (asset.source !== "url" || !this.isHttpsUrl(asset.reference)) {
-      throw new Error("Instagram publishing requires a public HTTPS media URL.");
+    const mediaUrl = asset.source === "url"
+      ? asset.reference
+      : await this.configuration.mediaUrlResolver?.(asset) ?? "";
+    if (!this.isHttpsUrl(mediaUrl)) {
+      throw new Error("Instagram publishing requires a publicly accessible HTTPS media URL.");
     }
     const accountId = input.account.accountReference;
     if (!accountId) throw new Error("Instagram publishing requires an account reference.");
@@ -37,8 +41,8 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     const container = await this.request<InstagramMediaResponse>(`/${encodeURIComponent(accountId)}/media`, accessToken, {
       method: "POST",
       body: new URLSearchParams(isVideo
-        ? { media_type: "REELS", video_url: asset.reference, caption: input.content.caption ?? input.content.title ?? "", access_token: accessToken }
-        : { image_url: asset.reference, caption: input.content.caption ?? input.content.title ?? "", access_token: accessToken })
+        ? { media_type: "REELS", video_url: mediaUrl, caption: input.content.caption ?? input.content.title ?? "", access_token: accessToken }
+        : { image_url: mediaUrl, caption: input.content.caption ?? input.content.title ?? "", access_token: accessToken })
     });
     if (!container.id) throw new Error(container.error?.message ?? "Instagram did not return a media container id.");
 
@@ -62,7 +66,9 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
       return { status: "published", externalPostId };
     }
     if (status === "PUBLISHED") {
-      return { status: "published", externalPostId: result.id ?? input.operation.providerOperationId };
+      // The status endpoint returns the container id, not the published media id.
+      // Never persist a container id as externalPostId; reconcile this state explicitly.
+      return { status: "failed", error: "Instagram reports a published container but did not provide the published media ID." };
     }
     if (status === "ERROR" || status === "EXPIRED") {
       return { status: "failed", error: result.status ?? result.error?.message ?? "Instagram media container failed." };
