@@ -129,7 +129,7 @@ test("Instagram resolves Supabase object-storage media to signed HTTPS and recor
   assert.deepEqual(result, { status: "accepted", providerOperationId: "container-123" });
   assert.equal(calls.length, 1);
   assert.equal(((calls[0].init?.body) as URLSearchParams).get("image_url"), "https://storage.example/signed/photo.jpg?token=temporary");
-  const published = await client.checkPublication({ content: instagramContent, account: instagramAccount, mediaAssets: [storageAsset], operation: instagramOperation });
+  const published = await client.checkPublication({ content: instagramContent, account: instagramAccount, mediaAssets: [storageAsset], operation: { ...instagramOperation, providerOperationId: "container-123" } });
   assert.deepEqual(published, { status: "published", externalPostId: "published-media-123" });
   assert.equal(calls.length, 3);
   assert.equal(((calls[2].init?.body) as URLSearchParams).get("creation_id"), "container-123");
