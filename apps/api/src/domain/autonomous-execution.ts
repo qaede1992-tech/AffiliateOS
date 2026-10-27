@@ -31,12 +31,22 @@ export class AutonomousExecutionService {
 
   async previewSelection(input: Omit<AutonomousExecutionInput, "candidates"> & { candidates: OpportunityCandidateSource[] }): Promise<Pick<AutonomousExecutionResult, "selected" | "rejected" | "audit">> {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-preview";
+    const candidates = this.autonomousRuns
+      ? await Promise.all(input.candidates.map(async (candidate) => ({
+          ...candidate,
+          offers: (await Promise.all(candidate.offers.map(async (candidateOffer) =>
+            await this.autonomousRuns!.hasCompletedOpportunity(candidate.product.id, candidateOffer.id)
+              ? undefined
+              : candidateOffer
+          ))).filter((candidateOffer): candidateOffer is AffiliateOffer => candidateOffer !== undefined)
+        })))
+      : input.candidates;
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const adaptiveExplorationRates = this.adaptiveExploration
-      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      ? await this.adaptiveExploration.getRates(candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
     const selection = this.selector.select(
-      input.candidates,
+      candidates,
       { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal },
       performance,
       input.policiesByMarketplace,
