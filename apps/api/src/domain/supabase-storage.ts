@@ -50,6 +50,11 @@ export class SupabaseStorageClient {
   private readonly fetchImpl: typeof fetch;
   private readonly uploadTimeoutMs: number;
 
+  /** Configured private bucket; exposed for validating persisted bucket/key references. */
+  get bucketName(): string {
+    return this.bucket;
+  }
+
   constructor(config: SupabaseStorageConfig) {
     this.baseUrl = normalizeBaseUrl(config.supabaseUrl);
     this.bucket = validateSegment(config.bucket, "bucket");
