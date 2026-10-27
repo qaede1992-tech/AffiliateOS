@@ -31,7 +31,7 @@ const asset = {
   updatedAt: "2026-09-26T00:00:00.000Z"
 };
 
-test("Instagram client creates and publishes a media container", async () => {
+test("Instagram image publishing persists its container before media_publish", async () => {
   const calls: string[] = [];
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
@@ -42,13 +42,28 @@ test("Instagram client creates and publishes a media container", async () => {
         assert.match(body, /image_url/);
         return new Response(JSON.stringify({ id: "container-1" }), { status: 200 });
       }
+      if (String(input).includes("/container-1?")) {
+        return new Response(JSON.stringify({ id: "container-1", status_code: "FINISHED" }), { status: 200 });
+      }
       assert.match(body, /creation_id=container-1/);
       return new Response(JSON.stringify({ id: "media-1" }), { status: 200 });
     }
   });
   const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-1" });
-  assert.deepEqual(result, { status: "published", externalPostId: "media-1" });
-  assert.equal(calls.length, 2);
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "container-1" });
+  assert.equal(calls.length, 1);
+
+  const published = await client.checkPublication({
+    content, account, mediaAssets: [asset],
+    operation: {
+      id: "operation-image", jobId: "job-1", contentId: "content-1",
+      provider: "instagram-graph-publishing", providerOperationId: "container-1",
+      status: "accepted", attemptCount: 1,
+      createdAt: "2026-09-26T00:00:00.000Z", updatedAt: "2026-09-26T00:00:00.000Z"
+    }
+  });
+  assert.deepEqual(published, { status: "published", externalPostId: "media-1" });
+  assert.equal(calls.length, 3);
 });
 
 test("Instagram client rejects non-HTTPS media", async () => {
@@ -125,4 +140,45 @@ test("Instagram video publishing waits for a finished container before media_pub
   });
   assert.deepEqual(published, { status: "published", externalPostId: "media-2" });
   assert.equal(calls.length, 4);
+});
+
+test("Instagram recovers the actual media ID only for a unique recent caption match", async () => {
+  const client = new InstagramGraphPublishingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/container-published")) {
+        return new Response(JSON.stringify({ id: "container-published", status_code: "PUBLISHED" }), { status: 200 });
+      }
+      if (url.pathname.endsWith("/178900000001/media")) {
+        assert.match(url.searchParams.get("fields") ?? "", /caption/);
+        return new Response(JSON.stringify({ data: [{ id: "actual-media-7", caption: "Affiliate test", timestamp: "2026-09-26T00:02:00+0000", media_type: "IMAGE" }] }), { status: 200 });
+      }
+      throw new Error("Unexpected Instagram request");
+    }
+  });
+  const result = await client.checkPublication({
+    content, account, mediaAssets: [asset],
+    operation: { id: "op-published", jobId: "job-1", contentId: "content-1", provider: "instagram-graph-publishing", providerOperationId: "container-published", status: "processing", attemptCount: 1, createdAt: "2026-09-26T00:00:00.000Z", updatedAt: "2026-09-26T00:00:00.000Z" }
+  });
+  assert.deepEqual(result, { status: "published", externalPostId: "actual-media-7" });
+});
+
+test("Instagram keeps published status pending when recent media matches are ambiguous", async () => {
+  const client = new InstagramGraphPublishingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/container-published")) return new Response(JSON.stringify({ id: "container-published", status_code: "PUBLISHED" }), { status: 200 });
+      return new Response(JSON.stringify({ data: [
+        { id: "media-a", caption: "Affiliate test", timestamp: "2026-09-26T00:02:00+0000", media_type: "IMAGE" },
+        { id: "media-b", caption: "Affiliate test", timestamp: "2026-09-26T00:03:00+0000", media_type: "IMAGE" }
+      ] }), { status: 200 });
+    }
+  });
+  const result = await client.checkPublication({
+    content, account, mediaAssets: [asset],
+    operation: { id: "op-ambiguous", jobId: "job-1", contentId: "content-1", provider: "instagram-graph-publishing", providerOperationId: "container-published", status: "processing", attemptCount: 1, createdAt: "2026-09-26T00:00:00.000Z", updatedAt: "2026-09-26T00:00:00.000Z" }
+  });
+  assert.deepEqual(result, { status: "processing" });
 });
