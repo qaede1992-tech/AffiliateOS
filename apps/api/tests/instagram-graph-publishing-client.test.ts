@@ -31,7 +31,7 @@ const asset = {
   updatedAt: "2026-09-26T00:00:00.000Z"
 };
 
-test("Instagram client creates and publishes a media container", async () => {
+test("Instagram image publishing persists its container before media_publish", async () => {
   const calls: string[] = [];
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
@@ -42,13 +42,28 @@ test("Instagram client creates and publishes a media container", async () => {
         assert.match(body, /image_url/);
         return new Response(JSON.stringify({ id: "container-1" }), { status: 200 });
       }
+      if (String(input).endsWith("/container-1")) {
+        return new Response(JSON.stringify({ id: "container-1", status_code: "FINISHED" }), { status: 200 });
+      }
       assert.match(body, /creation_id=container-1/);
       return new Response(JSON.stringify({ id: "media-1" }), { status: 200 });
     }
   });
   const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-1" });
-  assert.deepEqual(result, { status: "published", externalPostId: "media-1" });
-  assert.equal(calls.length, 2);
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "container-1" });
+  assert.equal(calls.length, 1);
+
+  const published = await client.checkPublication({
+    content, account, mediaAssets: [asset],
+    operation: {
+      id: "operation-image", jobId: "job-1", contentId: "content-1",
+      provider: "instagram-graph-publishing", providerOperationId: "container-1",
+      status: "accepted", attemptCount: 1,
+      createdAt: "2026-09-26T00:00:00.000Z", updatedAt: "2026-09-26T00:00:00.000Z"
+    }
+  });
+  assert.deepEqual(published, { status: "published", externalPostId: "media-1" });
+  assert.equal(calls.length, 3);
 });
 
 test("Instagram client rejects non-HTTPS media", async () => {
