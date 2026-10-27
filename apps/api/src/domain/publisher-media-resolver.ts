@@ -32,8 +32,8 @@ export async function resolvePublisherMediaAssets(
     if (bucket !== storage.bucketName) {
       throw new Error("Private media asset references an unexpected Storage bucket.");
     }
-    if (!key.startsWith(`content/${content.id}/`) || key.includes("\\\\") ||
-        key.split("/").some((part) => !part || part === "." || part === "..")) {
+    if (!key.startsWith(`content/${content.id}/`) ||
+        key.split("/").some((part) => !part || part.includes(String.fromCharCode(92)) || part === "." || part === "..")) {
       throw new Error("Private media object key is outside the publishing content scope.");
     }
 
