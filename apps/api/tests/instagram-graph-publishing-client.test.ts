@@ -42,7 +42,7 @@ test("Instagram image publishing persists its container before media_publish", a
         assert.match(body, /image_url/);
         return new Response(JSON.stringify({ id: "container-1" }), { status: 200 });
       }
-      if (String(input).endsWith("/container-1")) {
+      if (String(input).includes("/container-1?")) {
         return new Response(JSON.stringify({ id: "container-1", status_code: "FINISHED" }), { status: 200 });
       }
       assert.match(body, /creation_id=container-1/);
