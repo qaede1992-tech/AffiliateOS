@@ -29,6 +29,25 @@ const opportunity = {
 const orchestrationResult = {} as CampaignOrchestrationResult;
 
 describe("AutonomousExecutionService", () => {
+  it("excludes completed opportunities from preview selection", async () => {
+    const completedRuns = { hasCompletedOpportunity: async () => true };
+    const service = new AutonomousExecutionService(
+      new AutonomousOpportunitySelector(),
+      {} as CampaignOrchestrator,
+      undefined,
+      completedRuns as never
+    );
+
+    const result = await service.previewSelection({
+      candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 40, maximumResults: 1 }
+    });
+
+    assert.equal(result.selected.length, 0);
+    assert.equal(result.rejected.length, 1);
+    assert.equal(result.rejected[0]?.reasons.includes("No affiliate offer selected"), true);
+  });
+
   it("selects opportunities and executes each selected offer with a deterministic key", async () => {
     const calls: Array<{ offerId: string; idempotencyKey?: string }> = [];
     const orchestrator = {
