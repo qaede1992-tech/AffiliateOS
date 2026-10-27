@@ -67,8 +67,9 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     }
     if (status === "PUBLISHED") {
       // The status endpoint returns the container id, not the published media id.
-      // Never persist a container id as externalPostId; reconcile this state explicitly.
-      return { status: "failed", error: "Instagram reports a published container but did not provide the published media ID." };
+      // Keep this pending rather than falsely recording a container ID as the post ID
+      // or retrying a publish that may already have succeeded.
+      return { status: "processing" };
     }
     if (status === "ERROR" || status === "EXPIRED") {
       return { status: "failed", error: result.status ?? result.error?.message ?? "Instagram media container failed." };
