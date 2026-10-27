@@ -46,12 +46,10 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     });
     if (!container.id) throw new Error(container.error?.message ?? "Instagram did not return a media container id.");
 
-    if (isVideo) {
-      return { status: "accepted", providerOperationId: container.id };
-    }
-
-    const publicationId = await this.publishContainer(accountId, container.id, accessToken);
-    return { status: "published", externalPostId: publicationId };
+    // Defer media_publish to reconciliation for both images and video. Persisting the
+    // container ID first means a lost media_publish response cannot cause the job to
+    // be retried as a fresh publication and create duplicate public content.
+    return { status: "accepted", providerOperationId: container.id };
   }
 
   async checkPublication(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }): Promise<PublicationCheckResult> {
