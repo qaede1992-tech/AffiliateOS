@@ -119,14 +119,20 @@ test("Instagram resolves Supabase object-storage media to signed HTTPS and recor
     fetchImpl: async (input, init) => {
       const url = String(input);
       calls.push({ url, init });
-      return url.includes("/media_publish") ? instagramJson({ id: "published-media-123" }) : instagramJson({ id: "container-123" });
+      if (url.endsWith("/media")) return instagramJson({ id: "container-123" });
+      if (url.includes("/container-123?")) return instagramJson({ id: "container-123", status_code: "FINISHED" });
+      if (url.includes("/media_publish")) return instagramJson({ id: "published-media-123" });
+      throw new Error("Unexpected Instagram request");
     }
   });
   const result = await client.publish({ content: instagramContent, account: instagramAccount, mediaAssets: [storageAsset], idempotencyKey: "test-idempotency" });
-  assert.deepEqual(result, { status: "published", externalPostId: "published-media-123" });
-  assert.equal(calls.length, 2);
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "container-123" });
+  assert.equal(calls.length, 1);
   assert.equal(((calls[0].init?.body) as URLSearchParams).get("image_url"), "https://storage.example/signed/photo.jpg?token=temporary");
-  assert.equal(((calls[1].init?.body) as URLSearchParams).get("creation_id"), "container-123");
+  const published = await client.checkPublication({ content: instagramContent, account: instagramAccount, mediaAssets: [storageAsset], operation: instagramOperation });
+  assert.deepEqual(published, { status: "published", externalPostId: "published-media-123" });
+  assert.equal(calls.length, 3);
+  assert.equal(((calls[2].init?.body) as URLSearchParams).get("creation_id"), "container-123");
 });
 
 test("Instagram never reports a PUBLISHED container ID as the actual post ID", async () => {
