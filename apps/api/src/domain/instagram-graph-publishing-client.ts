@@ -96,7 +96,7 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
       if (asset?.kind === "image" && media.media_type !== "IMAGE" && media.media_type !== "CAROUSEL_ALBUM") return false;
       return true;
     });
-    return matches.length === 1 ? matches[0].id : undefined;
+    return matches.length === 1 ? matches[0]?.id : undefined;
   }
   private async publishContainer(accountId: string, containerId: string, accessToken: string): Promise<string> {
     const publication = await this.request<InstagramPublishResponse>(`/${encodeURIComponent(accountId)}/media_publish`, accessToken, {
