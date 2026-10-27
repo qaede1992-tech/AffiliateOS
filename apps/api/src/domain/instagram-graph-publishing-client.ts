@@ -7,6 +7,7 @@ import type { InstagramContentPublisherClient } from "./instagram-content-publis
 type InstagramMediaResponse = { id?: string; access_token?: string; error?: { message?: string; type?: string; code?: number } };
 type InstagramPublishResponse = { id?: string; error?: { message?: string; type?: string; code?: number } };
 type InstagramContainerStatusResponse = { id?: string; status_code?: string; status?: string; error?: { message?: string; type?: string; code?: number } };
+type InstagramAccountMediaResponse = { data?: Array<{ id?: string; caption?: string; timestamp?: string; media_type?: string }> };
 
 export type InstagramGraphPublishingClientConfiguration = {
   accessTokenResolver: (account: SocialAccount) => Promise<string>;
@@ -64,10 +65,11 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
       return { status: "published", externalPostId };
     }
     if (status === "PUBLISHED") {
-      // The status endpoint returns the container id, not the published media id.
-      // Keep this pending rather than falsely recording a container ID as the post ID
-      // or retrying a publish that may already have succeeded.
-      return { status: "processing" };
+      // Meta returns the container ID here, not the published media ID. Recover only
+      // when exactly one recent account-media item matches this operation's caption
+      // and time window; ambiguous matches stay pending to avoid false attribution.
+      const recoveredId = await this.reconcilePublishedMediaId(input, accessToken);
+      return recoveredId ? { status: "published", externalPostId: recoveredId } : { status: "processing" };
     }
     if (status === "ERROR" || status === "EXPIRED") {
       return { status: "failed", error: result.status ?? result.error?.message ?? "Instagram media container failed." };
@@ -75,6 +77,27 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     return { status: "processing" };
   }
 
+  private async reconcilePublishedMediaId(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }, accessToken: string): Promise<string | undefined> {
+    const accountId = input.account.accountReference;
+    if (!accountId) return undefined;
+    const expectedCaption = input.content.caption ?? input.content.title ?? "";
+    if (!expectedCaption) return undefined;
+    const createdAt = Date.parse(input.operation.createdAt);
+    if (!Number.isFinite(createdAt)) return undefined;
+    const path = `/${encodeURIComponent(accountId)}/media`;
+    const query = new URLSearchParams({ fields: "id,caption,timestamp,media_type", limit: "50" });
+    const response = await this.request<InstagramAccountMediaResponse>(`${path}?${query.toString()}`, accessToken, { method: "GET", body: undefined });
+    const matches = (response.data ?? []).filter((media) => {
+      if (!media.id || media.caption !== expectedCaption || !media.timestamp) return false;
+      const publishedAt = Date.parse(media.timestamp);
+      if (!Number.isFinite(publishedAt) || publishedAt < createdAt - 120_000) return false;
+      const asset = input.mediaAssets.find((candidate) => candidate.kind === "image" || candidate.kind === "video");
+      if (asset?.kind === "video" && media.media_type !== "VIDEO" && media.media_type !== "REELS") return false;
+      if (asset?.kind === "image" && media.media_type !== "IMAGE" && media.media_type !== "CAROUSEL_ALBUM") return false;
+      return true;
+    });
+    return matches.length === 1 ? matches[0].id : undefined;
+  }
   private async publishContainer(accountId: string, containerId: string, accessToken: string): Promise<string> {
     const publication = await this.request<InstagramPublishResponse>(`/${encodeURIComponent(accountId)}/media_publish`, accessToken, {
       method: "POST",
