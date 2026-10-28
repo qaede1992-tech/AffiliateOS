@@ -158,17 +158,19 @@ export class CampaignOrchestrator {
           reusable = await this.content.update(reusable.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
         }
         if (reusable) {
-          if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusable.caption)) {
+          const reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
+          if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusableCaption)) {
             reusable = await this.content.update(reusable.id, {
-              caption: `${reusable.caption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
+              caption: `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
             });
           }
           content.push(await this.attachProductMediaIfAvailable(reusable, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
-          const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generated.caption)
-            ? `${generated.caption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
-            : generated.caption;
+          const generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generatedCaption)
+            ? `${generatedCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
+            : generatedCaption;
           let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption, script: generated.script, cta: generated.cta, status: "draft" });
           created = await this.attachProductMediaIfAvailable(created, liveProduct);
           content.push(created);
