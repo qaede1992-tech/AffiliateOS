@@ -153,14 +153,25 @@ export class CampaignOrchestrator {
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
       for (const platform of requestedPlatforms) {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion" && item.status !== "archived");
-        if (existing?.status === "failed") {
-          const reset = await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
-          content.push(await this.attachProductMediaIfAvailable(reset, liveProduct));
-        } else if (existing) {
-          content.push(await this.attachProductMediaIfAvailable(existing, liveProduct));
+        let reusable = existing;
+        if (reusable?.status === "failed") {
+          reusable = await this.content.update(reusable.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
+        }
+        if (reusable) {
+          const reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
+          if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusableCaption)) {
+            reusable = await this.content.update(reusable.id, {
+              caption: `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
+            });
+          }
+          content.push(await this.attachProductMediaIfAvailable(reusable, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
-          let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
+          const generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generatedCaption)
+            ? `${generatedCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
+            : generatedCaption;
+          let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption, script: generated.script, cta: generated.cta, status: "draft" });
           created = await this.attachProductMediaIfAvailable(created, liveProduct);
           content.push(created);
         }
