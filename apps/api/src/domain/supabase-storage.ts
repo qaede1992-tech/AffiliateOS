@@ -50,6 +50,11 @@ export class SupabaseStorageClient {
   private readonly fetchImpl: typeof fetch;
   private readonly uploadTimeoutMs: number;
 
+  /** Configured private bucket; exposed for validating persisted bucket/key references. */
+  get bucketName(): string {
+    return this.bucket;
+  }
+
   constructor(config: SupabaseStorageConfig) {
     this.baseUrl = normalizeBaseUrl(config.supabaseUrl);
     this.bucket = validateSegment(config.bucket, "bucket");
@@ -144,10 +149,15 @@ export class SupabaseStorageClient {
       throw new Error("Supabase Storage returned an invalid signed URL response.");
     }
     const signed = new URL(payload.signedURL, this.baseUrl);
+    if (signed.origin !== new URL(this.baseUrl).origin) throw new Error("Supabase Storage returned a URL for an unexpected origin.");
+    // Supabase Storage returns paths such as /object/sign/<bucket>/<key>, relative
+    // to its /storage/v1 API prefix. Add that prefix before returning a fetchable URL.
+    if (signed.pathname.startsWith("/object/sign/")) signed.pathname = `/storage/v1${signed.pathname}`;
+    const expectedPath = `/storage/v1/object/sign/${encodeURIComponent(this.bucket)}/${objectPath}`;
+    if (signed.pathname !== expectedPath) throw new Error("Supabase Storage returned an unexpected signed URL path.");
     if (signed.protocol !== "https:" && signed.hostname !== "localhost" && signed.hostname !== "127.0.0.1") {
       throw new Error("Supabase Storage returned a non-HTTPS signed URL.");
     }
-    if (signed.origin !== new URL(this.baseUrl).origin) throw new Error("Supabase Storage returned a URL for an unexpected origin.");
     return signed.toString();
   }
 }
