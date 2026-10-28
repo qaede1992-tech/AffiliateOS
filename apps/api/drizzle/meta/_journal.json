@@ -421,6 +421,13 @@
       "when": 1794050405004,
       "tag": "0063_index_uncovered_foreign_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794050405005,
+      "tag": "0064_publication_job_status_length",
+      "breakpoints": true
     }
   ]
 }
