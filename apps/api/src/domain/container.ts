@@ -68,7 +68,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publishers = publisherRegistry.list();
   const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
   const affiliatePublicationEligibility = new RepositoryAffiliatePublicationEligibilityValidator(repositories.products, repositories.affiliateOffers, repositories.campaignOffers, repositories.trackingLinks);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility);
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility, mediaStorage);
   const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver), repositories.socialAccounts, socialCredentialResolver);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
