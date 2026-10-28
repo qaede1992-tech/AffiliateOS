@@ -135,7 +135,7 @@ type PublicShopItem = {
   trackingCode: string;
 };
 
-const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\\/$/, "") ?? "";
+const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
 
 function ShopPage() {
   const [items, setItems] = useState<PublicShopItem[]>([]);
