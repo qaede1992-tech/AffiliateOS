@@ -37,6 +37,7 @@ test("Instagram image publishing persists its container before media_publish", a
     accessTokenResolver: async () => "secret-token",
     fetchImpl: async (input, init) => {
       calls.push(String(input));
+      if (new URL(String(input)).pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id", username: "test" }), { status: 200 });
       const body = String(init?.body ?? "");
       if (String(input).endsWith("/media")) {
         assert.match(body, /image_url/);
@@ -51,7 +52,7 @@ test("Instagram image publishing persists its container before media_publish", a
   });
   const result = await client.publish({ content, account, mediaAssets: [asset], idempotencyKey: "idem-1" });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "container-1" });
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 
   const published = await client.checkPublication({
     content, account, mediaAssets: [asset],
@@ -63,7 +64,7 @@ test("Instagram image publishing persists its container before media_publish", a
     }
   });
   assert.deepEqual(published, { status: "published", externalPostId: "media-1" });
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 5);
 });
 
 test("Instagram client rejects non-HTTPS media", async () => {
@@ -89,6 +90,7 @@ test("Instagram video publishing waits for a finished container before media_pub
     fetchImpl: async (input, init) => {
       const url = new URL(String(input));
       calls.push(url.toString());
+      if (url.pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id", username: "test" }), { status: 200 });
       if (url.pathname.endsWith("/media")) return new Response(JSON.stringify({ id: "container-2" }), { status: 200 });
       if (url.pathname.endsWith("/container-2")) return new Response(JSON.stringify({ id: "container-2", status_code: status }), { status: 200 });
       if (url.pathname.endsWith("/media_publish")) {
@@ -101,7 +103,7 @@ test("Instagram video publishing waits for a finished container before media_pub
 
   const accepted = await client.publish({ content, account, mediaAssets: [videoAsset], idempotencyKey: "idem-video" });
   assert.deepEqual(accepted, { status: "accepted", providerOperationId: "container-2" });
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 
   const processing = await client.checkPublication({
     content,
@@ -139,7 +141,7 @@ test("Instagram video publishing waits for a finished container before media_pub
     }) }
   });
   assert.deepEqual(published, { status: "published", externalPostId: "media-2" });
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 7);
 });
 
 test("Instagram recovers the actual media ID only for a unique recent caption match", async () => {
@@ -147,10 +149,11 @@ test("Instagram recovers the actual media ID only for a unique recent caption ma
     accessTokenResolver: async () => "secret-token",
     fetchImpl: async (input) => {
       const url = new URL(String(input));
+      if (url.pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id", username: "test" }), { status: 200 });
       if (url.pathname.endsWith("/container-published")) {
         return new Response(JSON.stringify({ id: "container-published", status_code: "PUBLISHED" }), { status: 200 });
       }
-      if (url.pathname.endsWith("/178900000001/media")) {
+      if (url.pathname.endsWith("/canonical-ig-id/media")) {
         assert.match(url.searchParams.get("fields") ?? "", /caption/);
         return new Response(JSON.stringify({ data: [{ id: "actual-media-7", caption: "Affiliate test", timestamp: "2026-09-26T00:02:00+0000", media_type: "IMAGE" }] }), { status: 200 });
       }
@@ -169,6 +172,7 @@ test("Instagram keeps published status pending when recent media matches are amb
     accessTokenResolver: async () => "secret-token",
     fetchImpl: async (input) => {
       const url = new URL(String(input));
+      if (url.pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id", username: "test" }), { status: 200 });
       if (url.pathname.endsWith("/container-published")) return new Response(JSON.stringify({ id: "container-published", status_code: "PUBLISHED" }), { status: 200 });
       return new Response(JSON.stringify({ data: [
         { id: "media-a", caption: "Affiliate test", timestamp: "2026-09-26T00:02:00+0000", media_type: "IMAGE" },
