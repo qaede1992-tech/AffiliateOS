@@ -712,6 +712,8 @@ test("GET /api/v1/social-accounts/:socialAccountId requires an authorized operat
   });
   assert.equal(operatorResponse.statusCode, 200);
   assert.equal(operatorResponse.json().id, account.id);
+  assert.equal("credentialReference" in operatorResponse.json(), false);
+  assert.equal(operatorResponse.json().hasCredentialReference, true);
   await operatorApp.close();
 });
 
