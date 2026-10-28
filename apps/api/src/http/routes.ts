@@ -191,14 +191,16 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       services.tracking.list()
     ]);
     const productsById = new Map(products.map((product) => [product.id, product]));
-    const trackingByOfferId = new Map(
-      trackingLinks.filter((link) => link.status === "active").map((link) => [link.affiliateOfferId, link])
-    );
     const seen = new Set<string>();
     const items = offers.flatMap((offer) => {
       if (offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return [];
+      if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) return [];
       const product = productsById.get(offer.productId);
-      const trackingLink = trackingByOfferId.get(offer.id);
+      const trackingLink = trackingLinks.find((link) =>
+        link.affiliateOfferId === offer.id &&
+        link.status === "active" &&
+        link.destinationUrl === offer.affiliateUrl
+      );
       if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
       seen.add(product.id);
       return [{
