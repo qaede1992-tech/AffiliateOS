@@ -74,6 +74,11 @@ export class InMemoryPublicationJobRepository {
 export class InMemoryPublicationOperationRepository implements PublicationOperationRepository {
   private readonly operations = new Map<EntityId, PublicationOperation>();
   async list() { return [...this.operations.values()]; }
+  async listByJobId(jobId: EntityId) {
+    return [...this.operations.values()]
+      .filter((operation) => operation.jobId === jobId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
   async findById(id: EntityId) { return this.operations.get(id); }
   async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
   async save(operation: PublicationOperation) { this.operations.set(operation.id, operation); return operation; }

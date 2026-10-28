@@ -206,6 +206,55 @@ describe("PublicationWorker", () => {
     assert.equal((await contentService.get(content.id)).status, "published");
   });
 
+
+  it("does not submit a second publication when retrying a job with an accepted operation", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const instagramAccount = {
+      ...account,
+      id: "instagram-account",
+      platform: "instagram" as const,
+      accountReference: "instagram-ref"
+    };
+    await socialAccounts.save(instagramAccount);
+    const instagramContent = await contentService.update(content.id, {
+      platform: "instagram",
+      socialAccountId: instagramAccount.id
+    });
+    const job = await jobService.enqueue(instagramContent);
+    await jobs.save({
+      ...job,
+      status: "failed",
+      attemptCount: 1,
+      updatedAt: "2026-09-20T11:58:00.000Z"
+    });
+    const operations = new InMemoryPublicationOperationRepository();
+    await operations.save({
+      id: "accepted-before-retry",
+      contentId: instagramContent.id,
+      jobId: job.id,
+      provider: "instagram-graph",
+      providerOperationId: "existing-container",
+      status: "accepted",
+      createdAt: "2026-09-20T11:59:30.000Z",
+      updatedAt: "2026-09-20T11:59:30.000Z"
+    });
+    let publishCalls = 0;
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async () => {
+        publishCalls += 1;
+        return { status: "accepted", providerOperationId: "duplicate-container" };
+      }
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const results = await worker.runOnce(new Date("2026-09-20T12:00:00.000Z"));
+    assert.equal(results[0]?.status, "awaiting_confirmation");
+    assert.equal((await jobs.findById(job.id))?.status, "awaiting_confirmation");
+    assert.equal(publishCalls, 0);
+    assert.equal((await operations.listByJobId(job.id)).length, 1);
+  });
+
   it("reconciles an accepted operation after the worker instance is recreated", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const operations = new InMemoryPublicationOperationRepository();
