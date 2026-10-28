@@ -174,7 +174,11 @@ export class CampaignOrchestrator {
           content.push(await this.attachProductMediaIfAvailable(reusable, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
-          const generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          let generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          const referenceCode = productReferenceCode(liveProduct.id);
+          if (!generatedCaption.includes(referenceCode)) {
+            generatedCaption = `${generatedCaption.trim()}\n\nKode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini.`;
+          }
           const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generatedCaption)
             ? `${generatedCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
             : generatedCaption;
