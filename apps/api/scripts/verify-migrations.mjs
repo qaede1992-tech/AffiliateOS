@@ -164,7 +164,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
