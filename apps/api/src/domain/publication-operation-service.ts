@@ -16,6 +16,10 @@ export class PublicationOperationService {
     return this.operations.list();
   }
 
+  async listByJobId(jobId: EntityId): Promise<PublicationOperation[]> {
+    return this.operations.listByJobId(jobId);
+  }
+
   async listReconciliationCandidates(updatedBefore: Date, limit: number): Promise<PublicationOperation[]> {
     if (this.operations.listReconciliationCandidates) {
       return this.operations.listReconciliationCandidates(updatedBefore, limit);
