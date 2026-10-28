@@ -124,6 +124,8 @@ function Home() {
   );
 }
 
+const productReferenceCode = (productId: string): string => `AOS-${productId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+
 type PublicShopItem = {
   id: string;
   name: string;
@@ -139,6 +141,7 @@ const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().r
 
 function ShopPage() {
   const [items, setItems] = useState<PublicShopItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +165,12 @@ function ShopPage() {
     return () => { cancelled = true; };
   }, []);
 
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("id-ID");
+  const filteredItems = items.filter((item) =>
+    item.name.toLocaleLowerCase("id-ID").includes(normalizedQuery) ||
+    productReferenceCode(item.id).toLocaleLowerCase("id-ID").includes(normalizedQuery)
+  );
+
   const money = (item: PublicShopItem) => {
     if (typeof item.priceCents !== "number") return "Lihat harga di marketplace";
     return new Intl.NumberFormat("id-ID", {
@@ -176,18 +185,22 @@ function ShopPage() {
       <div className="public-section-heading">
         <p className="public-eyebrow">Pilihan produk</p>
         <h1>Temukan produk yang sedang kami rekomendasikan.</h1>
-        <p className="public-lead">Pilih produk untuk membuka halaman marketplace melalui tautan afiliasi yang terlacak.</p>
+        <p className="public-lead">Masukkan nama atau kode produk yang tercantum di postingan untuk menemukan produk yang tepat. Pilih produk untuk membuka marketplace melalui tautan afiliasi yang terlacak.</p>
       </div>
       {loading ? <p role="status">Memuat produk…</p> : null}
       {error ? <p className="public-shop-message" role="alert">{error}</p> : null}
       {!loading && !error && items.length === 0 ? (
         <p className="public-shop-message">Belum ada produk dengan tautan afiliasi aktif. Silakan kembali lagi nanti.</p>
       ) : null}
+      <label className="public-shop-search-label" htmlFor="public-shop-search">Cari nama atau kode produk</label>
+      <input id="public-shop-search" className="public-shop-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Contoh: AOS-1A2B3C4D" autoComplete="off" />
+      {!loading && !error && normalizedQuery && filteredItems.length === 0 ? <p className="public-shop-message" role="status">Tidak ada produk yang cocok dengan nama atau kode tersebut.</p> : null}
       <div className="public-shop-grid">
-        {items.map((item) => (
+        {filteredItems.map((item) => (
           <article className="public-shop-card" key={item.id}>
             <p className="public-eyebrow">{item.category || "Rekomendasi produk"}</p>
             <h2>{item.name}</h2>
+            <p className="public-shop-code">Kode produk: <strong>{productReferenceCode(item.id)}</strong></p>
             <p className="public-shop-price">{money(item)}</p>
             {typeof item.ratingMilli === "number" && item.ratingMilli > 0 ? (
               <p className="public-shop-rating">Rating {(item.ratingMilli / 1000).toFixed(1)}{typeof item.reviewCount === "number" ? ` · ${item.reviewCount.toLocaleString("id-ID")} ulasan` : ""}</p>
