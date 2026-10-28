@@ -163,10 +163,10 @@ export class CampaignOrchestrator {
           let reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
           const referenceCode = productReferenceCode(liveProduct.id);
           if (reusable.status === "draft" && !reusableCaption.includes(referenceCode)) {
-            reusableCaption = `${reusableCaption.trim()}\\n\\nKode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini.`;
+            reusableCaption = `${reusableCaption.trim()}\n\nKode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini.`;
           }
-          if (platform === "instagram" && reusable.status === "draft" && !/link\\s+di\\s+bio|tautan\\s+di\\s+bio/i.test(reusableCaption)) {
-            reusableCaption = `${reusableCaption.trim()}\\n\\nLihat tautan di bio untuk memilih produk.`;
+          if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusableCaption)) {
+            reusableCaption = `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`;
           }
           if (reusable.status === "draft" && reusableCaption !== (typeof reusable.caption === "string" ? reusable.caption : "")) {
             reusable = await this.content.update(reusable.id, { caption: reusableCaption });
