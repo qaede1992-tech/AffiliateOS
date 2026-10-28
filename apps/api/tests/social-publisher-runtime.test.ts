@@ -119,6 +119,7 @@ test("Instagram resolves Supabase object-storage media to signed HTTPS and recor
     fetchImpl: async (input, init) => {
       const url = new URL(String(input));
       calls.push({ url: url.toString(), init });
+      if (url.pathname.endsWith("/me")) return instagramJson({ user_id: "canonical-ig-user-1", username: "test" });
       if (url.pathname.endsWith("/media") && !url.pathname.endsWith("/media_publish")) return instagramJson({ id: "container-123" });
       if (url.pathname.endsWith("/container-123")) return instagramJson({ id: "container-123", status_code: "FINISHED" });
       if (url.pathname.endsWith("/media_publish")) return instagramJson({ id: "published-media-123" });
@@ -127,19 +128,19 @@ test("Instagram resolves Supabase object-storage media to signed HTTPS and recor
   });
   const result = await client.publish({ content: instagramContent, account: instagramAccount, mediaAssets: [storageAsset], idempotencyKey: "test-idempotency" });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "container-123" });
-  assert.equal(calls.length, 1);
-  assert.equal(((calls[0].init?.body) as URLSearchParams).get("image_url"), "https://storage.example/signed/photo.jpg?token=temporary");
+  assert.equal(calls.length, 2);
+  assert.equal(((calls[1].init?.body) as URLSearchParams).get("image_url"), "https://storage.example/signed/photo.jpg?token=temporary");
   const published = await client.checkPublication({ content: instagramContent, account: instagramAccount, mediaAssets: [storageAsset], operation: { ...instagramOperation, providerOperationId: "container-123" } });
   assert.deepEqual(published, { status: "published", externalPostId: "published-media-123" });
-  assert.equal(calls.length, 3);
-  assert.equal(((calls[2].init?.body) as URLSearchParams).get("creation_id"), "container-123");
+  assert.equal(calls.length, 5);
+  assert.equal(((calls[4].init?.body) as URLSearchParams).get("creation_id"), "container-123");
 });
 
 test("Instagram never reports a PUBLISHED container ID as the actual post ID", async () => {
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "test-token",
     graphBaseUrl: "https://graph.instagram.com/v25.0",
-    fetchImpl: async () => instagramJson({ id: "container-123", status_code: "PUBLISHED" })
+    fetchImpl: async (input) => new URL(String(input)).pathname.endsWith("/me") ? instagramJson({ user_id: "canonical-ig-user-1", username: "test" }) : instagramJson({ id: "container-123", status_code: "PUBLISHED" })
   });
   const result = await client.checkPublication({ content: instagramContent, account: instagramAccount, mediaAssets: [storageAsset], operation: instagramOperation });
   assert.deepEqual(result, { status: "processing" });
