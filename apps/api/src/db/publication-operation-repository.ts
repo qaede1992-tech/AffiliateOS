@@ -39,6 +39,13 @@ export class DrizzlePublicationOperationRepository implements PublicationOperati
     return (await this.db.select().from(publicationOperations)).map(toDomain);
   }
 
+  async listByJobId(jobId: string): Promise<PublicationOperation[]> {
+    const rows = await this.db.select().from(publicationOperations)
+      .where(eq(publicationOperations.jobId, jobId))
+      .orderBy(asc(publicationOperations.createdAt));
+    return rows.map(toDomain);
+  }
+
   async listReconciliationCandidates(updatedBefore: Date, limit: number): Promise<PublicationOperation[]> {
     const rows = await this.db.select().from(publicationOperations)
       .where(and(
