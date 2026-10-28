@@ -712,6 +712,8 @@ test("GET /api/v1/social-accounts/:socialAccountId requires an authorized operat
   });
   assert.equal(operatorResponse.statusCode, 200);
   assert.equal(operatorResponse.json().id, account.id);
+  assert.equal("credentialReference" in operatorResponse.json(), false);
+  assert.equal(operatorResponse.json().hasCredentialReference, true);
   await operatorApp.close();
 });
 
@@ -1107,6 +1109,46 @@ test("Shopee CSV import leaves both canonical and legacy Shopee offers intact", 
     const afterByExternalId = new Map(after.json().data.map((offer: { externalOfferId: string; id: string }) => [offer.externalOfferId, offer.id]));
     assert.equal(afterByExternalId.get("feed:987"), beforeByExternalId.get("feed:987"));
     assert.equal(afterByExternalId.get("csv:987"), beforeByExternalId.get("csv:987"));
+  } finally {
+    await app.close();
+  }
+});
+
+test("GET TikTok creator info resolves the internal credential reference without exposing it", async () => {
+  const token = "test-token-that-is-long-enough";
+  const services = (await import("../../src/domain/container.js")).createInMemoryServices();
+  const account = await services.socialAccounts.create({
+    platform: "tiktok",
+    accountReference: "tiktok-account",
+    status: "active",
+    credentialReference: "secret://social/tiktok",
+  });
+  let receivedCredentialReference: string | undefined;
+  services.tiktokCreatorInfo.getCreatorInfo = async (providerAccount) => {
+    receivedCredentialReference = providerAccount.credentialReference;
+    return {
+      creatorNickname: "Test creator",
+      privacyLevelOptions: ["PUBLIC_TO_EVERYONE"],
+      commentDisabled: false,
+      duetDisabled: false,
+      stitchDisabled: false,
+      maxVideoPostDurationSec: 60,
+      canPostMore: true,
+    };
+  };
+  const app = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator", role: "operator" },
+  });
+  try {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/social-accounts/${account.id}/tiktok/creator-info`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(receivedCredentialReference, "secret://social/tiktok");
+    assert.deepEqual(response.json().privacyLevelOptions, ["PUBLIC_TO_EVERYONE"]);
+    assert.equal(JSON.stringify(response.json()).includes("secret://social/tiktok"), false);
   } finally {
     await app.close();
   }
