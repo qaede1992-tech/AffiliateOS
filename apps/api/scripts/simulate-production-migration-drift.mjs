@@ -40,7 +40,7 @@ try {
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[1791676800000, 1791763200000, 1794050404000, 1794050405000, 1794050405001, 1794050405002, 1794050405003, 1794050405004]]
+      [[1791676800000, 1791763200000, 1794050404000, 1794050405000, 1794050405001, 1794050405002, 1794050405003, 1794050405004, 1794050405005, 1794050405006]]
     );
     await client.query("COMMIT");
   } catch (error) {

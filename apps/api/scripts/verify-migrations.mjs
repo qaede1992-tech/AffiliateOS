@@ -137,7 +137,8 @@ const expectedColumns = [
   ["publication_jobs", "tiktok_approval"],
   ["media_assets", "duration_seconds"],
   ["campaigns", "is_test"],
-  ["autonomous_runs", "is_test"]
+  ["autonomous_runs", "is_test"],
+  ["autonomous_action_outcomes", "recovery_quality_score"]
 ];
 
 await client.connect();
@@ -163,7 +164,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
@@ -183,7 +184,8 @@ try {
           OR (table_name = 'publication_jobs' AND column_name = 'tiktok_approval')
           OR (table_name = 'media_assets' AND column_name = 'duration_seconds')
           OR (table_name = 'campaigns' AND column_name = 'is_test')
-          OR (table_name = 'autonomous_runs' AND column_name = 'is_test'))`
+          OR (table_name = 'autonomous_runs' AND column_name = 'is_test')
+          OR (table_name = 'autonomous_action_outcomes' AND column_name = 'recovery_quality_score'))`
   );
   const repairedColumns = new Map(repairedColumnRows.map((row) => [
     `${row.table_name}.${row.column_name}`, row
@@ -193,7 +195,8 @@ try {
     ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
     ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }],
     ["campaigns.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }],
-    ["autonomous_runs.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }]
+    ["autonomous_runs.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }],
+    ["autonomous_action_outcomes.recovery_quality_score", { data_type: "real", udt_name: "float4", is_nullable: "NO" }]
   ]) {
     const actual = repairedColumns.get(key);
     if (!actual) {
@@ -208,6 +211,11 @@ try {
     if (key === "campaigns.is_test" || key === "autonomous_runs.is_test") {
       if (!actual.column_default || !actual.column_default.toLowerCase().includes("false")) {
         errors.push(`${key} must have a false default; found ${actual.column_default}.`);
+      }
+    }
+    if (key === "autonomous_action_outcomes.recovery_quality_score") {
+      if (!actual.column_default || !actual.column_default.includes("0")) {
+        errors.push(`${key} must have a zero default; found ${actual.column_default}.`);
       }
     }
   }
