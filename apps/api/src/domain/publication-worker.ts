@@ -150,6 +150,18 @@ export class PublicationWorker {
   private async process(job: PublicationJob, now: Date): Promise<PublicationWorkerResult> {
     try {
       await this.prepareRetry(job);
+      const existingOperations = await this.operations.listByJobId(job.id);
+      const publishedOperation = existingOperations.find((operation) => operation.status === "published" && operation.externalPostId);
+      if (publishedOperation?.externalPostId) {
+        await this.contentService?.update(job.contentId, { status: "published", publishedAt: now.toISOString() });
+        await this.jobService.succeed(job.id, publishedOperation.externalPostId, now);
+        return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: publishedOperation.externalPostId };
+      }
+      const inFlightOperation = existingOperations.find((operation) => operation.status === "accepted" || operation.status === "processing");
+      if (inFlightOperation) {
+        await this.jobService.awaitConfirmation(job.id, now);
+        return { jobId: job.id, contentId: job.contentId, status: "awaiting_confirmation" };
+      }
       if (this.contentService) {
         const content = await this.contentService.get(job.contentId);
         if (content.platform === "tiktok" && (!job.confirmedAt || !job.tiktokApproval)) {
@@ -212,6 +224,11 @@ export class PublicationWorker {
 class InMemoryFallbackPublicationOperationRepository implements PublicationOperationRepository {
   private readonly operations = new Map<string, import("./publication-operation.js").PublicationOperation>();
   async list() { return [...this.operations.values()]; }
+  async listByJobId(jobId: string) {
+    return [...this.operations.values()]
+      .filter((operation) => operation.jobId === jobId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
   async findById(id: string) { return this.operations.get(id); }
   async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
   async save(operation: import("./publication-operation.js").PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
