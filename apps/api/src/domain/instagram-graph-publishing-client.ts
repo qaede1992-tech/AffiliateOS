@@ -8,6 +8,7 @@ type InstagramMediaResponse = { id?: string; access_token?: string; error?: { me
 type InstagramPublishResponse = { id?: string; error?: { message?: string; type?: string; code?: number } };
 type InstagramContainerStatusResponse = { id?: string; status_code?: string; status?: string; error?: { message?: string; type?: string; code?: number } };
 type InstagramAccountMediaResponse = { data?: Array<{ id?: string; caption?: string; timestamp?: string; media_type?: string }> };
+type InstagramProfileResponse = { user_id?: string | number; username?: string; error?: { message?: string; type?: string; code?: number } };
 
 export type InstagramGraphPublishingClientConfiguration = {
   accessTokenResolver: (account: SocialAccount) => Promise<string>;
@@ -35,8 +36,7 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     if (!this.isHttpsUrl(mediaUrl)) {
       throw new Error("Instagram publishing requires a publicly accessible HTTPS media URL.");
     }
-    const accountId = input.account.accountReference;
-    if (!accountId) throw new Error("Instagram publishing requires an account reference.");
+    const accountId = await this.resolveTokenAccountId(accessToken);
 
     const isVideo = asset.kind === "video";
     const container = await this.request<InstagramMediaResponse>(`/${encodeURIComponent(accountId)}/media`, accessToken, {
@@ -55,20 +55,21 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
 
   async checkPublication(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }): Promise<PublicationCheckResult> {
     const accessToken = await this.configuration.accessTokenResolver(input.account);
+    const accountId = await this.resolveTokenAccountId(accessToken);
     const result = await this.request<InstagramContainerStatusResponse>(`/${encodeURIComponent(input.operation.providerOperationId)}`, accessToken, {
       method: "GET",
       body: undefined
     });
     const status = result.status_code?.toUpperCase();
     if (status === "FINISHED") {
-      const externalPostId = await this.publishContainer(input.account.accountReference, input.operation.providerOperationId, accessToken);
+      const externalPostId = await this.publishContainer(accountId, input.operation.providerOperationId, accessToken);
       return { status: "published", externalPostId };
     }
     if (status === "PUBLISHED") {
       // Meta returns the container ID here, not the published media ID. Recover only
       // when exactly one recent account-media item matches this operation's caption
       // and time window; ambiguous matches stay pending to avoid false attribution.
-      const recoveredId = await this.reconcilePublishedMediaId(input, accessToken);
+      const recoveredId = await this.reconcilePublishedMediaId(input, accessToken, accountId);
       return recoveredId ? { status: "published", externalPostId: recoveredId } : { status: "processing" };
     }
     if (status === "ERROR" || status === "EXPIRED") {
@@ -77,9 +78,7 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     return { status: "processing" };
   }
 
-  private async reconcilePublishedMediaId(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }, accessToken: string): Promise<string | undefined> {
-    const accountId = input.account.accountReference;
-    if (!accountId) return undefined;
+  private async reconcilePublishedMediaId(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; operation: PublicationOperation }, accessToken: string, accountId: string): Promise<string | undefined> {
     const expectedCaption = input.content.caption ?? input.content.title ?? "";
     if (!expectedCaption) return undefined;
     const createdAt = Date.parse(input.operation.createdAt);
@@ -98,6 +97,14 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     });
     return matches.length === 1 ? matches[0]?.id : undefined;
   }
+  private async resolveTokenAccountId(accessToken: string): Promise<string> {
+    const profile = await this.request<InstagramProfileResponse>("/me?fields=user_id,username", accessToken, { method: "GET", body: undefined });
+    if (profile.user_id === undefined || profile.user_id === null || String(profile.user_id).trim() === "") {
+      throw new Error(profile.error?.message ?? "Instagram token did not resolve to a professional account user_id.");
+    }
+    return String(profile.user_id).trim();
+  }
+
   private async publishContainer(accountId: string, containerId: string, accessToken: string): Promise<string> {
     const publication = await this.request<InstagramPublishResponse>(`/${encodeURIComponent(accountId)}/media_publish`, accessToken, {
       method: "POST",
