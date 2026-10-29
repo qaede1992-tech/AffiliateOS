@@ -44,7 +44,7 @@ const isPublicAddress = (address: string): boolean => {
   // unique-local, IPv4-mapped, multicast, unspecified, and other special ranges.
   if (!/^[23]/.test(normalized)) return false;
   if (normalized.startsWith("2001:db8:") || normalized === "2001:db8") return false;
-  if (normalized.startsWith("2001:10:") || normalized.startsWith("2001:20:")) return false;
+  if (normalized.startsWith("2001:") || normalized.startsWith("2002:")) return false;
   return true;
 };
 
