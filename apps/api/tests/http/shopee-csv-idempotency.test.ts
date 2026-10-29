@@ -67,11 +67,11 @@ test("Shopee CSV reimport without an image column preserves previously imported 
     const csvWithImage = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Link Gambar",
       `456,"Produk Media","Rp55.000","100","Toko Media","8,5%","Rp4.675","${productUrl}","${affiliateUrl}","${imageUrl}"`,
-    ].join("\\n");
+    ].join("\n");
     const csvWithoutImage = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
       `456,"Produk Media","Rp55.000","100","Toko Media","8,5%","Rp4.675","${productUrl}","${affiliateUrl}"`,
-    ].join("\\n");
+    ].join("\n");
 
     const importCsv = (csv: string) => app.inject({
       method: "POST",
