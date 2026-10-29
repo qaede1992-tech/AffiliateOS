@@ -137,7 +137,7 @@ export class AutonomousExecutionService {
     const adaptiveExplorationRates = this.adaptiveExploration
       ? await this.adaptiveExploration.getRates(selectionCandidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
-    const selection = this.selector.select(selectionCandidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates, new Set(input.publishableVideoProductIds ?? []));
+    const selection = this.selector.select(selectionCandidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requirePublishableVideo: input.requirePublishableVideo ?? input.policy?.requirePublishableVideo, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates, new Set(input.publishableVideoProductIds ?? []));
     const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
