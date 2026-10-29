@@ -165,7 +165,7 @@ function ShopPage() {
   }, []);
 
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("id-ID");
-  const isNumberQuery = /^\\d+$/.test(normalizedQuery);
+  const isNumberQuery = /^\d+$/.test(normalizedQuery);
   const filteredItems = items.filter((item) => isNumberQuery
     ? item.referenceNumber === Number(normalizedQuery)
     : item.name.toLocaleLowerCase("id-ID").includes(normalizedQuery)
