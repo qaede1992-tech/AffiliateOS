@@ -65,6 +65,23 @@ export class AutonomousExecutionService {
     const recoveredKeys = new Set<string>();
     const recoveredOpportunityKeys = new Set<string>();
     let recoveredRunCount = 0;
+    // Recovery is not a bypass around current product selection. A previously
+    // selected opportunity must still pass today's complete selection policy
+    // before it can recreate or resume campaign/content artifacts.
+    const recoveryAdaptiveExplorationRates = this.adaptiveExploration
+      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      : new Map<string, number>();
+    const currentlySelectedForRecovery = this.selector.select(
+      input.candidates,
+      {
+        ...input.policy,
+        requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia,
+        requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal
+      },
+      performance,
+      input.policiesByMarketplace,
+      recoveryAdaptiveExplorationRates
+    ).selected;
     if (this.autonomousRuns) {
       const recoverable = await this.autonomousRuns.listRecoverable();
       for (const run of recoverable) {
@@ -75,6 +92,10 @@ export class AutonomousExecutionService {
           await this.autonomousRuns.markUnrecoverable(run.id, "The original affiliate offer is no longer available under the active marketplace account.");
           continue;
         }
+        const stillSelected = currentlySelectedForRecovery.some((item) =>
+          item.product.id === run.opportunityProductId && item.offerId === run.offerId
+        );
+        if (!stillSelected) continue;
         if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active" || !isExecutableAffiliateOffer(candidate.product.id, offer)) {
           await this.autonomousRuns.markUnrecoverable(run.id, "The original product or affiliate offer is no longer eligible for autonomous execution.");
           continue;
