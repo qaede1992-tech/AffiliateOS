@@ -4,6 +4,7 @@ import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
+import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
 
 export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
@@ -38,6 +39,21 @@ export class InMemoryClickRepository extends InMemoryRepository<Click> implement
 export class InMemoryConversionRepository extends InMemoryRepository<Conversion> implements ConversionRepository { async findByIdempotencyKey(idempotencyKey: string) { return (await this.list()).find((conversion) => conversion.idempotencyKey === idempotencyKey); } }
 export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> implements TrackingLinkRepository { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
 export class InMemorySocialAccountRepository extends InMemoryRepository<SocialAccount> implements SocialAccountRepository { async findByPlatformAccount(platform: string, accountReference: string) { return (await this.list()).find((account) => account.platform === platform && account.accountReference === accountReference); } }
+export class InMemoryProductMediaAssetRepository implements ProductMediaAssetRepository {
+  private readonly assets = new Map<string, ProductMediaAsset>();
+  async findByProductAndHash(productId: string, sha256: string) {
+    return [...this.assets.values()].find((asset) => asset.productId === productId && asset.sha256 === sha256);
+  }
+  async listByProduct(productId: string) {
+    return [...this.assets.values()].filter((asset) => asset.productId === productId);
+  }
+  async save(asset: ProductMediaAsset) {
+    const existing = await this.findByProductAndHash(asset.productId, asset.sha256);
+    if (existing) return existing;
+    this.assets.set(asset.id, asset);
+    return asset;
+  }
+}
 export class InMemoryMediaAssetRepository implements MediaAssetRepository {
   private readonly assets = new Map<EntityId, MediaAsset>();
   async listByContent(contentId: EntityId) { return [...this.assets.values()].filter((asset) => asset.contentId === contentId); }
@@ -122,7 +138,7 @@ export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
+  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; productMediaAssets?: ProductMediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface CommissionRepository extends Repository<Commission> { findByConversionId(conversionId: EntityId): Promise<Commission | undefined>; }
