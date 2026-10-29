@@ -133,7 +133,7 @@ export class AutonomousOpportunitySelector {
       const selectedOffer = item.offerId ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId) : undefined;
       const hasCommissionSignal = Boolean(selectedOffer && (selectedOffer.commissionRateBps !== undefined || selectedOffer.commissionAmountCents !== undefined));
       return item.score >= minimumScore && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
-        (!candidatePolicy.requirePublishableMedia || hasPublishableMedia(item.product)) &&
+        (!candidatePolicy.requirePublishableMedia || hasPublishableMedia(item.product, publishableVideoProductIds)) && (!candidatePolicy.requirePublishableVideo || hasPublishableVideo(item.product, publishableVideoProductIds)) &&
         (!candidatePolicy.requireCommissionSignal || hasCommissionSignal) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
@@ -292,7 +292,14 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
 }
 
 
-function hasPublishableMedia(product: Product): boolean {
+function hasPublishableVideo(product: Product, storedVideoProductIds: Set<string>): boolean {
+  if (storedVideoProductIds.has(product.id)) return true;
+  if (!product.videoUrl) return false;
+  try { return new URL(product.videoUrl).protocol === "https:"; } catch { return false; }
+}
+
+function hasPublishableMedia(product: Product, storedVideoProductIds: Set<string> = new Set()): boolean {
+  if (hasPublishableVideo(product, storedVideoProductIds)) return true;
   return [product.videoUrl, product.imageUrl].some((reference) => {
     if (!reference) return false;
     try {
