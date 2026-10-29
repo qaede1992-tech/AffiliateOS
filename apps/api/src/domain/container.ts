@@ -129,7 +129,8 @@ export function createServices(repositories: RepositorySet, transactionManager: 
       onError: (error) => {
         console.error(JSON.stringify({
           event: "autonomous_cycle_failed",
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
+          errorChain: describeErrorChain(error)
         }));
       }
     }
@@ -147,4 +148,36 @@ export function createInMemoryServices(): Services {
   };
   const transactionManager: TransactionManager = { run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions }) };
   return createServices(repositories, transactionManager);
+}
+
+
+function describeErrorChain(error: unknown): Array<Record<string, string | number | undefined>> {
+  const chain: Array<Record<string, string | number | undefined>> = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current) && chain.length < 5) {
+    seen.add(current);
+    const item = current as {
+      name?: unknown;
+      message?: unknown;
+      code?: unknown;
+      detail?: unknown;
+      hint?: unknown;
+      position?: unknown;
+      cause?: unknown;
+    };
+    chain.push({
+      name: typeof item.name === "string" ? item.name : undefined,
+      message: typeof item.message === "string" ? item.message : undefined,
+      code: typeof item.code === "string" ? item.code : undefined,
+      detail: typeof item.detail === "string" ? item.detail : undefined,
+      hint: typeof item.hint === "string" ? item.hint : undefined,
+      position: typeof item.position === "string" || typeof item.position === "number" ? item.position : undefined
+    });
+    current = item.cause;
+  }
+  if (chain.length === 0) {
+    chain.push({ message: typeof error === "string" ? error : String(error) });
+  }
+  return chain;
 }
