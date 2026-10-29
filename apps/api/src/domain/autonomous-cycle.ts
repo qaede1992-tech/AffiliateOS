@@ -94,22 +94,21 @@ export class AutonomousCycleService {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
-      // First pass preserves every non-media threshold but does not reject products solely because
-      // media has not yet been discovered. It never creates campaigns or content.
-      const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false }]));
-      const preliminary = await this.execution.previewSelection({
-        ...input, candidates: candidateList, policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false },
-        policiesByMarketplace: preliminaryPolicies, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true
-      });
+      let videoIds = input.publishableVideoProductIds ?? [];
       if (this.productMediaDiscovery) {
+        // First pass preserves every non-media threshold but does not reject products solely because
+        // media has not yet been discovered. It never creates campaigns or content.
+        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false }]));
+        const preliminary = await this.execution.previewSelection({
+          ...input, candidates: candidateList, policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false },
+          policiesByMarketplace: preliminaryPolicies, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true
+        });
         for (const selected of preliminary.selected) {
           const candidate = candidateList.find((item) => item.product.id === selected.product.id);
           if (candidate) await this.productMediaDiscovery.discover(candidate.product, true);
         }
+        videoIds = await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id));
       }
-      const videoIds = this.productMediaDiscovery
-        ? await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id))
-        : input.publishableVideoProductIds ?? [];
       const executionInput: AutonomousExecutionInput = {
         ...input, scheduledAt, candidates: candidateList, requirePublishableMedia: true,
         requirePublishableVideo: true, publishableVideoProductIds: videoIds, requireCommissionSignal: true
