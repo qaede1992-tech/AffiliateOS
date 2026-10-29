@@ -85,6 +85,61 @@ describe("campaign orchestrator", () => {
     assert.equal(content.created.length, 0);
   });
 
+  it("allows an autonomous Instagram-only campaign when the product has no video asset", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const productMediaAssets = { async listByProduct() { return []; } };
+    const result = await new CampaignOrchestrator(
+      campaigns as never,
+      new StubTracking() as never,
+      content as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      productMediaAssets as never
+    ).execute({
+      opportunity,
+      offer,
+      product,
+      idempotencyKey: "instagram-image-only-run",
+      platforms: ["instagram"]
+    });
+
+    assert.equal(result.content.length, 1);
+    assert.deepEqual(result.content.map((item) => item.platform), ["instagram"]);
+  });
+
+  it("still requires a stored product video for autonomous TikTok campaigns", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const productMediaAssets = { async listByProduct() { return []; } };
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        campaigns as never,
+        new StubTracking() as never,
+        content as never,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        productMediaAssets as never
+      ).execute({
+        opportunity,
+        offer,
+        product,
+        idempotencyKey: "tiktok-video-required-run",
+        platforms: ["tiktok"]
+      }),
+      /stored, validated product video is required before autonomous TikTok campaign creation/
+    );
+
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
   it("connects a selected opportunity to campaign, tracking, and platform-specific content", async () => {
     const content = new StubContent();
     const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"] });
