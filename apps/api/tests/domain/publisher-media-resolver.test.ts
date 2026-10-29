@@ -54,7 +54,7 @@ test("rejects bucket mismatch and cross-content object keys", async () => {
   );
   await assert.rejects(
     resolvePublisherMediaAssets({ id: contentId }, [{ ...asset, reference: "affiliate-media/content/33333333-3333-4333-8333-333333333333/image.jpg" }], storage),
-    /outside the publishing content scope/
+    /outside the publishing content or linked-product scope/
   );
 });
 
