@@ -70,11 +70,26 @@ export class PublicationWorker {
           .slice(0, PUBLICATION_JOB_BATCH_LIMIT);
 
     for (const candidate of candidates) {
+      if (candidate.status === "failed" && await this.shouldSkipFailedJobRetry(candidate)) continue;
       const claimed = await this.jobService.claim(candidate.id, now);
       if (!claimed) continue;
       results.push(await this.process(claimed, now));
     }
     return results;
+  }
+
+  private async shouldSkipFailedJobRetry(job: PublicationJob): Promise<boolean> {
+    if (job.status !== "failed" || !this.contentService) return false;
+    try {
+      const content = await this.contentService.get(job.contentId);
+      // A failed job is retryable only while its content remains scheduled or
+      // failed (the latter is reset to scheduled by prepareRetry). Draft or
+      // already-published content must not be retried by the worker.
+      return content.status !== "scheduled" && content.status !== "failed";
+    } catch {
+      // A missing content record cannot be published; avoid retrying it forever.
+      return true;
+    }
   }
 
   private async reconcile(now: Date): Promise<PublicationWorkerResult[]> {

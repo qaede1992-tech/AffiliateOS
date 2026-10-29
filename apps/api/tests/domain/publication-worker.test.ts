@@ -327,6 +327,29 @@ describe("PublicationWorker", () => {
     assert.equal((await contentService.get(content.id)).status, "published");
   });
 
+  it("does not retry failed jobs after content is moved back to draft", async () => {
+    const { contentService, socialAccounts, jobs, jobService } = await setup();
+    const instagramContent = await contentService.create({
+      productId: product.id,
+      platform: "instagram",
+      contentType: "affiliate-promotion",
+      status: "scheduled",
+      scheduledAt: "2026-09-20T10:00:00.000Z"
+    });
+    const job = await jobService.enqueue(instagramContent);
+    await contentService.update(instagramContent.id, { status: "draft" });
+
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService);
+    const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(first[0]?.status, "failed");
+    assert.match(first[0]?.error ?? "", /Only scheduled content can be published/);
+    assert.equal((await jobs.findById(job.id))?.attemptCount, 1);
+
+    const retry = await worker.runOnce(new Date("2026-09-20T13:00:00.000Z"));
+    assert.deepEqual(retry, []);
+    assert.equal((await jobs.findById(job.id))?.attemptCount, 1);
+  });
+
   it("records adapter failures and restores failed content before retrying after backoff", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     let attempts = 0;
