@@ -89,11 +89,14 @@ export class ProductMediaIngestionService {
     const existing = await this.assets.listByProduct(input.productId);
     const alreadyHasImage = existing.some((asset) => asset.kind === "image");
 
-    for (const candidate of input.candidates) {
+    const orderedCandidates = [...input.candidates].sort((left, right) =>
+      left.kind === right.kind ? 0 : left.kind === "image" ? -1 : 1
+    );
+    for (const candidate of orderedCandidates) {
       try {
         if (candidate.kind === "video" && !alreadyHasImage && !stored.some((asset) => asset.kind === "image")) {
-          // Video is optional; keep processing it only if it is a candidate. It may
-          // still be stored, but it cannot by itself make a product publishable.
+          skipped.push({ url: candidate.url, reason: "Optional video skipped because no usable product image is available." });
+          continue;
         }
         const limit = candidate.kind === "video" ? this.policy.maxVideoBytes : this.policy.maxImageBytes;
         const response = await this.fetcher(candidate.url, {
