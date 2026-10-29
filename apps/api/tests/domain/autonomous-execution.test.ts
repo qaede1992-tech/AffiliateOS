@@ -135,6 +135,40 @@ describe("AutonomousExecutionService", () => {
     assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
   });
 
+  it("does not recover or create content when an old opportunity no longer passes current selection", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { platforms: ["instagram"] },
+      now: new Date("2026-10-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "previous orchestration interrupted" }, new Date("2026-10-20T09:01:00.000Z"));
+
+    let orchestratorCalls = 0;
+    const orchestrator = {
+      execute: async () => { orchestratorCalls += 1; return orchestrationResult; }
+    } as unknown as CampaignOrchestrator;
+    const selector = {
+      select: () => ({ selected: [], rejected: [{ productId: product.id, score: 20, reasons: ["Score is below current minimum"] }], audit: [] })
+    } as unknown as AutonomousOpportunitySelector;
+    const service = new AutonomousExecutionService(selector, orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 60, requireCommissionSignal: true },
+      idempotencyNamespace: "current-cycle",
+      publicationEnabled: false
+    });
+
+    assert.equal(result.recoveredRunCount, 0);
+    assert.equal(orchestratorCalls, 0, "recovery must not call campaign/content orchestration for a rejected product");
+    assert.equal(result.outcomes.length, 0);
+    assert.equal((await runService.findById(accepted.id))?.status, "failed");
+  });
+
   it("terminalizes recoverable runs when their original offer is no longer available", async () => {
     const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
     const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
