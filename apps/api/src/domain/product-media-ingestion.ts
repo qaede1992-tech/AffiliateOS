@@ -87,17 +87,13 @@ export class ProductMediaIngestionService {
     const stored: ProductMediaAsset[] = [];
     const skipped: Array<{ url: string; reason: string }> = [];
     const existing = await this.assets.listByProduct(input.productId);
-    const alreadyHasImage = existing.some((asset) => asset.kind === "image");
-
+    // Video is the preferred campaign format. Do not require an image before
+    // ingesting a valid video; image candidates are useful fallback media only.
     const orderedCandidates = [...input.candidates].sort((left, right) =>
-      left.kind === right.kind ? 0 : left.kind === "image" ? -1 : 1
+      left.kind === right.kind ? 0 : left.kind === "video" ? -1 : 1
     );
     for (const candidate of orderedCandidates) {
       try {
-        if (candidate.kind === "video" && !alreadyHasImage && !stored.some((asset) => asset.kind === "image")) {
-          skipped.push({ url: candidate.url, reason: "Optional video skipped because no usable product image is available." });
-          continue;
-        }
         const limit = candidate.kind === "video" ? this.policy.maxVideoBytes : this.policy.maxImageBytes;
         const response = await this.fetcher(candidate.url, {
           maxBytes: limit,
