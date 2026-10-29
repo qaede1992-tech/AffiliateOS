@@ -273,7 +273,7 @@ export class CampaignOrchestrator {
 
     if (this.productMediaAssets) {
       const productAssets = await this.productMediaAssets.listByProduct(product.id);
-      const preferredKind = content.platform === "tiktok" && productAssets.some((asset) => asset.kind === "video") ? "video" : "image";
+      const preferredKind = productAssets.some((asset) => asset.kind === "video") ? "video" : "image";
       const stored = productAssets.find((asset) => asset.kind === preferredKind);
       if (stored && this.mediaAssets) {
         const existingAssets = await this.mediaAssets.listByContent(content.id);
