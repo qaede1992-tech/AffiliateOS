@@ -38,6 +38,7 @@ try {
   const migration0065 = 1794050405006;
   const migration0066 = 1794050405007;
   const migration0067 = 1794050405008;
+  const migration0068 = 1794050405009;
   assert.ok(timestamps.includes(migration0059), "Expected migration 0059 to remain recorded.");
   assert.ok(timestamps.includes(migration0060), "Expected migration 0060 to have been applied before simulation.");
   assert.ok(timestamps.includes(migration0061), "Expected migration 0061 to have been applied before simulation.");
@@ -47,6 +48,7 @@ try {
   assert.ok(timestamps.includes(migration0065), "Expected migration 0065 to have been applied before simulation.");
   assert.ok(timestamps.includes(migration0066), "Expected migration 0066 to have been applied before simulation.");
   assert.ok(timestamps.includes(migration0067), "Expected migration 0067 to have been applied before simulation.");
+  assert.ok(timestamps.includes(migration0068), "Expected migration 0068 to have been applied before simulation.");
 
   await client.query("BEGIN");
   try {
@@ -56,7 +58,7 @@ try {
     await client.query("ALTER TABLE public.autonomous_runs DROP COLUMN IF EXISTS is_test");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[migration0060, migration0061, migration0062, migration0063, migration0064, migration0065, migration0066, migration0067]]
+      [[migration0060, migration0061, migration0062, migration0063, migration0064, migration0065, migration0066, migration0067, migration0068]]
     );
     await client.query("COMMIT");
   } catch (error) {
