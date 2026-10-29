@@ -58,6 +58,23 @@ test("rejects bucket mismatch and cross-content object keys", async () => {
   );
 });
 
+test("resolves product-owned video only when that product is linked to the content", async () => {
+  const productId = "33333333-3333-4333-8333-333333333333";
+  let requestedKey = "";
+  const storage = {
+    bucketName: "affiliate-media",
+    async createSignedUrl(key: string) { requestedKey = key; return "https://project.supabase.co/storage/v1/object/sign/affiliate-media/video.mp4?token=temporary"; }
+  };
+  const productVideo = { ...asset, kind: "video" as const, mimeType: "video/mp4", reference: `affiliate-media/products/${productId}/abc.mp4` };
+  const [resolved] = await resolvePublisherMediaAssets({ id: contentId }, [productVideo], storage, [productId]);
+  assert.equal(resolved?.source, "url");
+  assert.equal(requestedKey, `products/${productId}/abc.mp4`);
+  await assert.rejects(
+    resolvePublisherMediaAssets({ id: contentId }, [productVideo], storage, []),
+    /outside the publishing content or linked-product scope/
+  );
+});
+
 test("preserves existing HTTPS URL assets without requesting a signed URL", async () => {
   const publicAsset = { ...asset, source: "url" as const, reference: "https://images.example/image.jpg" };
   const storage = {
