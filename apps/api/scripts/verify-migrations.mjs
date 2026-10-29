@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { findDuplicateSupabaseMigrationNames } from "./supabase-migration-ledger-audit.mjs";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -489,6 +490,28 @@ try {
       console.warn(`Historical migration ledger gaps explicitly compensated by ${compensationTag}: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
     }
   }
+  // Supabase keeps its own migration ledger separately from Drizzle's ledger.
+  // Inspect it when available so duplicate migration names are visible during
+  // verification without changing either ledger or blocking unrelated local DBs.
+  const { rows: supabaseLedgerPresence } = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'supabase_migrations' AND table_name = 'schema_migrations') AS present"
+  );
+  if (supabaseLedgerPresence[0]?.present) {
+    const { rows: supabaseMigrationRows } = await client.query(
+      `SELECT name, version
+         FROM supabase_migrations.schema_migrations
+        WHERE name IS NOT NULL AND btrim(name) <> ''
+        ORDER BY name, version`
+    );
+    const duplicateNames = findDuplicateSupabaseMigrationNames(supabaseMigrationRows);
+    if (duplicateNames.length > 0) {
+      console.warn("WARNING: Supabase migration ledger contains repeated migration names; review versions before future schema changes.");
+      for (const duplicate of duplicateNames) {
+        console.warn(JSON.stringify(duplicate));
+      }
+    }
+  }
+
 } finally {
   await client.end();
 }
