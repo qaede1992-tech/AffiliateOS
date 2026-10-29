@@ -35,6 +35,17 @@ export class ProductMediaDiscoveryRunner {
     this.ingestion = new ProductMediaIngestionService(storage, assets, policy, fetcher);
   }
 
+  async hasStoredVideo(productId: string): Promise<boolean> {
+    return (await this.assets.listByProduct(productId)).some((asset) => asset.kind === "video");
+  }
+
+  async listVideoProductIds(productIds: string[]): Promise<string[]> {
+    const result: string[] = [];
+    for (const productId of [...new Set(productIds)]) {
+      if (await this.hasStoredVideo(productId)) result.push(productId);
+    }
+    return result;
+  }
   async discover(product: Product, nonMediaEligibilityPassed: boolean): Promise<ProductMediaDiscoveryResult> {
     const skipped: Array<{ url: string; reason: string }> = [];
     if (!nonMediaEligibilityPassed) {
