@@ -29,16 +29,17 @@ try {
   await client.query("BEGIN");
   try {
     // Recreate the audited production schema drift only inside the ephemeral CI DB.
-    // Keep all historical ledger entries intact: deleting older rows is unsafe
-    // because their journal timestamps are non-monotonic. Delete only the newest
-    // forward-repair migration row so Drizzle must reapply that idempotent repair.
+    // Keep older historical ledger entries intact because their journal timestamps
+    // are non-monotonic. Remove the forward-repair migration and any later migration
+    // rows in this ephemeral test database, so Drizzle can reapply 0067 in timestamp
+    // order before reapplying 0068. Never run this simulation against production.
     await client.query("DROP TABLE IF EXISTS public.content_products");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
     await client.query(
-      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = $1',
-      [1794050405008]
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at IN ($1, $2)',
+      [1794050405008, 1794050405009]
     );
     await client.query("COMMIT");
   } catch (error) {
