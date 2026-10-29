@@ -263,13 +263,11 @@ export class CampaignOrchestrator {
   ) {
     if (!this.mediaAssets) return content;
 
-    const media = content.platform === "instagram"
-      ? { kind: "image" as const, reference: product.imageUrl }
-      : content.platform === "tiktok"
-        ? product.videoUrl
-          ? { kind: "video" as const, reference: product.videoUrl }
-          : { kind: "image" as const, reference: product.imageUrl }
-        : undefined;
+    const media = content.platform === "instagram" || content.platform === "tiktok"
+      ? product.videoUrl
+        ? { kind: "video" as const, reference: product.videoUrl }
+        : { kind: "image" as const, reference: product.imageUrl }
+      : undefined;
 
     if (this.productMediaAssets) {
       const productAssets = await this.productMediaAssets.listByProduct(product.id);
