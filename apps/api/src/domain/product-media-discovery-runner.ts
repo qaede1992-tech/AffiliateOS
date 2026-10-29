@@ -63,6 +63,16 @@ export class ProductMediaDiscoveryRunner {
       }
       const html = new TextDecoder().decode(page.bytes);
       const candidates = extractProductMediaCandidates(html, { pageUrl: page.url, maxCandidates: this.policy.maxCandidates ?? 30 });
+      if (product.videoUrl) {
+        try {
+          const videoUrl = new URL(product.videoUrl);
+          if (videoUrl.protocol === "https:" && !videoUrl.username && !videoUrl.password && !candidates.some((candidate) => candidate.kind === "video" && candidate.url === videoUrl.toString())) {
+            candidates.unshift({ kind: "video", url: videoUrl.toString(), source: "html" });
+          }
+        } catch {
+          skipped.push({ url: product.videoUrl, reason: "Existing product video URL is invalid." });
+        }
+      }
       if (!candidates.some((candidate) => candidate.kind === "video")) {
         skipped.push({ url: page.url, reason: "No public video candidate was found in product page metadata." });
       }
