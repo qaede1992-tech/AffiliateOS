@@ -31,7 +31,7 @@ export type GeneratedCampaignContent = {
 };
 
 const defaultPlatforms: ContentPlatform[] = ["instagram", "tiktok"];
-const productReferenceCode = (productId: string): string => `AOS-${productId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+const productReferenceNumber = (product: Product): string => product.referenceNumber ? String(product.referenceNumber) : "";
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
 const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string, attempt = 0): string => {
   const seed = `${idempotencyKey ?? campaignId}:${offerId}:${attempt}`;
@@ -52,8 +52,9 @@ export class DeterministicCampaignContentGenerator implements CampaignContentGen
     const currency = input.offer.currency ?? input.product.currency;
     const price = new Intl.NumberFormat("id-ID", { style: "currency", currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
     const title = productName;
-    const referenceCode = productReferenceCode(input.product.id);
-    const caption = `${productName}. Harga pada katalog saat ini ${price}. Kode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini. Periksa kembali harga, spesifikasi, dan ketersediaan pada halaman produk sebelum membeli.`;
+    const referenceNumber = productReferenceNumber(input.product);
+    const productLookup = referenceNumber ? `Nomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.` : "Buka toko AffiliateOS melalui tautan di bio dan cari nama produk ini.";
+    const caption = `${productName}. Harga pada katalog saat ini ${price}. ${productLookup} Periksa kembali harga, spesifikasi, dan ketersediaan pada halaman produk sebelum membeli.`;
     const script = `Pembuka: Sedang mencari ${productName}?\nDetail: ${input.product.description?.trim() || "Lihat detail produk dan penawaran yang tersedia."}\nHarga: Harga pada katalog saat ini ${price}; cek kembali harga terbaru pada halaman produk.\nAjakan: Buka tautan untuk melihat detail penawaran.`;
     return { platform: input.platform, title, caption, script, cta: "Lihat detail produk" };
   }
@@ -161,9 +162,12 @@ export class CampaignOrchestrator {
         }
         if (reusable) {
           let reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
-          const referenceCode = productReferenceCode(liveProduct.id);
-          if (reusable.status === "draft" && !reusableCaption.includes(referenceCode)) {
-            reusableCaption = `${reusableCaption.trim()}\n\nKode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini.`;
+          reusableCaption = reusableCaption
+            .replace(/Kode produk:\s*AOS-[A-Z0-9-]+\.?/gi, "")
+            .replace(/Buka toko AffiliateOS melalui tautan di bio dan cari kode ini\./gi, "Buka toko AffiliateOS melalui tautan di bio dan cari nomor produk.");
+          const referenceNumber = productReferenceNumber(liveProduct);
+          if (reusable.status === "draft" && referenceNumber && !reusableCaption.includes(`Nomor produk: ${referenceNumber}`)) {
+            reusableCaption = `${reusableCaption.trim()}\n\nNomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.`;
           }
           if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusableCaption)) {
             reusableCaption = `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`;
@@ -175,9 +179,9 @@ export class CampaignOrchestrator {
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
           let generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
-          const referenceCode = productReferenceCode(liveProduct.id);
-          if (!generatedCaption.includes(referenceCode)) {
-            generatedCaption = `${generatedCaption.trim()}\n\nKode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini.`;
+          const referenceNumber = productReferenceNumber(liveProduct);
+          if (referenceNumber && !generatedCaption.includes(`Nomor produk: ${referenceNumber}`)) {
+            generatedCaption = `${generatedCaption.trim()}\n\nNomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.`;
           }
           const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generatedCaption)
             ? `${generatedCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`

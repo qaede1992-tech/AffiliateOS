@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { Client } from "pg";
 
 // This deliberately removes migration 0060's schema objects and its ledger row.
-// Later ledger rows are also removed so Drizzle can replay migrations in
-// timestamp order instead of treating a later timestamp as already applied.
+// Every later migration row must also be removed, including newer forward-only
+// repairs, so Drizzle can replay from 0060 instead of treating a later timestamp
+// as already applied.
 if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
   throw new Error("Refusing the pending-0060 simulation outside a GitHub Actions CI runner.");
 }
@@ -35,6 +36,8 @@ try {
   const migration0063 = 1794050405004;
   const migration0064 = 1794050405005;
   const migration0065 = 1794050405006;
+  const migration0066 = 1794050405007;
+  const migration0067 = 1794050405008;
   assert.ok(timestamps.includes(migration0059), "Expected migration 0059 to remain recorded.");
   assert.ok(timestamps.includes(migration0060), "Expected migration 0060 to have been applied before simulation.");
   assert.ok(timestamps.includes(migration0061), "Expected migration 0061 to have been applied before simulation.");
@@ -42,6 +45,8 @@ try {
   assert.ok(timestamps.includes(migration0063), "Expected migration 0063 to have been applied before simulation.");
   assert.ok(timestamps.includes(migration0064), "Expected migration 0064 to have been applied before simulation.");
   assert.ok(timestamps.includes(migration0065), "Expected migration 0065 to have been applied before simulation.");
+  assert.ok(timestamps.includes(migration0066), "Expected migration 0066 to have been applied before simulation.");
+  assert.ok(timestamps.includes(migration0067), "Expected migration 0067 to have been applied before simulation.");
 
   await client.query("BEGIN");
   try {
@@ -51,7 +56,7 @@ try {
     await client.query("ALTER TABLE public.autonomous_runs DROP COLUMN IF EXISTS is_test");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[migration0060, migration0061, migration0062, migration0063, migration0064, migration0065]]
+      [[migration0060, migration0061, migration0062, migration0063, migration0064, migration0065, migration0066, migration0067]]
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -72,7 +77,7 @@ try {
     campaigns_index: false,
     runs_index: false
   });
-  console.log("CI database now matches the audited pending-0060 state: 0059 recorded; 0060 absent; later migrations absent; 0060 schema objects absent.");
+  console.log("CI database now matches the audited pending-0060 state: 0059 recorded; 0060 and all later migrations absent; 0060 schema objects absent.");
 } finally {
   await client.end();
 }
