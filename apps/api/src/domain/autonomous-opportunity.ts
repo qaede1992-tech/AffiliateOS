@@ -179,9 +179,18 @@ export class AutonomousOpportunitySelector {
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
       const exploration = selectedIds.has(item.product.id) && isExplorationSelection(item, performance, candidatePolicy, adaptiveExplorationRates);
       const selectionMode: OpportunitySelectionAudit["selectionMode"] = selectedIds.has(item.product.id) ? (exploration ? "exploration" : "exploitation") : undefined;
+      const selectedOffer = item.offerId
+        ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId)
+        : undefined;
       const reasons = selectedIds.has(item.product.id)
         ? [exploration ? "Selected for controlled exploration" : "Selected"]
-        : rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore);
+        : [
+          ...(!item.offerId ? ["No affiliate offer selected"] : []),
+          ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, selectedOffer) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
+          ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product) ? ["Product has no HTTPS image or video suitable for autopublishing"] : []),
+          ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
+          ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
+        ];
       return {
         auditId: randomUUID(),
         productId: item.product.id,
