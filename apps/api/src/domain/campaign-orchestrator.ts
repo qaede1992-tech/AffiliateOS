@@ -104,6 +104,12 @@ export class CampaignOrchestrator {
     const executionOffer = liveOffer;
     const liveProduct = await this.content.validateProductForPublication(input.product.id);
     if (liveProduct.id !== input.offer.productId) throw new Error("Live product and affiliate offer are inconsistent.");
+    if (input.idempotencyKey && this.productMediaAssets) {
+      const storedProductMedia = await this.productMediaAssets.listByProduct(liveProduct.id);
+      if (!storedProductMedia.some((asset) => asset.kind === "video")) {
+        throw new Error("A stored, validated product video is required before autonomous campaign creation.");
+      }
+    }
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const run = input.idempotencyKey && this.autonomousRuns
