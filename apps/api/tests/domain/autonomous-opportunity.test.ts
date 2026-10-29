@@ -42,6 +42,16 @@ const offer = (productId: string, overrides: Partial<AffiliateOffer> = {}): Affi
 });
 
 describe("autonomous opportunity selection", () => {
+  it("requires persisted video evidence without lowering other selection thresholds", () => {
+    const candidate = { product: product("video-candidate"), offers: [offer("video-candidate")] };
+    const selector = new AutonomousOpportunitySelector();
+    const withoutVideo = selector.select([candidate], { minimumScore: 0, maximumResults: 1, requirePublishableMedia: true, requirePublishableVideo: true });
+    assert.equal(withoutVideo.selected.length, 0);
+    assert.ok(withoutVideo.rejected[0]?.reasons.some((reason) => reason.includes("validated, publishable video")));
+    const withStoredVideo = selector.select([candidate], { minimumScore: 0, maximumResults: 1, requirePublishableMedia: true, requirePublishableVideo: true }, new Map(), {}, new Map(), new Set(["video-candidate"]));
+    assert.equal(withStoredVideo.selected[0]?.product.id, "video-candidate");
+  });
+
   it("prefers marketplace-specific feedback over a product-only fallback", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("a", { marketplaceId: "market-1" }), offers: [offer("a")] },
