@@ -7,6 +7,7 @@ import { publisherSupportsContent, type DistributionEngine, type DistributionPla
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
 import type { MediaAssetRepository } from "./media-asset.js";
+import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 
 export type CampaignOrchestratorInput = {
   opportunity: ScoredOpportunity;
@@ -87,7 +88,8 @@ export class CampaignOrchestrator {
     private readonly distribution?: DistributionEngine,
     private readonly autonomousRuns?: AutonomousRunService,
     private readonly mediaAssets?: MediaAssetRepository,
-    private readonly contentStory?: ContentStoryService
+    private readonly contentStory?: ContentStoryService,
+    private readonly productMediaAssets?: ProductMediaAssetRepository
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
@@ -261,6 +263,24 @@ export class CampaignOrchestrator {
           ? { kind: "video" as const, reference: product.videoUrl }
           : { kind: "image" as const, reference: product.imageUrl }
         : undefined;
+
+    if (this.productMediaAssets) {
+      const productAssets = await this.productMediaAssets.listByProduct(product.id);
+      const preferredKind = content.platform === "tiktok" && productAssets.some((asset) => asset.kind === "video") ? "video" : "image";
+      const stored = productAssets.find((asset) => asset.kind === preferredKind);
+      if (stored && this.mediaAssets) {
+        const existingAssets = await this.mediaAssets.listByContent(content.id);
+        const reference = stored.bucket + "/" + stored.objectKey;
+        const existingStored = existingAssets.find((asset) => asset.source === "object-storage" && asset.reference === reference);
+        if (existingStored) {
+          if (!(content.mediaAssetIds ?? []).includes(existingStored.id)) return this.content.update(content.id, { mediaAssetIds: [...(content.mediaAssetIds ?? []), existingStored.id] });
+          return content;
+        }
+        const now = new Date().toISOString();
+        const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, createdAt: now, updatedAt: now });
+        return this.content.update(content.id, { mediaAssetIds: [...(content.mediaAssetIds ?? []), asset.id] });
+      }
+    }
 
     if (!media?.reference) return content;
 
