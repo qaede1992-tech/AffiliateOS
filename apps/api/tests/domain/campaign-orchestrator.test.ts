@@ -139,7 +139,7 @@ describe("campaign orchestrator", () => {
       mediaAssets as never, undefined, productMediaAssets as never
     ).execute({ opportunity, offer, product, idempotencyKey: "instagram-video-run", platforms: ["instagram"] });
     assert.equal(result.content.length, 1);
-    assert.deepEqual(result.content[0]?.mediaAssetIds, ["video-asset-1"]);
+    assert.deepEqual(result.content[0]?.mediaAssetIds, [mediaAssets.assets[0]?.id]);
     assert.equal(mediaAssets.assets[0]?.kind, "video");
     assert.equal(mediaAssets.assets[0]?.source, "object-storage");
     assert.equal(mediaAssets.assets[0]?.reference, `affiliate-media/products/${product.id}/hash.mp4`);
