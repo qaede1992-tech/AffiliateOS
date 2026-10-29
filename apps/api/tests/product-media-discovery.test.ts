@@ -51,6 +51,11 @@ test("rejects non-HTTPS, credentialed, and private-network candidates", () => {
     <meta property="og:image" content="https://user:pass@cdn.example.com/b.jpg">
     <meta property="og:image" content="https://127.0.0.1/private.jpg">
     <meta property="og:image" content="https://192.168.1.10/private.jpg">
+    <meta property="og:image" content="https://198.18.0.1/non-public-range.jpg">
+    <meta property="og:image" content="https://203.0.113.7/documentation-range.jpg">
+    <meta property="og:image" content="https://8.8.8.8/ip-literal.jpg">
+    <meta property="og:image" content="https://[::1]/ipv6-loopback.jpg">
+    <meta property="og:image" content="https://localhost./trailing-dot-localhost.jpg">
     <meta property="og:image" content="https://host.local/private.jpg">
     <meta property="og:image" content="data:image/png;base64,AAAA">
     <meta property="og:image" content="https://cdn.example.com/good.jpg">
