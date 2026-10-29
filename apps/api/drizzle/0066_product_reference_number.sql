@@ -23,5 +23,7 @@ ALTER TABLE public.products
   ALTER COLUMN reference_number SET DEFAULT nextval('public.products_reference_number_seq'),
   ALTER COLUMN reference_number SET NOT NULL;
 
+ALTER SEQUENCE public.products_reference_number_seq OWNED BY public.products.reference_number;
+
 CREATE UNIQUE INDEX IF NOT EXISTS products_reference_number_unique
   ON public.products (reference_number);
