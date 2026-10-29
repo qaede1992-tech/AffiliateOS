@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TikTokContentPostingClient } from "../src/domain/tiktok-content-posting-client.js";
+import { TikTokContentPostingClient, TikTokProviderRequestError } from "../src/domain/tiktok-content-posting-client.js";
 
 const account = {
   id: "account-1",
@@ -325,4 +325,25 @@ test("TikTok client accepts video at the creator duration limit", async () => {
     idempotencyKey: "idem-duration-ok"
   });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-duration-ok" });
+});
+
+
+test("TikTok provider HTTP errors retain status and code for safe route mapping", async () => {
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: {
+        code: "access_token_invalid",
+        message: "The access token is invalid or not found in the request."
+      }
+    }), { status: 401 })
+  });
+
+  await assert.rejects(client.getCreatorInfo(account), (error: unknown) => {
+    assert.ok(error instanceof TikTokProviderRequestError);
+    assert.equal(error.upstreamStatus, 401);
+    assert.equal(error.providerCode, "access_token_invalid");
+    assert.match(error.message, /access token is invalid/);
+    return true;
+  });
 });

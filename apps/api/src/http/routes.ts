@@ -10,6 +10,7 @@ import { auditSecurityEvent } from "./app-audit.js";
 import { requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
+import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
@@ -85,7 +86,23 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get<{ Params: { code: string } }>("/r/:code", async (request, reply) => { const destination = await services.tracking.redirect(request.params.code, { source: "public-redirect", ...(typeof request.headers["user-agent"] === "string" ? { userAgent: request.headers["user-agent"] } : {}), ...(typeof request.headers.referer === "string" ? { referer: request.headers.referer } : {}) }); return reply.redirect(destination, 302); });
   app.post("/api/v1/publication-jobs/:jobId/confirm", writeGuard, async (request) => { const { jobId } = publicationJobIdSchema.parse(request.params); const approval = tiktokPublicationApprovalSchema.parse(request.body); const job = await services.publicationJobs.confirmWithApproval(jobId, approval); auditSecurityEvent(request.log, request, "publication_job_confirmed", { jobId, privacyLevel: approval.privacyLevel, commercialDisclosureEnabled: approval.commercialDisclosureEnabled }); return job; });
   app.get("/api/v1/publication-jobs", writeGuard, async () => list(await services.publicationJobs.list()));
-  app.get("/api/v1/social-accounts/:socialAccountId/tiktok/creator-info", writeGuard, async (request, reply) => { const { socialAccountId } = socialAccountIdSchema.parse(request.params); const account = await services.socialAccounts.getForProviderOperation(socialAccountId); if (account.platform !== "tiktok") return reply.status(400).send({ error: "INVALID_SOCIAL_ACCOUNT_PLATFORM", message: "The social account must be a TikTok account." }); return services.tiktokCreatorInfo.getCreatorInfo(account); });
+  app.get("/api/v1/social-accounts/:socialAccountId/tiktok/creator-info", writeGuard, async (request, reply) => {
+    const { socialAccountId } = socialAccountIdSchema.parse(request.params);
+    const account = await services.socialAccounts.getForProviderOperation(socialAccountId);
+    if (account.platform !== "tiktok") return reply.status(400).send({ error: "INVALID_SOCIAL_ACCOUNT_PLATFORM", message: "The social account must be a TikTok account." });
+    try {
+      return await services.tiktokCreatorInfo.getCreatorInfo(account);
+    } catch (error) {
+      if (error instanceof TikTokProviderRequestError) {
+        request.log.warn({ upstreamStatus: error.upstreamStatus }, "TikTok Creator Info provider request failed");
+        return reply.status(502).send({
+          error: "TIKTOK_PROVIDER_REQUEST_FAILED",
+          message: "TikTok did not accept the Creator Info request. Verify the account connection and try again."
+        });
+      }
+      throw error;
+    }
+  });
   app.get("/api/v1/publication-jobs/:jobId", writeGuard, async (request, reply) => { const { jobId } = publicationJobIdSchema.parse(request.params); const job = await services.publicationJobs.get(jobId); if (!job) return reply.status(404).send({ error: "PUBLICATION_JOB_NOT_FOUND", message: "Publication job does not exist." }); const content = await services.content.get(job.contentId); return { ...job, content }; });
   app.get("/api/v1/publishers/readiness", writeGuard, async () => list(await services.publisherReadiness.list()));
   app.get("/api/v1/autonomous/status", writeGuard, async () => services.autonomousScheduler.status);
