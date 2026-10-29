@@ -82,12 +82,21 @@ test("Shopee CSV reimport without an image column preserves previously imported 
     assert.equal(first.statusCode, 201);
     const afterFirst = await app.inject({ method: "GET", url: "/api/v1/products" });
     assert.equal(afterFirst.json().data[0].imageUrl, imageUrl);
+    const productId = afterFirst.json().data[0].id;
+    const videoUrl = "https://cf.shopee.co.id/file/product-video.mp4";
+    const addVideo = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media`,
+      payload: { videoUrl },
+    });
+    assert.equal(addVideo.statusCode, 200);
 
     const second = await importCsv(csvWithoutImage);
     assert.equal(second.statusCode, 201);
     const afterSecond = await app.inject({ method: "GET", url: "/api/v1/products" });
     assert.equal(afterSecond.json().data.length, 1);
     assert.equal(afterSecond.json().data[0].imageUrl, imageUrl);
+    assert.equal(afterSecond.json().data[0].videoUrl, videoUrl);
   } finally {
     await app.close();
   }
