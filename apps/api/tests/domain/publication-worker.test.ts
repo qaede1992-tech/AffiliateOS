@@ -328,9 +328,16 @@ describe("PublicationWorker", () => {
   });
 
   it("does not retry failed jobs after content is moved back to draft", async () => {
-    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
-    const job = await jobService.enqueue(content);
-    await contentService.update(content.id, { status: "draft" });
+    const { contentService, socialAccounts, jobs, jobService } = await setup();
+    const instagramContent = await contentService.create({
+      productId: product.id,
+      platform: "instagram",
+      contentType: "affiliate-promotion",
+      status: "scheduled",
+      scheduledAt: "2026-09-20T10:00:00.000Z"
+    });
+    const job = await jobService.enqueue(instagramContent);
+    await contentService.update(instagramContent.id, { status: "draft" });
 
     const worker = workerFor(contentService, socialAccounts, jobs, jobService);
     const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
