@@ -108,7 +108,32 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const adaptiveExploration = autonomousDecisionAuditRepository ? new AdaptiveExplorationPolicyProvider(autonomousDecisionAuditRepository, adaptiveExplorationPolicy, autonomousExplorationStateRepository) : undefined;
   const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback, autonomousRuns, autonomousDecisionAuditRepository, adaptiveExploration);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation);
-  const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies, publicationEnabled: autonomousPublicationEnabled }, { intervalMs: autonomousSchedulerIntervalMs });
+  const autonomousScheduler = new AutonomousScheduler(
+    autonomousCycle,
+    { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies, publicationEnabled: autonomousPublicationEnabled },
+    {
+      intervalMs: autonomousSchedulerIntervalMs,
+      onResult: (result) => {
+        console.info(JSON.stringify({
+          event: "autonomous_cycle_completed",
+          startedAt: result.startedAt,
+          completedAt: result.completedAt,
+          candidateCount: result.candidateCount,
+          selectedCount: result.execution.selected.length,
+          rejectedCount: result.execution.rejected.length,
+          completedCount: result.execution.outcomes.filter((outcome) => outcome.status === "completed").length,
+          failedCount: result.execution.outcomes.filter((outcome) => outcome.status === "failed").length,
+          publicationEnabled: autonomousPublicationEnabled
+        }));
+      },
+      onError: (error) => {
+        console.error(JSON.stringify({
+          event: "autonomous_cycle_failed",
+          error: error instanceof Error ? error.message : String(error)
+        }));
+      }
+    }
+  );
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
     shopeeConversionSync, shopeeConversionSyncScheduler, shopeeCommissionReportReconciliation, autonomousDecisionAudits: autonomousDecisionAuditRepository,
