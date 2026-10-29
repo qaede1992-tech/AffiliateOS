@@ -122,7 +122,7 @@ const expectedTables = [
   "affiliates", "offers", "conversions", "commissions", "marketplaces", "affiliate_accounts",
   "products", "affiliate_offers", "campaigns", "campaign_offers", "tracking_links", "clicks",
   "social_accounts", "content", "oauth_states", "conversion_attributions", "provider_events",
-  "publication_jobs", "media_assets", "publication_operations", "content_products"
+  "publication_jobs", "media_assets", "publication_operations", "content_products", "product_media_assets"
 ];
 const expectedIndexes = [
   "tracking_links_campaign_idx", "products_marketplace_external_unique", "commissions_conversion_unique",
@@ -130,7 +130,7 @@ const expectedIndexes = [
   "publication_jobs_idempotency_unique", "publication_jobs_due_idx",
   "publication_operations_provider_operation_unique", "media_assets_content_idx",
   "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx",
-  "campaigns_test_created_idx", "autonomous_runs_test_created_idx"
+  "campaigns_test_created_idx", "autonomous_runs_test_created_idx", "product_media_assets_product_hash_unique", "product_media_assets_bucket_key_unique", "product_media_assets_product_kind_idx"
 ];
 const expectedColumns = [
   ["publication_jobs", "confirmed_at"],
