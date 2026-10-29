@@ -13,7 +13,7 @@ const RECONCILIATION_BATCH_LIMIT = 100;
 const PUBLICATION_JOB_BATCH_LIMIT = 100;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
-import { publicationRetryDelayMs } from "./publication-job.js";
+import { MAX_PUBLICATION_JOB_ATTEMPTS, publicationRetryDelayMs } from "./publication-job.js";
 export { publicationRetryDelayMs } from "./publication-job.js";
 const retryEligibleAt = (job: PublicationJob): number =>
   new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
@@ -63,7 +63,7 @@ export class PublicationWorker {
           .filter((job) => {
             if (!isDue(job, now)) return false;
             if (job.status === "pending") return true;
-            if (job.status === "failed") return retryEligibleAt(job) <= now.getTime();
+            if (job.status === "failed") return job.attemptCount < MAX_PUBLICATION_JOB_ATTEMPTS && retryEligibleAt(job) <= now.getTime();
             return isStaleProcessingJob(job, now);
           })
           .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
