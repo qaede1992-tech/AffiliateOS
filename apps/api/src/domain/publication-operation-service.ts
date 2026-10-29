@@ -56,7 +56,18 @@ export class PublicationOperationService {
       createdAt: timestamp,
       updatedAt: timestamp
     };
-    if (this.operations.saveIfAbsent) return this.operations.saveIfAbsent(operation);
+    if (this.operations.saveIfAbsent) {
+      try {
+        return await this.operations.saveIfAbsent(operation);
+      } catch (error) {
+        if (input.provider === "instagram-graph") {
+          const concurrent = (await this.operations.listByJobId(input.jobId))
+            .find((candidate) => candidate.provider === input.provider && candidate.status !== "failed");
+          if (concurrent) return concurrent;
+        }
+        throw error;
+      }
+    }
     try {
       return await this.operations.save(operation);
     } catch (error) {
