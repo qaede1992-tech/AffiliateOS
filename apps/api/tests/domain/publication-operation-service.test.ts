@@ -22,6 +22,18 @@ describe("PublicationOperationService Instagram idempotency", () => {
     assert.equal((await repository.listByJobId("job-1")).length, 1);
   });
 
+  it("reuses an already published Instagram operation instead of creating a second post", async () => {
+    const repository = new InMemoryPublicationOperationRepository();
+    const service = new PublicationOperationService(repository);
+    const first = await service.create(createInput("instagram-graph", "container-1"), new Date("2026-10-29T00:00:00.000Z"));
+    await service.transition(first.id, "published", { externalPostId: "instagram-post-1" }, new Date("2026-10-29T00:02:00.000Z"));
+    const retry = await service.create(createInput("instagram-graph", "container-2"), new Date("2026-10-29T00:03:00.000Z"));
+
+    assert.equal(retry.id, first.id);
+    assert.equal(retry.externalPostId, "instagram-post-1");
+    assert.equal((await repository.listByJobId("job-1")).length, 1);
+  });
+
   it("allows an Instagram retry after the prior operation has failed", async () => {
     const repository = new InMemoryPublicationOperationRepository();
     const service = new PublicationOperationService(repository);
