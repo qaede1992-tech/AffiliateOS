@@ -65,6 +65,15 @@ test("ignores malformed JSON-LD and invalid page URLs without throwing", () => {
   assert.deepEqual(extractProductMediaCandidates("<meta property='og:image' content='https://cdn.example.com/a.jpg'>", { pageUrl: "javascript:alert(1)" }), []);
 });
 
+test("does not throw on invalid numeric HTML entities in metadata attributes", () => {
+  const html = `
+    <meta property="og:image" content="https://cdn.example.com/invalid&#x110000;.jpg">
+    <meta property="og:image" content="https://cdn.example.com/valid.jpg">
+  `;
+  const result = extractProductMediaCandidates(html, { pageUrl });
+  assert.ok(result.some(({ url }) => url === "https://cdn.example.com/valid.jpg"));
+});
+
 test("caps candidate count and rejects unreasonable limits", () => {
   const html = Array.from({ length: 5 }, (_, i) => `<meta property="og:image" content="https://cdn.example.com/${i}.jpg">`).join("");
   assert.equal(extractProductMediaCandidates(html, { pageUrl, maxCandidates: 2 }).length, 2);
