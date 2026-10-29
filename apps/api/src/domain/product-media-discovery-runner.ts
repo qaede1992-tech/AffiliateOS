@@ -92,6 +92,19 @@ export class ProductMediaDiscoveryRunner {
       return { productId: product.id, pageFetched: true, hasVideo: stored.some((asset) => asset.kind === "video"), stored: ingested.stored, skipped: [...skipped, ...ingested.skipped] };
     } catch (error) {
       skipped.push({ url: pageUrl.toString(), reason: error instanceof Error ? error.message : "Product page discovery failed." });
+      // If the catalog already contains a video URL, validate and ingest that URL
+      // independently even when the product page itself is unavailable.
+      if (product.videoUrl) {
+        try {
+          const videoUrl = new URL(product.videoUrl);
+          if (videoUrl.protocol === "https:" && !videoUrl.username && !videoUrl.password) {
+            const fallback = await this.ingestion.ingest({ productId: product.id, nonMediaEligibilityPassed: true, candidates: [{ kind: "video", url: videoUrl.toString(), source: "html" }] });
+            skipped.push(...fallback.skipped);
+          }
+        } catch (fallbackError) {
+          skipped.push({ url: product.videoUrl, reason: fallbackError instanceof Error ? fallbackError.message : "Existing product video could not be validated." });
+        }
+      }
       const stored = await this.assets.listByProduct(product.id);
       return { productId: product.id, pageFetched: false, hasVideo: stored.some((asset) => asset.kind === "video"), stored, skipped };
     }
