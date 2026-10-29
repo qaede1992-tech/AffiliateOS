@@ -63,9 +63,11 @@ export class AutonomousCycleService {
     const videoIds = this.productMediaDiscovery
       ? await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id))
       : input.publishableVideoProductIds ?? [];
+    const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
     const result = await this.execution.previewSelection({
       ...input,
       candidates: candidateList,
+      policiesByMarketplace: finalPolicies,
       requirePublishableMedia: true,
       requirePublishableVideo: true,
       publishableVideoProductIds: videoIds,
@@ -109,9 +111,11 @@ export class AutonomousCycleService {
         }
         videoIds = await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id));
       }
+      const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
       const executionInput: AutonomousExecutionInput = {
-        ...input, scheduledAt, candidates: candidateList, requirePublishableMedia: true,
-        requirePublishableVideo: true, publishableVideoProductIds: videoIds, requireCommissionSignal: true
+        ...input, scheduledAt, candidates: candidateList, policiesByMarketplace: finalPolicies,
+        requirePublishableMedia: true, requirePublishableVideo: true,
+        publishableVideoProductIds: videoIds, requireCommissionSignal: true
       };
       const result = await this.execution.runOnce(executionInput);
       const explorationEvaluation = this.explorationEvaluation ? await this.explorationEvaluation.run() : undefined;
