@@ -356,6 +356,38 @@ nav { display: grid; gap: 5px; }
   max-width: 760px;
   margin-bottom: 2rem;
 }
+.public-shop-search-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #536267;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+.public-shop-search {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  min-height: 48px;
+  margin-bottom: 1.5rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(29, 42, 46, 0.22);
+  border-radius: 0.75rem;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+.public-shop-search:focus-visible {
+  outline: 3px solid rgba(143, 75, 47, 0.3);
+  outline-offset: 2px;
+}
+.public-shop-code {
+  color: #536267;
+  font-size: 0.9rem;
+}
+.public-shop-code strong {
+  color: #8f4b2f;
+  letter-spacing: 0.04em;
+}
 .public-shop-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));

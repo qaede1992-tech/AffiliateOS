@@ -31,6 +31,7 @@ export type GeneratedCampaignContent = {
 };
 
 const defaultPlatforms: ContentPlatform[] = ["instagram", "tiktok"];
+const productReferenceCode = (productId: string): string => `AOS-${productId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
 const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string, attempt = 0): string => {
   const seed = `${idempotencyKey ?? campaignId}:${offerId}:${attempt}`;
@@ -51,7 +52,8 @@ export class DeterministicCampaignContentGenerator implements CampaignContentGen
     const currency = input.offer.currency ?? input.product.currency;
     const price = new Intl.NumberFormat("id-ID", { style: "currency", currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
     const title = productName;
-    const caption = `${productName}. Harga pada katalog saat ini ${price}. Periksa kembali harga, spesifikasi, dan ketersediaan pada halaman produk sebelum membeli.`;
+    const referenceCode = productReferenceCode(input.product.id);
+    const caption = `${productName}. Harga pada katalog saat ini ${price}. Kode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini. Periksa kembali harga, spesifikasi, dan ketersediaan pada halaman produk sebelum membeli.`;
     const script = `Pembuka: Sedang mencari ${productName}?\nDetail: ${input.product.description?.trim() || "Lihat detail produk dan penawaran yang tersedia."}\nHarga: Harga pada katalog saat ini ${price}; cek kembali harga terbaru pada halaman produk.\nAjakan: Buka tautan untuk melihat detail penawaran.`;
     return { platform: input.platform, title, caption, script, cta: "Lihat detail produk" };
   }
@@ -158,16 +160,25 @@ export class CampaignOrchestrator {
           reusable = await this.content.update(reusable.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
         }
         if (reusable) {
-          const reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
+          let reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
+          const referenceCode = productReferenceCode(liveProduct.id);
+          if (reusable.status === "draft" && !reusableCaption.includes(referenceCode)) {
+            reusableCaption = `${reusableCaption.trim()}\n\nKode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini.`;
+          }
           if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusableCaption)) {
-            reusable = await this.content.update(reusable.id, {
-              caption: `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
-            });
+            reusableCaption = `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`;
+          }
+          if (reusable.status === "draft" && reusableCaption !== (typeof reusable.caption === "string" ? reusable.caption : "")) {
+            reusable = await this.content.update(reusable.id, { caption: reusableCaption });
           }
           content.push(await this.attachProductMediaIfAvailable(reusable, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
-          const generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          let generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          const referenceCode = productReferenceCode(liveProduct.id);
+          if (!generatedCaption.includes(referenceCode)) {
+            generatedCaption = `${generatedCaption.trim()}\n\nKode produk: ${referenceCode}. Buka toko AffiliateOS melalui tautan di bio dan cari kode ini.`;
+          }
           const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generatedCaption)
             ? `${generatedCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
             : generatedCaption;
