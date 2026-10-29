@@ -4,7 +4,7 @@ import type { Content, Product, SocialAccount } from "@affiliateos/shared";
 import { ContentService } from "../../src/domain/content.js";
 import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
 import { PublicationJobService } from "../../src/domain/publication-job-service.js";
-import { InMemoryPublicationJobRepository } from "../../src/domain/publication-job.js";
+import { InMemoryPublicationJobRepository, MAX_PUBLICATION_JOB_ATTEMPTS } from "../../src/domain/publication-job.js";
 import { PublicationWorker, publicationRetryDelayMs } from "../../src/domain/publication-worker.js";
 import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
 import { InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
@@ -348,6 +348,22 @@ describe("PublicationWorker", () => {
     const retry = await worker.runOnce(new Date("2026-09-20T13:00:00.000Z"));
     assert.deepEqual(retry, []);
     assert.equal((await jobs.findById(job.id))?.attemptCount, 1);
+  });
+
+  it("stops retrying failed publication jobs after the configured attempt limit", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const job = await jobService.enqueue(content);
+    await jobs.save({
+      ...job,
+      status: "failed",
+      attemptCount: MAX_PUBLICATION_JOB_ATTEMPTS,
+      lastError: "repeated provider failure",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService);
+    const results = await worker.runOnce(new Date("2026-09-20T13:00:00.000Z"));
+    assert.deepEqual(results, []);
+    assert.equal((await jobs.findById(job.id))?.attemptCount, MAX_PUBLICATION_JOB_ATTEMPTS);
   });
 
   it("records adapter failures and restores failed content before retrying after backoff", async () => {
