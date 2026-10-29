@@ -18,3 +18,7 @@ CREATE INDEX IF NOT EXISTS product_media_assets_product_kind_idx
 
 ALTER TABLE public.product_media_assets ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.product_media_assets FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.product_media_assets TO affiliateos_runtime;
+DROP POLICY IF EXISTS affiliateos_runtime_access ON public.product_media_assets;
+CREATE POLICY affiliateos_runtime_access ON public.product_media_assets
+  FOR ALL TO affiliateos_runtime USING (true) WITH CHECK (true);
