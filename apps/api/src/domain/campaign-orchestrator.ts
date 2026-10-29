@@ -162,6 +162,9 @@ export class CampaignOrchestrator {
         }
         if (reusable) {
           let reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
+          reusableCaption = reusableCaption
+            .replace(/Kode produk:\\s*AOS-[A-Z0-9-]+\\.?/gi, "")
+            .replace(/Buka toko AffiliateOS melalui tautan di bio dan cari kode ini\\./gi, "Buka toko AffiliateOS melalui tautan di bio dan cari nomor produk.");
           const referenceNumber = productReferenceNumber(liveProduct);
           if (reusable.status === "draft" && referenceNumber && !reusableCaption.includes(`Nomor produk: ${referenceNumber}`)) {
             reusableCaption = `${reusableCaption.trim()}\n\nNomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.`;
