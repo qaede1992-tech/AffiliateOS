@@ -74,38 +74,47 @@ const attrs = (tag: string): Map<string, string> => {
 };
 
 const collectJsonLd = (value: unknown, add: (kind: ProductMediaKind, raw: string, source: ProductMediaCandidate["source"]) => void): void => {
-  if (!value || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) collectJsonLd(item, add);
-    return;
-  }
-  const object = value as Record<string, unknown>;
-  const type = object["@type"];
-  const types = (Array.isArray(type) ? type : [type]).filter((item): item is string => typeof item === "string");
-  const isProduct = types.some((item) => /product|individualproduct/i.test(item));
-  if (isProduct) {
-    const images = object.image;
-    for (const item of Array.isArray(images) ? images : images === undefined ? [] : [images]) {
-      if (typeof item === "string") add("image", item, "json-ld");
-      else if (item && typeof item === "object") {
-        const imageObject = item as Record<string, unknown>;
-        if (typeof imageObject.url === "string") add("image", imageObject.url, "json-ld");
-        if (typeof imageObject.contentUrl === "string") add("image", imageObject.contentUrl, "json-ld");
+  // JSON-LD is untrusted input. Walk iteratively and cap work to avoid deep recursion
+  // or pathological object graphs consuming the API process.
+  const pending: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  let visited = 0;
+  while (pending.length > 0 && visited < 10_000) {
+    const entry = pending.pop();
+    if (!entry || !entry.value || typeof entry.value !== "object" || entry.depth > 64) continue;
+    visited++;
+    if (Array.isArray(entry.value)) {
+      for (const child of entry.value) {
+        if (child && typeof child === "object") pending.push({ value: child, depth: entry.depth + 1 });
       }
+      continue;
     }
-    const video = object.video;
-    for (const item of Array.isArray(video) ? video : video === undefined ? [] : [video]) {
-      if (typeof item === "string") add("video", item, "json-ld");
-      else if (item && typeof item === "object") {
-        const videoObject = item as Record<string, unknown>;
-        for (const key of ["contentUrl", "embedUrl", "url"]) {
-          if (typeof videoObject[key] === "string") add("video", videoObject[key] as string, "json-ld");
+    const object = entry.value as Record<string, unknown>;
+    const type = object["@type"];
+    const types = (Array.isArray(type) ? type : [type]).filter((item): item is string => typeof item === "string");
+    if (types.some((item) => /product|individualproduct/i.test(item))) {
+      const images = object.image;
+      for (const item of Array.isArray(images) ? images : images === undefined ? [] : [images]) {
+        if (typeof item === "string") add("image", item, "json-ld");
+        else if (item && typeof item === "object") {
+          const imageObject = item as Record<string, unknown>;
+          if (typeof imageObject.url === "string") add("image", imageObject.url, "json-ld");
+          if (typeof imageObject.contentUrl === "string") add("image", imageObject.contentUrl, "json-ld");
+        }
+      }
+      const video = object.video;
+      for (const item of Array.isArray(video) ? video : video === undefined ? [] : [video]) {
+        if (typeof item === "string") add("video", item, "json-ld");
+        else if (item && typeof item === "object") {
+          const videoObject = item as Record<string, unknown>;
+          for (const key of ["contentUrl", "embedUrl", "url"]) {
+            if (typeof videoObject[key] === "string") add("video", videoObject[key] as string, "json-ld");
+          }
         }
       }
     }
-  }
-  for (const child of Object.values(object)) {
-    if (child && typeof child === "object") collectJsonLd(child, add);
+    for (const child of Object.values(object)) {
+      if (child && typeof child === "object") pending.push({ value: child, depth: entry.depth + 1 });
+    }
   }
 };
 
