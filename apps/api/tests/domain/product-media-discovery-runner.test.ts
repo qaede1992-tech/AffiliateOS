@@ -13,7 +13,7 @@ const product: Product = {
 
 const mp4 = new Uint8Array([
   0, 0, 0, 16, 102, 116, 121, 112, 105, 115, 111, 109, 112, 52, 0, 0,
-  0, 9, 109, 100, 97, 116, 1
+  0, 0, 9, 109, 100, 97, 116, 1
 ]);
 
 test("discovers, validates, and stores a public product video", async () => {
