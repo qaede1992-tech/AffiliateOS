@@ -215,6 +215,13 @@ export class CampaignOrchestrator {
       }
 
       const trackingLinks = [trackingLink];
+      if (!input.storyProducts?.length && this.contentStory && content.some((item) => item.mediaAssetIds?.length)) {
+        if (!completedRunRecovery) {
+          for (const item of content) {
+            await this.contentStory.replaceProducts(item.id, [{ productId: liveProduct.id, affiliateOfferId: executionOffer.id, position: 0, role: "primary" }]);
+          }
+        }
+      }
       if (input.storyProducts?.length) {
         if (!this.contentStory) throw new Error("Multi-product story orchestration requires a content story service.");
         const storyItems = [{ product: liveProduct, offer: executionOffer, role: "primary" as const, position: 0 }, ...input.storyProducts.filter((item) => item.product.id !== liveProduct.id).sort((a, b) => a.position - b.position)];
