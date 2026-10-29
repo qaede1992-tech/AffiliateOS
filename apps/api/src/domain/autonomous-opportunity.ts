@@ -190,7 +190,8 @@ export class AutonomousOpportunitySelector {
         : [
           ...(!item.offerId ? ["No affiliate offer selected"] : []),
           ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, selectedOffer) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
-          ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product) ? ["Product has no HTTPS image or video suitable for autopublishing"] : []),
+          ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds) ? ["Product has no HTTPS image or video suitable for autopublishing"] : []),
+          ...(candidatePolicy.requirePublishableVideo && !hasPublishableVideo(item.product, publishableVideoProductIds) ? ["Product has no validated, publishable video"] : []),
           ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
           ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
         ];
