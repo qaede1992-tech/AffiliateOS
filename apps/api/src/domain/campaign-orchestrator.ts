@@ -104,10 +104,13 @@ export class CampaignOrchestrator {
     const executionOffer = liveOffer;
     const liveProduct = await this.content.validateProductForPublication(input.product.id);
     if (liveProduct.id !== input.offer.productId) throw new Error("Live product and affiliate offer are inconsistent.");
-    if (input.idempotencyKey && this.productMediaAssets) {
+    // TikTok requires a video asset; an Instagram-only campaign may use a
+    // validated image and must not be blocked by the absence of a product video.
+    const requestedPlatforms = input.platforms ?? defaultPlatforms;
+    if (input.idempotencyKey && this.productMediaAssets && requestedPlatforms.includes("tiktok")) {
       const storedProductMedia = await this.productMediaAssets.listByProduct(liveProduct.id);
       if (!storedProductMedia.some((asset) => asset.kind === "video")) {
-        throw new Error("A stored, validated product video is required before autonomous campaign creation.");
+        throw new Error("A stored, validated product video is required before autonomous TikTok campaign creation.");
       }
     }
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
