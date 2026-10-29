@@ -295,9 +295,8 @@ function composePerformance(exact: OpportunityPerformanceSignal | undefined, cat
 
 
 function hasPublishableVideo(product: Product, storedVideoProductIds: Set<string>): boolean {
-  if (storedVideoProductIds.has(product.id)) return true;
-  if (!product.videoUrl) return false;
-  try { return new URL(product.videoUrl).protocol === "https:"; } catch { return false; }
+  // Autonomous publishing trusts only video assets whose bytes were validated and persisted.
+  return storedVideoProductIds.has(product.id);
 }
 
 function hasPublishableMedia(product: Product, storedVideoProductIds: Set<string> = new Set()): boolean {
