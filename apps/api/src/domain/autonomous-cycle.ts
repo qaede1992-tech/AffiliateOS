@@ -61,7 +61,7 @@ export class AutonomousCycleService {
     const result = await this.execution.previewSelection({
       ...input,
       candidates: candidateList,
-      requirePublishableMedia: input.publicationEnabled === false ? false : true,
+      requirePublishableMedia: true,
       requireCommissionSignal: true
     });
     return {
@@ -91,7 +91,7 @@ export class AutonomousCycleService {
         ...input,
         scheduledAt,
         candidates: candidateList,
-        requirePublishableMedia: publicationEnabled,
+        requirePublishableMedia: true,
         requireCommissionSignal: true
       };
       const result = await this.execution.runOnce(executionInput);

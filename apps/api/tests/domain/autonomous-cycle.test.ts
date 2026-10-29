@@ -66,7 +66,7 @@ describe("autonomous cycle", () => {
     }
   });
 
-  it("supports draft-only cycles without requiring media or scheduling publication", async () => {
+  it("requires publishable media for draft-only cycles while keeping publication disabled", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() { return [{ product: { id: "draft-product" } as never, offers: [] }]; }
     };
@@ -87,10 +87,10 @@ describe("autonomous cycle", () => {
     const result = await service.runOnce({ publicationEnabled: false, publicationDelayMs: 60_000 });
 
     assert.ok(result);
-    assert.equal(calls[0]?.requirePublishableMedia, false);
+    assert.equal(calls[0]?.requirePublishableMedia, true);
     assert.equal(calls[1]?.publicationEnabled, false);
     assert.equal(calls[1]?.scheduledAt, undefined);
-    assert.equal(calls[1]?.requirePublishableMedia, false);
+    assert.equal(calls[1]?.requirePublishableMedia, true);
   });
 
   it("derives publication time from a configured delay", async () => {
