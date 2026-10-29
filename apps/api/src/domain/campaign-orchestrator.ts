@@ -287,12 +287,20 @@ export class CampaignOrchestrator {
         const reference = stored.bucket + "/" + stored.objectKey;
         const existingStored = existingAssets.find((asset) => asset.source === "object-storage" && asset.reference === reference);
         if (existingStored) {
-          if (!(content.mediaAssetIds ?? []).includes(existingStored.id)) return this.content.update(content.id, { mediaAssetIds: [...(content.mediaAssetIds ?? []), existingStored.id] });
+          const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
+            ? [existingStored.id]
+            : [...new Set([...(content.mediaAssetIds ?? []), existingStored.id])];
+          if (selectedIds.length !== (content.mediaAssetIds ?? []).length || selectedIds.some((id, index) => id !== content.mediaAssetIds?.[index])) {
+            return this.content.update(content.id, { mediaAssetIds: selectedIds });
+          }
           return content;
         }
         const now = new Date().toISOString();
         const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, createdAt: now, updatedAt: now });
-        return this.content.update(content.id, { mediaAssetIds: [...(content.mediaAssetIds ?? []), asset.id] });
+        const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
+          ? [asset.id]
+          : [...new Set([...(content.mediaAssetIds ?? []), asset.id])];
+        return this.content.update(content.id, { mediaAssetIds: selectedIds });
       }
     }
 
