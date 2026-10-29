@@ -119,11 +119,22 @@ export class MarketplaceService {
     const hasDuplicateProductIds = new Set(normalizedProductIds).size !== normalizedProductIds.length;
     const hasDuplicateOfferIds = new Set(externalOfferIds).size !== externalOfferIds.length;
     if (this.products.upsertManyByMarketplaceProduct && this.offers.findByAccountOffers && this.offers.saveManyById && !hasDuplicateProductIds && !hasDuplicateOfferIds) {
+      // A fresh CSV export may omit image columns even when a product already has
+      // valid media. Preserve existing media unless the import supplies a replacement.
+      const existingProducts = await Promise.all(input.items.map((item) =>
+        this.products.findByMarketplaceProduct(connection.id, item.externalProductId.trim())
+      ));
+      const existingProductsByExternalId = new Map(
+        existingProducts.filter((product): product is Product => Boolean(product))
+          .map((product) => [product.externalProductId, product])
+      );
       const productEntities: Product[] = input.items.map((item) => {
-        const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl: item.imageUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+        const existingProduct = existingProductsByExternalId.get(item.externalProductId.trim());
+        const imageUrl = item.imageUrl ?? existingProduct?.imageUrl;
+        const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
         validateMarketplaceProductInput(productInput);
         const timestamp = now();
-        return { id: randomUUID(), marketplaceId: connection.id, externalProductId: item.externalProductId.trim(), name: item.name.trim(), description: item.description?.trim(), category: item.category?.trim(), priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: item.ratingMilli, reviewCount: item.reviewCount ?? 0, soldCount: item.soldCount ?? 0, discoverySignals: normalizeDiscoverySignals(productInput.metadata), imageUrl: item.imageUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: timestamp, updatedAt: timestamp };
+        return { id: existingProduct?.id ?? randomUUID(), marketplaceId: connection.id, externalProductId: item.externalProductId.trim(), name: item.name.trim(), description: item.description?.trim(), category: item.category?.trim(), priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: item.ratingMilli, reviewCount: item.reviewCount ?? 0, soldCount: item.soldCount ?? 0, discoverySignals: normalizeDiscoverySignals(productInput.metadata), imageUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existingProduct?.createdAt ?? timestamp, updatedAt: timestamp };
       });
       const savedProducts = await this.products.upsertManyByMarketplaceProduct(productEntities);
       const productByExternalId = new Map(savedProducts.map((product) => [product.externalProductId, product]));
