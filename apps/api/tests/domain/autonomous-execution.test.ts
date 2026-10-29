@@ -121,6 +121,7 @@ describe("AutonomousExecutionService", () => {
 
     const result = await service.runOnce({
       candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 0 },
       audience: ["beauty"],
       platforms: ["tiktok"],
       scheduledAt: "2026-09-22T12:00:00.000Z",
@@ -221,6 +222,7 @@ describe("AutonomousExecutionService", () => {
 
     const result = await service.runOnce({
       candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 0 },
       idempotencyNamespace: "draft-only-cycle",
       publicationEnabled: false,
       requirePublishableMedia: false
