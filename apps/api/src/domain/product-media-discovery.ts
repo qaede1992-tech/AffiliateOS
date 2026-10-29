@@ -40,14 +40,27 @@ const isPublicHttpsUrl = (raw: string, base: URL): string | undefined => {
   }
 };
 
+const decodeCodePoint = (raw: string, radix: number): string => {
+  const codePoint = Number.parseInt(raw, radix);
+  if (
+    !Number.isInteger(codePoint) ||
+    codePoint === 0 ||
+    codePoint > 0x10ffff ||
+    (codePoint >= 0xd800 && codePoint <= 0xdfff)
+  ) {
+    return "\uFFFD";
+  }
+  return String.fromCodePoint(codePoint);
+};
+
 const decodeEntities = (value: string): string => value
   .replace(/&amp;/gi, "&")
   .replace(/&quot;/gi, '"')
   .replace(/&#39;|&apos;/gi, "'")
   .replace(/&lt;/gi, "<")
   .replace(/&gt;/gi, ">")
-  .replace(/&#x([\da-f]{1,6});/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-  .replace(/&#(\d{1,7});/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)));
+  .replace(/&#x([\da-f]{1,6});/gi, (_, hex: string) => decodeCodePoint(hex, 16))
+  .replace(/&#(\d{1,7});/g, (_, dec: string) => decodeCodePoint(dec, 10));
 
 const attrs = (tag: string): Map<string, string> => {
   const result = new Map<string, string>();
