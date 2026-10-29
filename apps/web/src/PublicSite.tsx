@@ -165,9 +165,10 @@ function ShopPage() {
   }, []);
 
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("id-ID");
-  const filteredItems = items.filter((item) =>
-    item.name.toLocaleLowerCase("id-ID").includes(normalizedQuery) ||
-    String(item.referenceNumber).includes(normalizedQuery)
+  const isNumberQuery = /^\\d+$/.test(normalizedQuery);
+  const filteredItems = items.filter((item) => isNumberQuery
+    ? item.referenceNumber === Number(normalizedQuery)
+    : item.name.toLocaleLowerCase("id-ID").includes(normalizedQuery)
   );
 
   const money = (item: PublicShopItem) => {
