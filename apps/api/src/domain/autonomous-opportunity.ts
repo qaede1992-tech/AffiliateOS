@@ -15,6 +15,7 @@ export type OpportunitySelectionPolicy = {
   explorationMinimumEvidenceClicks?: number;
   /** Require media that can be consumed by the social publishers before autonomous selection. */
   requirePublishableMedia?: boolean;
+  requirePublishableVideo?: boolean;
   /** Require an explicit commission rate or amount signal before autonomous selection. */
   requireCommissionSignal?: boolean;
 };
@@ -72,7 +73,8 @@ export class AutonomousOpportunitySelector {
     policy: OpportunitySelectionPolicy = {},
     performanceOrPolicies: Map<string, OpportunityPerformanceSignal> | OpportunitySelectionPoliciesByMarketplace = new Map(),
     policiesByMarketplace: OpportunitySelectionPoliciesByMarketplace = {},
-    adaptiveExplorationRates: Map<string, number> = new Map()
+    adaptiveExplorationRates: Map<string, number> = new Map(),
+    publishableVideoProductIds: Set<string> = new Set()
   ): OpportunitySelectionResult {
     const performance = performanceOrPolicies instanceof Map ? performanceOrPolicies : new Map<string, OpportunityPerformanceSignal>();
     const effectivePoliciesByMarketplace = performanceOrPolicies instanceof Map ? policiesByMarketplace : performanceOrPolicies;
