@@ -46,6 +46,7 @@ import type { AutonomousExplorationStateRepository } from "./autonomous-explorat
 import type { TikTokCreatorInfo, TikTokContentPublisherClient } from "./tiktok-content-publisher.js";
 import { MediaUploadService, type MediaUploadPolicy } from "./media-upload-service.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
+import { ProductMediaDiscoveryRunner } from "./product-media-discovery-runner.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
@@ -100,6 +101,9 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const shopeeCommissionReportReconciliation = new ShopeeCommissionReportReconciliationService(marketplace, providerConversions);
   const shopeeConversionSyncScheduler = new ShopeeConversionSyncScheduler(marketplace, shopeeConversionSync, autonomousCycleLock ?? new InMemoryAutonomousCycleLock(), { intervalMs: shopeeConversionSyncSchedulerIntervalMs, lookbackHours: shopeeConversionSyncLookbackHours });
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
+  const productMediaDiscovery = mediaStorage && repositories.productMediaAssets
+    ? new ProductMediaDiscoveryRunner(mediaStorage, repositories.productMediaAssets, { maxImageBytes: mediaUploadPolicy.maxImageBytes, maxVideoBytes: mediaUploadPolicy.maxVideoBytes })
+    : undefined;
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
   const stateReader = optimizationStateReader ?? defaultOptimizationState;
   const stateWriter = optimizationStateWriter ?? defaultOptimizationState;
@@ -107,7 +111,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const explorationEvaluation = autonomousDecisionAuditRepository ? new AutonomousExplorationEvaluationRunner(autonomousDecisionAuditRepository, autonomousDecisionAuditRepository, explorationEvaluationPolicy) : undefined;
   const adaptiveExploration = autonomousDecisionAuditRepository ? new AdaptiveExplorationPolicyProvider(autonomousDecisionAuditRepository, adaptiveExplorationPolicy, autonomousExplorationStateRepository) : undefined;
   const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback, autonomousRuns, autonomousDecisionAuditRepository, adaptiveExploration);
-  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation);
+  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation, productMediaDiscovery);
   const autonomousScheduler = new AutonomousScheduler(
     autonomousCycle,
     { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies, publicationEnabled: autonomousPublicationEnabled },
