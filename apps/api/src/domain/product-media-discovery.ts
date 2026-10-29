@@ -22,16 +22,17 @@ export interface ProductMediaExtractionOptions {
 
 const DEFAULT_MAX_CANDIDATES = 20;
 const MAX_HTML_CHARS = 2_000_000;
-const PRIVATE_IPV4 = /^(?:0|10|127|169\.254|172\.(?:1[6-9]|2\d|3[01])|192\.168|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\./i;
+const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 
 const isPublicHttpsUrl = (raw: string, base: URL): string | undefined => {
   try {
     const url = new URL(raw.trim(), base);
     if (url.protocol !== "https:" || url.username || url.password) return undefined;
-    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
     if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return undefined;
-    if (PRIVATE_IPV4.test(host) || host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return undefined;
-    // Avoid URLs that embed control characters or are likely to be non-media data URLs.
+    // Reject IP literals here; the network transport must independently validate DNS
+    // answers and every redirect before making outbound requests.
+    if (host.includes(":") || IPV4_LITERAL.test(host)) return undefined;
     if (/[\u0000-\u001f\u007f]/.test(url.href)) return undefined;
     url.hash = "";
     return url.toString();
