@@ -59,5 +59,21 @@ export class ShopeeAffiliateLinkIntakeService {
       throw error;
     }
   }
+
+  async reconcileVerifiedOffer(productUrl: string, sourceReference?: string) {
+    let url: URL;
+    try { url = new URL(productUrl); } catch { return undefined; }
+    if (url.protocol !== "https:" || !(url.hostname === "shopee.co.id" || url.hostname.endsWith(".shopee.co.id") || url.hostname === "shopee.com" || url.hostname.endsWith(".shopee.com"))) return undefined;
+    const match = /\\/product\\/(\\d+)\\/(\\d+)(?:[/?#]|$)/i.exec(url.pathname) ?? /-i\\.(\\d+)\\.(\\d+)(?:[/?#]|$)/i.exec(url.pathname);
+    if (!match?.[1] || !match[2]) return undefined;
+    const existing = await this.repository.findByProductIdentity(match[1], match[2]);
+    if (!existing) return undefined;
+    const updated: ShopeeAffiliateLinkIntake = {
+      ...existing, status: "imported", reason: undefined,
+      sourceMetadata: { ...existing.sourceMetadata, verifiedOfferSource: "shopee-affiliate-feed", offerDataVerifiedAt: new Date().toISOString(), ...(sourceReference ? { sourceReference: sourceReference.slice(0, 255) } : {}) },
+      updatedAt: new Date().toISOString()
+    };
+    return this.repository.update(updated);
+  }
   get(id: string) { return this.repository.findById(id); }
 }
