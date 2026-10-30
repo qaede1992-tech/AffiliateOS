@@ -21,6 +21,17 @@ test("resolves a short affiliate link when redirects land directly on a Shopee p
   assert.equal(result.productUrl, "https://shopee.co.id/product/305325624/29463945555");
 });
 
+test("resolves Shopee opaanlp redirect URLs to product identity", async () => {
+  const landingUrl = "https://shopee.co.id/opaanlp/305325624/29463945555";
+  const fetcher = (async () => mockResponse(landingUrl, "<html><body>Product page</body></html>")) as typeof fetchPublicHttps;
+  const result = await resolveShopeeAffiliateLink("https://s.shopee.co.id/short", {}, fetcher);
+  assert.equal(result.status, "resolved");
+  assert.equal(result.landingUrl, landingUrl);
+  assert.equal(result.productUrl, landingUrl);
+  assert.equal(result.shopId, "305325624");
+  assert.equal(result.itemId, "29463945555");
+});
+
 test("extracts canonical product URL from public Shopee HTML", async () => {
   const html = '<html><head><link rel="canonical" href="https://shopee.co.id/product/305325624/29463945555"><meta property="og:url" content="https://shopee.co.id/other"></head></html>';
   const fetcher = (async () => mockResponse("https://shopee.co.id/universal-link/abc", html)) as typeof fetchPublicHttps;

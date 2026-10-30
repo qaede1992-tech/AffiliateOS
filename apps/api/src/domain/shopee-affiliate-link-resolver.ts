@@ -13,7 +13,11 @@ export interface ShopeeAffiliateLinkResolution {
 export interface ShopeeAffiliateLinkResolverOptions { maxPageBytes?: number; timeoutMs?: number; maxRedirects?: number; }
 
 const SHOPEE_HOSTS = ["shopee.co.id", "shopee.com"] as const;
-const PRODUCT_PATHS = [/\/product\/(\d+)\/(\d+)(?:[/?#]|$)/i, /-i\.(\d+)\.(\d+)(?:[/?#]|$)/i];
+const PRODUCT_PATHS = [
+  /\/product\/(\d+)\/(\d+)(?:[/?#]|$)/i,
+  /-i\.(\d+)\.(\d+)(?:[/?#]|$)/i,
+  /\/opaanlp\/(\d+)\/(\d+)(?:[/?#]|$)/i
+];
 
 function isShopeeHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, "");
