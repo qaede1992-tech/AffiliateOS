@@ -48,7 +48,6 @@ test("publisher readiness requires an active account and credential reference", 
   assert.equal((await noAccount.list()).find((item) => item.platform === "instagram")?.status, "unconfigured");
 });
 
-
 test("Instagram becomes ready only after the publishing scope is granted", () => {
   const service = new PublisherReadinessService([publisher], true);
   const result = service.get("instagram", [account({ connection: { grantedScopes: ["instagram_business_basic", "instagram_business_content_publish"] } })]);
@@ -64,7 +63,6 @@ test("TikTok remains unconfigured when the video publishing scope is missing", (
   assert.equal(result.requiredScope, "video.publish");
   assert.equal(result.requiredScopeGranted, false);
 });
-
 
 test("TikTok becomes ready after the opaque credential reference resolves", async () => {
   const tiktokPublisher: SocialPublisher = {
@@ -105,6 +103,56 @@ test("TikTok stays unconfigured when credential resolution fails", async () => {
   const result = (await service.list()).find((item) => item.platform === "tiktok");
   assert.equal(result?.status, "unconfigured");
   assert.equal(result?.credentialResolvable, false);
+});
+
+test("publisher readiness does not combine one account's credential with another account's scope", async () => {
+  const credentials = new InMemorySocialCredentialResolver();
+  credentials.set("secret://social/valid-without-scope", { accessToken: "redacted-test-value" });
+  const repository = {
+    list: async () => [
+      account({
+        id: "credential-account",
+        credentialReference: "secret://social/valid-without-scope",
+        connection: { grantedScopes: ["instagram_business_basic"] }
+      }),
+      account({
+        id: "scope-account",
+        credentialReference: "secret://social/missing",
+        connection: { grantedScopes: ["instagram_business_content_publish"] }
+      })
+    ]
+  };
+  const service = new PublisherReadinessService([publisher], true, repository, credentials);
+
+  const result = (await service.list()).find((item) => item.platform === "instagram");
+  assert.equal(result?.status, "unconfigured");
+  assert.equal(result?.credentialResolvable, true);
+  assert.equal(result?.requiredScopeGranted, false);
+});
+
+test("publisher readiness accepts a credential and publishing scope from the same account", async () => {
+  const credentials = new InMemorySocialCredentialResolver();
+  credentials.set("secret://social/instagram-ready", { accessToken: "redacted-test-value" });
+  const repository = {
+    list: async () => [
+      account({
+        id: "ready-account",
+        credentialReference: "secret://social/instagram-ready",
+        connection: { grantedScopes: ["instagram_business_content_publish"] }
+      }),
+      account({
+        id: "unrelated-account",
+        credentialReference: "secret://social/missing",
+        connection: { grantedScopes: ["instagram_business_basic"] }
+      })
+    ]
+  };
+  const service = new PublisherReadinessService([publisher], true, repository, credentials);
+
+  const result = (await service.list()).find((item) => item.platform === "instagram");
+  assert.equal(result?.status, "ready");
+  assert.equal(result?.credentialResolvable, true);
+  assert.equal(result?.requiredScopeGranted, true);
 });
 
 test("Threads and X remain explicitly unsupported until an official publisher is registered", async () => {
