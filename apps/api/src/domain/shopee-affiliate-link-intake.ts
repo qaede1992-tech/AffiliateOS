@@ -60,7 +60,7 @@ export class ShopeeAffiliateLinkIntakeService {
     }
   }
 
-  async reconcileVerifiedOffer(productUrl: string, sourceReference?: string) {
+  async reconcileVerifiedOffer(productUrl: string) {
     let url: URL;
     try { url = new URL(productUrl); } catch { return undefined; }
     if (url.protocol !== "https:" || !(url.hostname === "shopee.co.id" || url.hostname.endsWith(".shopee.co.id") || url.hostname === "shopee.com" || url.hostname.endsWith(".shopee.com"))) return undefined;
