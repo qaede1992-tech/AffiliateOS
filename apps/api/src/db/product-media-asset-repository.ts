@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "../domain/product-media-ingestion.js";
 import { productMediaAssets } from "./schema.js";
 
@@ -30,6 +30,13 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
 
   async listByProduct(productId: string): Promise<ProductMediaAsset[]> {
     return (await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.productId, productId)))
+      .map(toAsset);
+  }
+
+  async listByProducts(productIds: string[]): Promise<ProductMediaAsset[]> {
+    const uniqueProductIds = [...new Set(productIds)];
+    if (uniqueProductIds.length === 0) return [];
+    return (await this.db.select().from(productMediaAssets).where(inArray(productMediaAssets.productId, uniqueProductIds)))
       .map(toAsset);
   }
 
