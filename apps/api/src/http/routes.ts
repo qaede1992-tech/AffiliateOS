@@ -14,6 +14,17 @@ import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-cli
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
+const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && parsed.hostname && !parsed.username && !parsed.password
+      ? parsed.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
@@ -229,7 +240,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         currency: offer.currency ?? product.currency,
         ratingMilli: product.ratingMilli,
         reviewCount: product.reviewCount,
-        trackingCode: trackingLink.code
+        trackingCode: trackingLink.code,
+        ...(toPublicHttpsMediaUrl(product.imageUrl) ? { imageUrl: toPublicHttpsMediaUrl(product.imageUrl) } : {}),
+        ...(toPublicHttpsMediaUrl(product.videoUrl) ? { videoUrl: toPublicHttpsMediaUrl(product.videoUrl) } : {})
       }];
     });
     return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
