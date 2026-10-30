@@ -40,8 +40,14 @@ export class ProductMediaDiscoveryRunner {
   }
 
   async listVideoProductIds(productIds: string[]): Promise<string[]> {
+    const uniqueIds = [...new Set(productIds)];
+    if (!uniqueIds.length) return [];
+    if (this.assets.listProductIdsWithVideo) {
+      const storedVideoIds = new Set(await this.assets.listProductIdsWithVideo(uniqueIds));
+      return uniqueIds.filter((productId) => storedVideoIds.has(productId));
+    }
     const result: string[] = [];
-    for (const productId of [...new Set(productIds)]) {
+    for (const productId of uniqueIds) {
       if (await this.hasStoredVideo(productId)) result.push(productId);
     }
     return result;
