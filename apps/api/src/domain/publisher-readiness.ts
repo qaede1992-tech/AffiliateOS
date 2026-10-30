@@ -58,7 +58,7 @@ export class PublisherReadinessService {
       typeof credentialResolvable === "boolean" ? credentialResolvable : credentialResolvable.has(account.id);
     const credentialResolvableAccounts = platformAccounts.filter(isCredentialResolvable);
     const credentialResolvableForPlatform = credentialResolvableAccounts.length > 0;
-    const scopeEvidenceAvailable = credentialResolvableAccounts.some((account) => Array.isArray(account.connection?.grantedScopes));
+    const scopeEvidenceAvailable = platformAccounts.some((account) => Array.isArray(account.connection?.grantedScopes));
     const requiredScopeGranted = !requiredScope || !scopeEvidenceAvailable || credentialResolvableAccounts.some((account) => {
       const grantedScopes = account.connection?.grantedScopes;
       return Array.isArray(grantedScopes) && grantedScopes.includes(requiredScope);
