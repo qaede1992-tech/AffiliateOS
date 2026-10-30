@@ -19,7 +19,17 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
   async findByUrlHash(hash: string) { return [...this.rows.values()].find(row => row.normalizedUrlHash === hash); }
   async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
   async findById(id: string) { return this.rows.get(id); }
-  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(intake.normalizedUrlHash); if (existing) return existing; this.rows.set(intake.id, intake); return intake; }
+  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) {
+    // Keep URL and product-identity deduplication atomic within this in-memory adapter.
+    const existingByUrl = [...this.rows.values()].find((row) => row.normalizedUrlHash === intake.normalizedUrlHash);
+    if (existingByUrl) return existingByUrl;
+    if (intake.shopId && intake.itemId) {
+      const existingByProduct = [...this.rows.values()].find((row) => row.shopId === intake.shopId && row.itemId === intake.itemId);
+      if (existingByProduct) return existingByProduct;
+    }
+    this.rows.set(intake.id, intake);
+    return intake;
+  }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
 }
 function normalizeAffiliateUrl(raw: string): string {
@@ -35,29 +45,34 @@ export class ShopeeAffiliateLinkIntakeService {
     const hash = createHash("sha256").update(normalized).digest("hex");
     const existing = await this.repository.findByUrlHash(hash);
     if (existing) return existing;
-    const now = new Date().toISOString();
-    const intake = await this.repository.saveIfAbsent({ id: randomUUID(), marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: normalized, normalizedUrlHash: hash, status: "resolving", sourceMetadata: {}, createdAt: now, updatedAt: now });
-    if (intake.status !== "resolving" || intake.canonicalProductUrl) return intake;
+
+    // Resolve before persisting. The intake endpoint waits for resolution, so a
+    // persisted "resolving" row is not needed and could be stranded when another
+    // URL has already claimed the same unique Shopee product identity.
     const result = await this.resolver(normalized);
     if (result.status === "resolved" && result.shopId && result.itemId) {
       const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
       if (sameProduct) return sameProduct;
     }
-    const updated: ShopeeAffiliateLinkIntake = {
-      ...intake, status: result.status === "resolved" ? "awaiting_offer_data" : "unresolved",
+
+    const now = new Date().toISOString();
+    const intake: ShopeeAffiliateLinkIntake = {
+      id: randomUUID(),
+      marketplaceSlug: "shopee-affiliate-feed",
+      affiliateUrl: normalized,
+      normalizedUrlHash: hash,
+      status: result.status === "resolved" ? "awaiting_offer_data" : "unresolved",
       ...(result.productUrl ? { canonicalProductUrl: result.productUrl } : {}),
-      ...(result.shopId ? { shopId: result.shopId } : {}), ...(result.itemId ? { itemId: result.itemId } : {}),
+      ...(result.shopId ? { shopId: result.shopId } : {}),
+      ...(result.itemId ? { itemId: result.itemId } : {}),
       ...(result.reason ? { reason: result.reason.slice(0, 1000) } : {}),
-      sourceMetadata: { resolution: result.status }, updatedAt: new Date().toISOString()
+      sourceMetadata: { resolution: result.status },
+      createdAt: now,
+      updatedAt: now
     };
-    try { return await this.repository.update(updated); }
-    catch (error) {
-      if (result.status === "resolved" && result.shopId && result.itemId) {
-        const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
-        if (sameProduct) return sameProduct;
-      }
-      throw error;
-    }
+    // The repository also resolves unique-key races for both URL hash and
+    // product identity, returning the already-persisted intake when present.
+    return this.repository.saveIfAbsent(intake);
   }
 
   async reconcileVerifiedOffer(productUrl: string) {
