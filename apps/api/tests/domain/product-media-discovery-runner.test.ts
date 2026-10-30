@@ -41,6 +41,30 @@ test("discovers, validates, and stores a public product video", async () => {
   assert.equal(await runner.hasStoredVideo(product.id), true);
 });
 
+test("lists stored video product ids with one batch repository lookup", async () => {
+  const secondProductId = "22222222-2222-4222-8222-222222222222";
+  const calls: string[][] = [];
+  const repository = {
+    async listByProduct() { throw new Error("batch lookup should avoid per-product reads"); },
+    async listProductIdsWithVideo(productIds: string[]) {
+      calls.push(productIds);
+      return [secondProductId, product.id];
+    },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  const result = await runner.listVideoProductIds([product.id, secondProductId, product.id]);
+
+  assert.deepEqual(calls, [[product.id, secondProductId]]);
+  assert.deepEqual(result, [product.id, secondProductId]);
+});
+
 test("refuses discovery before non-media eligibility passes", async () => {
   let fetched = false;
   const runner = new ProductMediaDiscoveryRunner({ upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never, {
