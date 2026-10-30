@@ -124,7 +124,13 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
     const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
     const rows = await this.db.insert(shopeeAffiliateLinkIntakes).values(values).onConflictDoNothing().returning();
     if (rows[0]) return this.map(rows[0]);
-    return (await this.findByUrlHash(entity.normalizedUrlHash)) ?? entity;
+    const existingByUrl = await this.findByUrlHash(entity.normalizedUrlHash);
+    if (existingByUrl) return existingByUrl;
+    if (entity.shopId && entity.itemId) {
+      const existingByProduct = await this.findByProductIdentity(entity.shopId, entity.itemId);
+      if (existingByProduct) return existingByProduct;
+    }
+    throw new Error("Shopee affiliate link intake conflicted with an existing row that could not be resolved.");
   }
   async update(entity: ShopeeAffiliateLinkIntake) {
     const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
