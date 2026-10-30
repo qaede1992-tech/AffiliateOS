@@ -133,7 +133,21 @@ type PublicShopItem = {
   currency?: string | null;
   ratingMilli?: number | null;
   reviewCount?: number | null;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
   trackingCode: string;
+};
+
+const safePublicMediaUrl = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
@@ -196,8 +210,27 @@ function ShopPage() {
       <input id="public-shop-search" className="public-shop-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Contoh: 1" autoComplete="off" />
       {!loading && !error && normalizedQuery && filteredItems.length === 0 ? <p className="public-shop-message" role="status">Tidak ada produk yang cocok dengan nomor atau nama tersebut.</p> : null}
       <div className="public-shop-grid">
-        {filteredItems.map((item) => (
+        {filteredItems.map((item) => {
+          const imageUrl = safePublicMediaUrl(item.imageUrl);
+          const videoUrl = safePublicMediaUrl(item.videoUrl);
+          return (
           <article className="public-shop-card" key={item.id}>
+            {videoUrl ? (
+              <div className="public-shop-media">
+                <video controls preload="metadata" playsInline poster={imageUrl} aria-label={`Video produk: ${item.name}`}>
+                  <source src={videoUrl} />
+                  Browser Anda tidak mendukung pemutaran video.
+                </video>
+              </div>
+            ) : imageUrl ? (
+              <div className="public-shop-media">
+                <img src={imageUrl} alt={item.name} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+              </div>
+            ) : (
+              <div className="public-shop-media public-shop-media-placeholder" role="img" aria-label={`Media produk belum tersedia: ${item.name}`}>
+                Media produk belum tersedia
+              </div>
+            )}
             <p className="public-eyebrow">{item.category || "Rekomendasi produk"}</p>
             <h2>{item.name}</h2>
             <p className="public-shop-code">Nomor produk: <strong>{item.referenceNumber}</strong></p>
@@ -209,7 +242,8 @@ function ShopPage() {
               Lihat produk di marketplace
             </a>
           </article>
-        ))}
+          );
+        })}
       </div>
       <p className="public-shop-disclosure">Sebagian tautan merupakan tautan afiliasi. Jika Anda membeli melalui tautan tersebut, kami mungkin menerima komisi tanpa biaya tambahan bagi Anda.</p>
     </section>
