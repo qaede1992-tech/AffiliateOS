@@ -70,7 +70,7 @@ export class ShopeeAffiliateLinkIntakeService {
     if (!existing) return undefined;
     const updated: ShopeeAffiliateLinkIntake = {
       ...existing, status: "imported", reason: undefined,
-      sourceMetadata: { ...existing.sourceMetadata, verifiedOfferSource: "shopee-affiliate-feed", offerDataVerifiedAt: new Date().toISOString(), ...(sourceReference ? { sourceReference: sourceReference.slice(0, 255) } : {}) },
+      sourceMetadata: { ...existing.sourceMetadata, verifiedOfferSource: "shopee-affiliate-feed", offerDataVerifiedAt: new Date().toISOString() },
       updatedAt: new Date().toISOString()
     };
     return this.repository.update(updated);
