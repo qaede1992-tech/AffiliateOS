@@ -59,3 +59,15 @@ export const tiktokPublicationApprovalSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["privacyLevel"], message: "Branded content must be public or friends-only." });
   }
 });
+
+export const createShopeeAffiliateLinkIntakeSchema = z.object({
+  affiliateUrl: z.string().trim().url().max(2048).refine((value) => {
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase();
+      return url.protocol === "https:" && !url.username && !url.password &&
+        (host === "shopee.co.id" || host.endsWith(".shopee.co.id") || host === "shopee.com" || host.endsWith(".shopee.com"));
+    } catch { return false; }
+  }, "Only credential-free Shopee HTTPS links are supported.")
+});
+export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entityId });
