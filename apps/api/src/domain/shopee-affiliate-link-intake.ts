@@ -27,7 +27,7 @@ function normalizeAffiliateUrl(raw: string): string {
   return url.toString();
 }
 export class ShopeeAffiliateLinkIntakeService {
-  constructor(private readonly repository: ShopeeAffiliateLinkIntakeRepository) {}
+  constructor(private readonly repository: ShopeeAffiliateLinkIntakeRepository, private readonly resolver: typeof resolveShopeeAffiliateLink = resolveShopeeAffiliateLink) {}
   async submit(rawUrl: string): Promise<ShopeeAffiliateLinkIntake> {
     const normalized = normalizeAffiliateUrl(rawUrl);
     const hash = createHash("sha256").update(normalized).digest("hex");
