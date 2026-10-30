@@ -20,7 +20,7 @@ export interface HealthResponse { status: "ok"; service: "affiliateos-api"; time
 
 export type MarketplaceStatus = "active" | "inactive" | "pending";
 export interface ProductDiscoverySignals { audienceReachScore?: number; viewCount?: number; impressionCount?: number; engagementCount?: number; capturedAt?: IsoTimestamp; }
-export interface Product { id: EntityId; marketplaceId: EntityId; externalProductId: string; name: string; description?: string; category?: string; priceCents: number; originalPriceCents?: number; currency: string; ratingMilli?: number; reviewCount: number; soldCount: number; discoverySignals?: ProductDiscoverySignals; imageUrl?: string; videoUrl?: string; productUrl: string; status: "active" | "inactive" | "archived"; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
+export interface Product { id: EntityId; referenceNumber?: number; marketplaceId: EntityId; externalProductId: string; name: string; description?: string; category?: string; priceCents: number; originalPriceCents?: number; currency: string; ratingMilli?: number; reviewCount: number; soldCount: number; discoverySignals?: ProductDiscoverySignals; imageUrl?: string; videoUrl?: string; productUrl: string; status: "active" | "inactive" | "archived"; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
 export interface ProductOpportunity { product: Product; score: number; reasons: string[]; disclaimer: string; }
 export type MarketplaceConnectionStatus = "active" | "inactive" | "pending" | "error";
 export type MarketplaceConnectionHealth = "unverified" | "healthy" | "unhealthy" | "unsupported";
