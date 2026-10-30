@@ -13,6 +13,7 @@ import { determineAutonomousHealthStatus } from "../domain/autonomous-health-sta
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
+import { createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
@@ -175,6 +176,18 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get<{ Reply: ListResponse<Conversion> }>("/api/v1/conversions", async () => list(await services.conversions.list())); app.post<{ Body: CreateConversionRequest; Reply: Conversion }>("/api/v1/conversions", writeGuard, async (request, reply) => reply.status(201).send(await services.conversions.create(createConversionSchema.parse(request.body))));
   app.post("/api/v1/conversions/:conversionId/attribution", writeGuard, async (request, reply) => { const params = conversionIdSchema.parse(request.params); const attribution = await services.attribution.create(params.conversionId, createConversionAttributionSchema.parse(request.body)); return reply.status(201).send(attribution); }); app.get("/api/v1/conversions/:conversionId/attribution", async (request) => { const { conversionId } = conversionIdSchema.parse(request.params); const attribution = await services.attribution.get(conversionId); return attribution ?? { conversionId, attributed: false }; });
   app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => { const input = scoreProductSchema.parse(request.body); return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance); });
+  app.post("/api/v1/shopee/affiliate-link-intakes", writeGuard, async (request, reply) => {
+    const { affiliateUrl } = createShopeeAffiliateLinkIntakeSchema.parse(request.body);
+    const intake = await services.shopeeAffiliateLinkIntakes.submit(affiliateUrl);
+    auditSecurityEvent(request.log, request, "shopee_affiliate_link_intake_submitted", { intakeId: intake.id, status: intake.status });
+    return reply.status(201).send(intake);
+  });
+  app.get("/api/v1/shopee/affiliate-link-intakes/:intakeId", async (request) => {
+    const { intakeId } = shopeeAffiliateLinkIntakeParamsSchema.parse(request.params);
+    const intake = await services.shopeeAffiliateLinkIntakes.get(intakeId);
+    if (!intake) return { error: "NOT_FOUND", message: "Shopee affiliate link intake tidak ditemukan." };
+    return intake;
+  });
   app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => reply.status(201).send(await services.marketplace.importShopeeAffiliateFeed(importShopeeAffiliateFeedSchema.parse(request.body)))); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
     let parsed;
