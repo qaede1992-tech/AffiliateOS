@@ -21,6 +21,7 @@ export interface ProductMediaAsset {
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   listByProduct(productId: string): Promise<ProductMediaAsset[]>;
+  listProductIdsWithVideo?(productIds: string[]): Promise<string[]>;
   save(asset: ProductMediaAsset): Promise<ProductMediaAsset>;
 }
 
