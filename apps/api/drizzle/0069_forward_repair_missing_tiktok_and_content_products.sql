@@ -22,3 +22,50 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.content_products TO affiliateos_r
 ALTER TABLE public.content_products ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS affiliateos_runtime_access ON public.content_products;
 CREATE POLICY affiliateos_runtime_access ON public.content_products FOR ALL TO affiliateos_runtime USING (true) WITH CHECK (true);
+
+-- CREATE TABLE IF NOT EXISTS does not repair a partially-created relation.
+-- Add the expected constraints independently so this migration repairs both
+-- a missing table and an incomplete table left by an interrupted deployment.
+DO $repair$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.content_products'::regclass
+       AND contype = 'p'
+       AND pg_get_constraintdef(oid, true) = 'PRIMARY KEY (content_id, product_id)'
+  ) THEN
+    ALTER TABLE public.content_products
+      ADD CONSTRAINT content_products_pkey PRIMARY KEY (content_id, product_id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.content_products'::regclass
+       AND contype = 'f'
+       AND pg_get_constraintdef(oid, true) LIKE 'FOREIGN KEY (content_id) REFERENCES content(id)%'
+  ) THEN
+    ALTER TABLE public.content_products
+      ADD CONSTRAINT content_products_content_id_fkey
+      FOREIGN KEY (content_id) REFERENCES public.content(id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.content_products'::regclass
+       AND contype = 'f'
+       AND pg_get_constraintdef(oid, true) LIKE 'FOREIGN KEY (product_id) REFERENCES products(id)%'
+  ) THEN
+    ALTER TABLE public.content_products
+      ADD CONSTRAINT content_products_product_id_fkey
+      FOREIGN KEY (product_id) REFERENCES public.products(id);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.content_products'::regclass
+       AND contype = 'f'
+       AND pg_get_constraintdef(oid, true) LIKE 'FOREIGN KEY (affiliate_offer_id) REFERENCES affiliate_offers(id)%'
+  ) THEN
+    ALTER TABLE public.content_products
+      ADD CONSTRAINT content_products_affiliate_offer_id_fkey
+      FOREIGN KEY (affiliate_offer_id) REFERENCES public.affiliate_offers(id);
+  END IF;
+END
+$repair$;
