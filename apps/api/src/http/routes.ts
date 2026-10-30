@@ -19,7 +19,7 @@ const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
   if (!value) return undefined;
   try {
     const parsed = new URL(value);
-    const hostname = parsed.hostname.toLowerCase().replace(/^\\[|\\]$/g, "").replace(/\\.$/, "");
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
     const isLocalHostname =
       hostname === "localhost" ||
       hostname.endsWith(".localhost") ||
