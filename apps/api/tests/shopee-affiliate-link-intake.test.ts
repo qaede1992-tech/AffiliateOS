@@ -13,15 +13,34 @@ test("Shopee link intake persists resolved product identity and awaits verified 
   assert.equal((await service.get(intake.id))?.id, intake.id);
 });
 
-test("Shopee link intake is idempotent for normalized URLs", async () => {
+test("Shopee link intake retries unresolved normalized URLs", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   let calls = 0;
   const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => { calls += 1; return { status: "unresolved", affiliateUrl, reason: "not publicly accessible" }; });
   const first = await service.submit("https://s.shopee.co.id/example#tracking");
   const second = await service.submit("https://s.shopee.co.id/example");
   assert.equal(first.id, second.id);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   assert.equal(second.status, "unresolved");
+});
+
+
+test("Shopee link intake recovers an unresolved URL on a later submission", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  let calls = 0;
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => {
+    calls += 1;
+    return calls === 1
+      ? { status: "unresolved", affiliateUrl, reason: "temporary public page restriction" }
+      : { status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/305325624/29463945555", shopId: "305325624", itemId: "29463945555" };
+  });
+  const first = await service.submit("https://s.shopee.co.id/retry-me");
+  const retried = await service.submit("https://s.shopee.co.id/retry-me");
+  assert.equal(first.id, retried.id);
+  assert.equal(calls, 2);
+  assert.equal(retried.status, "awaiting_offer_data");
+  assert.equal(retried.shopId, "305325624");
+  assert.equal(retried.itemId, "29463945555");
 });
 
 test("different affiliate URLs resolving to the same Shopee product deduplicate by product identity", async () => {
