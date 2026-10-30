@@ -68,10 +68,15 @@ export class SocialAccountService {
   async list() { return (await this.accounts.list()).map((account) => this.view(account)); }
   async get(id: string) { const account = await this.accounts.findById(id); if (!account) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); return this.view(account); }
   // Internal provider calls need the opaque credential reference; never return this object directly from an HTTP route.
-  async getForProviderOperation(id: string): Promise<SocialAccount> {
+  /** Internal publisher path: preserve the opaque credential reference while public views remain redacted. */
+  async getForPublisher(id: string): Promise<SocialAccount> {
     const account = await this.accounts.findById(id);
     if (!account) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404);
     return account;
+  }
+  // Backward-compatible internal alias for existing provider-operation callers.
+  async getForProviderOperation(id: string): Promise<SocialAccount> {
+    return this.getForPublisher(id);
   }
   async create(input: CreateSocialAccountRequest) { validateOpaqueCredentialReference(input.credentialReference); if (await this.accounts.findByPlatformAccount(input.platform, input.accountReference)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); const createdAt = now(); const account: SocialAccount = { id: randomUUID(), platform: input.platform, accountReference: input.accountReference, status: input.status ?? "pending", connection: input.connection ?? {}, credentialReference: input.credentialReference?.trim(), createdAt, updatedAt: createdAt }; try { return this.view(await this.accounts.save(account)); } catch (error) { if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); throw error; } }
   async update(id: string, input: import("@affiliateos/shared").UpdateSocialAccountRequest) { const current = await this.accounts.findById(id); if (!current) throw new DomainError("SOCIAL_ACCOUNT_NOT_FOUND", "The social account does not exist.", 404); validateOpaqueCredentialReference(input.credentialReference); const platform = input.platform ?? current.platform; const accountReference = input.accountReference ?? current.accountReference; const duplicate = await this.accounts.findByPlatformAccount(platform, accountReference); if (duplicate && duplicate.id !== id) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); const updated: SocialAccount = { ...current, ...input, platform, accountReference, credentialReference: input.credentialReference === undefined ? current.credentialReference : input.credentialReference.trim(), updatedAt: now() }; try { return this.view(await this.accounts.save(updated)); } catch (error) { if (isUniqueViolation(error)) throw new DomainError("SOCIAL_ACCOUNT_EXISTS", "The social account is already registered.", 409); throw error; } }

@@ -88,7 +88,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/publication-jobs", writeGuard, async () => list(await services.publicationJobs.list()));
   app.get("/api/v1/social-accounts/:socialAccountId/tiktok/creator-info", writeGuard, async (request, reply) => {
     const { socialAccountId } = socialAccountIdSchema.parse(request.params);
-    const account = await services.socialAccounts.getForProviderOperation(socialAccountId);
+    const account = await services.socialAccounts.getForPublisher(socialAccountId);
     if (account.platform !== "tiktok") return reply.status(400).send({ error: "INVALID_SOCIAL_ACCOUNT_PLATFORM", message: "The social account must be a TikTok account." });
     try {
       return await services.tiktokCreatorInfo.getCreatorInfo(account);
