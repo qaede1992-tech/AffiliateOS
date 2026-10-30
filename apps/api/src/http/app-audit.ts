@@ -9,7 +9,8 @@ export type AuditEvent =
   | "social_credential_rotated"
   | "social_credential_revoked"
   | "publication_job_confirmed"
-  | "content_scheduled_for_distribution";
+  | "content_scheduled_for_distribution"
+  | "shopee_affiliate_link_resolution";
 
 export function auditSecurityEvent(
   log: FastifyBaseLogger,
