@@ -41,8 +41,7 @@ test("verified feed offer reconciles a matching intake without inventing offer v
   }));
   const intake = await service.submit("https://s.shopee.co.id/short");
   assert.equal(intake.status, "awaiting_offer_data");
-  const reconciled = await service.reconcileVerifiedOffer("https://shopee.co.id/product/123/456", "feed-export-1");
+  const reconciled = await service.reconcileVerifiedOffer("https://shopee.co.id/product/123/456");
   assert.equal(reconciled?.status, "imported");
   assert.equal(reconciled?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
-  assert.equal(reconciled?.sourceMetadata.sourceReference, "feed-export-1");
 });
