@@ -190,7 +190,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateFeedSchema.parse(request.body);
     const result = await services.marketplace.importShopeeAffiliateFeed(input);
-    for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl, input.sourceReference);
+    for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
     return reply.status(201).send(result);
   }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
@@ -218,7 +218,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality }
       }))
     });
-    for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl, input.sourceReference);
+    for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
     const [products, offers, trackingLinks] = await Promise.all([
