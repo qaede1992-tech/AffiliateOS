@@ -1,9 +1,10 @@
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, ContentProduct, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "../domain/media-asset.js";
-import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets, contentProducts } from "./schema.js";
+import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets, contentProducts, shopeeAffiliateLinkIntakes } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
 import { DrizzlePublicationOperationRepository } from "./publication-operation-repository.js";
+import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "../domain/shopee-affiliate-link-intake.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ContentProductRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
 
 type DatabaseExecutor = any;
@@ -106,7 +107,34 @@ class DrizzleContentProductRepository implements ContentProductRepository {
 }
 class DrizzleSocialAccountRepository extends DrizzleRepository<SocialAccount, typeof socialAccounts.$inferSelect> { constructor(db: DatabaseExecutor) { super(db, socialAccounts, toSocialAccount, (entity) => ({ ...entity, credentialReference: entity.credentialReference ?? null } as any)); } async findByPlatformAccount(platform: string, accountReference: string) { const rows = await this.db.select().from(socialAccounts).where(and(eq(socialAccounts.platform, platform), eq(socialAccounts.accountReference, accountReference))).limit(1); return rows[0] ? toSocialAccount(rows[0]) : undefined; } override async save(entity: SocialAccount) { if (await this.findById(entity.id)) await this.db.update(socialAccounts).set(this.toRow(entity)).where(eq(socialAccounts.id, entity.id)); else await super.save(entity); return entity; } }
 
+
+class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
+  constructor(private readonly db: DatabaseExecutor) {}
+  private map(row: typeof shopeeAffiliateLinkIntakes.$inferSelect): ShopeeAffiliateLinkIntake {
+    return { id: row.id, marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: row.affiliateUrl, normalizedUrlHash: row.normalizedUrlHash,
+      ...(row.canonicalProductUrl ? { canonicalProductUrl: row.canonicalProductUrl } : {}),
+      ...(row.shopId ? { shopId: row.shopId } : {}), ...(row.itemId ? { itemId: row.itemId } : {}),
+      status: row.status as ShopeeAffiliateLinkIntake["status"], ...(row.reason ? { reason: row.reason } : {}),
+      sourceMetadata: row.sourceMetadata, createdAt: row.createdAt, updatedAt: row.updatedAt };
+  }
+  async findByUrlHash(hash: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(eq(shopeeAffiliateLinkIntakes.normalizedUrlHash, hash)).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
+  async findByProductIdentity(shopId: string, itemId: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(and(eq(shopeeAffiliateLinkIntakes.shopId, shopId), eq(shopeeAffiliateLinkIntakes.itemId, itemId))).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
+  async findById(id: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(eq(shopeeAffiliateLinkIntakes.id, id)).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
+  async saveIfAbsent(entity: ShopeeAffiliateLinkIntake) {
+    const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
+    const rows = await this.db.insert(shopeeAffiliateLinkIntakes).values(values).onConflictDoNothing().returning();
+    if (rows[0]) return this.map(rows[0]);
+    return (await this.findByUrlHash(entity.normalizedUrlHash)) ?? entity;
+  }
+  async update(entity: ShopeeAffiliateLinkIntake) {
+    const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
+    const rows = await this.db.update(shopeeAffiliateLinkIntakes).set(values).where(eq(shopeeAffiliateLinkIntakes.id, entity.id)).returning();
+    return rows[0] ? this.map(rows[0]) : entity;
+  }
+}
+
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
+  shopeeAffiliateLinkIntakes: new DrizzleShopeeAffiliateLinkIntakeRepository(db),
   affiliates: new DrizzleRepository(db, affiliates, toAffiliate, (entity: Affiliate) => ({ id: entity.id, name: entity.name, email: entity.email, status: entity.status, createdAt: entity.createdAt })),
   offers: new DrizzleRepository(db, offers, toOffer, (entity: Offer) => ({ id: entity.id, name: entity.name, status: entity.status, commissionRateBps: entity.commissionRateBps, createdAt: entity.createdAt })),
   conversions: new DrizzleConversionRepository(db),

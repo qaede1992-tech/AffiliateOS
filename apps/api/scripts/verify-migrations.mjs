@@ -19,22 +19,38 @@ const errors = [];
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
-function findCompensatedMigrationGaps({ missingMigrations, compensationTimestamp, appliedTimestamps, schemaObjectsPresent }) {
-  const expectedGapTags = [
+function findCompensatedMigrationGaps({
+  missingMigrations,
+  compensationTimestamp,
+  appliedTimestamps,
+  schemaObjectsPresent,
+  forwardRepairTimestamp
+}) {
+  const legacyGapTags = [
     "0056_tiktok_publication_approval_and_media_duration",
     "0057_content_products_multi_product_story"
   ];
+  const forwardRepairGapTag = "0067_reconcile_drifted_tiktok_and_content_products";
   const compensatedTags = new Set();
-  const exactHistoricalGapSet =
-    missingMigrations.length === expectedGapTags.length &&
-    expectedGapTags.every((tag) => missingMigrations.includes(tag));
+  const missing = new Set(missingMigrations);
+  const hasLegacyPair = legacyGapTags.every((tag) => missing.has(tag));
+  const onlyApprovedGaps = missingMigrations.every((tag) =>
+    legacyGapTags.includes(tag) || tag === forwardRepairGapTag
+  );
+  if (!onlyApprovedGaps || !schemaObjectsPresent) return compensatedTags;
   if (
-    exactHistoricalGapSet &&
+    hasLegacyPair &&
     compensationTimestamp !== null &&
-    appliedTimestamps.has(compensationTimestamp) &&
-    schemaObjectsPresent
+    appliedTimestamps.has(compensationTimestamp)
   ) {
-    return new Set(expectedGapTags);
+    for (const tag of legacyGapTags) compensatedTags.add(tag);
+  }
+  if (
+    missing.has(forwardRepairGapTag) &&
+    forwardRepairTimestamp !== null &&
+    appliedTimestamps.has(forwardRepairTimestamp)
+  ) {
+    compensatedTags.add(forwardRepairGapTag);
   }
   return compensatedTags;
 }
@@ -470,11 +486,22 @@ try {
       reconciliationForeignKeysPresent &&
       reconciliationUniqueConstraintPresent &&
       reconciliationIndexesPresent;
+    const forwardRepairTag = "0069_forward_repair_missing_tiktok_and_content_products";
+    const forwardRepairMigration = trackedMigrations.find((migration) => migration.tag === forwardRepairTag);
+    const forwardRepairTimestamp = forwardRepairMigration ? Number(forwardRepairMigration.when) : null;
+    const forwardRepairLedgerRow = migrationRows.find(
+      (row) => Number(row.created_at) === forwardRepairTimestamp
+    );
+    const forwardRepairHashMatches = Boolean(
+      forwardRepairLedgerRow &&
+      trackedMigrationHashes.get(forwardRepairTimestamp)?.hashes.has(forwardRepairLedgerRow.hash)
+    );
     const compensatedTags = findCompensatedMigrationGaps({
       missingMigrations,
       compensationTimestamp,
       appliedTimestamps,
-      schemaObjectsPresent
+      schemaObjectsPresent: schemaObjectsPresent && forwardRepairHashMatches,
+      forwardRepairTimestamp
     });
 
     const uncompensatedMigrations = missingMigrations.filter((tag) => !compensatedTags.has(tag));
@@ -487,7 +514,7 @@ try {
       errors.push(`Drizzle migration ledger contains ${migrationRows.length} rows; expected ${expectedLedgerRows} rows for ${trackedMigrations.length} journal entries and ${compensatedTags.size} explicitly compensated historical gaps.`);
     }
     if (compensatedTags.size > 0) {
-      console.warn(`Historical migration ledger gaps explicitly compensated by ${compensationTag}: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
+      console.warn(`Historical migration ledger gaps explicitly compensated by verified forward repairs: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
     }
   }
   // Supabase keeps its own migration ledger separately from Drizzle's ledger.

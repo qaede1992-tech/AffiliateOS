@@ -17,7 +17,7 @@ test("TikTok Creator Info maps provider rejection to a safe 502 response", async
   };
   const services = {
     socialAccounts: {
-      getForProviderOperation: async (id: string) => {
+      getForPublisher: async (id: string) => {
         assert.equal(id, socialAccountId);
         return account;
       }

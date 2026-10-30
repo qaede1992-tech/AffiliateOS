@@ -234,6 +234,7 @@ function nonNegativeInteger(value: unknown): number | undefined { return typeof 
 
 function validateShopeeFeedItem(item: ImportShopeeAffiliateFeedRequest["items"][number]): void {
   if (item.originalPriceCents !== undefined && item.originalPriceCents < item.priceCents) throw new DomainError("INVALID_SHOPEE_FEED_ITEM", "Original price cannot be below current price.", 400);
+  if (item.commissionRateBps === undefined && item.commissionAmountCents === undefined) throw new DomainError("INVALID_SHOPEE_FEED_ITEM", "Shopee feed items require verified commission data.", 400);
   if (item.commissionAmountCents !== undefined && item.commissionAmountCents > item.priceCents) throw new DomainError("INVALID_SHOPEE_FEED_ITEM", "Commission amount cannot exceed price.", 400);
   for (const [value, label] of [[item.productUrl, "product"], [item.affiliateUrl, "affiliate"]] as const) validateMarketplaceUrl(value, label);
   const affiliateHost = new URL(item.affiliateUrl).hostname.toLowerCase();

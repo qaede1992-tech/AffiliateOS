@@ -449,6 +449,20 @@
       "when": 1794050405008,
       "tag": "0067_reconcile_drifted_tiktok_and_content_products",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794050405011,
+      "tag": "0068_shopee_affiliate_link_intakes",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794050405012,
+      "tag": "0069_forward_repair_missing_tiktok_and_content_products",
+      "breakpoints": true
     }
   ]
 }

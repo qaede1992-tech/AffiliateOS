@@ -4,7 +4,7 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, shopeeCommissionReportSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { requireOperator } from "./auth.js";
@@ -88,7 +88,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/publication-jobs", writeGuard, async () => list(await services.publicationJobs.list()));
   app.get("/api/v1/social-accounts/:socialAccountId/tiktok/creator-info", writeGuard, async (request, reply) => {
     const { socialAccountId } = socialAccountIdSchema.parse(request.params);
-    const account = await services.socialAccounts.getForProviderOperation(socialAccountId);
+    const account = await services.socialAccounts.getForPublisher(socialAccountId);
     if (account.platform !== "tiktok") return reply.status(400).send({ error: "INVALID_SOCIAL_ACCOUNT_PLATFORM", message: "The social account must be a TikTok account." });
     try {
       return await services.tiktokCreatorInfo.getCreatorInfo(account);
@@ -175,12 +175,30 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get<{ Reply: ListResponse<Conversion> }>("/api/v1/conversions", async () => list(await services.conversions.list())); app.post<{ Body: CreateConversionRequest; Reply: Conversion }>("/api/v1/conversions", writeGuard, async (request, reply) => reply.status(201).send(await services.conversions.create(createConversionSchema.parse(request.body))));
   app.post("/api/v1/conversions/:conversionId/attribution", writeGuard, async (request, reply) => { const params = conversionIdSchema.parse(request.params); const attribution = await services.attribution.create(params.conversionId, createConversionAttributionSchema.parse(request.body)); return reply.status(201).send(attribution); }); app.get("/api/v1/conversions/:conversionId/attribution", async (request) => { const { conversionId } = conversionIdSchema.parse(request.params); const attribution = await services.attribution.get(conversionId); return attribution ?? { conversionId, attributed: false }; });
   app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => { const input = scoreProductSchema.parse(request.body); return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance); });
-  app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => reply.status(201).send(await services.marketplace.importShopeeAffiliateFeed(importShopeeAffiliateFeedSchema.parse(request.body)))); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
+  app.post("/api/v1/shopee/affiliate-link-intakes", writeGuard, async (request, reply) => {
+    const { affiliateUrl } = createShopeeAffiliateLinkIntakeSchema.parse(request.body);
+    const intake = await services.shopeeAffiliateLinkIntakes.submit(affiliateUrl);
+    auditSecurityEvent(request.log, request, "shopee_affiliate_link_intake_submitted", { intakeId: intake.id, status: intake.status });
+    return reply.status(201).send(intake);
+  });
+  app.get("/api/v1/shopee/affiliate-link-intakes/:intakeId", async (request, reply) => {
+    const { intakeId } = shopeeAffiliateLinkIntakeParamsSchema.parse(request.params);
+    const intake = await services.shopeeAffiliateLinkIntakes.get(intakeId);
+    if (!intake) return reply.status(404).send({ error: "NOT_FOUND", message: "Shopee affiliate link intake tidak ditemukan." });
+    return intake;
+  });
+  app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => {
+    const input = importShopeeAffiliateFeedSchema.parse(request.body);
+    const result = await services.marketplace.importShopeeAffiliateFeed(input);
+    for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
+    return reply.status(201).send(result);
+  }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
     let parsed;
     try { parsed = parseShopeeAffiliateCsv(input.csv); }
     catch (error) { return reply.status(400).send({ error: "INVALID_SHOPEE_AFFILIATE_CSV", message: error instanceof Error ? error.message : "CSV Shopee tidak valid." }); }
     if (parsed.errors.length > 0 || parsed.rows.length === 0) return reply.status(400).send({ error: "INVALID_SHOPEE_AFFILIATE_CSV", message: "CSV berisi baris yang tidak valid; tidak ada data yang diimpor.", errors: parsed.errors, validRows: parsed.rows.length });
+    if (parsed.rows.some((row) => row.commissionRateBps === null && row.commissionAmountRupiah === null)) return reply.status(400).send({ error: "MISSING_VERIFIED_COMMISSION", message: "CSV harus memuat komisi yang terverifikasi untuk setiap produk; tidak ada data yang diimpor." });
     const result = await services.marketplace.importShopeeAffiliateFeed({
       affiliateId: input.affiliateId,
       ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
@@ -200,6 +218,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality }
       }))
     });
+    for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
     const [products, offers, trackingLinks] = await Promise.all([
