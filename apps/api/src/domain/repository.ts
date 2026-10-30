@@ -47,6 +47,12 @@ export class InMemoryProductMediaAssetRepository implements ProductMediaAssetRep
   async listByProduct(productId: string) {
     return [...this.assets.values()].filter((asset) => asset.productId === productId);
   }
+  async listProductIdsWithVideo(productIds: string[]) {
+    const productIdSet = new Set(productIds);
+    return [...new Set([...this.assets.values()]
+      .filter((asset) => productIdSet.has(asset.productId) && asset.kind === "video")
+      .map((asset) => asset.productId))];
+  }
   async save(asset: ProductMediaAsset) {
     const existing = await this.findByProductAndHash(asset.productId, asset.sha256);
     if (existing) return existing;
