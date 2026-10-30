@@ -231,6 +231,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       );
       if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
       seen.add(product.id);
+      const imageUrl = toPublicHttpsMediaUrl(product.imageUrl);
+      const videoUrl = toPublicHttpsMediaUrl(product.videoUrl);
       return [{
         id: product.id,
         referenceNumber: product.referenceNumber,
@@ -241,8 +243,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         ratingMilli: product.ratingMilli,
         reviewCount: product.reviewCount,
         trackingCode: trackingLink.code,
-        ...(toPublicHttpsMediaUrl(product.imageUrl) ? { imageUrl: toPublicHttpsMediaUrl(product.imageUrl) } : {}),
-        ...(toPublicHttpsMediaUrl(product.videoUrl) ? { videoUrl: toPublicHttpsMediaUrl(product.videoUrl) } : {})
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(videoUrl ? { videoUrl } : {})
       }];
     });
     return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
