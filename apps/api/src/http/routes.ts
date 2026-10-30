@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
@@ -14,6 +15,32 @@ import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-cli
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
+const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    const isLocalHostname =
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal") ||
+      hostname.endsWith(".test") ||
+      hostname.endsWith(".invalid") ||
+      hostname.endsWith(".lan") ||
+      hostname.endsWith(".home.arpa");
+    return parsed.protocol === "https:" &&
+      hostname.includes(".") &&
+      !isIP(hostname) &&
+      !isLocalHostname &&
+      !parsed.username &&
+      !parsed.password
+      ? parsed.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
@@ -220,6 +247,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       );
       if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
       seen.add(product.id);
+      const imageUrl = toPublicHttpsMediaUrl(product.imageUrl);
+      const videoUrl = toPublicHttpsMediaUrl(product.videoUrl);
       return [{
         id: product.id,
         referenceNumber: product.referenceNumber,
@@ -229,7 +258,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         currency: offer.currency ?? product.currency,
         ratingMilli: product.ratingMilli,
         reviewCount: product.reviewCount,
-        trackingCode: trackingLink.code
+        trackingCode: trackingLink.code,
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(videoUrl ? { videoUrl } : {})
       }];
     });
     return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
