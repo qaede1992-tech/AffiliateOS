@@ -76,7 +76,8 @@ export async function resolveShopeeAffiliateLink(
     const page: SafeHttpResponse = await fetcher(input.toString(), {
       maxBytes: options.maxPageBytes ?? 2_000_000,
       timeoutMs: options.timeoutMs ?? 12_000,
-      maxRedirects: options.maxRedirects ?? 5
+      maxRedirects: options.maxRedirects ?? 5,
+      allowedHosts: SHOPEE_HOSTS
     });
     const landing = new URL(page.url);
     if (!isShopeeHost(landing.hostname)) return safeFailure(affiliateUrl, "Affiliate link redirected outside the Shopee domain.");
