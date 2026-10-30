@@ -1196,6 +1196,25 @@ test("GET /api/v1/public/shop includes HTTPS product media and omits unsafe medi
       status: "active" as const,
       createdAt: now,
       updatedAt: now
+    },
+    {
+      id: "product-with-private-media",
+      referenceNumber: 3,
+      marketplaceId: "marketplace-test",
+      externalProductId: "external-3",
+      name: "Product with private media",
+      category: "Test",
+      priceCents: 30000,
+      currency: "IDR",
+      ratingMilli: 4800,
+      reviewCount: 3,
+      soldCount: 4,
+      imageUrl: "https://127.0.0.1/private.jpg",
+      videoUrl: "https://media.local/private.mp4",
+      productUrl: "https://shop.example.com/product/3",
+      status: "active" as const,
+      createdAt: now,
+      updatedAt: now
     }
   ];
   const offers = products.map((product, index) => ({
@@ -1224,11 +1243,13 @@ test("GET /api/v1/public/shop includes HTTPS product media and omits unsafe medi
     const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
     assert.equal(response.statusCode, 200);
     const items = response.json().data;
-    assert.equal(items.length, 2);
+    assert.equal(items.length, 3);
     assert.equal(items[0].imageUrl, products[0].imageUrl);
     assert.equal(items[0].videoUrl, products[0].videoUrl);
     assert.equal(Object.hasOwn(items[1], "imageUrl"), false);
     assert.equal(Object.hasOwn(items[1], "videoUrl"), false);
+    assert.equal(Object.hasOwn(items[2], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[2], "videoUrl"), false);
   } finally {
     await app.close();
   }
