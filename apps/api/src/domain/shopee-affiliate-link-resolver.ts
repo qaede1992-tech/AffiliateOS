@@ -43,11 +43,11 @@ function readTagAttribute(tag: string, name: string): string | undefined {
   return value ? decodeHtml(value.trim()) : undefined;
 }
 function extractCanonicalUrl(html: string, baseUrl: string): string | undefined {
-  const patterns = [/<link\\b[^>]*>/gi, /<meta\\b[^>]*>/gi];
+  const patterns = [/<link\b[^>]*>/gi, /<meta\b[^>]*>/gi];
   for (const pattern of patterns) {
     for (const match of html.matchAll(pattern)) {
       const tag = match[0] ?? "";
-      const rel = readTagAttribute(tag, "rel")?.toLowerCase().split(/\\s+/) ?? [];
+      const rel = readTagAttribute(tag, "rel")?.toLowerCase().split(/\s+/) ?? [];
       const property = (readTagAttribute(tag, "property") ?? readTagAttribute(tag, "name") ?? "").toLowerCase();
       const isCanonical = rel.includes("canonical") || property === "og:url";
       if (!isCanonical) continue;
