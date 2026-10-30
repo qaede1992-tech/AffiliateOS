@@ -39,7 +39,8 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     const rows = await this.db.select({ productId: productMediaAssets.productId })
       .from(productMediaAssets)
       .where(and(inArray(productMediaAssets.productId, uniqueIds), eq(productMediaAssets.kind, "video")));
-    return [...new Set(rows.map((row: { productId: string }) => row.productId))];
+    const productIds = (rows as Array<{ productId: string }>).map((row) => row.productId);
+    return [...new Set(productIds)];
   }
 
   async save(asset: ProductMediaAsset): Promise<ProductMediaAsset> {
