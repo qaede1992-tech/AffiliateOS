@@ -25,7 +25,7 @@ const PRODUCT_PATHS = [
 
 function isShopeeHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, "");
-  return SHOPEE_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  return SHOPEE_HOSTS.some((domain) => host === domain || host.endsWith(\`.\${domain}\`));
 }
 
 function productIdentity(rawUrl: string): { shopId: string; itemId: string } | undefined {
@@ -33,7 +33,7 @@ function productIdentity(rawUrl: string): { shopId: string; itemId: string } | u
   try { url = new URL(rawUrl); } catch { return undefined; }
   if (url.protocol !== "https:" || !isShopeeHost(url.hostname)) return undefined;
   for (const pattern of PRODUCT_PATHS) {
-    const match = pattern.exec(`${url.pathname}${url.search}`);
+    const match = pattern.exec(\`\${url.pathname}\${url.search}\`);
     if (match?.[1] && match[2]) return { shopId: match[1], itemId: match[2] };
   }
   return undefined;
@@ -44,17 +44,14 @@ function decodeHtml(value: string): string {
 }
 
 function readTagAttribute(tag: string, name: string): string | undefined {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
+  const escaped = name.replace(/[.*+?^\${}()|[\]\\]/g, "\\\\$&");
+  const match = new RegExp(\`(?:^|\\\\s)\${escaped}\\\\s*=\\\\s*(?:"([^"]*)"|'([^']*)'|([^\\\\s>]+))\`, "i").exec(tag);
   const value = match?.[1] ?? match?.[2] ?? match?.[3];
   return value ? decodeHtml(value.trim()) : undefined;
 }
 
 function extractCanonicalUrl(html: string, baseUrl: string): string | undefined {
-  const patterns = [
-    /<link\\b[^>]*>/gi,
-    /<meta\\b[^>]*>/gi
-  ];
+  const patterns = [/<link\\b[^>]*>/gi, /<meta\\b[^>]*>/gi];
   for (const pattern of patterns) {
     for (const match of html.matchAll(pattern)) {
       const tag = match[0] ?? "";
@@ -77,11 +74,7 @@ function safeFailure(affiliateUrl: string, reason: string): ShopeeAffiliateLinkR
   return { status: "unresolved", affiliateUrl, reason };
 }
 
-/**
- * Resolves a Shopee affiliate short link into its canonical product URL.
- * Redirects and page requests use the SSRF-safe transport; no cookies, browser
- * session, CAPTCHA solving, or anti-bot bypass is attempted.
- */
+/** Resolves Shopee affiliate short links without cookies or access-control bypass. */
 export async function resolveShopeeAffiliateLink(
   affiliateUrl: string,
   options: ShopeeAffiliateLinkResolverOptions = {},
