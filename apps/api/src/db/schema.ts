@@ -54,3 +54,22 @@ export const autonomousDecisionAudits = pgTable("autonomous_decision_audits", { 
 export const autonomousExplorationStates = pgTable("autonomous_exploration_states", { id: uuid("id").primaryKey(), marketplaceId: uuid("marketplace_id").notNull().references(() => marketplaces.id), dimension: varchar("dimension", { length: 20 }).notNull(), dimensionKey: varchar("dimension_key", { length: 500 }).notNull(), sampleCount: integer("sample_count").notNull().default(0), promotedCount: integer("promoted_count").notNull().default(0), deprioritizedCount: integer("deprioritized_count").notNull().default(0), optimizationPositiveCount: integer("optimization_positive_count").notNull().default(0), optimizationNegativeCount: integer("optimization_negative_count").notNull().default(0), regimeRisingCount: integer("regime_rising_count").notNull().default(0), regimeStableCount: integer("regime_stable_count").notNull().default(0), regimeDecliningCount: integer("regime_declining_count").notNull().default(0), regimeVolatileCount: integer("regime_volatile_count").notNull().default(0), observedAt: timestamp("observed_at", { withTimezone: true, mode: "string" }).notNull(), ...timestamps }, (table) => [uniqueIndex("autonomous_exploration_states_scope_unique").on(table.marketplaceId, table.dimension, table.dimensionKey), index("autonomous_exploration_states_marketplace_dimension_idx").on(table.marketplaceId, table.dimension)]);
 export const autonomousExplorationStateEvents = pgTable("autonomous_exploration_state_events", { id: uuid("id").primaryKey(), stateId: uuid("state_id").notNull().references(() => autonomousExplorationStates.id), auditId: uuid("audit_id").notNull().references(() => autonomousDecisionAudits.id), status: varchar("status", { length: 40 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("autonomous_exploration_state_events_state_audit_unique").on(table.stateId, table.auditId), index("autonomous_exploration_state_events_audit_idx").on(table.auditId)]);
 export const autonomousExplorationOptimizationEvents = pgTable("autonomous_exploration_optimization_events", { id: uuid("id").primaryKey(), stateId: uuid("state_id").notNull().references(() => autonomousExplorationStates.id), actionOutcomeId: uuid("action_outcome_id").notNull().references(() => autonomousActionOutcomes.id), signal: varchar("signal", { length: 20 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("autonomous_exploration_optimization_events_state_outcome_unique").on(table.stateId, table.actionOutcomeId), index("autonomous_exploration_optimization_events_outcome_idx").on(table.actionOutcomeId)]);
+
+export const shopeeAffiliateLinkIntakes = pgTable("shopee_affiliate_link_intakes", {
+  id: uuid("id").primaryKey(),
+  marketplaceSlug: varchar("marketplace_slug", { length: 100 }).notNull().default("shopee-affiliate-feed"),
+  affiliateUrl: varchar("affiliate_url", { length: 2048 }).notNull(),
+  normalizedUrlHash: varchar("normalized_url_hash", { length: 64 }).notNull(),
+  canonicalProductUrl: varchar("canonical_product_url", { length: 2048 }),
+  shopId: varchar("shop_id", { length: 32 }),
+  itemId: varchar("item_id", { length: 32 }),
+  status: varchar("status", { length: 30 }).notNull().default("received"),
+  reason: varchar("reason", { length: 1000 }),
+  sourceMetadata: jsonb("source_metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull()
+}, (table) => [
+  uniqueIndex("shopee_link_intakes_url_hash_unique").on(table.normalizedUrlHash),
+  uniqueIndex("shopee_link_intakes_product_identity_unique").on(table.marketplaceSlug, table.shopId, table.itemId),
+  index("shopee_link_intakes_status_updated_idx").on(table.status, table.updatedAt)
+]);

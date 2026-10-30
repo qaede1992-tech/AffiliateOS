@@ -61,3 +61,6 @@ export const tiktokPublicationApprovalSchema = z.object({
 });
 
 export const resolveShopeeAffiliateLinkSchema = z.object({ affiliateUrl: z.string().trim().url().max(2048) });
+
+export const createShopeeAffiliateLinkIntakeSchema = z.object({ affiliateUrl: z.string().trim().url().max(2048).refine((value) => { try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && (url.hostname === "shopee.co.id" || url.hostname.endsWith(".shopee.co.id") || url.hostname === "shopee.com" || url.hostname.endsWith(".shopee.com")); } catch { return false; } }, "Only credential-free Shopee HTTPS links are supported.") });
+export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entityId });

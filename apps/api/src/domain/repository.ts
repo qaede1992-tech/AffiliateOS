@@ -5,6 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
+import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "./shopee-affiliate-link-intake.js";
 
 export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
@@ -134,7 +135,17 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     return next;
   }
 }
+
+export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
+  private readonly entities = new Map<string, ShopeeAffiliateLinkIntake>();
+  async findByUrlHash(hash: string) { return [...this.entities.values()].find((item) => item.normalizedUrlHash === hash); }
+  async findById(id: string) { return this.entities.get(id); }
+  async saveIfAbsent(entity: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(entity.normalizedUrlHash); if (existing) return existing; this.entities.set(entity.id, entity); return entity; }
+  async update(entity: ShopeeAffiliateLinkIntake) { this.entities.set(entity.id, entity); return entity; }
+}
+
 export interface RepositorySet {
+  shopeeAffiliateLinkIntakes?: ShopeeAffiliateLinkIntakeRepository;
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;

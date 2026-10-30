@@ -456,6 +456,13 @@
       "when": 1794050405009,
       "tag": "0068_product_media_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794050405010,
+      "tag": "0069_shopee_affiliate_link_intakes",
+      "breakpoints": true
     }
   ]
 }
