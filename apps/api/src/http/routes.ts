@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
@@ -18,7 +19,22 @@ const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
   if (!value) return undefined;
   try {
     const parsed = new URL(value);
-    return parsed.protocol === "https:" && parsed.hostname && !parsed.username && !parsed.password
+    const hostname = parsed.hostname.toLowerCase().replace(/^\\[|\\]$/g, "").replace(/\\.$/, "");
+    const isLocalHostname =
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal") ||
+      hostname.endsWith(".test") ||
+      hostname.endsWith(".invalid") ||
+      hostname.endsWith(".lan") ||
+      hostname.endsWith(".home.arpa");
+    return parsed.protocol === "https:" &&
+      hostname.includes(".") &&
+      !isIP(hostname) &&
+      !isLocalHostname &&
+      !parsed.username &&
+      !parsed.password
       ? parsed.toString()
       : undefined;
   } catch {
