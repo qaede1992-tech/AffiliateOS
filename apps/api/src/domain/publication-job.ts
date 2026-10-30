@@ -3,6 +3,8 @@ import type { Content, EntityId, IsoTimestamp, TikTokPublicationApproval } from 
 
 export type PublicationJobStatus = "pending" | "pending_approval" | "processing" | "awaiting_confirmation" | "succeeded" | "failed";
 
+export const MAX_PUBLICATION_JOB_ATTEMPTS = 8;
+
 export interface PublicationJob {
   id: EntityId;
   contentId: EntityId;
@@ -40,7 +42,7 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
         const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
         const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
         const claimable = job.status === "pending" ||
-          (job.status === "failed" && publicationRetryEligibleAt(job) <= nowDate.getTime()) ||
+          (job.status === "failed" && job.attemptCount < MAX_PUBLICATION_JOB_ATTEMPTS && publicationRetryEligibleAt(job) <= nowDate.getTime()) ||
           (job.status === "processing" && !lockFresh);
         return scheduled <= nowDate.getTime() && claimable && !lockFresh;
       })
@@ -84,7 +86,7 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
     const locked = job.lockedAt ? new Date(job.lockedAt).getTime() : undefined;
     const lockFresh = locked !== undefined && nowDate.getTime() - locked < lockTimeoutMs;
     const claimableStatus = job.status === "pending" ||
-      (job.status === "failed" && publicationRetryEligibleAt(job) <= nowDate.getTime()) ||
+      (job.status === "failed" && job.attemptCount < MAX_PUBLICATION_JOB_ATTEMPTS && publicationRetryEligibleAt(job) <= nowDate.getTime()) ||
       (job.status === "processing" && !lockFresh);
     if (!claimableStatus || scheduled > nowDate.getTime() || lockFresh) return undefined;
     const claimed: PublicationJob = { ...job, status: "processing", attemptCount: job.attemptCount + 1, lockedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() };

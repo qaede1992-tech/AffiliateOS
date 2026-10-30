@@ -13,7 +13,7 @@ const RECONCILIATION_BATCH_LIMIT = 100;
 const PUBLICATION_JOB_BATCH_LIMIT = 100;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
-import { publicationRetryDelayMs } from "./publication-job.js";
+import { MAX_PUBLICATION_JOB_ATTEMPTS, publicationRetryDelayMs } from "./publication-job.js";
 export { publicationRetryDelayMs } from "./publication-job.js";
 const retryEligibleAt = (job: PublicationJob): number =>
   new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
@@ -63,18 +63,33 @@ export class PublicationWorker {
           .filter((job) => {
             if (!isDue(job, now)) return false;
             if (job.status === "pending") return true;
-            if (job.status === "failed") return retryEligibleAt(job) <= now.getTime();
+            if (job.status === "failed") return job.attemptCount < MAX_PUBLICATION_JOB_ATTEMPTS && retryEligibleAt(job) <= now.getTime();
             return isStaleProcessingJob(job, now);
           })
           .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
           .slice(0, PUBLICATION_JOB_BATCH_LIMIT);
 
     for (const candidate of candidates) {
+      if (candidate.status === "failed" && await this.shouldSkipFailedJobRetry(candidate)) continue;
       const claimed = await this.jobService.claim(candidate.id, now);
       if (!claimed) continue;
       results.push(await this.process(claimed, now));
     }
     return results;
+  }
+
+  private async shouldSkipFailedJobRetry(job: PublicationJob): Promise<boolean> {
+    if (job.status !== "failed" || !this.contentService) return false;
+    try {
+      const content = await this.contentService.get(job.contentId);
+      // A failed job is retryable only while its content remains scheduled or
+      // failed (the latter is reset to scheduled by prepareRetry). Draft or
+      // already-published content must not be retried by the worker.
+      return content.status !== "scheduled" && content.status !== "failed";
+    } catch {
+      // A missing content record cannot be published; avoid retrying it forever.
+      return true;
+    }
   }
 
   private async reconcile(now: Date): Promise<PublicationWorkerResult[]> {
@@ -150,6 +165,18 @@ export class PublicationWorker {
   private async process(job: PublicationJob, now: Date): Promise<PublicationWorkerResult> {
     try {
       await this.prepareRetry(job);
+      const existingOperations = await this.operations.listByJobId(job.id);
+      const publishedOperation = existingOperations.find((operation) => operation.status === "published" && operation.externalPostId);
+      if (publishedOperation?.externalPostId) {
+        await this.contentService?.update(job.contentId, { status: "published", publishedAt: now.toISOString() });
+        await this.jobService.succeed(job.id, publishedOperation.externalPostId, now);
+        return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: publishedOperation.externalPostId };
+      }
+      const inFlightOperation = existingOperations.find((operation) => operation.status === "accepted" || operation.status === "processing");
+      if (inFlightOperation) {
+        await this.jobService.awaitConfirmation(job.id, now);
+        return { jobId: job.id, contentId: job.contentId, status: "awaiting_confirmation" };
+      }
       if (this.contentService) {
         const content = await this.contentService.get(job.contentId);
         if (content.platform === "tiktok" && (!job.confirmedAt || !job.tiktokApproval)) {
@@ -212,6 +239,11 @@ export class PublicationWorker {
 class InMemoryFallbackPublicationOperationRepository implements PublicationOperationRepository {
   private readonly operations = new Map<string, import("./publication-operation.js").PublicationOperation>();
   async list() { return [...this.operations.values()]; }
+  async listByJobId(jobId: string) {
+    return [...this.operations.values()]
+      .filter((operation) => operation.jobId === jobId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
   async findById(id: string) { return this.operations.get(id); }
   async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
   async save(operation: import("./publication-operation.js").PublicationOperation) { this.operations.set(operation.id, operation); return operation; }

@@ -16,6 +16,8 @@ export type AutonomousExecutionInput = {
   scheduledAt?: string;
   idempotencyNamespace?: string;
   requirePublishableMedia?: boolean;
+  /** When false, autonomous runs may create drafts but must not schedule publication. */
+  publicationEnabled?: boolean;
   requireCommissionSignal?: boolean;
   /** Maximum products per automatically grouped story; set to 1 to disable grouping. */
   storyMaxProducts?: number;
@@ -29,12 +31,22 @@ export class AutonomousExecutionService {
 
   async previewSelection(input: Omit<AutonomousExecutionInput, "candidates"> & { candidates: OpportunityCandidateSource[] }): Promise<Pick<AutonomousExecutionResult, "selected" | "rejected" | "audit">> {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-preview";
+    const candidates = this.autonomousRuns
+      ? await Promise.all(input.candidates.map(async (candidate) => ({
+          ...candidate,
+          offers: (await Promise.all(candidate.offers.map(async (candidateOffer) =>
+            await this.autonomousRuns!.hasCompletedOpportunity(candidate.product.id, candidateOffer.id)
+              ? undefined
+              : candidateOffer
+          ))).filter((candidateOffer): candidateOffer is AffiliateOffer => candidateOffer !== undefined)
+        })))
+      : input.candidates;
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const adaptiveExplorationRates = this.adaptiveExploration
-      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      ? await this.adaptiveExploration.getRates(candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
     const selection = this.selector.select(
-      input.candidates,
+      candidates,
       { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal },
       performance,
       input.policiesByMarketplace,
@@ -51,14 +63,43 @@ export class AutonomousExecutionService {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-execution";
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
     const recoveredKeys = new Set<string>();
+    const recoveredOpportunityKeys = new Set<string>();
     let recoveredRunCount = 0;
+    // Recovery is not a bypass around current product selection. A previously
+    // selected opportunity must still pass today's complete selection policy
+    // before it can recreate or resume campaign/content artifacts.
+    const recoveryAdaptiveExplorationRates = this.adaptiveExploration
+      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      : new Map<string, number>();
+    const currentlySelectedForRecovery = this.selector.select(
+      input.candidates,
+      {
+        ...input.policy,
+        requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia,
+        requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal
+      },
+      performance,
+      input.policiesByMarketplace,
+      recoveryAdaptiveExplorationRates
+    ).selected;
     if (this.autonomousRuns) {
       const recoverable = await this.autonomousRuns.listRecoverable();
       for (const run of recoverable) {
         const candidate = input.candidates.find((item) => item.product.id === run.opportunityProductId);
-        const offer = candidate?.offers.find((item) => item.id === run.offerId);
-        if (!candidate || !offer) continue;
-        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active" || !isExecutableAffiliateOffer(candidate.product.id, offer)) continue;
+        if (!candidate) continue;
+        const offer = candidate.offers.find((item) => item.id === run.offerId);
+        if (!offer) {
+          await this.autonomousRuns.markUnrecoverable(run.id, "The original affiliate offer is no longer available under the active marketplace account.");
+          continue;
+        }
+        const stillSelected = currentlySelectedForRecovery.some((item) =>
+          item.product.id === run.opportunityProductId && item.offerId === run.offerId
+        );
+        if (!stillSelected) continue;
+        if (candidate.product.id !== run.opportunityProductId || candidate.product.status !== "active" || !isExecutableAffiliateOffer(candidate.product.id, offer)) {
+          await this.autonomousRuns.markUnrecoverable(run.id, "The original product or affiliate offer is no longer eligible for autonomous execution.");
+          continue;
+        }
         const performanceSignal = performance.get(candidate.product.marketplaceId + ":" + candidate.product.id) ?? performance.get(candidate.product.id);
         if (performanceSignal?.anomaly === "halt" || performanceSignal?.anomalyRecovery === "recovering") continue;
         const context = run.executionContext;
@@ -69,18 +110,28 @@ export class AutonomousExecutionService {
         if (scored.offerId !== run.offerId) continue;
         const opportunity: ScoredOpportunity = scored;
         try {
-          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: context?.scheduledAt ?? input.scheduledAt, idempotencyKey: run.idempotencyKey });
+          await this.orchestrator.execute({ opportunity, offer, product: candidate.product, audience: context?.audience ?? input.audience, platforms: context?.platforms ?? input.platforms, scheduledAt: input.publicationEnabled === false ? undefined : (context?.scheduledAt ?? input.scheduledAt), idempotencyKey: run.idempotencyKey });
           recoveredKeys.add(run.idempotencyKey);
+          recoveredOpportunityKeys.add(`${candidate.product.id}:${offer.id}`);
           recoveredRunCount += 1;
         } catch {
           // Keep the run recoverable for a later cycle; the orchestrator records the failure state.
         }
       }
     }
+    const selectionCandidates = await Promise.all(input.candidates.map(async (candidate) => {
+      const offers = await Promise.all(candidate.offers.map(async (candidateOffer) => {
+        const key = `${candidate.product.id}:${candidateOffer.id}`;
+        if (recoveredOpportunityKeys.has(key)) return undefined;
+        if (this.autonomousRuns && await this.autonomousRuns.hasCompletedOpportunity(candidate.product.id, candidateOffer.id)) return undefined;
+        return candidateOffer;
+      }));
+      return { ...candidate, offers: offers.filter((candidateOffer): candidateOffer is AffiliateOffer => candidateOffer !== undefined) };
+    }));
     const adaptiveExplorationRates = this.adaptiveExploration
-      ? await this.adaptiveExploration.getRates(input.candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
+      ? await this.adaptiveExploration.getRates(selectionCandidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
-    const selection = this.selector.select(input.candidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates);
+    const selection = this.selector.select(selectionCandidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates);
     const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
@@ -107,7 +158,7 @@ export class AutonomousExecutionService {
       for (const audit of audits) auditByProductId.set(audit.productId, audit);
     }
     const candidatesByOpportunity = new Map(
-      input.candidates.flatMap((candidate) =>
+      selectionCandidates.flatMap((candidate) =>
         candidate.offers.map((offer) => [`${candidate.product.id}:${offer.id}`, { candidate, offer }] as const)
       )
     );
@@ -176,7 +227,7 @@ export class AutonomousExecutionService {
           product: primary.opportunity.product,
           audience: input.audience,
           platforms: input.platforms,
-          scheduledAt: input.scheduledAt,
+          scheduledAt: input.publicationEnabled === false ? undefined : input.scheduledAt,
           idempotencyKey: primary.idempotencyKey,
           ...(storyProducts.length ? { storyProducts } : {})
         });

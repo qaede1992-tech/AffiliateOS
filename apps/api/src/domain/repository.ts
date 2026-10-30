@@ -4,8 +4,17 @@ import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
+import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "./shopee-affiliate-link-intake.js";
 
 export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
+export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
+  private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
+  async findByUrlHash(hash: string) { return [...this.rows.values()].find((row) => row.normalizedUrlHash === hash); }
+  async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
+  async findById(id: string) { return this.rows.get(id); }
+  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(intake.normalizedUrlHash); if (existing) return existing; this.rows.set(intake.id, intake); return intake; }
+  async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
+}
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
   private readonly entities = new Map<EntityId, T>();
@@ -20,9 +29,9 @@ export class InMemoryContentProductRepository implements ContentProductRepositor
 }
 export class InMemoryCommissionRepository extends InMemoryRepository<Commission> implements CommissionRepository { async findByConversionId(conversionId: EntityId) { return (await this.list()).find((commission) => commission.conversionId === conversionId); } }
 export class InMemoryMarketplaceConnectionRepository extends InMemoryRepository<import("@affiliateos/shared").MarketplaceConnection> implements MarketplaceConnectionRepository { async findBySlug(slug: string) { return (await this.list()).find((connection) => connection.slug === slug); } }
-export class InMemoryProductCatalogRepository extends InMemoryRepository<Product> implements ProductCatalogRepository { async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { return (await this.list()).find((product) => product.marketplaceId === marketplaceId && product.externalProductId === externalProductId); } async upsertManyByMarketplaceProduct(entities: Product[]) { const saved: Product[] = []; for (const entity of entities) { const existing = await this.findByMarketplaceProduct(entity.marketplaceId, entity.externalProductId); saved.push(await this.save(existing ? { ...entity, id: existing.id, createdAt: existing.createdAt } : entity)); } return saved; } }
+export class InMemoryProductCatalogRepository extends InMemoryRepository<Product> implements ProductCatalogRepository { override async save(entity: Product): Promise<Product> { const existing = await this.findById(entity.id); const referenceNumber = entity.referenceNumber ?? existing?.referenceNumber ?? Math.max(0, ...(await this.list()).map((product) => product.referenceNumber ?? 0)) + 1; return super.save({ ...entity, referenceNumber }); } async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { return (await this.list()).find((product) => product.marketplaceId === marketplaceId && product.externalProductId === externalProductId); } async upsertManyByMarketplaceProduct(entities: Product[]) { const saved: Product[] = []; for (const entity of entities) { const existing = await this.findByMarketplaceProduct(entity.marketplaceId, entity.externalProductId); saved.push(await this.save(existing ? { ...entity, id: existing.id, createdAt: existing.createdAt, referenceNumber: entity.referenceNumber ?? existing.referenceNumber } : entity)); } return saved; } }
 export class InMemoryAffiliateOfferRepository extends InMemoryRepository<AffiliateOffer> implements AffiliateOfferRepository { async findByConversionOfferId(conversionOfferId: string) { return (await this.list()).find((offer) => offer.conversionOfferId === conversionOfferId); } async findByAccountOffer(affiliateAccountId: string, externalOfferId: string) { return (await this.list()).find((offer) => offer.affiliateAccountId === affiliateAccountId && offer.externalOfferId === externalOfferId); } async findByAccountOffers(affiliateAccountId: string, externalOfferIds: string[]) { const ids = new Set(externalOfferIds); return (await this.list()).filter((offer) => offer.affiliateAccountId === affiliateAccountId && offer.externalOfferId !== undefined && ids.has(offer.externalOfferId)); } async saveManyById(entities: AffiliateOffer[]) { const saved: AffiliateOffer[] = []; for (const entity of entities) saved.push(await this.save(entity)); return saved; } }
-export class InMemoryAffiliateAccountRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateAccount> implements AffiliateAccountRepository { async findByMarketplace(marketplaceId: string) { return (await this.list()).find((account) => account.marketplaceId === marketplaceId); } }
+export class InMemoryAffiliateAccountRepository extends InMemoryRepository<import("@affiliateos/shared").AffiliateAccount> implements AffiliateAccountRepository { async findByMarketplace(marketplaceId: string) { const accounts = (await this.list()).filter((account) => account.marketplaceId === marketplaceId); return accounts.find((account) => account.status === "active") ?? accounts[0]; } }
 export class InMemoryCampaignOfferRepository implements CampaignOfferRepository {
   private readonly entities = new Map<string, CampaignOffer>();
   async listByCampaign(campaignId: EntityId) { return [...this.entities.values()].filter((item) => item.campaignId === campaignId); }
@@ -74,6 +83,11 @@ export class InMemoryPublicationJobRepository {
 export class InMemoryPublicationOperationRepository implements PublicationOperationRepository {
   private readonly operations = new Map<EntityId, PublicationOperation>();
   async list() { return [...this.operations.values()]; }
+  async listByJobId(jobId: EntityId) {
+    return [...this.operations.values()]
+      .filter((operation) => operation.jobId === jobId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
   async findById(id: EntityId) { return this.operations.get(id); }
   async findByProviderOperation(provider: string, providerOperationId: string) { return [...this.operations.values()].find((operation) => operation.provider === provider && operation.providerOperationId === providerOperationId); }
   async save(operation: PublicationOperation) { this.operations.set(operation.id, operation); return operation; }
@@ -114,6 +128,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   }
 }
 export interface RepositorySet {
+  shopeeAffiliateLinkIntakes?: ShopeeAffiliateLinkIntakeRepository;
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;

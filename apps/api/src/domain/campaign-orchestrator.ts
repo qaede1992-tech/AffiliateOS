@@ -31,6 +31,7 @@ export type GeneratedCampaignContent = {
 };
 
 const defaultPlatforms: ContentPlatform[] = ["instagram", "tiktok"];
+const productReferenceNumber = (product: Product): string => product.referenceNumber ? String(product.referenceNumber) : "";
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
 const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string, attempt = 0): string => {
   const seed = `${idempotencyKey ?? campaignId}:${offerId}:${attempt}`;
@@ -48,11 +49,14 @@ const trackingCodeCandidate = (existing: Awaited<ReturnType<TrackingService["lis
 export class DeterministicCampaignContentGenerator implements CampaignContentGenerator {
   generate(input: { product: Product; offer: AffiliateOffer; opportunity: ScoredOpportunity; platform: ContentPlatform }): GeneratedCampaignContent {
     const productName = input.product.name.trim();
-    const price = new Intl.NumberFormat("en-US", { style: "currency", currency: input.offer.currency ?? input.product.currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
-    const title = `${productName}: worth a look?`;
-    const caption = `${productName} is currently available for ${price}. ${input.opportunity.reasons.slice(0, 2).join(" ")} Check the offer and compare the details before buying.`;
-    const script = `Hook: Looking for ${productName}?\nHighlight: ${input.product.description?.trim() || "See the product details and current offer."}\nValue: Current offer price is ${price}.\nCTA: Check the offer through the link.`;
-    return { platform: input.platform, title, caption, script, cta: "Check the offer" };
+    const currency = input.offer.currency ?? input.product.currency;
+    const price = new Intl.NumberFormat("id-ID", { style: "currency", currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
+    const title = productName;
+    const referenceNumber = productReferenceNumber(input.product);
+    const productLookup = referenceNumber ? `Nomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.` : "Buka toko AffiliateOS melalui tautan di bio dan cari nama produk ini.";
+    const caption = `${productName}. Harga pada katalog saat ini ${price}. ${productLookup} Periksa kembali harga, spesifikasi, dan ketersediaan pada halaman produk sebelum membeli.`;
+    const script = `Pembuka: Sedang mencari ${productName}?\nDetail: ${input.product.description?.trim() || "Lihat detail produk dan penawaran yang tersedia."}\nHarga: Harga pada katalog saat ini ${price}; cek kembali harga terbaru pada halaman produk.\nAjakan: Buka tautan untuk melihat detail penawaran.`;
+    return { platform: input.platform, title, caption, script, cta: "Lihat detail produk" };
   }
 }
 
@@ -152,14 +156,37 @@ export class CampaignOrchestrator {
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
       for (const platform of requestedPlatforms) {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion" && item.status !== "archived");
-        if (existing?.status === "failed") {
-          const reset = await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
-          content.push(await this.attachProductMediaIfAvailable(reset, liveProduct));
-        } else if (existing) {
-          content.push(await this.attachProductMediaIfAvailable(existing, liveProduct));
+        let reusable = existing;
+        if (reusable?.status === "failed") {
+          reusable = await this.content.update(reusable.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
+        }
+        if (reusable) {
+          let reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
+          reusableCaption = reusableCaption
+            .replace(/Kode produk:\s*AOS-[A-Z0-9-]+\.?/gi, "")
+            .replace(/Buka toko AffiliateOS melalui tautan di bio dan cari kode ini\./gi, "Buka toko AffiliateOS melalui tautan di bio dan cari nomor produk.");
+          const referenceNumber = productReferenceNumber(liveProduct);
+          if (reusable.status === "draft" && referenceNumber && !reusableCaption.includes(`Nomor produk: ${referenceNumber}`)) {
+            reusableCaption = `${reusableCaption.trim()}\n\nNomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.`;
+          }
+          if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusableCaption)) {
+            reusableCaption = `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`;
+          }
+          if (reusable.status === "draft" && reusableCaption !== (typeof reusable.caption === "string" ? reusable.caption : "")) {
+            reusable = await this.content.update(reusable.id, { caption: reusableCaption });
+          }
+          content.push(await this.attachProductMediaIfAvailable(reusable, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
-          let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
+          let generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          const referenceNumber = productReferenceNumber(liveProduct);
+          if (referenceNumber && !generatedCaption.includes(`Nomor produk: ${referenceNumber}`)) {
+            generatedCaption = `${generatedCaption.trim()}\n\nNomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.`;
+          }
+          const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generatedCaption)
+            ? `${generatedCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
+            : generatedCaption;
+          let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption, script: generated.script, cta: generated.cta, status: "draft" });
           created = await this.attachProductMediaIfAvailable(created, liveProduct);
           content.push(created);
         }

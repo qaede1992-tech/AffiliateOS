@@ -6,6 +6,8 @@ import { publisherSupportsContent, type PublicationCheckResult, type SocialPubli
 import type { PublicationOperation } from "./publication-operation.js";
 import type { SocialAccountRepository } from "./repository.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
+import type { SupabaseStorageClient } from "./supabase-storage.js";
+import { resolvePublisherMediaAssets } from "./publisher-media-resolver.js";
 
 export type PublishExecutionResult = {
   content: Content;
@@ -24,7 +26,8 @@ export class PublisherExecutor {
     private readonly publishers: SocialPublisher[],
     private readonly credentialResolver?: SocialCredentialResolver,
     private readonly mediaAssets?: MediaAssetRepository,
-    private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator
+    private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator,
+    private readonly mediaStorage?: SupabaseStorageClient
   ) {}
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval): Promise<PublishExecutionResult> {
@@ -88,7 +91,7 @@ export class PublisherExecutor {
     if (assets.some((asset) => !asset)) throw new Error("One or more configured media assets do not exist.");
     const resolved = assets as NonNullable<(typeof assets)[number]>[];
     if (resolved.some((asset) => asset.contentId !== content.id)) throw new Error("A configured media asset does not belong to the content.");
-    return resolved;
+    return resolvePublisherMediaAssets(content, resolved, this.mediaStorage);
   }
 
   private async findAccount(content: Content): Promise<SocialAccount> {

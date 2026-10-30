@@ -4,6 +4,7 @@ import { InstagramGraphPublishingClient } from "./instagram-graph-publishing-cli
 import { TikTokContentPublisher } from "./tiktok-content-publisher.js";
 import { TikTokContentPostingClient } from "./tiktok-content-posting-client.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
+import type { MediaAsset } from "./media-asset.js";
 
 export type OfficialSocialPublisherRuntimeConfiguration = {
   credentialResolver?: SocialCredentialResolver;
@@ -14,6 +15,7 @@ export type OfficialSocialPublisherRuntimeConfiguration = {
   instagram?: {
     fetchImpl?: typeof fetch;
     graphBaseUrl?: string;
+    mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
   };
 };
 
@@ -46,7 +48,8 @@ export function createOfficialSocialPublishers(
           return readAccessToken(value, "Instagram");
         },
         fetchImpl: configuration.instagram?.fetchImpl,
-        graphBaseUrl: configuration.instagram?.graphBaseUrl
+        graphBaseUrl: configuration.instagram?.graphBaseUrl,
+        mediaUrlResolver: configuration.instagram?.mediaUrlResolver
       })
     )
   ];

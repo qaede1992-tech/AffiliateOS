@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import { latestMigrationTimestampIsAfterHistory } from "./migration-timestamp.mjs";
 
 const migrationsDirectory = resolve(import.meta.dirname, "../drizzle");
 const journalPath = resolve(migrationsDirectory, "meta/_journal.json");
@@ -23,6 +24,15 @@ for (const [index, entry] of entries.entries()) {
 
 if (files.size > 0) {
   throw new Error(`Migration SQL file(s) missing from the journal: ${[...files].join(", ")}.`);
+}
+
+// Older journal entries retain their recorded timestamps because the deployed
+// databases match them by timestamp. Require the newest entry to exceed every
+// prior timestamp so a newly generated migration cannot be skipped by Drizzle.
+if (!latestMigrationTimestampIsAfterHistory(entries)) {
+  throw new Error(
+    "The newest migration timestamp must exceed every prior journal timestamp. Run npm run db:generate to normalize the new entry; do not rewrite timestamps for already-applied migrations."
+  );
 }
 
 const foundationSql = await readFile(resolve(migrationsDirectory, "0001_affiliateos_foundation.sql"), "utf8");

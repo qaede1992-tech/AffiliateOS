@@ -50,6 +50,58 @@ test("Shopee CSV import is idempotent when the same export is submitted twice", 
 });
 
 
+test("Shopee CSV reimport without an image column preserves previously imported product media", async () => {
+  const app = createApp();
+  try {
+    const affiliateResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/affiliates",
+      payload: { name: "Media Preservation Partner", email: "media-preservation@example.com" },
+    });
+    assert.equal(affiliateResponse.statusCode, 201);
+    const affiliate = affiliateResponse.json();
+
+    const productUrl = "https://shopee.co.id/product/123/456";
+    const affiliateUrl = "https://s.shopee.co.id/abc";
+    const imageUrl = "https://cf.shopee.co.id/file/product-image.jpg";
+    const csvWithImage = [
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Link Gambar",
+      `456,"Produk Media","Rp55.000","100","Toko Media","8,5%","Rp4.675","${productUrl}","${affiliateUrl}","${imageUrl}"`,
+    ].join("\n");
+    const csvWithoutImage = [
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+      `456,"Produk Media","Rp55.000","100","Toko Media","8,5%","Rp4.675","${productUrl}","${affiliateUrl}"`,
+    ].join("\n");
+
+    const importCsv = (csv: string) => app.inject({
+      method: "POST",
+      url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+      payload: { affiliateId: affiliate.id, csv },
+    });
+    const first = await importCsv(csvWithImage);
+    assert.equal(first.statusCode, 201);
+    const afterFirst = await app.inject({ method: "GET", url: "/api/v1/products" });
+    assert.equal(afterFirst.json().data[0].imageUrl, imageUrl);
+    const productId = afterFirst.json().data[0].id;
+    const videoUrl = "https://cf.shopee.co.id/file/product-video.mp4";
+    const addVideo = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media`,
+      payload: { videoUrl },
+    });
+    assert.equal(addVideo.statusCode, 200);
+
+    const second = await importCsv(csvWithoutImage);
+    assert.equal(second.statusCode, 201);
+    const afterSecond = await app.inject({ method: "GET", url: "/api/v1/products" });
+    assert.equal(afterSecond.json().data.length, 1);
+    assert.equal(afterSecond.json().data[0].imageUrl, imageUrl);
+    assert.equal(afterSecond.json().data[0].videoUrl, videoUrl);
+  } finally {
+    await app.close();
+  }
+});
+
 test("Shopee CSV import keeps affiliate accounts separate for the same marketplace feed", async () => {
   const app = createApp();
   try {

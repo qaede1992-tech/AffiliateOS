@@ -48,9 +48,18 @@ describe("SupabaseStorageClient", () => {
     );
   });
 
-  it("accepts only signed URLs returned for the configured Supabase origin", async () => {
-    const valid = makeClient(async () => new Response(JSON.stringify({ signedURL: "/storage/v1/object/sign/affiliate-media/photo.jpg?token=abc" }), { status: 200 }));
-    assert.match(await valid.createSignedUrl("photo.jpg", 300), /^https:\/\/project\.supabase\.co\//);
+  it("normalizes Supabase signed URL paths and validates origin and object scope", async () => {
+    const valid = makeClient(async () => new Response(JSON.stringify({ signedURL: "/object/sign/affiliate-media/photo.jpg?token=abc" }), { status: 200 }));
+    const signedUrl = new URL(await valid.createSignedUrl("photo.jpg", 300));
+    assert.equal(signedUrl.origin, "https://project.supabase.co");
+    assert.equal(signedUrl.pathname, "/storage/v1/object/sign/affiliate-media/photo.jpg");
+    assert.equal(signedUrl.search, "?token=abc");
+
+    const alreadyPrefixed = makeClient(async () => new Response(JSON.stringify({ signedURL: "/storage/v1/object/sign/affiliate-media/photo.jpg?token=abc" }), { status: 200 }));
+    assert.equal(new URL(await alreadyPrefixed.createSignedUrl("photo.jpg", 300)).pathname, "/storage/v1/object/sign/affiliate-media/photo.jpg");
+
+    const wrongObject = makeClient(async () => new Response(JSON.stringify({ signedURL: "/object/sign/affiliate-media/other.jpg?token=abc" }), { status: 200 }));
+    await assert.rejects(wrongObject.createSignedUrl("photo.jpg", 300), /unexpected signed URL path/);
 
     const invalid = makeClient(async () => new Response(JSON.stringify({ signedURL: "https://attacker.example/steal" }), { status: 200 }));
     await assert.rejects(invalid.createSignedUrl("photo.jpg", 300), /unexpected origin/);

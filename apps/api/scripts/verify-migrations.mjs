@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { findDuplicateSupabaseMigrationNames } from "./supabase-migration-ledger-audit.mjs";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -18,22 +19,38 @@ const errors = [];
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
-function findCompensatedMigrationGaps({ missingMigrations, compensationTimestamp, appliedTimestamps, schemaObjectsPresent }) {
-  const expectedGapTags = [
+function findCompensatedMigrationGaps({
+  missingMigrations,
+  compensationTimestamp,
+  appliedTimestamps,
+  schemaObjectsPresent,
+  forwardRepairTimestamp
+}) {
+  const legacyGapTags = [
     "0056_tiktok_publication_approval_and_media_duration",
     "0057_content_products_multi_product_story"
   ];
+  const forwardRepairGapTag = "0067_reconcile_drifted_tiktok_and_content_products";
   const compensatedTags = new Set();
-  const exactHistoricalGapSet =
-    missingMigrations.length === expectedGapTags.length &&
-    expectedGapTags.every((tag) => missingMigrations.includes(tag));
+  const missing = new Set(missingMigrations);
+  const hasLegacyPair = legacyGapTags.every((tag) => missing.has(tag));
+  const onlyApprovedGaps = missingMigrations.every((tag) =>
+    legacyGapTags.includes(tag) || tag === forwardRepairGapTag
+  );
+  if (!onlyApprovedGaps || !schemaObjectsPresent) return compensatedTags;
   if (
-    exactHistoricalGapSet &&
+    hasLegacyPair &&
     compensationTimestamp !== null &&
-    appliedTimestamps.has(compensationTimestamp) &&
-    schemaObjectsPresent
+    appliedTimestamps.has(compensationTimestamp)
   ) {
-    return new Set(expectedGapTags);
+    for (const tag of legacyGapTags) compensatedTags.add(tag);
+  }
+  if (
+    missing.has(forwardRepairGapTag) &&
+    forwardRepairTimestamp !== null &&
+    appliedTimestamps.has(forwardRepairTimestamp)
+  ) {
+    compensatedTags.add(forwardRepairGapTag);
   }
   return compensatedTags;
 }
@@ -137,7 +154,8 @@ const expectedColumns = [
   ["publication_jobs", "tiktok_approval"],
   ["media_assets", "duration_seconds"],
   ["campaigns", "is_test"],
-  ["autonomous_runs", "is_test"]
+  ["autonomous_runs", "is_test"],
+  ["autonomous_action_outcomes", "recovery_quality_score"]
 ];
 
 await client.connect();
@@ -163,7 +181,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
@@ -183,7 +201,8 @@ try {
           OR (table_name = 'publication_jobs' AND column_name = 'tiktok_approval')
           OR (table_name = 'media_assets' AND column_name = 'duration_seconds')
           OR (table_name = 'campaigns' AND column_name = 'is_test')
-          OR (table_name = 'autonomous_runs' AND column_name = 'is_test'))`
+          OR (table_name = 'autonomous_runs' AND column_name = 'is_test')
+          OR (table_name = 'autonomous_action_outcomes' AND column_name = 'recovery_quality_score'))`
   );
   const repairedColumns = new Map(repairedColumnRows.map((row) => [
     `${row.table_name}.${row.column_name}`, row
@@ -193,7 +212,8 @@ try {
     ["publication_jobs.tiktok_approval", { data_type: "jsonb", udt_name: "jsonb", is_nullable: "YES" }],
     ["media_assets.duration_seconds", { data_type: "integer", udt_name: "int4", is_nullable: "YES" }],
     ["campaigns.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }],
-    ["autonomous_runs.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }]
+    ["autonomous_runs.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }],
+    ["autonomous_action_outcomes.recovery_quality_score", { data_type: "real", udt_name: "float4", is_nullable: "NO" }]
   ]) {
     const actual = repairedColumns.get(key);
     if (!actual) {
@@ -208,6 +228,11 @@ try {
     if (key === "campaigns.is_test" || key === "autonomous_runs.is_test") {
       if (!actual.column_default || !actual.column_default.toLowerCase().includes("false")) {
         errors.push(`${key} must have a false default; found ${actual.column_default}.`);
+      }
+    }
+    if (key === "autonomous_action_outcomes.recovery_quality_score") {
+      if (!actual.column_default || !actual.column_default.includes("0")) {
+        errors.push(`${key} must have a zero default; found ${actual.column_default}.`);
       }
     }
   }
@@ -461,11 +486,22 @@ try {
       reconciliationForeignKeysPresent &&
       reconciliationUniqueConstraintPresent &&
       reconciliationIndexesPresent;
+    const forwardRepairTag = "0069_forward_repair_missing_tiktok_and_content_products";
+    const forwardRepairMigration = trackedMigrations.find((migration) => migration.tag === forwardRepairTag);
+    const forwardRepairTimestamp = forwardRepairMigration ? Number(forwardRepairMigration.when) : null;
+    const forwardRepairLedgerRow = migrationRows.find(
+      (row) => Number(row.created_at) === forwardRepairTimestamp
+    );
+    const forwardRepairHashMatches = Boolean(
+      forwardRepairLedgerRow &&
+      trackedMigrationHashes.get(forwardRepairTimestamp)?.hashes.has(forwardRepairLedgerRow.hash)
+    );
     const compensatedTags = findCompensatedMigrationGaps({
       missingMigrations,
       compensationTimestamp,
       appliedTimestamps,
-      schemaObjectsPresent
+      schemaObjectsPresent: schemaObjectsPresent && forwardRepairHashMatches,
+      forwardRepairTimestamp
     });
 
     const uncompensatedMigrations = missingMigrations.filter((tag) => !compensatedTags.has(tag));
@@ -478,9 +514,31 @@ try {
       errors.push(`Drizzle migration ledger contains ${migrationRows.length} rows; expected ${expectedLedgerRows} rows for ${trackedMigrations.length} journal entries and ${compensatedTags.size} explicitly compensated historical gaps.`);
     }
     if (compensatedTags.size > 0) {
-      console.warn(`Historical migration ledger gaps explicitly compensated by ${compensationTag}: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
+      console.warn(`Historical migration ledger gaps explicitly compensated by verified forward repairs: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
     }
   }
+  // Supabase keeps its own migration ledger separately from Drizzle's ledger.
+  // Inspect it when available so duplicate migration names are visible during
+  // verification without changing either ledger or blocking unrelated local DBs.
+  const { rows: supabaseLedgerPresence } = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'supabase_migrations' AND table_name = 'schema_migrations') AS present"
+  );
+  if (supabaseLedgerPresence[0]?.present) {
+    const { rows: supabaseMigrationRows } = await client.query(
+      `SELECT name, version
+         FROM supabase_migrations.schema_migrations
+        WHERE name IS NOT NULL AND btrim(name) <> ''
+        ORDER BY name, version`
+    );
+    const duplicateNames = findDuplicateSupabaseMigrationNames(supabaseMigrationRows);
+    if (duplicateNames.length > 0) {
+      console.warn("WARNING: Supabase migration ledger contains repeated migration names; review versions before future schema changes.");
+      for (const duplicate of duplicateNames) {
+        console.warn(JSON.stringify(duplicate));
+      }
+    }
+  }
+
 } finally {
   await client.end();
 }

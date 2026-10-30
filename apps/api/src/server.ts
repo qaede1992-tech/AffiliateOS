@@ -48,6 +48,12 @@ const socialCredentialResolver = fileSocialCredentialStore
   ?? (environment.SOCIAL_CREDENTIALS_JSON
     ? JsonSocialCredentialResolver.fromJson(environment.SOCIAL_CREDENTIALS_JSON)
     : undefined);
+const mediaStorage = createSupabaseStorageClientFromEnv({
+  SUPABASE_URL: environment.SUPABASE_URL,
+  SUPABASE_STORAGE_SERVICE_KEY: environment.SUPABASE_STORAGE_SERVICE_KEY,
+  SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
+});
+const mediaBucket = environment.SUPABASE_MEDIA_BUCKET || "affiliate-media";
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
@@ -56,7 +62,22 @@ const services = createServices(
   new DrizzleOAuthStateRepository(persistence.db),
   new DrizzleAnalyticsReader(persistence.db),
   new DrizzleConversionAttributionRepository(persistence.db),
-  createOfficialSocialPublishers({ credentialResolver: socialCredentialResolver }),
+  createOfficialSocialPublishers({
+    credentialResolver: socialCredentialResolver,
+    instagram: {
+      mediaUrlResolver: async (asset) => {
+        if (asset.source === "url") return asset.reference;
+        if (!mediaStorage) throw new Error("Supabase Storage is not configured for Instagram media.");
+        const separator = asset.reference.indexOf("/");
+        if (separator <= 0 || asset.reference.slice(0, separator) !== mediaBucket) {
+          throw new Error("Instagram media asset references an unexpected Storage bucket.");
+        }
+        const key = asset.reference.slice(separator + 1);
+        if (!key) throw new Error("Instagram media asset has an invalid Storage object key.");
+        return mediaStorage.createSignedUrl(key, 1800);
+      }
+    }
+  }),
   socialCredentialResolver,
   fileSocialCredentialStore,
   new DrizzlePublicationOperationRepository(persistence.db),
@@ -83,11 +104,9 @@ const services = createServices(
   {},
   persistence.autonomousExplorationStates,
   createOfficialTikTokContentPostingClient({ credentialResolver: socialCredentialResolver }),
-  createSupabaseStorageClientFromEnv({
-    SUPABASE_URL: environment.SUPABASE_URL,
-    SUPABASE_STORAGE_SERVICE_KEY: environment.SUPABASE_STORAGE_SERVICE_KEY,
-    SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
-  })
+  mediaStorage,
+  undefined,
+  environment.AUTONOMOUS_PUBLICATION_ENABLED
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,

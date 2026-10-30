@@ -27,7 +27,7 @@ export class AutonomousOptimizationRunner {
     this.engine = new OptimizationEngine(policy);
   }
 
-  async run(now = new Date()): Promise<AutonomousOptimizationRunResult> {
+  async run(now = new Date(), options: { allowMutations?: boolean } = {}): Promise<AutonomousOptimizationRunResult> {
     const overview = await this.analytics.overview();
     const state = new Map<string, OptimizationState>();
     for (const campaign of overview.campaigns) {
@@ -45,42 +45,44 @@ export class AutonomousOptimizationRunner {
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: "autonomous-optimization-actions" }) : undefined;
     const guardedRecommendations = recommendations.map((recommendation) => guardRecommendation(recommendation, overview.campaigns, performance));
     const actions: AutonomousCampaignActionResult[] = [];
-    for (const recommendation of guardedRecommendations) {
-      if (recommendation.action === "maintain") continue;
-      const baseline = toActionMetrics(overview.campaigns.find((campaign) => campaign.campaignId === recommendation.campaignId));
-      const result = await this.executor.execute(recommendation);
-      actions.push(result);
-      if (result.outcomeId && this.outcomeWriter?.updateRecovery && performance) {
-        const campaign = overview.campaigns.find((item) => item.campaignId === recommendation.campaignId);
-        const signal = campaign?.productId && campaign.marketplaceId
-          ? performance.get(campaign.marketplaceId + ":" + campaign.productId) ?? performance.get(campaign.productId)
-          : performance.get(recommendation.campaignId);
-        if (signal) {
-          try {
-            await this.outcomeWriter.updateRecovery(result.outcomeId, {
-              state: signal.anomalyRecovery ?? "none",
-              evidenceScore: signal.recoveryEvidenceScore ?? 0,
-              episodeId: signal.recoveryEpisodeId,
-              policy: signal.recoveryPolicy
-            });
-          } catch {
-            // Recovery context is advisory enrichment; the action outcome remains durable.
+    if (options.allowMutations !== false) {
+      for (const recommendation of guardedRecommendations) {
+        if (recommendation.action === "maintain") continue;
+        const baseline = toActionMetrics(overview.campaigns.find((campaign) => campaign.campaignId === recommendation.campaignId));
+        const result = await this.executor.execute(recommendation);
+        actions.push(result);
+        if (result.outcomeId && this.outcomeWriter?.updateRecovery && performance) {
+          const campaign = overview.campaigns.find((item) => item.campaignId === recommendation.campaignId);
+          const signal = campaign?.productId && campaign.marketplaceId
+            ? performance.get(campaign.marketplaceId + ":" + campaign.productId) ?? performance.get(campaign.productId)
+            : performance.get(recommendation.campaignId);
+          if (signal) {
+            try {
+              await this.outcomeWriter.updateRecovery(result.outcomeId, {
+                state: signal.anomalyRecovery ?? "none",
+                evidenceScore: signal.recoveryEvidenceScore ?? 0,
+                episodeId: signal.recoveryEpisodeId,
+                policy: signal.recoveryPolicy
+              });
+            } catch {
+              // Recovery context is advisory enrichment; the action outcome remains durable.
+            }
           }
         }
-      }
-      if (result.outcomeId && this.outcomeWriter?.updateMetrics) {
-        try {
-          const observed = toActionMetrics(await this.analytics.campaign(recommendation.campaignId));
-          await this.outcomeWriter.updateMetrics(result.outcomeId, { baseline, observed });
-        } catch {
-          // The action outcome is already persisted. Analytics enrichment must not
-          // turn a completed autonomous action into a failed action.
+        if (result.outcomeId && this.outcomeWriter?.updateMetrics) {
+          try {
+            const observed = toActionMetrics(await this.analytics.campaign(recommendation.campaignId));
+            await this.outcomeWriter.updateMetrics(result.outcomeId, { baseline, observed });
+          } catch {
+            // The action outcome is already persisted. Analytics enrichment must not
+            // turn a completed autonomous action into a failed action.
+          }
         }
+        await this.stateWriter.save(recommendation.campaignId, {
+          action: recommendation.action,
+          appliedAt: now.toISOString()
+        });
       }
-      await this.stateWriter.save(recommendation.campaignId, {
-        action: recommendation.action,
-        appliedAt: now.toISOString()
-      });
     }
 
     return { campaigns: overview.campaigns, recommendations: guardedRecommendations, actions };

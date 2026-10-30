@@ -414,6 +414,55 @@
       "when": 1794050405003,
       "tag": "0062_runtime_role_rls_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794050405004,
+      "tag": "0063_index_uncovered_foreign_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794050405005,
+      "tag": "0064_publication_job_status_length",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794050405006,
+      "tag": "0065_autonomous_action_outcome_recovery_quality",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1794050405007,
+      "tag": "0066_product_reference_number",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1794050405008,
+      "tag": "0067_reconcile_drifted_tiktok_and_content_products",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794050405011,
+      "tag": "0068_shopee_affiliate_link_intakes",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794050405012,
+      "tag": "0069_forward_repair_missing_tiktok_and_content_products",
+      "breakpoints": true
     }
   ]
 }

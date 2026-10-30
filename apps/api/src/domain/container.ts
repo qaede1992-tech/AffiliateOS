@@ -1,7 +1,8 @@
 import type { Affiliate, Campaign, Content, Conversion, Offer, SocialAccount } from "@affiliateos/shared";
-import { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryContentProductRepository, InMemoryMarketplaceConnectionRepository, InMemoryMediaAssetRepository, InMemoryProductCatalogRepository, InMemoryPublicationJobRepository, InMemoryPublicationOperationRepository, InMemoryRepository, InMemorySocialAccountRepository, InMemoryTrackingLinkRepository, type RepositorySet, type TransactionManager } from "./repository.js";
+import { InMemoryShopeeAffiliateLinkIntakeRepository, InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryCampaignOfferRepository, InMemoryClickRepository, InMemoryCommissionRepository, InMemoryConversionRepository, InMemoryContentProductRepository, InMemoryMarketplaceConnectionRepository, InMemoryMediaAssetRepository, InMemoryProductCatalogRepository, InMemoryPublicationJobRepository, InMemoryPublicationOperationRepository, InMemoryRepository, InMemorySocialAccountRepository, InMemoryTrackingLinkRepository, type RepositorySet, type TransactionManager } from "./repository.js";
 import { AffiliateService, CommissionService, ConversionService, OfferService } from "./services.js";
 import { MarketplaceProviderRegistry } from "./foundations.js";
+import { ShopeeAffiliateLinkIntakeService } from "./shopee-affiliate-link-intake.js";
 import { MarketplaceService } from "./marketplace.js";
 import { ShopeeConversionSyncService } from "./shopee-conversion-sync.js";
 import { ShopeeConversionSyncScheduler } from "./shopee-conversion-sync-scheduler.js";
@@ -50,13 +51,14 @@ import type { SupabaseStorageClient } from "./supabase-storage.js";
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; contentStory: ContentStoryService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
-  publicationJobs: PublicationJobService; mediaUpload?: MediaUploadService; tiktokCreatorInfo: { getCreatorInfo(account: SocialAccount): Promise<TikTokCreatorInfo> }; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor; shopeeCommissionReportReconciliation: ShopeeCommissionReportReconciliationService;
+  publicationJobs: PublicationJobService; shopeeAffiliateLinkIntakes: ShopeeAffiliateLinkIntakeService; mediaUpload?: MediaUploadService; tiktokCreatorInfo: { getCreatorInfo(account: SocialAccount): Promise<TikTokCreatorInfo> }; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor; shopeeCommissionReportReconciliation: ShopeeCommissionReportReconciliationService;
 }
 
-export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, socialCredentialStore?: SocialCredentialStore, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, shopeeConversionSyncSchedulerIntervalMs?: number, shopeeConversionSyncLookbackHours?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock, optimizationStateReader?: OptimizationStateReader, optimizationStateWriter?: OptimizationStateWriter, autonomousSelectionPolicy: OpportunitySelectionPolicy = {}, autonomousMarketplacePolicies: OpportunitySelectionPoliciesByMarketplace = {}, autonomousDecisionAuditRepository?: AutonomousDecisionAuditRepository, autonomousActionOutcomeWriter?: AutonomousActionOutcomeWriter, autonomousOptimizationPolicy: import("./optimization-engine.js").OptimizationPolicy = {}, explorationEvaluationPolicy: import("./exploration-evaluator.js").ExplorationEvaluationPolicy = {}, adaptiveExplorationPolicy: AdaptiveExplorationPolicy = {}, autonomousExplorationStateRepository?: AutonomousExplorationStateRepository, tiktokCreatorInfoClient?: TikTokContentPublisherClient, mediaStorage?: SupabaseStorageClient, mediaUploadPolicy: MediaUploadPolicy = { maxImageBytes: 10 * 1024 * 1024, maxVideoBytes: 45 * 1024 * 1024 }): Services {
+export function createServices(repositories: RepositorySet, transactionManager: TransactionManager, marketplaceRegistry = new MarketplaceProviderRegistry(), socialOAuthRegistry = new InMemorySocialOAuthProviderRegistry(), oauthStateRepository: OAuthStateRepository = new InMemoryOAuthStateRepository(), analyticsReader?: AnalyticsReader, attributionRepository: ConversionAttributionRepository = new InMemoryConversionAttributionRepository(), socialPublishers: SocialPublisher[] = [], socialCredentialResolver?: SocialCredentialResolver, socialCredentialStore?: SocialCredentialStore, publicationOperationRepository: PublicationOperationRepository = repositories.publicationOperations ?? new InMemoryPublicationOperationRepository(), autonomousRunRepository: AutonomousRunRepository = repositories.autonomousRuns ?? new InMemoryAutonomousRunRepository(), autonomousSchedulerIntervalMs?: number, shopeeConversionSyncSchedulerIntervalMs?: number, shopeeConversionSyncLookbackHours?: number, autonomousFeedbackMemoryRepository: AutonomousFeedbackMemoryRepository = new InMemoryAutonomousFeedbackMemoryRepository(), autonomousCycleLock?: AutonomousCycleLock, optimizationStateReader?: OptimizationStateReader, optimizationStateWriter?: OptimizationStateWriter, autonomousSelectionPolicy: OpportunitySelectionPolicy = {}, autonomousMarketplacePolicies: OpportunitySelectionPoliciesByMarketplace = {}, autonomousDecisionAuditRepository?: AutonomousDecisionAuditRepository, autonomousActionOutcomeWriter?: AutonomousActionOutcomeWriter, autonomousOptimizationPolicy: import("./optimization-engine.js").OptimizationPolicy = {}, explorationEvaluationPolicy: import("./exploration-evaluator.js").ExplorationEvaluationPolicy = {}, adaptiveExplorationPolicy: AdaptiveExplorationPolicy = {}, autonomousExplorationStateRepository?: AutonomousExplorationStateRepository, tiktokCreatorInfoClient?: TikTokContentPublisherClient, mediaStorage?: SupabaseStorageClient, mediaUploadPolicy: MediaUploadPolicy = { maxImageBytes: 10 * 1024 * 1024, maxVideoBytes: 45 * 1024 * 1024 }, autonomousPublicationEnabled = false): Services {
   if (Boolean(optimizationStateReader) !== Boolean(optimizationStateWriter)) {
     throw new Error("Optimization state reader and writer must be supplied together.");
   }
+  const shopeeAffiliateLinkIntakes = new ShopeeAffiliateLinkIntakeService(repositories.shopeeAffiliateLinkIntakes ?? new InMemoryShopeeAffiliateLinkIntakeRepository());
   const conversions = new ConversionService(repositories.conversions, repositories.commissions, repositories.affiliates, repositories.offers, repositories.affiliateOffers, transactionManager);
   const campaigns = new CampaignService(repositories.campaigns, repositories.campaignOffers, repositories.affiliateOffers);
   const tracking = new TrackingService(repositories.trackingLinks, repositories.clicks, repositories.campaigns, repositories.affiliateOffers, repositories.campaignOffers);
@@ -68,7 +70,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publishers = publisherRegistry.list();
   const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
   const affiliatePublicationEligibility = new RepositoryAffiliatePublicationEligibilityValidator(repositories.products, repositories.affiliateOffers, repositories.campaignOffers, repositories.trackingLinks);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility);
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility, mediaStorage);
   const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver), repositories.socialAccounts, socialCredentialResolver);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
@@ -108,11 +110,37 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const adaptiveExploration = autonomousDecisionAuditRepository ? new AdaptiveExplorationPolicyProvider(autonomousDecisionAuditRepository, adaptiveExplorationPolicy, autonomousExplorationStateRepository) : undefined;
   const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback, autonomousRuns, autonomousDecisionAuditRepository, adaptiveExploration);
   const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation);
-  const autonomousScheduler = new AutonomousScheduler(autonomousCycle, { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies }, { intervalMs: autonomousSchedulerIntervalMs });
+  const autonomousScheduler = new AutonomousScheduler(
+    autonomousCycle,
+    { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies, publicationEnabled: autonomousPublicationEnabled },
+    {
+      intervalMs: autonomousSchedulerIntervalMs,
+      onResult: (result) => {
+        console.info(JSON.stringify({
+          event: "autonomous_cycle_completed",
+          startedAt: result.startedAt,
+          completedAt: result.completedAt,
+          candidateCount: result.candidateCount,
+          selectedCount: result.execution.selected.length,
+          rejectedCount: result.execution.rejected.length,
+          completedCount: result.execution.outcomes.filter((outcome) => outcome.status === "completed").length,
+          failedCount: result.execution.outcomes.filter((outcome) => outcome.status === "failed").length,
+          publicationEnabled: autonomousPublicationEnabled
+        }));
+      },
+      onError: (error) => {
+        console.error(JSON.stringify({
+          event: "autonomous_cycle_failed",
+          error: error instanceof Error ? error.message : String(error),
+          errorChain: describeErrorChain(error)
+        }));
+      }
+    }
+  );
   return {
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
     shopeeConversionSync, shopeeConversionSyncScheduler, shopeeCommissionReportReconciliation, autonomousDecisionAudits: autonomousDecisionAuditRepository,
-    contentStory, ...(mediaUpload ? { mediaUpload } : {}), socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository, undefined, socialCredentialStore), analytics, attribution, publicationJobs, tiktokCreatorInfo: tiktokCreatorInfoClient ?? { getCreatorInfo: async () => { throw new Error("TikTok creator info is not configured."); } }, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
+    contentStory, shopeeAffiliateLinkIntakes, ...(mediaUpload ? { mediaUpload } : {}), socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository, undefined, socialCredentialStore), analytics, attribution, publicationJobs, tiktokCreatorInfo: tiktokCreatorInfoClient ?? { getCreatorInfo: async () => { throw new Error("TikTok creator info is not configured."); } }, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
   };
 }
 
@@ -122,4 +150,36 @@ export function createInMemoryServices(): Services {
   };
   const transactionManager: TransactionManager = { run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions }) };
   return createServices(repositories, transactionManager);
+}
+
+
+function describeErrorChain(error: unknown): Array<Record<string, string | number | undefined>> {
+  const chain: Array<Record<string, string | number | undefined>> = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current) && chain.length < 5) {
+    seen.add(current);
+    const item = current as {
+      name?: unknown;
+      message?: unknown;
+      code?: unknown;
+      detail?: unknown;
+      hint?: unknown;
+      position?: unknown;
+      cause?: unknown;
+    };
+    chain.push({
+      name: typeof item.name === "string" ? item.name : undefined,
+      message: typeof item.message === "string" ? item.message : undefined,
+      code: typeof item.code === "string" ? item.code : undefined,
+      detail: typeof item.detail === "string" ? item.detail : undefined,
+      hint: typeof item.hint === "string" ? item.hint : undefined,
+      position: typeof item.position === "string" || typeof item.position === "number" ? item.position : undefined
+    });
+    current = item.cause;
+  }
+  if (chain.length === 0) {
+    chain.push({ message: typeof error === "string" ? error : String(error) });
+  }
+  return chain;
 }

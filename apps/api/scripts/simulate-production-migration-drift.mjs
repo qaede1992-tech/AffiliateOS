@@ -28,18 +28,23 @@ try {
 
   await client.query("BEGIN");
   try {
-    // Recreate the audited production condition only inside the ephemeral CI DB:
-    // historical 0056/0057 and candidate 0058/0059 ledger rows are absent,
-    // and their schema objects are absent. If a later migration has already
-    // been applied, remove its ledger row too so Drizzle can replay the
-    // forward repair migration in timestamp order. All unrelated history remains.
+    // Recreate the audited production schema drift only inside the ephemeral CI DB.
+    // Keep unrelated history intact. Remove the audited 0067 ledger entry and
+    // the newest 0069 forward-repair entry: Drizzle must reapply 0069 while 0067
+    // remains an explicitly compensated historical gap.
     await client.query("DROP TABLE IF EXISTS public.content_products");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
-    await client.query(
-      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[1791676800000, 1791763200000, 1794050404000, 1794050405000, 1794050405001, 1794050405002, 1794050405003]]
+    const deletedLedgerRows = await client.query(
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = $1::bigint OR created_at = $2::bigint RETURNING created_at',
+      [1794050405008, 1794050405012]
+    );
+    const deletedTimestamps = new Set(deletedLedgerRows.rows.map((row) => Number(row.created_at)));
+    assert.deepEqual(
+      [...deletedTimestamps].sort((a, b) => a - b),
+      [1794050405008, 1794050405012],
+      "Expected the audited 0067 gap and latest 0069 forward-repair entry to be removed before testing reapplication."
     );
     await client.query("COMMIT");
   } catch (error) {

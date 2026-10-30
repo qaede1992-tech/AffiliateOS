@@ -29,6 +29,25 @@ const opportunity = {
 const orchestrationResult = {} as CampaignOrchestrationResult;
 
 describe("AutonomousExecutionService", () => {
+  it("excludes completed opportunities from preview selection", async () => {
+    const completedRuns = { hasCompletedOpportunity: async () => true };
+    const service = new AutonomousExecutionService(
+      new AutonomousOpportunitySelector(),
+      {} as CampaignOrchestrator,
+      undefined,
+      completedRuns as never
+    );
+
+    const result = await service.previewSelection({
+      candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 40, maximumResults: 1 }
+    });
+
+    assert.equal(result.selected.length, 0);
+    assert.equal(result.rejected.length, 1);
+    assert.equal(result.rejected[0]?.reasons.includes("No affiliate offer selected"), true);
+  });
+
   it("selects opportunities and executes each selected offer with a deterministic key", async () => {
     const calls: Array<{ offerId: string; idempotencyKey?: string }> = [];
     const orchestrator = {
@@ -102,6 +121,7 @@ describe("AutonomousExecutionService", () => {
 
     const result = await service.runOnce({
       candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 0 },
       audience: ["beauty"],
       platforms: ["tiktok"],
       scheduledAt: "2026-09-22T12:00:00.000Z",
@@ -114,6 +134,132 @@ describe("AutonomousExecutionService", () => {
     assert.equal(calls[0]?.platforms?.join(","), "instagram");
     assert.equal(calls[0]?.scheduledAt, "2026-09-21T12:00:00.000Z");
     assert.equal(calls[0]?.idempotencyKey, "previous-cycle:product-1:offer-1");
+  });
+
+  it("does not recover or create content when an old opportunity no longer passes current selection", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { platforms: ["instagram"] },
+      now: new Date("2026-10-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "previous orchestration interrupted" }, new Date("2026-10-20T09:01:00.000Z"));
+
+    let orchestratorCalls = 0;
+    const orchestrator = {
+      execute: async () => { orchestratorCalls += 1; return orchestrationResult; }
+    } as unknown as CampaignOrchestrator;
+    const selector = {
+      select: () => ({ selected: [], rejected: [{ productId: product.id, score: 20, reasons: ["Score is below current minimum"] }], audit: [] })
+    } as unknown as AutonomousOpportunitySelector;
+    const service = new AutonomousExecutionService(selector, orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 60, requireCommissionSignal: true },
+      idempotencyNamespace: "current-cycle",
+      publicationEnabled: false
+    });
+
+    assert.equal(result.recoveredRunCount, 0);
+    assert.equal(orchestratorCalls, 0, "recovery must not call campaign/content orchestration for a rejected product");
+    assert.equal(result.outcomes.length, 0);
+    assert.equal((await runService.findById(accepted.id))?.status, "failed");
+  });
+
+  it("terminalizes recoverable runs when their original offer is no longer available", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { audience: ["electronics"], platforms: ["instagram"] },
+      now: new Date("2026-10-08T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "previous offer unavailable" }, new Date("2026-10-08T09:01:00.000Z"));
+
+    const orchestrator = { execute: async () => orchestrationResult } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [] }],
+      idempotencyNamespace: "current-cycle",
+      publicationEnabled: false
+    });
+
+    assert.equal(result.recoveredRunCount, 0);
+    const stored = await runService.findById(accepted.id);
+    assert.equal(stored.status, "failed");
+    assert.equal(stored.attemptCount, 8);
+    assert.match(stored.lastError ?? "", /no longer available under the active marketplace account/);
+    assert.equal((await runService.listRecoverable(new Date("2026-10-27T00:00:00.000Z"))).length, 0);
+  });
+
+  it("does not restore a stale scheduled publication time when recovering in draft-only mode", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-scheduled-run:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      executionContext: { audience: ["electronics"], platforms: ["instagram"], scheduledAt: "2026-10-20T12:00:00.000Z" },
+      now: new Date("2026-10-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "failed", { error: "no publishable destination" }, new Date("2026-10-20T09:01:00.000Z"));
+
+    const scheduledValues: Array<string | undefined> = [];
+    const orchestrator = {
+      execute: async (input: { scheduledAt?: string }) => {
+        scheduledValues.push(input.scheduledAt);
+        return orchestrationResult;
+      }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 0 },
+      idempotencyNamespace: "draft-only-cycle",
+      publicationEnabled: false,
+      requirePublishableMedia: false
+    });
+
+    assert.equal(result.recoveredRunCount, 1);
+    assert.equal(scheduledValues.length, 1, "a recovered opportunity must not be executed again under a new cycle key");
+    assert.ok(scheduledValues.every((value) => value === undefined));
+  });
+
+  it("skips an opportunity already completed in an earlier autonomous cycle", async () => {
+    const runRepository = new (await import("../../src/domain/autonomous-run.js")).InMemoryAutonomousRunRepository();
+    const runService = new (await import("../../src/domain/autonomous-run-service.js")).AutonomousRunService(runRepository);
+    const accepted = await runService.accept({
+      idempotencyKey: "previous-cycle:product-1:offer-1",
+      productId: product.id,
+      offerId: offer.id,
+      now: new Date("2026-10-20T09:00:00.000Z")
+    });
+    await runService.transition(accepted.id, "processing", {}, new Date("2026-10-20T09:01:00.000Z"));
+    await runService.transition(accepted.id, "completed", {}, new Date("2026-10-20T09:02:00.000Z"));
+
+    let orchestratorCalls = 0;
+    const orchestrator = {
+      execute: async () => { orchestratorCalls += 1; return orchestrationResult; }
+    } as unknown as CampaignOrchestrator;
+    const service = new AutonomousExecutionService(new AutonomousOpportunitySelector(), orchestrator, undefined, runService);
+
+    const result = await service.runOnce({
+      candidates: [{ product, offers: [offer] }],
+      policy: { minimumScore: 40, maximumResults: 1 },
+      idempotencyNamespace: "next-cycle"
+    });
+
+    assert.equal(orchestratorCalls, 0);
+    assert.equal(result.selected.length, 0);
+    assert.equal(result.outcomes.length, 0);
   });
 
   it("does not recover persisted runs while the product is in anomaly halt or recovery", async () => {
