@@ -49,3 +49,67 @@ test("refuses discovery before non-media eligibility passes", async () => {
   await assert.rejects(() => runner.discover(product, false), /must pass non-media affiliate eligibility/);
   assert.equal(fetched, false);
 });
+
+
+test("lists stored video product ids with one bulk repository read", async () => {
+  const secondProductId = "22222222-2222-4222-8222-222222222222";
+  const assets: ProductMediaAsset[] = [
+    {
+      id: "33333333-3333-4333-8333-333333333333",
+      productId: product.id,
+      kind: "video",
+      bucket: "affiliate-media",
+      objectKey: `products/${product.id}/video.mp4`,
+      mimeType: "video/mp4",
+      byteSize: 32,
+      sha256: "a".repeat(64),
+      sourceUrl: "https://cdn.example.test/video.mp4",
+      createdAt: "2026-10-30T00:00:00.000Z"
+    },
+    {
+      id: "44444444-4444-4444-8444-444444444444",
+      productId: secondProductId,
+      kind: "image",
+      bucket: "affiliate-media",
+      objectKey: `products/${secondProductId}/image.jpg`,
+      mimeType: "image/jpeg",
+      byteSize: 32,
+      sha256: "b".repeat(64),
+      sourceUrl: "https://cdn.example.test/image.jpg",
+      createdAt: "2026-10-30T00:00:00.000Z"
+    }
+  ];
+  let bulkCalls = 0;
+  let perProductCalls = 0;
+  const repository = {
+    async listByProduct() {
+      perProductCalls += 1;
+      throw new Error("The bulk lookup should avoid per-product reads.");
+    },
+    async listByProducts(productIds: string[]) {
+      bulkCalls += 1;
+      assert.deepEqual(productIds, [product.id, secondProductId]);
+      return assets.filter((asset) => productIds.includes(asset.productId));
+    },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const storage = {
+    async upload(input: { key: string }) { return { bucket: "affiliate-media", key: input.key }; },
+    async remove() {}
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    storage as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  assert.deepEqual(await runner.listVideoProductIds([]), []);
+  assert.equal(bulkCalls, 0);
+  assert.deepEqual(
+    await runner.listVideoProductIds([product.id, secondProductId, product.id]),
+    [product.id]
+  );
+  assert.equal(bulkCalls, 1);
+  assert.equal(perProductCalls, 0);
+});
