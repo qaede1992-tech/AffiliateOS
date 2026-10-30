@@ -4,7 +4,7 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, shopeeCommissionReportSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { requireOperator } from "./auth.js";
@@ -13,7 +13,6 @@ import { determineAutonomousHealthStatus } from "../domain/autonomous-health-sta
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
-import { createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
@@ -182,10 +181,10 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     auditSecurityEvent(request.log, request, "shopee_affiliate_link_intake_submitted", { intakeId: intake.id, status: intake.status });
     return reply.status(201).send(intake);
   });
-  app.get("/api/v1/shopee/affiliate-link-intakes/:intakeId", async (request) => {
+  app.get("/api/v1/shopee/affiliate-link-intakes/:intakeId", async (request, reply) => {
     const { intakeId } = shopeeAffiliateLinkIntakeParamsSchema.parse(request.params);
     const intake = await services.shopeeAffiliateLinkIntakes.get(intakeId);
-    if (!intake) return { error: "NOT_FOUND", message: "Shopee affiliate link intake tidak ditemukan." };
+    if (!intake) return reply.status(404).send({ error: "NOT_FOUND", message: "Shopee affiliate link intake tidak ditemukan." });
     return intake;
   });
   app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => reply.status(201).send(await services.marketplace.importShopeeAffiliateFeed(importShopeeAffiliateFeedSchema.parse(request.body)))); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
