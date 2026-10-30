@@ -29,16 +29,16 @@ try {
   await client.query("BEGIN");
   try {
     // Recreate the audited production schema drift only inside the ephemeral CI DB.
-    // Keep all historical ledger entries intact: deleting older rows is unsafe
-    // because their journal timestamps are non-monotonic. Delete only the newest
-    // forward-repair migration row so Drizzle must reapply that idempotent repair.
+    // Keep unrelated history intact. Remove the audited 0067 ledger entry and
+    // the newest 0069 forward-repair entry: Drizzle must reapply 0069 while 0067
+    // remains an explicitly compensated historical gap.
     await client.query("DROP TABLE IF EXISTS public.content_products");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
     await client.query(
-      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = $1',
-      [1794050405008]
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
+      [[1794050405008, 1794050405012]]
     );
     await client.query("COMMIT");
   } catch (error) {
