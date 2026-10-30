@@ -187,12 +187,18 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     if (!intake) return reply.status(404).send({ error: "NOT_FOUND", message: "Shopee affiliate link intake tidak ditemukan." });
     return intake;
   });
-  app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => reply.status(201).send(await services.marketplace.importShopeeAffiliateFeed(importShopeeAffiliateFeedSchema.parse(request.body)))); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
+  app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => {
+    const input = importShopeeAffiliateFeedSchema.parse(request.body);
+    const result = await services.marketplace.importShopeeAffiliateFeed(input);
+    for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl, input.sourceReference);
+    return reply.status(201).send(result);
+  }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
     let parsed;
     try { parsed = parseShopeeAffiliateCsv(input.csv); }
     catch (error) { return reply.status(400).send({ error: "INVALID_SHOPEE_AFFILIATE_CSV", message: error instanceof Error ? error.message : "CSV Shopee tidak valid." }); }
     if (parsed.errors.length > 0 || parsed.rows.length === 0) return reply.status(400).send({ error: "INVALID_SHOPEE_AFFILIATE_CSV", message: "CSV berisi baris yang tidak valid; tidak ada data yang diimpor.", errors: parsed.errors, validRows: parsed.rows.length });
+    if (parsed.rows.some((row) => row.commissionRateBps === null && row.commissionAmountRupiah === null)) return reply.status(400).send({ error: "MISSING_VERIFIED_COMMISSION", message: "CSV harus memuat komisi yang terverifikasi untuk setiap produk; tidak ada data yang diimpor." });
     const result = await services.marketplace.importShopeeAffiliateFeed({
       affiliateId: input.affiliateId,
       ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
@@ -212,6 +218,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality }
       }))
     });
+    for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl, input.sourceReference);
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
     const [products, offers, trackingLinks] = await Promise.all([
