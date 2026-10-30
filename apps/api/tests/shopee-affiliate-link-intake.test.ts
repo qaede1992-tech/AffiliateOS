@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { InMemoryShopeeAffiliateLinkIntakeRepository } from "../src/domain/repository.js";
 import { ShopeeAffiliateLinkIntakeService } from "../src/domain/shopee-affiliate-link-intake.js";
 
@@ -30,8 +31,11 @@ test("different affiliate URLs resolving to the same Shopee product deduplicate 
     status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
   }));
   const first = await service.submit("https://s.shopee.co.id/first");
-  const second = await service.submit("https://s.shopee.co.id/second");
+  const secondUrl = "https://s.shopee.co.id/second";
+  const second = await service.submit(secondUrl);
   assert.equal(first.id, second.id);
+  const secondHash = createHash("sha256").update(secondUrl).digest("hex");
+  assert.equal(await repository.findByUrlHash(secondHash), undefined, "Duplicate product identity must not leave an orphan resolving intake.");
 });
 
 test("verified feed offer reconciles a matching intake without inventing offer values", async () => {
@@ -44,4 +48,24 @@ test("verified feed offer reconciles a matching intake without inventing offer v
   const reconciled = await service.reconcileVerifiedOffer("https://shopee.co.id/product/123/456");
   assert.equal(reconciled?.status, "imported");
   assert.equal(reconciled?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
+});
+test("intake repository resolves product-identity conflicts to the existing row", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const now = "2026-10-30T00:00:00.000Z";
+  const makeIntake = (id: string, url: string) => ({
+    id,
+    marketplaceSlug: "shopee-affiliate-feed" as const,
+    affiliateUrl: url,
+    normalizedUrlHash: createHash("sha256").update(url).digest("hex"),
+    shopId: "123",
+    itemId: "456",
+    status: "awaiting_offer_data" as const,
+    sourceMetadata: { resolution: "resolved" },
+    createdAt: now,
+    updatedAt: now
+  });
+  const first = await repository.saveIfAbsent(makeIntake("intake-1", "https://s.shopee.co.id/first"));
+  const duplicate = await repository.saveIfAbsent(makeIntake("intake-2", "https://s.shopee.co.id/second"));
+  assert.equal(duplicate.id, first.id);
+  assert.equal(await repository.findByUrlHash(createHash("sha256").update("https://s.shopee.co.id/second").digest("hex")), undefined);
 });
