@@ -34,10 +34,10 @@ export class ShopeeAffiliateLinkIntakeService {
     const normalized = normalizeAffiliateUrl(rawUrl);
     const hash = createHash("sha256").update(normalized).digest("hex");
     const existing = await this.repository.findByUrlHash(hash);
-    if (existing) return existing;
+    if (existing && existing.status !== "unresolved") return existing;
     const now = new Date().toISOString();
-    const intake = await this.repository.saveIfAbsent({ id: randomUUID(), marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: normalized, normalizedUrlHash: hash, status: "resolving", sourceMetadata: {}, createdAt: now, updatedAt: now });
-    if (intake.status !== "resolving" || intake.canonicalProductUrl) return intake;
+    const intake = existing ?? await this.repository.saveIfAbsent({ id: randomUUID(), marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: normalized, normalizedUrlHash: hash, status: "resolving", sourceMetadata: {}, createdAt: now, updatedAt: now });
+    if (intake.status !== "resolving" && intake.status !== "unresolved") return intake;
     const result = await this.resolver(normalized);
     if (result.status === "resolved" && result.shopId && result.itemId) {
       const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
