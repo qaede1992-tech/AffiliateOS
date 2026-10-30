@@ -9,6 +9,7 @@ export interface ShopeeAffiliateLinkIntake {
 }
 export interface ShopeeAffiliateLinkIntakeRepository {
   findByUrlHash(hash: string): Promise<ShopeeAffiliateLinkIntake | undefined>;
+  findByProductIdentity(shopId: string, itemId: string): Promise<ShopeeAffiliateLinkIntake | undefined>;
   findById(id: string): Promise<ShopeeAffiliateLinkIntake | undefined>;
   saveIfAbsent(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   update(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
@@ -16,6 +17,7 @@ export interface ShopeeAffiliateLinkIntakeRepository {
 export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
   private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
   async findByUrlHash(hash: string) { return [...this.rows.values()].find(row => row.normalizedUrlHash === hash); }
+  async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
   async findById(id: string) { return this.rows.get(id); }
   async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(intake.normalizedUrlHash); if (existing) return existing; this.rows.set(intake.id, intake); return intake; }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
@@ -37,6 +39,10 @@ export class ShopeeAffiliateLinkIntakeService {
     const intake = await this.repository.saveIfAbsent({ id: randomUUID(), marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: normalized, normalizedUrlHash: hash, status: "resolving", sourceMetadata: {}, createdAt: now, updatedAt: now });
     if (intake.status !== "resolving" || intake.canonicalProductUrl) return intake;
     const result = await this.resolver(normalized);
+    if (result.status === "resolved" && result.shopId && result.itemId) {
+      const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
+      if (sameProduct) return sameProduct;
+    }
     const updated: ShopeeAffiliateLinkIntake = {
       ...intake, status: result.status === "resolved" ? "awaiting_offer_data" : "unresolved",
       ...(result.productUrl ? { canonicalProductUrl: result.productUrl } : {}),
@@ -44,7 +50,14 @@ export class ShopeeAffiliateLinkIntakeService {
       ...(result.reason ? { reason: result.reason.slice(0, 1000) } : {}),
       sourceMetadata: { resolution: result.status }, updatedAt: new Date().toISOString()
     };
-    return this.repository.update(updated);
+    try { return await this.repository.update(updated); }
+    catch (error) {
+      if (result.status === "resolved" && result.shopId && result.itemId) {
+        const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
+        if (sameProduct) return sameProduct;
+      }
+      throw error;
+    }
   }
   get(id: string) { return this.repository.findById(id); }
 }
