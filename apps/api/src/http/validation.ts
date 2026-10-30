@@ -59,3 +59,5 @@ export const tiktokPublicationApprovalSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["privacyLevel"], message: "Branded content must be public or friends-only." });
   }
 });
+
+export const resolveShopeeAffiliateLinkSchema = z.object({ affiliateUrl: z.string().trim().url().max(2048) });
