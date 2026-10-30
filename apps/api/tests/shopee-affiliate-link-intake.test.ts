@@ -23,3 +23,26 @@ test("Shopee link intake is idempotent for normalized URLs", async () => {
   assert.equal(calls, 1);
   assert.equal(second.status, "unresolved");
 });
+
+test("different affiliate URLs resolving to the same Shopee product deduplicate by product identity", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => ({
+    status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
+  }));
+  const first = await service.submit("https://s.shopee.co.id/first");
+  const second = await service.submit("https://s.shopee.co.id/second");
+  assert.equal(first.id, second.id);
+});
+
+test("verified feed offer reconciles a matching intake without inventing offer values", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => ({
+    status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
+  }));
+  const intake = await service.submit("https://s.shopee.co.id/short");
+  assert.equal(intake.status, "awaiting_offer_data");
+  const reconciled = await service.reconcileVerifiedOffer("https://shopee.co.id/product/123/456", "feed-export-1");
+  assert.equal(reconciled?.status, "imported");
+  assert.equal(reconciled?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
+  assert.equal(reconciled?.sourceMetadata.sourceReference, "feed-export-1");
+});
