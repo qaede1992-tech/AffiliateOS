@@ -36,7 +36,7 @@ export class ShopeeAffiliateLinkIntakeService {
     const now = new Date().toISOString();
     const intake = await this.repository.saveIfAbsent({ id: randomUUID(), marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: normalized, normalizedUrlHash: hash, status: "resolving", sourceMetadata: {}, createdAt: now, updatedAt: now });
     if (intake.status !== "resolving" || intake.canonicalProductUrl) return intake;
-    const result = await resolveShopeeAffiliateLink(normalized);
+    const result = await this.resolver(normalized);
     const updated: ShopeeAffiliateLinkIntake = {
       ...intake, status: result.status === "resolved" ? "awaiting_offer_data" : "unresolved",
       ...(result.productUrl ? { canonicalProductUrl: result.productUrl } : {}),
