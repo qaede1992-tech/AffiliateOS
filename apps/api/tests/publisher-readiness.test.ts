@@ -130,6 +130,31 @@ test("publisher readiness does not combine one account's credential with another
   assert.equal(result?.requiredScopeGranted, false);
 });
 
+test("publisher readiness does not treat another account's scope as optional when the credential account has no scope evidence", async () => {
+  const credentials = new InMemorySocialCredentialResolver();
+  credentials.set("secret://social/valid-without-scope-metadata", { accessToken: "redacted-test-value" });
+  const repository = {
+    list: async () => [
+      account({
+        id: "credential-account",
+        credentialReference: "secret://social/valid-without-scope-metadata",
+        connection: {}
+      }),
+      account({
+        id: "scope-account",
+        credentialReference: "secret://social/missing",
+        connection: { grantedScopes: ["instagram_business_content_publish"] }
+      })
+    ]
+  };
+  const service = new PublisherReadinessService([publisher], true, repository, credentials);
+
+  const result = (await service.list()).find((item) => item.platform === "instagram");
+  assert.equal(result?.status, "unconfigured");
+  assert.equal(result?.credentialResolvable, true);
+  assert.equal(result?.requiredScopeGranted, false);
+});
+
 test("publisher readiness accepts a credential and publishing scope from the same account", async () => {
   const credentials = new InMemorySocialCredentialResolver();
   credentials.set("secret://social/instagram-ready", { accessToken: "redacted-test-value" });
