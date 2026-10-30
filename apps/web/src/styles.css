@@ -436,3 +436,26 @@ nav { display: grid; gap: 5px; }
   font-size: 0.85rem;
   line-height: 1.6;
 }
+
+.public-shop-media {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 0.8rem;
+  background: rgba(29, 42, 46, 0.06);
+}
+.public-shop-media img,
+.public-shop-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.public-shop-media-placeholder {
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  color: #687476;
+  font-size: 0.9rem;
+  text-align: center;
+}
