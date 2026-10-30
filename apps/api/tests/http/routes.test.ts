@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp, configuredCorsOrigin } from "../../src/app.js";
+import { createInMemoryServices } from "../../src/domain/container.js";
 
 test("configured CORS origin rejects an unset production origin", () => {
   const previous = process.env.API_CORS_ORIGIN;
@@ -1153,3 +1154,83 @@ test("GET TikTok creator info resolves the internal credential reference without
     await app.close();
   }
 });
+
+test("GET /api/v1/public/shop includes HTTPS product media and omits unsafe media URLs", async () => {
+  const services = createInMemoryServices();
+  const now = new Date().toISOString();
+  const products = [
+    {
+      id: "product-with-media",
+      referenceNumber: 1,
+      marketplaceId: "marketplace-test",
+      externalProductId: "external-1",
+      name: "Product with media",
+      category: "Test",
+      priceCents: 10000,
+      currency: "IDR",
+      ratingMilli: 5000,
+      reviewCount: 10,
+      soldCount: 20,
+      imageUrl: "https://cdn.example.com/product.jpg",
+      videoUrl: "https://cdn.example.com/product.mp4",
+      productUrl: "https://shop.example.com/product/1",
+      status: "active" as const,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: "product-with-unsafe-media",
+      referenceNumber: 2,
+      marketplaceId: "marketplace-test",
+      externalProductId: "external-2",
+      name: "Product with unsafe media",
+      category: "Test",
+      priceCents: 20000,
+      currency: "IDR",
+      ratingMilli: 4900,
+      reviewCount: 5,
+      soldCount: 8,
+      imageUrl: "http://cdn.example.com/product.jpg",
+      videoUrl: "javascript:alert(1)",
+      productUrl: "https://shop.example.com/product/2",
+      status: "active" as const,
+      createdAt: now,
+      updatedAt: now
+    }
+  ];
+  const offers = products.map((product, index) => ({
+    id: `offer-${product.id}`,
+    productId: product.id,
+    status: "active",
+    affiliateLinkStatus: "active",
+    affiliateUrl: `https://affiliate.example.com/${index}`,
+    priceCents: product.priceCents,
+    currency: product.currency
+  }));
+  const trackingLinks = offers.map((offer, index) => ({
+    id: `tracking-${index}`,
+    affiliateOfferId: offer.id,
+    status: "active",
+    destinationUrl: offer.affiliateUrl,
+    code: `track-${index}`
+  }));
+
+  services.marketplace.listProducts = async () => products;
+  services.marketplace.listAffiliateOffers = async () => offers as never;
+  services.tracking.list = async () => trackingLinks as never;
+
+  const app = createApp(services);
+  try {
+    const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
+    assert.equal(response.statusCode, 200);
+    const items = response.json().data;
+    assert.equal(items.length, 2);
+    assert.equal(items[0].imageUrl, products[0].imageUrl);
+    assert.equal(items[0].videoUrl, products[0].videoUrl);
+    assert.equal(Object.hasOwn(items[1], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[1], "videoUrl"), false);
+  } finally {
+    await app.close();
+  }
+});
+
