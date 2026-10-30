@@ -36,9 +36,15 @@ try {
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
-    await client.query(
-      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[1794050405008, 1794050405012]]
+    const deletedLedgerRows = await client.query(
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = $1::bigint OR created_at = $2::bigint RETURNING created_at',
+      [1794050405008, 1794050405012]
+    );
+    const deletedTimestamps = new Set(deletedLedgerRows.rows.map((row) => Number(row.created_at)));
+    assert.deepEqual(
+      [...deletedTimestamps].sort((a, b) => a - b),
+      [1794050405008, 1794050405012],
+      "Expected the audited 0067 gap and latest 0069 forward-repair entry to be removed before testing reapplication."
     );
     await client.query("COMMIT");
   } catch (error) {
