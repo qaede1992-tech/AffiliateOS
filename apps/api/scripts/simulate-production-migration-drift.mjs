@@ -38,8 +38,8 @@ try {
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
     await client.query(
-      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at IN ($1, $2)',
-      [1794050405008, 1794050405009]
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at > $1',
+      [1794050405007]
     );
     await client.query("COMMIT");
   } catch (error) {
