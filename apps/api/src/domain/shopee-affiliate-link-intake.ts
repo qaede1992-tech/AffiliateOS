@@ -13,6 +13,7 @@ export interface ShopeeAffiliateLinkIntakeRepository {
   findById(id: string): Promise<ShopeeAffiliateLinkIntake | undefined>;
   saveIfAbsent(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   update(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
+  claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string): Promise<boolean>;
 }
 export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
   private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
@@ -31,6 +32,12 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
     return intake;
   }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
+  async claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string) {
+    const current = this.rows.get(id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return false;
+    this.rows.set(id, { ...current, updatedAt: claimedAt });
+    return true;
+  }
 }
 function normalizeAffiliateUrl(raw: string): string {
   const url = new URL(raw.trim());
@@ -38,13 +45,61 @@ function normalizeAffiliateUrl(raw: string): string {
   url.hostname = url.hostname.toLowerCase();
   return url.toString();
 }
+const STALE_RESOLVING_INTAKE_MS = 5 * 60_000;
+
 export class ShopeeAffiliateLinkIntakeService {
   constructor(private readonly repository: ShopeeAffiliateLinkIntakeRepository, private readonly resolver: typeof resolveShopeeAffiliateLink = resolveShopeeAffiliateLink) {}
+
+  private async retryStaleResolving(existing: ShopeeAffiliateLinkIntake, normalizedUrl: string): Promise<ShopeeAffiliateLinkIntake> {
+    const claimedAt = new Date().toISOString();
+    const claimed = await this.repository.claimStaleResolving(existing.id, existing.updatedAt, claimedAt);
+    if (!claimed) return (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
+
+    // A legacy intake can remain in "resolving" after the old persist-before-fetch
+    // flow was interrupted. Claim it with an updatedAt compare-and-set so only one
+    // operator retry performs the public Shopee lookup.
+    const result = await this.resolver(normalizedUrl);
+    const now = new Date().toISOString();
+    const hasProductIdentity = result.status === "resolved" && Boolean(result.shopId && result.itemId);
+
+    if (hasProductIdentity && result.shopId && result.itemId) {
+      const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
+      if (sameProduct && sameProduct.id !== existing.id) {
+        await this.repository.update({
+          ...existing,
+          status: "failed",
+          shopId: undefined,
+          itemId: undefined,
+          reason: "Resolved product identity is already tracked by another intake.",
+          sourceMetadata: { ...existing.sourceMetadata, resolution: "resolved", duplicateOfIntakeId: sameProduct.id },
+          updatedAt: now
+        });
+        return sameProduct;
+      }
+    }
+
+    return this.repository.update({
+      ...existing,
+      status: hasProductIdentity ? "awaiting_offer_data" : "unresolved",
+      ...(result.productUrl ? { canonicalProductUrl: result.productUrl } : {}),
+      shopId: result.shopId,
+      itemId: result.itemId,
+      reason: result.reason?.slice(0, 1000) ?? (hasProductIdentity ? undefined : "Shopee resolver did not return a verified product identity."),
+      sourceMetadata: { ...existing.sourceMetadata, resolution: result.status, recoveredFromStaleResolving: true },
+      updatedAt: now
+    });
+  }
+
   async submit(rawUrl: string): Promise<ShopeeAffiliateLinkIntake> {
     const normalized = normalizeAffiliateUrl(rawUrl);
     const hash = createHash("sha256").update(normalized).digest("hex");
     const existing = await this.repository.findByUrlHash(hash);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.status !== "resolving") return existing;
+      const updatedAt = Date.parse(existing.updatedAt);
+      if (!Number.isFinite(updatedAt) || Date.now() - updatedAt < STALE_RESOLVING_INTAKE_MS) return existing;
+      return this.retryStaleResolving(existing, normalized);
+    }
 
     // Resolve before persisting. The intake endpoint waits for resolution, so a
     // persisted "resolving" row is not needed and could be stranded when another
