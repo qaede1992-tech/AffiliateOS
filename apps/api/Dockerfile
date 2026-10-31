@@ -23,7 +23,7 @@ RUN npm ci --omit=dev
 RUN apk add --no-cache ffmpeg font-dejavu \
   && ffmpeg -hide_banner -filters 2>/dev/null | grep -q drawtext \
   && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libx264 \
-  && test -f /usr/share/fonts/ttf-dejavu/DejaVuSans.ttf
+  && test -f /usr/share/fonts/dejavu/DejaVuSans.ttf
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/packages/shared/dist packages/shared/dist
 RUN mkdir -p /var/lib/affiliateos/secrets && chown -R node:node /var/lib/affiliateos
