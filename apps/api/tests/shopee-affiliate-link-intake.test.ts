@@ -16,15 +16,18 @@ test("Shopee link intake persists resolved product identity and awaits verified 
   assert.equal((await service.get(intake.id))?.id, intake.id);
 });
 
-test("Shopee link intake is idempotent for normalized URLs", async () => {
+test("Shopee link intake is idempotent for normalized URLs after a successful resolution", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   let calls = 0;
-  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => { calls += 1; return { status: "unresolved", affiliateUrl, reason: "not publicly accessible" }; });
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => {
+    calls += 1;
+    return { status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456" };
+  });
   const first = await service.submit("https://s.shopee.co.id/example#tracking");
   const second = await service.submit("https://s.shopee.co.id/example");
   assert.equal(first.id, second.id);
   assert.equal(calls, 1);
-  assert.equal(second.status, "unresolved");
+  assert.equal(second.status, "awaiting_offer_data");
 });
 
 test("stale legacy resolving intake is retried in place after the recovery window", async () => {
