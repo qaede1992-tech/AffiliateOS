@@ -61,7 +61,7 @@ const buildFilter = (textPath: string): string => [
 export class ProductPromoVideoRenderer {
   private readonly maxInputBytes: number;
   private readonly maxOutputBytes: number;
-  private readonly runProcess: (binary: string, args: string[]) => Promise<void>;
+  private readonly runProcess: (binary: string, args: string[], timeoutMs: number) => Promise<void>;
 
   constructor(
     private readonly storage: Pick<SupabaseStorageClient, "bucketName" | "download" | "upload" | "remove">,
