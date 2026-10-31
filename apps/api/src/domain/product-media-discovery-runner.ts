@@ -1,5 +1,5 @@
 import type { Product } from "@affiliateos/shared";
-import { extractProductMediaCandidates } from "./product-media-discovery.js";
+import { extractProductMediaCandidates, type ProductMediaCandidate } from "./product-media-discovery.js";
 import { fetchPublicHttps } from "./public-https-fetch.js";
 import type { ProductMediaIngestionPolicy, ProductMediaIngestionResult } from "./product-media-ingestion.js";
 import { ProductMediaIngestionService } from "./product-media-ingestion.js";
