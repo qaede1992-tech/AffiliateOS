@@ -10,7 +10,7 @@ export type ProductMediaKind = "image" | "video";
 export interface ProductMediaCandidate {
   kind: ProductMediaKind;
   url: string;
-  source: "og" | "twitter" | "json-ld" | "html";
+  source: "og" | "twitter" | "json-ld" | "html" | "catalog";
 }
 
 export interface ProductMediaExtractionOptions {
