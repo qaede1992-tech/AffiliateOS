@@ -51,7 +51,7 @@ const isPublicAddress = (address: string): boolean => {
   return true;
 };
 
-const validateUrl = (raw: string, blockedHostnames: string[] = [], allowedHostnames: string[] = []): URL => {
+const validateUrl = (raw: string, blockedHostnames: string[] = [], allowedHostnames: readonly string[] = []): URL => {
   const url = new URL(raw);
   if (url.protocol !== "https:" || url.username || url.password || !url.hostname) {
     throw new Error("Only credential-free public HTTPS URLs are allowed.");
