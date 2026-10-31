@@ -266,6 +266,26 @@ test("parses an optional Link Gambar column from the Indonesian CSV format", () 
   assert.equal(result.rows[0]?.imageUrl, "https://cf.shopee.co.id/file/product-image.jpg");
 });
 
+test("parses optional HTTPS video_url from normalized preview CSV", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,video_url",
+    "0,123,Produk Video,55000,1000,lower_bound,Toko Contoh,850,4675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,https://cdn.example.test/product.mp4"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.videoUrl, "https://cdn.example.test/product.mp4");
+});
+
+test("parses optional Link Video from Indonesian CSV and rejects non-HTTPS media", () => {
+  const csv = [
+    headers + ",Link Video",
+    "123,Produk Video,55RB,1RB,Toko Contoh,8.5%,Rp4.675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,http://cdn.example.test/product.mp4"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /Link Video harus berupa URL HTTPS/);
+});
+
 test("rejects insecure or credential-bearing optional product image URLs", () => {
   const csv = [
     "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,image_url",
