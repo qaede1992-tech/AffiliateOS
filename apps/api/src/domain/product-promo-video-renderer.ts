@@ -14,7 +14,7 @@ const DEFAULT_MAX_OUTPUT_BYTES = 45 * 1024 * 1024;
 const DEFAULT_MAX_INPUT_BYTES = 10 * 1024 * 1024;
 const VIDEO_DURATION_SECONDS = 12;
 const VIDEO_FPS = 25;
-const FONT_PATH = "/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf";
+const FONT_PATH = "/usr/share/fonts/dejavu/DejaVuSans.ttf";
 
 export interface ProductPromoVideoRendererOptions {
   ffmpegPath?: string;
