@@ -131,7 +131,7 @@ export class MarketplaceService {
       const productEntities: Product[] = input.items.map((item) => {
         const existingProduct = existingProductsByExternalId.get(item.externalProductId.trim());
         const imageUrl = item.imageUrl ?? existingProduct?.imageUrl;
-        const videoUrl = existingProduct?.videoUrl;
+        const videoUrl = item.videoUrl ?? existingProduct?.videoUrl;
         const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl, videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
         validateMarketplaceProductInput(productInput);
         const timestamp = now();
@@ -165,7 +165,7 @@ export class MarketplaceService {
       return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds };
     }
     for (const item of input.items) {
-      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl: item.imageUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli, reviewCount: item.reviewCount, soldCount: item.soldCount, imageUrl: item.imageUrl, videoUrl: item.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
       const product = await this.persistProduct(connection, productInput);
       importedProducts += 1;
       const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;

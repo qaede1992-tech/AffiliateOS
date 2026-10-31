@@ -20,7 +20,17 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
   async findByUrlHash(hash: string) { return [...this.rows.values()].find(row => row.normalizedUrlHash === hash); }
   async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
   async findById(id: string) { return this.rows.get(id); }
-  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(intake.normalizedUrlHash); if (existing) return existing; this.rows.set(intake.id, intake); return intake; }
+  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) {
+    // Keep URL and product-identity deduplication atomic within this in-memory adapter.
+    const existingByUrl = [...this.rows.values()].find((row) => row.normalizedUrlHash === intake.normalizedUrlHash);
+    if (existingByUrl) return existingByUrl;
+    if (intake.shopId && intake.itemId) {
+      const existingByProduct = [...this.rows.values()].find((row) => row.shopId === intake.shopId && row.itemId === intake.itemId);
+      if (existingByProduct) return existingByProduct;
+    }
+    this.rows.set(intake.id, intake);
+    return intake;
+  }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
   async claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string) {
     const current = this.rows.get(id);
@@ -45,6 +55,9 @@ export class ShopeeAffiliateLinkIntakeService {
     const claimed = await this.repository.claimStaleResolving(existing.id, existing.updatedAt, claimedAt);
     if (!claimed) return (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
 
+    // A legacy intake can remain in "resolving" after the old persist-before-fetch
+    // flow was interrupted. Claim it with an updatedAt compare-and-set so only one
+    // operator retry performs the public Shopee lookup.
     const result = await this.resolver(normalizedUrl);
     const now = new Date().toISOString();
     const hasProductIdentity = result.status === "resolved" && Boolean(result.shopId && result.itemId);
@@ -87,29 +100,50 @@ export class ShopeeAffiliateLinkIntakeService {
       return this.retryStaleResolving(existing, normalized);
     }
     if (existing && existing.status !== "unresolved") return existing;
-    const now = new Date().toISOString();
-    const intake = existing ?? await this.repository.saveIfAbsent({ id: randomUUID(), marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: normalized, normalizedUrlHash: hash, status: "resolving", sourceMetadata: {}, createdAt: now, updatedAt: now });
-    if (intake.status !== "resolving" && intake.status !== "unresolved") return intake;
+
+    // Unresolved links can be retried by an operator. New links are resolved
+    // before persistence so a failed lookup cannot leave a new orphan row.
     const result = await this.resolver(normalized);
-    if (result.status === "resolved" && result.shopId && result.itemId) {
+    const hasProductIdentity = result.status === "resolved" && Boolean(result.shopId && result.itemId);
+    if (hasProductIdentity && result.shopId && result.itemId) {
       const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
-      if (sameProduct) return sameProduct;
-    }
-    const updated: ShopeeAffiliateLinkIntake = {
-      ...intake, status: result.status === "resolved" ? "awaiting_offer_data" : "unresolved",
-      ...(result.productUrl ? { canonicalProductUrl: result.productUrl } : {}),
-      ...(result.shopId ? { shopId: result.shopId } : {}), ...(result.itemId ? { itemId: result.itemId } : {}),
-      ...(result.reason ? { reason: result.reason.slice(0, 1000) } : {}),
-      sourceMetadata: { resolution: result.status }, updatedAt: new Date().toISOString()
-    };
-    try { return await this.repository.update(updated); }
-    catch (error) {
-      if (result.status === "resolved" && result.shopId && result.itemId) {
-        const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
-        if (sameProduct) return sameProduct;
+      if (sameProduct && sameProduct.id !== existing?.id) {
+        if (existing) {
+          await this.repository.update({
+            ...existing,
+            status: "failed",
+            shopId: undefined,
+            itemId: undefined,
+            reason: "Resolved product identity is already tracked by another intake.",
+            sourceMetadata: { ...existing.sourceMetadata, resolution: "resolved", duplicateOfIntakeId: sameProduct.id },
+            updatedAt: new Date().toISOString()
+          });
+        }
+        return sameProduct;
       }
-      throw error;
     }
+
+    const now = new Date().toISOString();
+    const intake: ShopeeAffiliateLinkIntake = {
+      ...(existing ?? {}),
+      id: existing?.id ?? randomUUID(),
+      marketplaceSlug: "shopee-affiliate-feed",
+      affiliateUrl: normalized,
+      normalizedUrlHash: hash,
+      status: hasProductIdentity ? "awaiting_offer_data" : "unresolved",
+      ...(result.productUrl ? { canonicalProductUrl: result.productUrl } : {}),
+      shopId: result.shopId,
+      itemId: result.itemId,
+      reason: result.reason?.slice(0, 1000),
+      sourceMetadata: {
+        ...(existing?.sourceMetadata ?? {}),
+        resolution: result.status,
+        ...(existing?.status === "unresolved" ? { retriedFromUnresolved: true } : {})
+      },
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+    return existing ? this.repository.update(intake) : this.repository.saveIfAbsent(intake);
   }
 
   async reconcileVerifiedOffer(productUrl: string) {
