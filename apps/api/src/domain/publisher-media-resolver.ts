@@ -12,7 +12,8 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60;
 export async function resolvePublisherMediaAssets(
   content: Pick<Content, "id">,
   assets: MediaAsset[],
-  storage?: Pick<SupabaseStorageClient, "bucketName" | "createSignedUrl">
+  storage?: Pick<SupabaseStorageClient, "bucketName" | "createSignedUrl">,
+  allowedProductIds: string[] = []
 ): Promise<MediaAsset[]> {
   return Promise.all(assets.map(async (asset) => {
     if (asset.source !== "object-storage") return asset;
@@ -32,9 +33,14 @@ export async function resolvePublisherMediaAssets(
     if (bucket !== storage.bucketName) {
       throw new Error("Private media asset references an unexpected Storage bucket.");
     }
-    if (!key.startsWith(`content/${content.id}/`) ||
-        key.split("/").some((part) => !part || part.includes(String.fromCharCode(92)) || part === "." || part === "..")) {
-      throw new Error("Private media object key is outside the publishing content scope.");
+    const segments = key.split("/");
+    const contentScoped = key.startsWith(`content/${content.id}/`);
+    const productScoped = segments.length >= 3 && segments[0] === "products" &&
+      allowedProductIds.includes(segments[1] ?? "") &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(segments[1] ?? "");
+    if ((!contentScoped && !productScoped) ||
+        segments.some((part) => !part || part.includes(String.fromCharCode(92)) || part === "." || part === "..")) {
+      throw new Error("Private media object key is outside the publishing content or linked-product scope.");
     }
 
     const signedUrl = await storage.createSignedUrl(key, SIGNED_URL_TTL_SECONDS);

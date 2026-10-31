@@ -15,8 +15,7 @@ export interface SafePublicHttpsFetchOptions {
   maxRedirects?: number;
   fetchImpl?: typeof httpsRequest;
   resolveHost?: typeof dnsLookup;
-  /** Optional hostname allowlist enforced for the initial URL and every redirect. */
-  allowedHosts?: readonly string[];
+  blockedHostnames?: string[];
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -51,15 +50,7 @@ const isPublicAddress = (address: string): boolean => {
   return true;
 };
 
-const isAllowedHost = (hostname: string, allowedHosts: readonly string[]): boolean => {
-  const host = hostname.toLowerCase().replace(/\\.$/, "");
-  return allowedHosts.some((allowed) => {
-    const domain = allowed.toLowerCase().replace(/\\.$/, "");
-    return host === domain || host.endsWith("." + domain);
-  });
-};
-
-const validateUrl = (raw: string, allowedHosts?: readonly string[]): URL => {
+const validateUrl = (raw: string, blockedHostnames: string[] = []): URL => {
   const url = new URL(raw);
   if (url.protocol !== "https:" || url.username || url.password || !url.hostname) {
     throw new Error("Only credential-free public HTTPS URLs are allowed.");
@@ -69,7 +60,9 @@ const validateUrl = (raw: string, allowedHosts?: readonly string[]): URL => {
     throw new Error("Local hostnames are not allowed.");
   }
   if (isIP(hostname)) throw new Error("IP literal URLs are not allowed.");
-  if (allowedHosts && !isAllowedHost(hostname, allowedHosts)) throw new Error("URL hostname is outside the configured allowlist.");
+  if (blockedHostnames.some((blocked) => hostname === blocked.toLowerCase() || hostname.endsWith(`.${blocked.toLowerCase()}`))) {
+    throw new Error("URL hostname is blocked by the fetch policy.");
+  }
   url.hash = "";
   return url;
 };
@@ -161,7 +154,8 @@ export const fetchPublicHttps = async (
   if (!Number.isSafeInteger(maxRedirects) || maxRedirects < 0 || maxRedirects > 10) throw new Error("maxRedirects must be between 0 and 10.");
   const requestImpl = options.fetchImpl ?? httpsRequest;
   const resolver = options.resolveHost ?? dnsLookup;
-  let current = validateUrl(rawUrl, options.allowedHosts);
+  const blockedHostnames = options.blockedHostnames ?? [];
+  let current = validateUrl(rawUrl, blockedHostnames);
   for (let redirects = 0; ; redirects++) {
     const address = await resolvePublicAddress(current.hostname, resolver);
     const result = await requestOnce(current, address, options.maxBytes, timeoutMs, requestImpl);
@@ -171,6 +165,6 @@ export const fetchPublicHttps = async (
     if (redirects >= maxRedirects) throw new Error("Public HTTPS redirect limit exceeded.");
     const location = result.headers.location;
     if (typeof location !== "string" || !location.trim()) throw new Error("Redirect response is missing a valid Location header.");
-    current = validateUrl(new URL(location, current).toString(), options.allowedHosts);
+    current = validateUrl(new URL(location, current).toString(), blockedHostnames);
   }
 };
