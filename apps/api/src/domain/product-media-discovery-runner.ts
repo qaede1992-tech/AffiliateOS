@@ -46,11 +46,16 @@ export class ProductMediaDiscoveryRunner {
   }
 
   async listVideoProductIds(productIds: string[]): Promise<string[]> {
-    const result: string[] = [];
-    for (const productId of [...new Set(productIds)]) {
-      if (await this.hasStoredVideo(productId)) result.push(productId);
-    }
-    return result;
+    const uniqueProductIds = [...new Set(productIds)];
+    if (uniqueProductIds.length === 0) return [];
+
+    const assets = this.assets.listByProducts
+      ? await this.assets.listByProducts(uniqueProductIds)
+      : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
+    const productIdsWithVideo = new Set(
+      assets.filter((asset) => asset.kind === "video").map((asset) => asset.productId)
+    );
+    return uniqueProductIds.filter((productId) => productIdsWithVideo.has(productId));
   }
 
   async discover(product: Product, nonMediaEligibilityPassed: boolean): Promise<ProductMediaDiscoveryResult> {
