@@ -5,6 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
 import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "./shopee-affiliate-link-intake.js";
+import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 
 export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
 export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
@@ -12,7 +13,16 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
   async findByUrlHash(hash: string) { return [...this.rows.values()].find((row) => row.normalizedUrlHash === hash); }
   async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
   async findById(id: string) { return this.rows.get(id); }
-  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(intake.normalizedUrlHash); if (existing) return existing; this.rows.set(intake.id, intake); return intake; }
+  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) {
+    const existingByUrl = [...this.rows.values()].find((row) => row.normalizedUrlHash === intake.normalizedUrlHash);
+    if (existingByUrl) return existingByUrl;
+    if (intake.shopId && intake.itemId) {
+      const existingByProduct = [...this.rows.values()].find((row) => row.shopId === intake.shopId && row.itemId === intake.itemId);
+      if (existingByProduct) return existingByProduct;
+    }
+    this.rows.set(intake.id, intake);
+    return intake;
+  }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
   async claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string) {
     const current = this.rows.get(id);
@@ -138,7 +148,7 @@ export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
+  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; productMediaAssets?: ProductMediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface CommissionRepository extends Repository<Commission> { findByConversionId(conversionId: EntityId): Promise<Commission | undefined>; }
