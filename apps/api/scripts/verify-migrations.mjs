@@ -156,7 +156,17 @@ const expectedColumns = [
   ["media_assets", "duration_seconds"],
   ["campaigns", "is_test"],
   ["autonomous_runs", "is_test"],
-  ["autonomous_action_outcomes", "recovery_quality_score"]
+  ["autonomous_action_outcomes", "recovery_quality_score"],
+  ["product_media_assets", "id"],
+  ["product_media_assets", "product_id"],
+  ["product_media_assets", "kind"],
+  ["product_media_assets", "bucket"],
+  ["product_media_assets", "object_key"],
+  ["product_media_assets", "mime_type"],
+  ["product_media_assets", "byte_size"],
+  ["product_media_assets", "sha256"],
+  ["product_media_assets", "source_url"],
+  ["product_media_assets", "created_at"]
 ];
 
 await client.connect();
@@ -182,7 +192,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'), ('product_media_assets', 'id'), ('product_media_assets', 'product_id'), ('product_media_assets', 'kind'), ('product_media_assets', 'bucket'), ('product_media_assets', 'object_key'), ('product_media_assets', 'mime_type'), ('product_media_assets', 'byte_size'), ('product_media_assets', 'sha256'), ('product_media_assets', 'source_url'), ('product_media_assets', 'created_at'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
