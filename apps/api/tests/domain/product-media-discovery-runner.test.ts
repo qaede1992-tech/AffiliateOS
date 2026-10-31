@@ -71,6 +71,33 @@ test("never fetches Shopee product HTML for media extraction", async () => {
   assert.match(result.skipped[0]?.reason ?? "", /Shopee product-page media extraction is disabled/);
 });
 
+test("ingests explicitly supplied Shopee catalog images without fetching product HTML", async () => {
+  const assets: ProductMediaAsset[] = [];
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash(id: string, hash: string) { return assets.find((asset) => asset.productId === id && asset.sha256 === hash); },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  const fetched: string[] = [];
+  const runner = new ProductMediaDiscoveryRunner(
+    { upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async (url: string) => {
+      fetched.push(url);
+      return { url, status: 200, headers: { "content-type": "image/png" }, bytes: png };
+    }) as never
+  );
+  const result = await runner.discover({ ...product, productUrl: "https://shopee.co.id/product/123/456", imageUrl: "https://cdn.example.test/catalog-image.png" }, true);
+  assert.deepEqual(fetched, ["https://cdn.example.test/catalog-image.png"]);
+  assert.equal(result.pageFetched, false);
+  assert.equal(result.hasVideo, false);
+  assert.equal(result.stored.length, 1);
+  assert.equal(result.stored[0]?.kind, "image");
+  assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
+});
+
 test("lists stored video product ids with one bulk repository read", async () => {
   const secondProductId = "22222222-2222-4222-8222-222222222222";
   const assets: ProductMediaAsset[] = [
