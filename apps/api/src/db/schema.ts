@@ -40,3 +40,20 @@ export const autonomousExplorationStateEvents = pgTable("autonomous_exploration_
 export const autonomousExplorationOptimizationEvents = pgTable("autonomous_exploration_optimization_events", { id: uuid("id").primaryKey(), stateId: uuid("state_id").notNull().references(() => autonomousExplorationStates.id), actionOutcomeId: uuid("action_outcome_id").notNull().references(() => autonomousActionOutcomes.id), signal: varchar("signal", { length: 20 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("autonomous_exploration_optimization_events_state_outcome_unique").on(table.stateId, table.actionOutcomeId), index("autonomous_exploration_optimization_events_outcome_idx").on(table.actionOutcomeId)]);
 
 export const shopeeAffiliateLinkIntakes = pgTable("shopee_affiliate_link_intakes", { id: uuid("id").primaryKey(), marketplaceSlug: varchar("marketplace_slug", { length: 100 }).notNull().default("shopee-affiliate-feed"), affiliateUrl: varchar("affiliate_url", { length: 2048 }).notNull(), normalizedUrlHash: varchar("normalized_url_hash", { length: 64 }).notNull(), canonicalProductUrl: varchar("canonical_product_url", { length: 2048 }), shopId: varchar("shop_id", { length: 32 }), itemId: varchar("item_id", { length: 32 }), status: varchar("status", { length: 30 }).notNull().default("received"), reason: varchar("reason", { length: 1000 }), sourceMetadata: jsonb("source_metadata").$type<Record<string, unknown>>().notNull().default({}), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow() }, (table) => [uniqueIndex("shopee_link_intakes_url_hash_unique").on(table.normalizedUrlHash), uniqueIndex("shopee_link_intakes_product_identity_unique").on(table.marketplaceSlug, table.shopId, table.itemId).where(sql`${table.shopId} IS NOT NULL AND ${table.itemId} IS NOT NULL`), index("shopee_link_intakes_status_updated_idx").on(table.status, table.updatedAt)]);
+
+export const productMediaAssets = pgTable("product_media_assets", {
+  id: uuid("id").primaryKey(),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 10 }).notNull(),
+  bucket: varchar("bucket", { length: 100 }).notNull(),
+  objectKey: varchar("object_key", { length: 1024 }).notNull(),
+  mimeType: varchar("mime_type", { length: 50 }).notNull(),
+  byteSize: bigint("byte_size", { mode: "number" }).notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  sourceUrl: varchar("source_url", { length: 2048 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
+  uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
+  index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt)
+]);

@@ -4,7 +4,7 @@ import type { ContentService } from "./content.js";
 import type { MediaAssetRepository } from "./media-asset.js";
 import { publisherSupportsContent, type PublicationCheckResult, type SocialPublisher } from "./distribution-engine.js";
 import type { PublicationOperation } from "./publication-operation.js";
-import type { SocialAccountRepository } from "./repository.js";
+import type { ContentProductRepository, SocialAccountRepository } from "./repository.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { resolvePublisherMediaAssets } from "./publisher-media-resolver.js";
@@ -27,7 +27,8 @@ export class PublisherExecutor {
     private readonly credentialResolver?: SocialCredentialResolver,
     private readonly mediaAssets?: MediaAssetRepository,
     private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator,
-    private readonly mediaStorage?: SupabaseStorageClient
+    private readonly mediaStorage?: SupabaseStorageClient,
+    private readonly contentProducts?: ContentProductRepository
   ) {}
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval): Promise<PublishExecutionResult> {
@@ -91,7 +92,8 @@ export class PublisherExecutor {
     if (assets.some((asset) => !asset)) throw new Error("One or more configured media assets do not exist.");
     const resolved = assets as NonNullable<(typeof assets)[number]>[];
     if (resolved.some((asset) => asset.contentId !== content.id)) throw new Error("A configured media asset does not belong to the content.");
-    return resolvePublisherMediaAssets(content, resolved, this.mediaStorage);
+    const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
+    return resolvePublisherMediaAssets(content, resolved, this.mediaStorage, linkedProducts.map((item) => item.productId));
   }
 
   private async findAccount(content: Content): Promise<SocialAccount> {
