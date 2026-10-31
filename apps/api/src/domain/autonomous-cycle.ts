@@ -107,7 +107,18 @@ export class AutonomousCycleService {
         });
         for (const selected of preliminary.selected) {
           const candidate = candidateList.find((item) => item.product.id === selected.product.id);
-          if (candidate) await this.productMediaDiscovery.discover(candidate.product, true);
+          if (candidate) {
+            const discovery = await this.productMediaDiscovery.discover(candidate.product, true);
+            if (!discovery.hasVideo) {
+              const rendered = await this.productMediaDiscovery.generatePromoVideo(candidate.product);
+              console.info(JSON.stringify({
+                event: "autonomous_product_promo_video",
+                productId: candidate.product.id,
+                generated: rendered.generated,
+                reason: rendered.reason
+              }));
+            }
+          }
         }
         videoIds = await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id));
       }
