@@ -65,3 +65,56 @@ test("blocks Shopee hosts and redirect destinations before requesting them", asy
   assert.equal(lookups, 1);
   assert.equal(requests, 1);
 });
+
+test("enforces allowed hostnames before DNS resolution", async () => {
+  let lookups = 0;
+  let requests = 0;
+  const resolveHost = (async () => {
+    lookups++;
+    return [{ address: "8.8.8.8", family: 4 }];
+  }) as never;
+  const fetchImpl = (() => {
+    requests++;
+    throw new Error("request should not occur");
+  }) as never;
+
+  await assert.rejects(
+    () => fetchPublicHttps("https://cdn.example.test/image.jpg", {
+      maxBytes: 100, resolveHost, fetchImpl, allowedHosts: ["shopee.co.id", "shopee.com"]
+    }),
+    /not allowed by the fetch policy/
+  );
+  assert.equal(lookups, 0);
+  assert.equal(requests, 0);
+});
+
+test("does not follow redirects outside allowed hostnames", async () => {
+  let lookups = 0;
+  let requests = 0;
+  const resolveHost = (async () => {
+    lookups++;
+    return [{ address: "8.8.8.8", family: 4 }];
+  }) as never;
+  const fetchImpl = ((options: unknown, callback: (response: EventEmitter & { statusCode?: number; headers?: Record<string, string>; resume: () => void }) => void) => {
+    requests++;
+    const response = new EventEmitter() as EventEmitter & { statusCode?: number; headers?: Record<string, string>; resume: () => void };
+    response.statusCode = 302;
+    response.headers = { location: "https://cdn.example.test/redirected-file" };
+    response.resume = () => {};
+    callback(response);
+    const request = new EventEmitter() as EventEmitter & { setTimeout: () => void; end: () => void; destroy: () => void };
+    request.setTimeout = () => {};
+    request.end = () => {};
+    request.destroy = () => {};
+    return request;
+  }) as never;
+
+  await assert.rejects(
+    () => fetchPublicHttps("https://s.shopee.co.id/short", {
+      maxBytes: 100, resolveHost, fetchImpl, allowedHosts: ["shopee.co.id", "shopee.com"]
+    }),
+    /not allowed by the fetch policy/
+  );
+  assert.equal(lookups, 1);
+  assert.equal(requests, 1);
+});
