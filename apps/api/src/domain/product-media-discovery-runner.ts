@@ -78,25 +78,36 @@ export class ProductMediaDiscoveryRunner {
     // Shopee affiliate terms prohibit automated extraction of platform creative
     // materials. Never fetch or parse Shopee product HTML for media candidates.
     if (isShopeeHost(pageUrl.hostname)) {
-      if (product.videoUrl) {
+      const catalogCandidates: ProductMediaCandidate[] = [];
+      for (const candidate of [
+        { kind: "video" as const, url: product.videoUrl },
+        { kind: "image" as const, url: product.imageUrl }
+      ]) {
+        if (!candidate.url) continue;
         try {
-          const videoUrl = new URL(product.videoUrl);
-          if (videoUrl.protocol === "https:" && !videoUrl.username && !videoUrl.password) {
-            const ingested = await this.ingestion.ingest({
-              productId: product.id,
-              nonMediaEligibilityPassed: true,
-              candidates: [{ kind: "video", url: videoUrl.toString(), source: "html" }]
-            });
-            const stored = await this.assets.listByProduct(product.id);
-            return {
-              productId: product.id, pageFetched: false,
-              hasVideo: stored.some((asset) => asset.kind === "video"),
-              stored: ingested.stored, skipped: ingested.skipped
-            };
+          const mediaUrl = new URL(candidate.url);
+          if (mediaUrl.protocol !== "https:" || mediaUrl.username || mediaUrl.password) {
+            throw new Error("Explicit catalog media URLs must use credential-free HTTPS.");
           }
+          catalogCandidates.push({ kind: candidate.kind, url: mediaUrl.toString(), source: "catalog" });
         } catch (error) {
-          skipped.push({ url: product.videoUrl, reason: error instanceof Error ? error.message : "Explicit product video URL could not be validated." });
+          skipped.push({ url: candidate.url, reason: error instanceof Error ? error.message : "Explicit catalog media URL could not be validated." });
         }
+      }
+      if (catalogCandidates.length > 0) {
+        const ingested = await this.ingestion.ingest({
+          productId: product.id,
+          nonMediaEligibilityPassed: true,
+          candidates: catalogCandidates
+        });
+        const stored = await this.assets.listByProduct(product.id);
+        return {
+          productId: product.id,
+          pageFetched: false,
+          hasVideo: stored.some((asset) => asset.kind === "video"),
+          stored,
+          skipped: [...skipped, ...ingested.skipped]
+        };
       }
       skipped.push({ url: product.productUrl, reason: "Shopee product-page media extraction is disabled; only explicitly supplied catalog media can be ingested." });
       return { productId: product.id, pageFetched: false, hasVideo: false, stored: existing, skipped };
