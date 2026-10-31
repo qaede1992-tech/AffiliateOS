@@ -16,7 +16,7 @@ export interface SafePublicHttpsFetchOptions {
   fetchImpl?: typeof httpsRequest;
   resolveHost?: typeof dnsLookup;
   blockedHostnames?: string[];
-  allowedHosts?: string[];
+  allowedHosts?: readonly string[];
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
