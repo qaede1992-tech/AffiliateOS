@@ -5,6 +5,7 @@ import type { ProductMediaIngestionPolicy, ProductMediaIngestionResult } from ".
 import { ProductMediaIngestionService } from "./product-media-ingestion.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
+import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from "./product-promo-video-renderer.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
   maxProductPageBytes?: number;
@@ -31,6 +32,7 @@ const isShopeeHost = (hostname: string): boolean => {
  */
 export class ProductMediaDiscoveryRunner {
   private readonly ingestion: ProductMediaIngestionService;
+  private readonly promoVideoRenderer: ProductPromoVideoRenderer;
 
   constructor(
     storage: SupabaseStorageClient,
@@ -39,6 +41,14 @@ export class ProductMediaDiscoveryRunner {
     private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps
   ) {
     this.ingestion = new ProductMediaIngestionService(storage, assets, policy, fetcher);
+    this.promoVideoRenderer = new ProductPromoVideoRenderer(storage, assets, {
+      maxInputBytes: policy.maxImageBytes,
+      maxOutputBytes: policy.maxVideoBytes
+    });
+  }
+
+  async generatePromoVideo(product: Product): Promise<ProductPromoVideoRenderResult> {
+    return this.promoVideoRenderer.render(product);
   }
 
   async hasStoredVideo(productId: string): Promise<boolean> {

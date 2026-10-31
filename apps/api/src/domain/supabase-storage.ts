@@ -132,6 +132,49 @@ export class SupabaseStorageClient {
     await this.assertSuccess(response, "delete");
   }
 
+  async download(key: string, maxBytes: number): Promise<Uint8Array> {
+    const safeKey = validateObjectKey(key);
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Storage download limit must be a positive safe integer.");
+    const objectPath = safeKey.split("/").map(encodeURIComponent).join("/");
+    const response = await this.fetchImpl(`${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${objectPath}`, {
+      method: "GET",
+      headers: this.headers()
+    });
+    await this.assertSuccess(response, "download");
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      await response.body?.cancel();
+      throw new Error("Stored media exceeds the configured download size limit.");
+    }
+    if (!response.body) throw new Error("Supabase Storage returned an empty download stream.");
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        if (!part.value) continue;
+        total += part.value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel();
+          throw new Error("Stored media exceeds the configured download size limit.");
+        }
+        chunks.push(part.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (total === 0) throw new Error("Supabase Storage returned an empty media object.");
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  }
+
   async createSignedUrl(key: string, expiresInSeconds: number): Promise<string> {
     const safeKey = validateObjectKey(key);
     if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds < 1 || expiresInSeconds > 60 * 60) {
