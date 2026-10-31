@@ -14,6 +14,7 @@ const DEFAULT_MAX_OUTPUT_BYTES = 45 * 1024 * 1024;
 const DEFAULT_MAX_INPUT_BYTES = 10 * 1024 * 1024;
 const VIDEO_DURATION_SECONDS = 12;
 const VIDEO_FPS = 25;
+const DEFAULT_TIMEOUT_MS = 90_000;
 const FONT_PATH = "/usr/share/fonts/dejavu/DejaVuSans.ttf";
 
 export interface ProductPromoVideoRendererOptions {
@@ -22,7 +23,7 @@ export interface ProductPromoVideoRendererOptions {
   maxOutputBytes?: number;
   timeoutMs?: number;
   /** Test seam; production uses execFile without a shell. */
-  runProcess?: (binary: string, args: string[]) => Promise<void>;
+  runProcess?: (binary: string, args: string[], timeoutMs: number) => Promise<void>;
 }
 
 export interface ProductPromoVideoRenderResult {
@@ -31,8 +32,8 @@ export interface ProductPromoVideoRenderResult {
   reason?: string;
 }
 
-const defaultRunProcess = async (binary: string, args: string[]): Promise<void> => {
-  await execFile(binary, args, { timeout: 90_000, maxBuffer: 1024 * 1024, windowsHide: true });
+const defaultRunProcess = async (binary: string, args: string[], timeoutMs: number): Promise<void> => {
+  await execFile(binary, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, windowsHide: true });
 };
 
 const safeTitle = (name: string): string => {
@@ -60,7 +61,7 @@ const buildFilter = (textPath: string): string => [
 export class ProductPromoVideoRenderer {
   private readonly maxInputBytes: number;
   private readonly maxOutputBytes: number;
-  private readonly runProcess: (binary: string, args: string[]) => Promise<void>;
+  private readonly runProcess: (binary: string, args: string[], timeoutMs: number) => Promise<void>;
 
   constructor(
     private readonly storage: Pick<SupabaseStorageClient, "bucketName" | "download" | "upload" | "remove">,
@@ -73,6 +74,9 @@ export class ProductPromoVideoRenderer {
     if (!Number.isSafeInteger(this.maxInputBytes) || this.maxInputBytes <= 0 ||
         !Number.isSafeInteger(this.maxOutputBytes) || this.maxOutputBytes <= 0) {
       throw new Error("Promo video input and output limits must be positive safe integers.");
+    }
+    if (options.timeoutMs !== undefined && (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs <= 0)) {
+      throw new Error("Promo video render timeout must be a positive safe integer.");
     }
   }
 
@@ -108,7 +112,7 @@ export class ProductPromoVideoRenderer {
           "-t", String(VIDEO_DURATION_SECONDS), "-r", String(VIDEO_FPS),
           "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
           "-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath
-        ]);
+        ], this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
       } catch (error) {
         const code = (error as NodeJS.ErrnoException)?.code;
         if (code === "ENOENT") return { generated: false, reason: "FFmpeg is not installed in this API runtime." };
