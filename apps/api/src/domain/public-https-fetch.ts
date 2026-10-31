@@ -61,13 +61,14 @@ const validateUrl = (raw: string, blockedHostnames: string[] = [], allowedHostna
     throw new Error("Local hostnames are not allowed.");
   }
   if (isIP(hostname)) throw new Error("IP literal URLs are not allowed.");
-  if (blockedHostnames.some((blocked) => hostname === blocked.toLowerCase().replace(/\\.$/, "") || hostname.endsWith(`.${blocked.toLowerCase().replace(/\\.$/, "")}`))) {
+  const matchesHostname = (candidate: string): boolean => {
+    const domain = candidate.toLowerCase().endsWith(".") ? candidate.toLowerCase().slice(0, -1) : candidate.toLowerCase();
+    return domain.length > 0 && (hostname === domain || hostname.endsWith(`.${domain}`));
+  };
+  if (blockedHostnames.some(matchesHostname)) {
     throw new Error("URL hostname is blocked by the fetch policy.");
   }
-  if (allowedHostnames.length > 0 && !allowedHostnames.some((allowed) => {
-    const domain = allowed.toLowerCase().replace(/\\.$/, "");
-    return domain.length > 0 && (hostname === domain || hostname.endsWith(`.${domain}`));
-  })) {
+  if (allowedHostnames.length > 0 && !allowedHostnames.some(matchesHostname)) {
     throw new Error("URL hostname is not allowed by the fetch policy.");
   }
   url.hash = "";
