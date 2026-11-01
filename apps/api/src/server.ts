@@ -13,6 +13,8 @@ import { DrizzleAutonomousFeedbackMemoryRepository } from "./db/autonomous-feedb
 import { ProviderEventWorker } from "./domain/provider-event-worker.js";
 import { ProviderEventScheduler } from "./domain/provider-event-scheduler.js";
 import { ProviderEventProcessor } from "./domain/provider-event-processor.js";
+import { ShopeeIntakeRecoveryWorker } from "./domain/shopee-intake-recovery-worker.js";
+import { ShopeeIntakeRecoveryScheduler } from "./domain/shopee-intake-recovery-scheduler.js";
 import { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./domain/provider-event-conversion-processor.js";
 import { GenericProviderConversionNormalizer } from "./domain/provider-conversion.js";
 import { MarketplaceProviderRegistry, ShopeeAffiliateFeedProvider } from "./domain/foundations.js";
@@ -126,10 +128,22 @@ const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   onError: (error) => app.log.error(error, "Provider event worker cycle failed")
 });
 
+const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
+  batchSize: environment.SHOPEE_INTAKE_RECOVERY_BATCH_SIZE,
+  concurrency: environment.SHOPEE_INTAKE_RECOVERY_CONCURRENCY,
+  resolverTimeoutMs: environment.SHOPEE_INTAKE_RECOVERY_RESOLVER_TIMEOUT_MS
+});
+const shopeeIntakeRecoveryScheduler = new ShopeeIntakeRecoveryScheduler(shopeeIntakeRecoveryWorker, {
+  intervalMs: environment.SHOPEE_INTAKE_RECOVERY_INTERVAL_MS,
+  onResult: (result) => app.log.info({ ...result }, "Shopee stale intake recovery cycle completed"),
+  onError: (error) => app.log.error(error, "Shopee stale intake recovery cycle failed")
+});
+
 try {
   await app.listen({ host: environment.API_HOST, port: environment.API_PORT });
   services.publicationScheduler.start();
   providerEventScheduler.start();
+  shopeeIntakeRecoveryScheduler.start();
   if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
@@ -138,6 +152,7 @@ try {
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
   await providerEventScheduler.stop();
+  await shopeeIntakeRecoveryScheduler.stop();
   await persistence.close();
   process.exit(1);
 }
@@ -147,6 +162,7 @@ const shutdown = async () => {
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
   await providerEventScheduler.stop();
+  await shopeeIntakeRecoveryScheduler.stop();
   await app.close();
   await persistence.close();
 };
