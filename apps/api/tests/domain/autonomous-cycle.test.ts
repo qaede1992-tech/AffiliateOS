@@ -30,6 +30,37 @@ describe("autonomous cycle", () => {
     assert.deepEqual(calls, ["preliminary", "discover", "list-videos", "final"]);
   });
 
+  it("isolates media discovery failures to one product and continues the autonomous cycle", async () => {
+    const candidates = ["media-fails", "media-works"].map((id) => ({ product: { id } as never, offers: [] }));
+    const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
+    const calls: string[] = [];
+    const execution = {
+      async previewSelection() {
+        return { selected: candidates.map((candidate) => ({ product: candidate.product, offerId: "offer", score: 90 })), rejected: [], audit: [] };
+      },
+      async runOnce(input: { publishableVideoProductIds?: string[] }) {
+        calls.push("execute");
+        assert.deepEqual(input.publishableVideoProductIds, ["media-works"]);
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover(product: { id: string }) {
+        calls.push(`discover:${product.id}`);
+        if (product.id === "media-fails") throw new Error("storage temporarily unavailable");
+        return { productId: product.id, pageFetched: false, hasVideo: true, stored: [], skipped: [] };
+      },
+      async generatePromoVideo() { throw new Error("must not render when a video exists"); },
+      async listVideoProductIds() { calls.push("list-videos"); return ["media-works"]; }
+    };
+    const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
+
+    const result = await service.runOnce({ publicationEnabled: false });
+
+    assert.ok(result);
+    assert.deepEqual(calls, ["discover:media-fails", "discover:media-works", "list-videos", "execute"]);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
