@@ -225,3 +225,43 @@ test("removes only a duplicate losing upload when the repository returns the con
   assert.equal(removed.length, 1);
   assert.notEqual(removed[0], winner.objectKey);
 });
+
+
+test("ignores an existing video outside the configured private bucket and renders a private copy", async () => {
+  const externalVideo: ProductMediaAsset = {
+    ...imageAsset,
+    id: "55555555-5555-4555-8555-555555555555",
+    kind: "video",
+    bucket: "legacy-public",
+    mimeType: "video/mp4",
+    objectKey: `products/${product.id}/legacy.mp4`
+  };
+  const assets: ProductMediaAsset[] = [imageAsset, externalVideo];
+  const uploaded: string[] = [];
+  const removed: string[] = [];
+  const storage = {
+    bucketName: "affiliate-media",
+    async download() { return imageBytes; },
+    async upload(input: { key: string }) {
+      uploaded.push(input.key);
+      return { bucket: "affiliate-media", key: input.key };
+    },
+    async remove(key: string) { removed.push(key); }
+  };
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  const renderer = new ProductPromoVideoRenderer(storage as never, repository, {
+    runProcess: async (_binary, args) => { await writeFile(args[args.length - 1]!, mp4Bytes); }
+  });
+
+  const result = await renderer.render(product);
+  assert.equal(result.generated, true);
+  assert.equal(result.asset?.bucket, "affiliate-media");
+  assert.equal(result.asset?.kind, "video");
+  assert.equal(uploaded.length, 1);
+  assert.equal(removed.length, 0);
+  assert.equal(assets.filter((asset) => asset.kind === "video").length, 2);
+});
