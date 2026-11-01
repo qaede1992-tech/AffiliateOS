@@ -51,6 +51,7 @@ function normalizeAffiliateUrl(raw: string): string {
 }
 const STALE_RESOLVING_INTAKE_MS = 5 * 60_000;
 export type ShopeeIntakeRecoveryResult = { scanned: number; recovered: number; failed: number; skipped: number };
+type StaleResolvingRetryResult = { intake: ShopeeAffiliateLinkIntake; completedByThisAttempt: boolean };
 
 export class ShopeeAffiliateLinkIntakeService {
   constructor(private readonly repository: ShopeeAffiliateLinkIntakeRepository, private readonly resolver: typeof resolveShopeeAffiliateLink = resolveShopeeAffiliateLink) {}
@@ -73,13 +74,13 @@ export class ShopeeAffiliateLinkIntakeService {
         const candidate = candidates[index];
         if (!candidate) return;
         try {
-          const result = await this.retryStaleResolving(candidate, candidate.affiliateUrl, resolverTimeoutMs);
-          if (result.updatedAt !== candidate.updatedAt && result.status !== "resolving") {
-            recovered += 1;
-            if (result.status === "unresolved" || result.status === "failed") failed += 1;
-          } else {
+          const { intake: result, completedByThisAttempt } = await this.retryStaleResolving(candidate, candidate.affiliateUrl, resolverTimeoutMs);
+          if (!completedByThisAttempt) {
             skipped += 1;
+            continue;
           }
+          recovered += 1;
+          if (result.status === "unresolved" || result.status === "failed") failed += 1;
         } catch {
           failed += 1;
         }
@@ -89,10 +90,10 @@ export class ShopeeAffiliateLinkIntakeService {
     return { scanned: candidates.length, recovered, failed, skipped };
   }
 
-  private async retryStaleResolving(existing: ShopeeAffiliateLinkIntake, normalizedUrl: string, resolverTimeoutMs = 15_000): Promise<ShopeeAffiliateLinkIntake> {
+  private async retryStaleResolving(existing: ShopeeAffiliateLinkIntake, normalizedUrl: string, resolverTimeoutMs = 15_000): Promise<StaleResolvingRetryResult> {
     const claimedAt = new Date().toISOString();
     const claimed = await this.repository.claimStaleResolving(existing.id, existing.updatedAt, claimedAt);
-    if (!claimed) return (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
+    if (!claimed) return { intake: (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: false };
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let result: Awaited<ReturnType<typeof resolveShopeeAffiliateLink>>;
@@ -113,7 +114,7 @@ export class ShopeeAffiliateLinkIntakeService {
         sourceMetadata: { ...existing.sourceMetadata, recoveredFromStaleResolving: true, recoveryFailure: true },
         updatedAt: now
       });
-      return completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
+      return { intake: completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: Boolean(completed) };
     } finally {
       if (timeout) clearTimeout(timeout);
     }
@@ -156,7 +157,7 @@ export class ShopeeAffiliateLinkIntakeService {
     if (existing?.status === "resolving") {
       const updatedAt = Date.parse(existing.updatedAt);
       if (!Number.isFinite(updatedAt) || Date.now() - updatedAt < STALE_RESOLVING_INTAKE_MS) return existing;
-      return this.retryStaleResolving(existing, normalized);
+      return (await this.retryStaleResolving(existing, normalized)).intake;
     }
     if (existing && existing.status !== "unresolved") return existing;
     const now = new Date().toISOString();
