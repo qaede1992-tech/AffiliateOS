@@ -105,11 +105,12 @@ export class AutonomousCycleService {
       let mediaIds = input.publishableMediaProductIds ?? videoIds;
       if (this.productMediaDiscovery) {
         // Pass 1: affiliate eligibility only. This pass never creates media or content.
-        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false }]));
+        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true }]));
         const preliminary = await this.execution.previewSelection({
           ...input,
+          idempotencyNamespace: input.idempotencyNamespace ?? "autonomous-execution",
           candidates: candidateList,
-          policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false },
+          policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
           policiesByMarketplace: preliminaryPolicies,
           requirePublishableMedia: false,
           requirePublishableVideo: false,
@@ -154,8 +155,9 @@ export class AutonomousCycleService {
         const mediaReadyPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: false, requireCommissionSignal: true }]));
         const mediaReady = await this.execution.previewSelection({
           ...input,
+          idempotencyNamespace: input.idempotencyNamespace ?? "autonomous-execution",
           candidates: candidateList,
-          policy: { ...input.policy, requirePublishableMedia: true, requirePublishableVideo: false },
+          policy: { ...input.policy, requirePublishableMedia: true, requirePublishableVideo: false, requireCommissionSignal: true },
           policiesByMarketplace: mediaReadyPolicies,
           requirePublishableMedia: true,
           requirePublishableVideo: false,
