@@ -133,7 +133,7 @@ export class ShopeeAffiliateLinkIntakeService {
           sourceMetadata: { ...existing.sourceMetadata, resolution: "resolved", duplicateOfIntakeId: sameProduct.id },
           updatedAt: now
         });
-        return completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
+        return { intake: completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: Boolean(completed) };
       }
     }
 
@@ -147,7 +147,7 @@ export class ShopeeAffiliateLinkIntakeService {
       sourceMetadata: { ...existing.sourceMetadata, resolution: result.status, recoveredFromStaleResolving: true },
       updatedAt: now
     });
-    return completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
+    return { intake: completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: Boolean(completed) };
   }
 
   async submit(rawUrl: string): Promise<ShopeeAffiliateLinkIntake> {
