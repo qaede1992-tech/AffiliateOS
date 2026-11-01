@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createApp } from "../src/app.js";
+import type { Services } from "../src/domain/container.js";
 import { InMemoryShopeeAffiliateLinkIntakeRepository } from "../src/domain/repository.js";
 import { ShopeeAffiliateLinkIntakeService } from "../src/domain/shopee-affiliate-link-intake.js";
 
@@ -63,4 +65,32 @@ test("verified feed offer reconciles a matching intake without inventing offer v
   const reconciled = await service.reconcileVerifiedOffer("https://shopee.co.id/product/123/456");
   assert.equal(reconciled?.status, "imported");
   assert.equal(reconciled?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
+});
+
+
+test("Shopee intake lookup requires an operator role", async () => {
+  const intakeId = "11111111-1111-4111-8111-111111111111";
+  let lookupCalled = false;
+  const services = {
+    shopeeAffiliateLinkIntakes: {
+      get: async (id: string) => {
+        lookupCalled = true;
+        assert.equal(id, intakeId);
+        return undefined;
+      }
+    }
+  } as unknown as Services;
+  const app = createApp(services, {
+    auth: { enabled: false, operatorId: "viewer", role: "viewer" },
+    rateLimit: { enabled: false, limit: 100, windowMs: 60_000 }
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/api/v1/shopee/affiliate-link-intakes/${intakeId}`
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.equal(lookupCalled, false);
+  await app.close();
 });
