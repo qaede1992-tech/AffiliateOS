@@ -28,7 +28,7 @@ const imageAsset: ProductMediaAsset = {
   createdAt: "2026-10-31T00:00:00.000Z"
 };
 
-test("renders and persists a generated 9:16 MP4 from a validated stored product image", async () => {
+test("passes the configured timeout while rendering and persisting a generated 9:16 MP4", async () => {
   const assets: ProductMediaAsset[] = [imageAsset];
   const uploaded: string[] = [];
   const storage = {
@@ -52,7 +52,9 @@ test("renders and persists a generated 9:16 MP4 from a validated stored product 
     async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
   };
   const renderer = new ProductPromoVideoRenderer(storage as never, repository, {
-    runProcess: async (_binary, args) => {
+    timeoutMs: 15_000,
+    runProcess: async (_binary, args, timeoutMs) => {
+      assert.equal(timeoutMs, 15_000);
       assert.ok(args.includes("libx264"));
       assert.ok(args.some((arg) => arg.includes("zoompan")));
       await writeFile(args[args.length - 1]!, mp4Bytes);
