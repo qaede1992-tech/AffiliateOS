@@ -32,6 +32,7 @@ const isShopeeHost = (hostname: string): boolean => {
  */
 export class ProductMediaDiscoveryRunner {
   private readonly ingestion: ProductMediaIngestionService;
+  private readonly bucketName: string;
   private readonly promoVideoRenderer: ProductPromoVideoRenderer;
 
   constructor(
@@ -40,6 +41,7 @@ export class ProductMediaDiscoveryRunner {
     private readonly policy: ProductMediaDiscoveryPolicy,
     private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps
   ) {
+    this.bucketName = storage.bucketName;
     this.ingestion = new ProductMediaIngestionService(storage, assets, policy, fetcher);
     this.promoVideoRenderer = new ProductPromoVideoRenderer(storage, assets, {
       maxInputBytes: policy.maxImageBytes,
@@ -52,7 +54,7 @@ export class ProductMediaDiscoveryRunner {
   }
 
   async hasStoredVideo(productId: string): Promise<boolean> {
-    return (await this.assets.listByProduct(productId)).some((asset) => asset.kind === "video");
+    return (await this.assets.listByProduct(productId)).some((asset) => asset.bucket === this.bucketName && asset.kind === "video");
   }
 
   async listPublishableMediaProductIds(productIds: string[]): Promise<string[]> {
@@ -61,7 +63,7 @@ export class ProductMediaDiscoveryRunner {
     const assets = this.assets.listByProducts
       ? await this.assets.listByProducts(uniqueProductIds)
       : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
-    const ids = new Set(assets.filter((asset) => asset.kind === "image" || asset.kind === "video").map((asset) => asset.productId));
+    const ids = new Set(assets.filter((asset) => asset.bucket === this.bucketName && (asset.kind === "image" || asset.kind === "video")).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => ids.has(productId));
   }
 
@@ -73,7 +75,7 @@ export class ProductMediaDiscoveryRunner {
       ? await this.assets.listByProducts(uniqueProductIds)
       : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
     const productIdsWithVideo = new Set(
-      assets.filter((asset) => asset.kind === "video").map((asset) => asset.productId)
+      assets.filter((asset) => asset.bucket === this.bucketName && asset.kind === "video").map((asset) => asset.productId)
     );
     return uniqueProductIds.filter((productId) => productIdsWithVideo.has(productId));
   }
