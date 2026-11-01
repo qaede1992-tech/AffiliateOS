@@ -104,7 +104,14 @@ export class ShopeeAffiliateLinkIntakeService {
       ...(result.reason ? { reason: result.reason.slice(0, 1000) } : {}),
       sourceMetadata: { resolution: result.status }, updatedAt: new Date().toISOString()
     };
-    try { return await this.repository.update(updated); }
+    try {
+      if (intake.status === "resolving") {
+        return (await this.repository.updateIfResolving(intake.id, intake.updatedAt, updated))
+          ?? (await this.repository.findByUrlHash(hash))
+          ?? intake;
+      }
+      return await this.repository.update(updated);
+    }
     catch (error) {
       if (result.status === "resolved" && result.shopId && result.itemId) {
         const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
