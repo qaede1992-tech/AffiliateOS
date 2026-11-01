@@ -382,7 +382,7 @@ describe("validated media selection gate", () => {
       requirePublishableMedia: true
     });
     assert.equal(withoutStoredMedia.selected.length, 0);
-    assert.ok(withoutStoredMedia.rejected[0]?.reasons.some((reason) => reason.includes("HTTPS image or video")));
+    assert.ok(withoutStoredMedia.rejected[0]?.reasons.some((reason) => reason.includes("validated, persisted image or video")));
     const withStoredImage = selector.select(
       [candidate],
       { minimumScore: 0, maximumResults: 1, requirePublishableMedia: true },
