@@ -5,29 +5,53 @@ import type { AutonomousCycleLock } from "../../src/domain/autonomous-cycle-lock
 import type { AutonomousExecutionService } from "../../src/domain/autonomous-execution.js";
 
 describe("autonomous cycle", () => {
-  it("discovers videos only after preliminary eligibility and passes stored-video evidence to final selection", async () => {
-    const candidate = { product: { id: "video-product" } as never, offers: [] };
-    const provider: AutonomousCandidateProvider = { async listCandidates() { return [candidate]; } };
+  it("renders promo videos only after final affiliate selection and verified media eligibility", async () => {
+    const candidates = ["selected-image", "media-rejected"].map((id) => ({ product: { id } as never, offers: [] }));
+    const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
+    let videoLookupCount = 0;
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean; requirePublishableVideo?: boolean }) {
-        calls.push(input.requirePublishableVideo === false ? "preliminary" : "preview");
-        return { selected: [{ product: candidate.product, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+        if (input.requirePublishableMedia === true) {
+          calls.push("media-ready-selection");
+          return { selected: [{ product: candidates[0]!.product, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+        }
+        calls.push("preliminary-selection");
+        return { selected: candidates.map((candidate) => ({ product: candidate.product, offerId: "offer", score: 90 })), rejected: [], audit: [] };
       },
-      async runOnce(input: { publishableVideoProductIds?: string[]; requirePublishableVideo?: boolean }) {
-        calls.push(input.requirePublishableVideo ? "final" : "run-without-video-gate");
-        assert.deepEqual(input.publishableVideoProductIds, ["video-product"]);
+      async runOnce(input: { publishableMediaProductIds?: string[]; publishableVideoProductIds?: string[]; requirePublishableVideo?: boolean }) {
+        calls.push("final-execution");
+        assert.deepEqual(input.publishableMediaProductIds, ["selected-image", "media-rejected"]);
+        assert.deepEqual(input.publishableVideoProductIds, ["selected-image"]);
+        assert.equal(input.requirePublishableVideo, true);
         return { selected: [], rejected: [], audit: [], outcomes: [] };
       }
     } as unknown as AutonomousExecutionService;
     const discovery = {
-      async discover() { calls.push("discover"); return { productId: "video-product", pageFetched: true, hasVideo: true, stored: [], skipped: [] }; },
-      async listVideoProductIds() { calls.push("list-videos"); return ["video-product"]; }
+      async discover(product: { id: string }) { calls.push("discover:" + product.id); return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
+      async listPublishableMediaProductIds() { calls.push("list-media"); return ["selected-image", "media-rejected"]; },
+      async listVideoProductIds() {
+        calls.push("list-videos");
+        videoLookupCount += 1;
+        return videoLookupCount === 1 ? [] : ["selected-image"];
+      },
+      async generatePromoVideo(product: { id: string }) { calls.push("render:" + product.id); return { generated: true }; }
     };
     const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
     const result = await service.runOnce({ publicationEnabled: false });
     assert.ok(result);
-    assert.deepEqual(calls, ["preliminary", "discover", "list-videos", "final"]);
+    assert.deepEqual(calls, [
+      "preliminary-selection",
+      "discover:selected-image",
+      "discover:media-rejected",
+      "list-media",
+      "list-videos",
+      "media-ready-selection",
+      "render:selected-image",
+      "list-videos",
+      "final-execution"
+    ]);
+    assert.equal(calls.some((call) => call === "render:media-rejected"), false);
   });
 
   it("loads candidates and delegates one execution pass", async () => {

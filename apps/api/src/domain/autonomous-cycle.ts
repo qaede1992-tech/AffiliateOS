@@ -60,9 +60,13 @@ export class AutonomousCycleService {
     audit: AutonomousExecutionResult["audit"];
   }> {
     const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: false });
+    const productIds = candidateList.map((candidate) => candidate.product.id);
     const videoIds = this.productMediaDiscovery
-      ? await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id))
+      ? await this.productMediaDiscovery.listVideoProductIds(productIds)
       : input.publishableVideoProductIds ?? [];
+    const mediaIds = this.productMediaDiscovery
+      ? await this.productMediaDiscovery.listPublishableMediaProductIds(productIds)
+      : input.publishableMediaProductIds ?? videoIds;
     const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
     const result = await this.execution.previewSelection({
       ...input,
@@ -71,6 +75,7 @@ export class AutonomousCycleService {
       requirePublishableMedia: true,
       requirePublishableVideo: true,
       publishableVideoProductIds: videoIds,
+      publishableMediaProductIds: mediaIds,
       requireCommissionSignal: true
     });
     return {
@@ -97,25 +102,112 @@ export class AutonomousCycleService {
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
       let videoIds = input.publishableVideoProductIds ?? [];
+      let mediaIds = input.publishableMediaProductIds ?? videoIds;
       if (this.productMediaDiscovery) {
-        // First pass preserves every non-media threshold but does not reject products solely because
-        // media has not yet been discovered. It never creates campaigns or content.
-        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false }]));
+        // Pass 1: affiliate eligibility only. This pass never creates media or content.
+        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true }]));
         const preliminary = await this.execution.previewSelection({
-          ...input, candidates: candidateList, policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false },
-          policiesByMarketplace: preliminaryPolicies, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true
+          ...input,
+          idempotencyNamespace: input.idempotencyNamespace ?? "autonomous-execution",
+          candidates: candidateList,
+          policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
+          policiesByMarketplace: preliminaryPolicies,
+          requirePublishableMedia: false,
+          requirePublishableVideo: false,
+          requireCommissionSignal: true
         });
         for (const selected of preliminary.selected) {
           const candidate = candidateList.find((item) => item.product.id === selected.product.id);
-          if (candidate) await this.productMediaDiscovery.discover(candidate.product, true);
+          if (!candidate) continue;
+          try {
+            await this.productMediaDiscovery.discover(candidate.product, true);
+          } catch (error) {
+            console.warn(JSON.stringify({
+              event: "autonomous_product_media_discovery_failed",
+              productId: candidate.product.id,
+              reason: error instanceof Error ? error.message : "Product media discovery failed."
+            }));
+          }
         }
-        videoIds = await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id));
+
+        const productIds = candidateList.map((candidate) => candidate.product.id);
+        try {
+          mediaIds = await this.productMediaDiscovery.listPublishableMediaProductIds(productIds);
+        } catch (error) {
+          mediaIds = [];
+          console.warn(JSON.stringify({
+            event: "autonomous_product_media_index_failed",
+            reason: error instanceof Error ? error.message : "Product media index lookup failed."
+          }));
+        }
+        try {
+          videoIds = await this.productMediaDiscovery.listVideoProductIds(productIds);
+        } catch (error) {
+          videoIds = [];
+          console.warn(JSON.stringify({
+            event: "autonomous_product_video_index_failed",
+            reason: error instanceof Error ? error.message : "Product video index lookup failed."
+          }));
+        }
+
+        // Pass 2: final affiliate selection. It requires verified, persisted product media,
+        // but does not require a video yet. Only products selected here may incur video rendering.
+        const mediaReadyPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: false, requireCommissionSignal: true }]));
+        const mediaReady = await this.execution.previewSelection({
+          ...input,
+          idempotencyNamespace: input.idempotencyNamespace ?? "autonomous-execution",
+          candidates: candidateList,
+          policy: { ...input.policy, requirePublishableMedia: true, requirePublishableVideo: false, requireCommissionSignal: true },
+          policiesByMarketplace: mediaReadyPolicies,
+          requirePublishableMedia: true,
+          requirePublishableVideo: false,
+          publishableMediaProductIds: mediaIds,
+          publishableVideoProductIds: videoIds,
+          requireCommissionSignal: true
+        });
+
+        // Pass 3: generate promotional videos only for products that passed final affiliate selection.
+        for (const selected of mediaReady.selected) {
+          if (videoIds.includes(selected.product.id)) continue;
+          const candidate = candidateList.find((item) => item.product.id === selected.product.id);
+          if (!candidate) continue;
+          try {
+            const rendered = await this.productMediaDiscovery.generatePromoVideo(candidate.product);
+            console.info(JSON.stringify({
+              event: "autonomous_product_promo_video",
+              productId: candidate.product.id,
+              generated: rendered.generated,
+              reason: rendered.reason
+            }));
+          } catch (error) {
+            console.warn(JSON.stringify({
+              event: "autonomous_product_promo_video_failed",
+              productId: candidate.product.id,
+              reason: error instanceof Error ? error.message : "Product promo video generation failed."
+            }));
+          }
+        }
+        try {
+          videoIds = await this.productMediaDiscovery.listVideoProductIds(productIds);
+        } catch (error) {
+          videoIds = [];
+          console.warn(JSON.stringify({
+            event: "autonomous_product_video_index_failed",
+            reason: error instanceof Error ? error.message : "Product video index lookup failed."
+          }));
+        }
       }
       const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
       const executionInput: AutonomousExecutionInput = {
-        ...input, scheduledAt, candidates: candidateList, policiesByMarketplace: finalPolicies,
-        requirePublishableMedia: true, requirePublishableVideo: true,
-        publishableVideoProductIds: videoIds, requireCommissionSignal: true
+        ...input,
+        scheduledAt,
+        candidates: candidateList,
+        policiesByMarketplace: finalPolicies,
+        requirePublishableMedia: true,
+        requirePublishableVideo: true,
+        publishableMediaProductIds: mediaIds,
+        publishableVideoProductIds: videoIds,
+        requireCommissionSignal: true
       };
       const result = await this.execution.runOnce(executionInput);
       const explorationEvaluation = this.explorationEvaluation ? await this.explorationEvaluation.run() : undefined;

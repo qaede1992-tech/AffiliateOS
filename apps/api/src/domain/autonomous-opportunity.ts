@@ -74,7 +74,8 @@ export class AutonomousOpportunitySelector {
     performanceOrPolicies: Map<string, OpportunityPerformanceSignal> | OpportunitySelectionPoliciesByMarketplace = new Map(),
     policiesByMarketplace: OpportunitySelectionPoliciesByMarketplace = {},
     adaptiveExplorationRates: Map<string, number> = new Map(),
-    publishableVideoProductIds: Set<string> = new Set()
+    publishableVideoProductIds: Set<string> = new Set(),
+    publishableMediaProductIds: Set<string> = new Set()
   ): OpportunitySelectionResult {
     const performance = performanceOrPolicies instanceof Map ? performanceOrPolicies : new Map<string, OpportunityPerformanceSignal>();
     const effectivePoliciesByMarketplace = performanceOrPolicies instanceof Map ? policiesByMarketplace : performanceOrPolicies;
@@ -133,7 +134,7 @@ export class AutonomousOpportunitySelector {
       const selectedOffer = item.offerId ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId) : undefined;
       const hasCommissionSignal = Boolean(selectedOffer && (selectedOffer.commissionRateBps !== undefined || selectedOffer.commissionAmountCents !== undefined));
       return item.score >= minimumScore && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
-        (!candidatePolicy.requirePublishableMedia || hasPublishableMedia(item.product, publishableVideoProductIds)) && (!candidatePolicy.requirePublishableVideo || hasPublishableVideo(item.product, publishableVideoProductIds)) &&
+        (!candidatePolicy.requirePublishableMedia || hasPublishableMedia(item.product, publishableVideoProductIds, publishableMediaProductIds)) && (!candidatePolicy.requirePublishableVideo || hasPublishableVideo(item.product, publishableVideoProductIds)) &&
         (!candidatePolicy.requireCommissionSignal || hasCommissionSignal) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
@@ -166,7 +167,7 @@ export class AutonomousOpportunitySelector {
           : [
             ...(!item.offerId ? ["No affiliate offer selected"] : []),
             ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId)) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
-            ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds) ? ["Product has no HTTPS image or video suitable for autopublishing"] : []),
+            ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds, publishableMediaProductIds) ? ["Product has no validated, persisted image or video suitable for autopublishing"] : []),
             ...(candidatePolicy.requirePublishableVideo && !hasPublishableVideo(item.product, publishableVideoProductIds) ? ["Product has no validated, publishable video"] : []),
             ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
             ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
@@ -190,7 +191,7 @@ export class AutonomousOpportunitySelector {
         : [
           ...(!item.offerId ? ["No affiliate offer selected"] : []),
           ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, selectedOffer) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
-          ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds) ? ["Product has no HTTPS image or video suitable for autopublishing"] : []),
+          ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds, publishableMediaProductIds) ? ["Product has no validated, persisted image or video suitable for autopublishing"] : []),
           ...(candidatePolicy.requirePublishableVideo && !hasPublishableVideo(item.product, publishableVideoProductIds) ? ["Product has no validated, publishable video"] : []),
           ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
           ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
@@ -299,16 +300,9 @@ function hasPublishableVideo(product: Product, storedVideoProductIds: Set<string
   return storedVideoProductIds.has(product.id);
 }
 
-function hasPublishableMedia(product: Product, storedVideoProductIds: Set<string> = new Set()): boolean {
-  if (hasPublishableVideo(product, storedVideoProductIds)) return true;
-  return [product.videoUrl, product.imageUrl].some((reference) => {
-    if (!reference) return false;
-    try {
-      return new URL(reference).protocol === "https:";
-    } catch {
-      return false;
-    }
-  });
+function hasPublishableMedia(product: Product, storedVideoProductIds: Set<string> = new Set(), storedMediaProductIds: Set<string> = new Set()): boolean {
+  // Only media bytes validated and persisted in the private Storage bucket count as publishable.
+  return storedMediaProductIds.has(product.id) || storedVideoProductIds.has(product.id);
 }
 
 function hasCommissionSignalForProduct(productId: string, offerId: string | undefined, offersByProductId: Map<string, AffiliateOffer[]>): boolean {
