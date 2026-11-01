@@ -103,7 +103,8 @@ test("concurrent duplicate ingestion cannot remove the object stored by the winn
       return undefined;
     },
     save: async (asset: Record<string, unknown>) => {
-      if (saved.some((existing) => existing.sha256 === asset.sha256)) throw new Error("duplicate product media hash");
+      const existing = saved.find((item) => item.sha256 === asset.sha256);
+      if (existing) return existing;
       saved.push(asset);
       return asset;
     }
@@ -118,7 +119,8 @@ test("concurrent duplicate ingestion cannot remove the object stored by the winn
   };
 
   const results = await Promise.all([makeService().ingest(input), makeService().ingest(input)]);
-  assert.equal(results.filter((result) => result.stored.length === 1).length, 1);
+  assert.equal(results.filter((result) => result.stored.length === 1).length, 2);
+  assert.equal(results[0]?.stored[0]?.objectKey, results[1]?.stored[0]?.objectKey);
   assert.equal(uploads.length, 2);
   assert.notEqual(uploads[0], uploads[1]);
   assert.equal(removed.length, 1);
