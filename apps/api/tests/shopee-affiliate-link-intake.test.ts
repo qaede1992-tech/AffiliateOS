@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createApp } from "../src/app.js";
 import type { Services } from "../src/domain/container.js";
 import { InMemoryShopeeAffiliateLinkIntakeRepository } from "../src/domain/repository.js";
-import { ShopeeAffiliateLinkIntakeService } from "../src/domain/shopee-affiliate-link-intake.js";
+import { ShopeeAffiliateLinkIntakeService, type ShopeeAffiliateLinkIntake, type ShopeeAffiliateLinkIntakeRepository } from "../src/domain/shopee-affiliate-link-intake.js";
 
 test("Shopee link intake persists resolved product identity and awaits verified offer data", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
@@ -296,7 +296,7 @@ test("recovery metrics do not double-count an intake completed by another worker
   const baseRepository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   const url = "https://s.shopee.co.id/recovery-metrics-race";
   const staleAt = new Date(Date.now() - 10 * 60_000).toISOString();
-  const intake = {
+  const intake: ShopeeAffiliateLinkIntake = {
     id: "recovery-metrics-race",
     marketplaceSlug: "shopee-affiliate-feed" as const,
     affiliateUrl: url,
@@ -307,17 +307,17 @@ test("recovery metrics do not double-count an intake completed by another worker
     updatedAt: staleAt
   };
   await baseRepository.saveIfAbsent(intake);
-  const repository = {
+  const repository: ShopeeAffiliateLinkIntakeRepository = {
     findByUrlHash: (hash: string) => baseRepository.findByUrlHash(hash),
     findByProductIdentity: (shopId: string, itemId: string) => baseRepository.findByProductIdentity(shopId, itemId),
     findById: (id: string) => baseRepository.findById(id),
-    saveIfAbsent: (value: typeof intake) => baseRepository.saveIfAbsent(value),
-    update: (value: typeof intake) => baseRepository.update(value),
+    saveIfAbsent: (value: ShopeeAffiliateLinkIntake) => baseRepository.saveIfAbsent(value),
+    update: (value: ShopeeAffiliateLinkIntake) => baseRepository.update(value),
     // Both workers retain the same stale snapshot; the second sees the first worker's completed row.
     listStaleResolving: async () => [intake],
     claimStaleResolving: (id: string, expectedUpdatedAt: string, claimedAt: string) =>
       baseRepository.claimStaleResolving(id, expectedUpdatedAt, claimedAt),
-    updateIfResolving: (id: string, expectedUpdatedAt: string, value: typeof intake) =>
+    updateIfResolving: (id: string, expectedUpdatedAt: string, value: ShopeeAffiliateLinkIntake) =>
       baseRepository.updateIfResolving(id, expectedUpdatedAt, value)
   };
   let resolverCalls = 0;
