@@ -5,6 +5,7 @@ import type { OpportunitySelectionPolicy } from "./autonomous-opportunity.js";
 import type { AutonomousOptimizationRunResult, AutonomousOptimizationRunner } from "./autonomous-optimization-runner.js";
 import type { AutonomousExplorationEvaluationRunner, ExplorationEvaluationRunResult } from "./autonomous-exploration-evaluation-runner.js";
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
+import type { ProductMediaDiscoveryRunner } from "./product-media-discovery-runner.js";
 
 export interface AutonomousCandidateProvider {
   listCandidates(options?: { resolveAffiliateLinks?: boolean }): Promise<AutonomousExecutionCandidate[]>;
@@ -42,7 +43,8 @@ export class AutonomousCycleService {
     lock?: AutonomousCycleLock,
     private readonly lockKey = "affiliateos:autonomous-cycle",
     private readonly optimization?: AutonomousOptimizationRunner,
-    private readonly explorationEvaluation?: AutonomousExplorationEvaluationRunner
+    private readonly explorationEvaluation?: AutonomousExplorationEvaluationRunner,
+    private readonly productMediaDiscovery?: ProductMediaDiscoveryRunner
   ) {
     this.lock = lock ?? new InMemoryAutonomousCycleLock();
   }
@@ -58,10 +60,17 @@ export class AutonomousCycleService {
     audit: AutonomousExecutionResult["audit"];
   }> {
     const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: false });
+    const videoIds = this.productMediaDiscovery
+      ? await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id))
+      : input.publishableVideoProductIds ?? [];
+    const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
     const result = await this.execution.previewSelection({
       ...input,
       candidates: candidateList,
+      policiesByMarketplace: finalPolicies,
       requirePublishableMedia: true,
+      requirePublishableVideo: true,
+      publishableVideoProductIds: videoIds,
       requireCommissionSignal: true
     });
     return {
@@ -87,12 +96,26 @@ export class AutonomousCycleService {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
+      let videoIds = input.publishableVideoProductIds ?? [];
+      if (this.productMediaDiscovery) {
+        // First pass preserves every non-media threshold but does not reject products solely because
+        // media has not yet been discovered. It never creates campaigns or content.
+        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false }]));
+        const preliminary = await this.execution.previewSelection({
+          ...input, candidates: candidateList, policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false },
+          policiesByMarketplace: preliminaryPolicies, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true
+        });
+        for (const selected of preliminary.selected) {
+          const candidate = candidateList.find((item) => item.product.id === selected.product.id);
+          if (candidate) await this.productMediaDiscovery.discover(candidate.product, true);
+        }
+        videoIds = await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id));
+      }
+      const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
       const executionInput: AutonomousExecutionInput = {
-        ...input,
-        scheduledAt,
-        candidates: candidateList,
-        requirePublishableMedia: true,
-        requireCommissionSignal: true
+        ...input, scheduledAt, candidates: candidateList, policiesByMarketplace: finalPolicies,
+        requirePublishableMedia: true, requirePublishableVideo: true,
+        publishableVideoProductIds: videoIds, requireCommissionSignal: true
       };
       const result = await this.execution.runOnce(executionInput);
       const explorationEvaluation = this.explorationEvaluation ? await this.explorationEvaluation.run() : undefined;
