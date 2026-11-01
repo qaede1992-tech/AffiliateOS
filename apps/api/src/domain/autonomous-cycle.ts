@@ -107,7 +107,8 @@ export class AutonomousCycleService {
         });
         for (const selected of preliminary.selected) {
           const candidate = candidateList.find((item) => item.product.id === selected.product.id);
-          if (candidate) {
+          if (!candidate) continue;
+          try {
             const discovery = await this.productMediaDiscovery.discover(candidate.product, true);
             if (!discovery.hasVideo) {
               const rendered = await this.productMediaDiscovery.generatePromoVideo(candidate.product);
@@ -118,9 +119,25 @@ export class AutonomousCycleService {
                 reason: rendered.reason
               }));
             }
+          } catch (error) {
+            // A media failure is isolated to this product; it must not abort the cycle.
+            console.warn(JSON.stringify({
+              event: "autonomous_product_media_failed",
+              productId: candidate.product.id,
+              reason: error instanceof Error ? error.message : "Product media processing failed."
+            }));
           }
         }
-        videoIds = await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id));
+        try {
+          videoIds = await this.productMediaDiscovery.listVideoProductIds(candidateList.map((candidate) => candidate.product.id));
+        } catch (error) {
+          // Fail closed: without verified video evidence, final selection rejects the product.
+          videoIds = [];
+          console.warn(JSON.stringify({
+            event: "autonomous_product_media_index_failed",
+            reason: error instanceof Error ? error.message : "Product media index lookup failed."
+          }));
+        }
       }
       const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
       const executionInput: AutonomousExecutionInput = {
