@@ -25,6 +25,7 @@ test("discovers, validates, and stores a public product video", async () => {
   };
   const uploads: string[] = [];
   const storage = {
+    bucketName: "affiliate-media",
     async upload(input: { key: string }) { uploads.push(input.key); return { bucket: "affiliate-media", key: input.key }; },
     async remove() {}
   };
@@ -59,7 +60,7 @@ test("never fetches Shopee product HTML for media extraction", async () => {
     async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
   };
   const runner = new ProductMediaDiscoveryRunner(
-    { upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never,
+    { bucketName: "b", upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never,
     repository,
     { maxImageBytes: 1024, maxVideoBytes: 1024 },
     (async () => { fetched = true; throw new Error("Shopee HTML fetch must not run"); }) as never
@@ -81,7 +82,7 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   };
   const fetched: string[] = [];
   const runner = new ProductMediaDiscoveryRunner(
-    { upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }), remove: async () => {} } as never,
+    { bucketName: "affiliate-media", upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }), remove: async () => {} } as never,
     repository,
     { maxImageBytes: 1024, maxVideoBytes: 1024 },
     (async (url: string) => {
@@ -142,6 +143,7 @@ test("lists stored video product ids with one bulk repository read", async () =>
     async save(asset: ProductMediaAsset) { return asset; }
   };
   const storage = {
+    bucketName: "affiliate-media",
     async upload(input: { key: string }) { return { bucket: "affiliate-media", key: input.key }; },
     async remove() {}
   };
