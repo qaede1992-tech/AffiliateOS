@@ -82,7 +82,7 @@ export class ProductPromoVideoRenderer {
 
   async render(product: Pick<Product, "id" | "name">): Promise<ProductPromoVideoRenderResult> {
     const existing = await this.assets.listByProduct(product.id);
-    const existingVideo = existing.find((asset) => asset.kind === "video");
+    const existingVideo = existing.find((asset) => asset.kind === "video" && asset.bucket === this.storage.bucketName);
     if (existingVideo) return { generated: false, asset: existingVideo, reason: "A validated product video already exists." };
 
     const image = existing.find((asset) => asset.kind === "image" && asset.bucket === this.storage.bucketName);
