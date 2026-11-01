@@ -170,3 +170,27 @@ test("concurrent identical renders cannot delete the video object saved by the w
   assert.notEqual(removed[0], assets.find((asset) => asset.kind === "video")?.objectKey);
   assert.equal(assets.filter((asset) => asset.kind === "video").length, 1);
 });
+
+
+test("rejects an invalid FFmpeg timeout before starting a render", () => {
+  const storage = {
+    bucketName: "affiliate-media",
+    async download() { return imageBytes; },
+    async upload() { throw new Error("must not upload"); },
+    async remove() {}
+  };
+  const repository = {
+    async listByProduct() { return [imageAsset]; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+
+  assert.throws(
+    () => new ProductPromoVideoRenderer(storage as never, repository, { timeoutMs: 0 }),
+    /positive safe integer/
+  );
+  assert.throws(
+    () => new ProductPromoVideoRenderer(storage as never, repository, { timeoutMs: 1.5 }),
+    /positive safe integer/
+  );
+});
