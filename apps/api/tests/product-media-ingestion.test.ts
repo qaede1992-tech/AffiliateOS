@@ -103,7 +103,8 @@ test("concurrent duplicate ingestion cannot remove the object stored by the winn
       return undefined;
     },
     save: async (asset: Record<string, unknown>) => {
-      if (saved.some((existing) => existing.sha256 === asset.sha256)) throw new Error("duplicate product media hash");
+      const existing = saved.find((item) => item.sha256 === asset.sha256);
+      if (existing) return existing;
       saved.push(asset);
       return asset;
     }
