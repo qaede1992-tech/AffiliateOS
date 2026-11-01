@@ -47,6 +47,7 @@ import type { AutonomousExplorationStateRepository } from "./autonomous-explorat
 import type { TikTokCreatorInfo, TikTokContentPublisherClient } from "./tiktok-content-publisher.js";
 import { MediaUploadService, type MediaUploadPolicy } from "./media-upload-service.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
+import { ProductMediaDiscoveryRunner } from "./product-media-discovery-runner.js";
 
 export interface Services {
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
@@ -70,14 +71,14 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publishers = publisherRegistry.list();
   const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
   const affiliatePublicationEligibility = new RepositoryAffiliatePublicationEligibilityValidator(repositories.products, repositories.affiliateOffers, repositories.campaignOffers, repositories.trackingLinks);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility, mediaStorage);
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility, mediaStorage, repositories.contentProducts);
   const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver), repositories.socialAccounts, socialCredentialResolver);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
   const autonomousRuns = new AutonomousRunService(autonomousRunRepository);
   const analytics = new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository);
   const feedback = new AutonomousAnalyticsFeedbackProvider(analytics, autonomousFeedbackMemoryRepository);
-  const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns, repositories.mediaAssets, contentStory);
+  const campaignOrchestrator = new CampaignOrchestrator(campaigns, tracking, content, undefined, distribution, autonomousRuns, repositories.mediaAssets, contentStory, repositories.productMediaAssets);
   const marketplace = new MarketplaceService(marketplaceRegistry, repositories.marketplaceConnections, repositories.products, repositories.affiliateAccounts, repositories.affiliates, repositories.affiliateOffers, repositories.offers, transactionManager);
   const attribution = new ConversionAttributionService(repositories.conversions, repositories.trackingLinks, attributionRepository);
   const providerConversions = new ProviderConversionProcessor(conversions, {
@@ -102,6 +103,9 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const shopeeCommissionReportReconciliation = new ShopeeCommissionReportReconciliationService(marketplace, providerConversions);
   const shopeeConversionSyncScheduler = new ShopeeConversionSyncScheduler(marketplace, shopeeConversionSync, autonomousCycleLock ?? new InMemoryAutonomousCycleLock(), { intervalMs: shopeeConversionSyncSchedulerIntervalMs, lookbackHours: shopeeConversionSyncLookbackHours });
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
+  const productMediaDiscovery = mediaStorage && repositories.productMediaAssets
+    ? new ProductMediaDiscoveryRunner(mediaStorage, repositories.productMediaAssets, { maxImageBytes: mediaUploadPolicy.maxImageBytes, maxVideoBytes: mediaUploadPolicy.maxVideoBytes })
+    : undefined;
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
   const stateReader = optimizationStateReader ?? defaultOptimizationState;
   const stateWriter = optimizationStateWriter ?? defaultOptimizationState;
@@ -109,7 +113,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const explorationEvaluation = autonomousDecisionAuditRepository ? new AutonomousExplorationEvaluationRunner(autonomousDecisionAuditRepository, autonomousDecisionAuditRepository, explorationEvaluationPolicy) : undefined;
   const adaptiveExploration = autonomousDecisionAuditRepository ? new AdaptiveExplorationPolicyProvider(autonomousDecisionAuditRepository, adaptiveExplorationPolicy, autonomousExplorationStateRepository) : undefined;
   const autonomousExecution = new AutonomousExecutionService(new AutonomousOpportunitySelector(), campaignOrchestrator, feedback, autonomousRuns, autonomousDecisionAuditRepository, adaptiveExploration);
-  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation);
+  const autonomousCycle = new AutonomousCycleService(candidateProvider, autonomousExecution, autonomousCycleLock, "affiliateos:autonomous-cycle", autonomousOptimization, explorationEvaluation, productMediaDiscovery);
   const autonomousScheduler = new AutonomousScheduler(
     autonomousCycle,
     { policy: autonomousSelectionPolicy, policiesByMarketplace: autonomousMarketplacePolicies, publicationEnabled: autonomousPublicationEnabled },
