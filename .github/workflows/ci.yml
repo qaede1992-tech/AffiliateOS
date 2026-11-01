@@ -106,7 +106,7 @@ jobs:
       - name: Smoke test real FFmpeg product promo render
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint sh affiliateos-api:ci -ec '
+          docker run --rm --entrypoint sh affiliateos-api:ci -ec "$(cat <<'CONTAINER_SCRIPT'
             tmp="$(mktemp -d)"
             trap "rm -rf \"$tmp\"" EXIT
             ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=blue:s=320x240:d=1 -frames:v 1 "$tmp/source.png"
@@ -123,7 +123,8 @@ jobs:
             duration="$(printf "%s\n" "$probe" | sed -n "s/^duration=//p")"
             awk -v duration="$duration" "BEGIN { if (duration < 11.9 || duration > 12.1) exit 1 }"
             test -s "$tmp/promo.mp4"
-          '
+          CONTAINER_SCRIPT
+          )"
       - name: Build web image
         run: docker build --file apps/web/Dockerfile --build-arg VITE_API_URL=http://localhost:3001 --tag affiliateos-web:ci .
       - name: Smoke test API container
