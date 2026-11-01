@@ -101,7 +101,23 @@ export class ShopeeAffiliateLinkIntakeService {
     const result = await this.resolver(normalized);
     if (result.status === "resolved" && result.shopId && result.itemId) {
       const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
-      if (sameProduct) return sameProduct;
+      if (sameProduct && sameProduct.id !== intake.id) {
+        const duplicate: ShopeeAffiliateLinkIntake = {
+          ...intake,
+          status: "failed",
+          shopId: undefined,
+          itemId: undefined,
+          reason: "Resolved product identity is already tracked by another intake.",
+          sourceMetadata: { ...intake.sourceMetadata, resolution: "resolved", duplicateOfIntakeId: sameProduct.id },
+          updatedAt: new Date().toISOString()
+        };
+        if (intake.status === "resolving") {
+          await this.repository.updateIfResolving(intake.id, intake.updatedAt, duplicate);
+        } else {
+          await this.repository.update(duplicate);
+        }
+        return sameProduct;
+      }
     }
     const updated: ShopeeAffiliateLinkIntake = {
       ...intake, status: result.status === "resolved" ? "awaiting_offer_data" : "unresolved",
