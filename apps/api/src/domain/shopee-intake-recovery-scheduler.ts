@@ -39,7 +39,9 @@ export class ShopeeIntakeRecoveryScheduler {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
-    await this.activeRun;
+    // A failed worker has already been reported through onError. Do not let
+    // that failure abort application shutdown before the database is closed.
+    await this.activeRun?.catch(() => undefined);
   }
 
   async runNow(): Promise<ShopeeIntakeRecoveryResult> {
