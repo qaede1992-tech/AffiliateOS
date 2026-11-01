@@ -55,5 +55,5 @@ export const productMediaAssets = pgTable("product_media_assets", {
 }, (table) => [
   uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
   uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
-  index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt)
+  index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc())
 ]);
