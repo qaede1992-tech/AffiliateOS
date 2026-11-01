@@ -3,7 +3,7 @@ export interface SupabaseStorageConfig {
   serviceKey: string;
   bucket: string;
   fetchImpl?: typeof fetch;
-  /** Override for deterministic tests; production defaults to two minutes. */
+  /** Maximum duration for Storage operations; production defaults to two minutes. */
   uploadTimeoutMs?: number;
 }
 
