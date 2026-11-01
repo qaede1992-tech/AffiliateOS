@@ -14,6 +14,7 @@ export interface ShopeeAffiliateLinkIntakeRepository {
   saveIfAbsent(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   update(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string): Promise<boolean>;
+  updateIfResolving(id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake | undefined>;
 }
 export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
   private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
@@ -52,7 +53,7 @@ export class ShopeeAffiliateLinkIntakeService {
     if (hasProductIdentity && result.shopId && result.itemId) {
       const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
       if (sameProduct && sameProduct.id !== existing.id) {
-        await this.repository.update({
+        const completed = await this.repository.updateIfResolving(existing.id, claimedAt, {
           ...existing,
           status: "failed",
           shopId: undefined,
@@ -61,11 +62,11 @@ export class ShopeeAffiliateLinkIntakeService {
           sourceMetadata: { ...existing.sourceMetadata, resolution: "resolved", duplicateOfIntakeId: sameProduct.id },
           updatedAt: now
         });
-        return sameProduct;
+        return completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
       }
     }
 
-    return this.repository.update({
+    const completed = await this.repository.updateIfResolving(existing.id, claimedAt, {
       ...existing,
       status: hasProductIdentity ? "awaiting_offer_data" : "unresolved",
       ...(result.productUrl ? { canonicalProductUrl: result.productUrl } : {}),
@@ -75,6 +76,7 @@ export class ShopeeAffiliateLinkIntakeService {
       sourceMetadata: { ...existing.sourceMetadata, resolution: result.status, recoveredFromStaleResolving: true },
       updatedAt: now
     });
+    return completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
   }
 
   async submit(rawUrl: string): Promise<ShopeeAffiliateLinkIntake> {
