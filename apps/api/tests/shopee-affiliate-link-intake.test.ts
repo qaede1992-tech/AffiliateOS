@@ -123,3 +123,32 @@ test("verified feed offer reconciles a matching intake without inventing offer v
   assert.equal(reconciled?.status, "imported");
   assert.equal(reconciled?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
 });
+
+
+test("stale resolver cannot complete after a newer resolver has reclaimed the intake", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const url = "https://s.shopee.co.id/lease-fencing";
+  const originalAt = "2026-10-01T00:00:00.000Z";
+  const firstClaimAt = "2026-10-01T00:06:00.000Z";
+  const secondClaimAt = "2026-10-01T00:12:00.000Z";
+  const intake = {
+    id: "lease-fencing-intake", marketplaceSlug: "shopee-affiliate-feed" as const,
+    affiliateUrl: url, normalizedUrlHash: createHash("sha256").update(url).digest("hex"),
+    status: "resolving" as const, sourceMetadata: {}, createdAt: originalAt, updatedAt: originalAt
+  };
+  await repository.saveIfAbsent(intake);
+  assert.equal(await repository.claimStaleResolving(intake.id, originalAt, firstClaimAt), true);
+  assert.equal(await repository.claimStaleResolving(intake.id, firstClaimAt, secondClaimAt), true);
+
+  const staleCompletion = await repository.updateIfResolving(intake.id, firstClaimAt, {
+    ...intake, status: "unresolved", reason: "late resolver", updatedAt: "2026-10-01T00:13:00.000Z"
+  });
+  assert.equal(staleCompletion, undefined);
+
+  const currentCompletion = await repository.updateIfResolving(intake.id, secondClaimAt, {
+    ...intake, status: "awaiting_offer_data", shopId: "123", itemId: "456",
+    updatedAt: "2026-10-01T00:14:00.000Z"
+  });
+  assert.equal(currentCompletion?.status, "awaiting_offer_data");
+  assert.equal(currentCompletion?.shopId, "123");
+});
