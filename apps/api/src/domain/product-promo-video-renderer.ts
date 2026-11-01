@@ -89,18 +89,20 @@ export class ProductPromoVideoRenderer {
     if (!image) return { generated: false, reason: "No validated product image is available in private storage." };
     if (!this.storage.download) return { generated: false, reason: "Supabase Storage download is not available in this runtime." };
 
-    const tempDir = await mkdtemp(join(tmpdir(), "affiliateos-promo-"));
+    let tempDir: string | undefined;
     let uploadedKey: string | undefined;
     try {
+      const workingDir = await mkdtemp(join(tmpdir(), "affiliateos-promo-"));
+      tempDir = workingDir;
       const imageBytes = await this.storage.download(image.objectKey, this.maxInputBytes);
       if (imageBytes.byteLength === 0 || imageBytes.byteLength > this.maxInputBytes ||
           !isStructurallyValidMedia(image.mimeType, imageBytes)) {
         return { generated: false, reason: "Stored product image failed validation before rendering." };
       }
 
-      const imagePath = join(tempDir, `source.${image.mimeType === "image/jpeg" ? "jpg" : image.mimeType === "image/png" ? "png" : "webp"}`);
-      const textPath = join(tempDir, "overlay.txt");
-      const outputPath = join(tempDir, "promo.mp4");
+      const imagePath = join(workingDir, `source.${image.mimeType === "image/jpeg" ? "jpg" : image.mimeType === "image/png" ? "png" : "webp"}`);
+      const textPath = join(workingDir, "overlay.txt");
+      const outputPath = join(workingDir, "promo.mp4");
       await writeFile(imagePath, imageBytes, { flag: "wx" });
       await writeFile(textPath, `${safeTitle(product.name)}\nLihat detail produk`, { encoding: "utf8", flag: "wx" });
 
@@ -164,7 +166,7 @@ export class ProductPromoVideoRenderer {
       if (uploadedKey) {
         try { await this.storage.remove(uploadedKey); } catch {}
       }
-      await rm(tempDir, { recursive: true, force: true });
+      if (tempDir) await rm(tempDir, { recursive: true, force: true });
     }
   }
 }
