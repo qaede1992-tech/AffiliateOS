@@ -66,12 +66,16 @@ export class ShopeeAffiliateLinkIntakeService {
         const index = cursor++;
         const candidate = candidates[index];
         if (!candidate) return;
-        const result = await this.retryStaleResolving(candidate, candidate.affiliateUrl, resolverTimeoutMs);
-        if (result.updatedAt !== candidate.updatedAt && result.status !== "resolving") {
-          recovered += 1;
-          if (result.status === "unresolved" || result.status === "failed") failed += 1;
-        } else {
-          skipped += 1;
+        try {
+          const result = await this.retryStaleResolving(candidate, candidate.affiliateUrl, resolverTimeoutMs);
+          if (result.updatedAt !== candidate.updatedAt && result.status !== "resolving") {
+            recovered += 1;
+            if (result.status === "unresolved" || result.status === "failed") failed += 1;
+          } else {
+            skipped += 1;
+          }
+        } catch {
+          failed += 1;
         }
       }
     };
