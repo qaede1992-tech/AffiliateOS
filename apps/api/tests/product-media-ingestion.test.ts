@@ -119,7 +119,8 @@ test("concurrent duplicate ingestion cannot remove the object stored by the winn
   };
 
   const results = await Promise.all([makeService().ingest(input), makeService().ingest(input)]);
-  assert.equal(results.filter((result) => result.stored.length === 1).length, 1);
+  assert.equal(results.filter((result) => result.stored.length === 1).length, 2);
+  assert.equal(results[0]?.stored[0]?.objectKey, results[1]?.stored[0]?.objectKey);
   assert.equal(uploads.length, 2);
   assert.notEqual(uploads[0], uploads[1]);
   assert.equal(removed.length, 1);
