@@ -34,7 +34,7 @@ const offer = (productId: string, overrides: Record<string, unknown> = {}) => ({
   ...overrides
 }) as any;
 
-test("autonomous selection rejects products without HTTPS media when publishable media is required", () => {
+test("autonomous selection rejects products without persisted media when publishable media is required", () => {
   const item = product("no-media");
   const result = new AutonomousOpportunitySelector().select(
     [{ product: item, offers: [offer(item.id)] }],
@@ -42,16 +42,21 @@ test("autonomous selection rejects products without HTTPS media when publishable
   );
 
   assert.equal(result.selected.length, 0);
-  assert.match(result.rejected[0]?.reasons.join(" "), /no HTTPS image or video/i);
+  assert.match(result.rejected[0]?.reasons.join(" "), /no validated, persisted image or video/i);
   assert.equal(result.audit[0]?.selected, false);
 });
 
-test("autonomous selection accepts an HTTPS image when publishable media is required", () => {
+test("autonomous selection accepts a validated, persisted image when publishable media is required", () => {
   const item = product("image");
   item.imageUrl = "https://cdn.example.test/product.jpg";
   const result = new AutonomousOpportunitySelector().select(
     [{ product: item, offers: [offer(item.id)] }],
-    { minimumScore: 0, requirePublishableMedia: true, maximumResults: 10 }
+    { minimumScore: 0, requirePublishableMedia: true, maximumResults: 10 },
+    new Map(),
+    {},
+    new Map(),
+    new Set(),
+    new Set([item.id])
   );
 
   assert.equal(result.selected.length, 1);
