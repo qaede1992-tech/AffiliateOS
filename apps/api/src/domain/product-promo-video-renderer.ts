@@ -14,6 +14,7 @@ const DEFAULT_MAX_OUTPUT_BYTES = 45 * 1024 * 1024;
 const DEFAULT_MAX_INPUT_BYTES = 10 * 1024 * 1024;
 const VIDEO_DURATION_SECONDS = 12;
 const VIDEO_FPS = 25;
+const DEFAULT_TIMEOUT_MS = 90_000;
 const FONT_PATH = "/usr/share/fonts/dejavu/DejaVuSans.ttf";
 
 export interface ProductPromoVideoRendererOptions {
@@ -22,7 +23,7 @@ export interface ProductPromoVideoRendererOptions {
   maxOutputBytes?: number;
   timeoutMs?: number;
   /** Test seam; production uses execFile without a shell. */
-  runProcess?: (binary: string, args: string[]) => Promise<void>;
+  runProcess?: (binary: string, args: string[], timeoutMs: number) => Promise<void>;
 }
 
 export interface ProductPromoVideoRenderResult {
@@ -60,8 +61,7 @@ const buildFilter = (textPath: string): string => [
 export class ProductPromoVideoRenderer {
   private readonly maxInputBytes: number;
   private readonly maxOutputBytes: number;
-  private readonly runProcess: (binary: string, args: string[]) => Promise<void>;
-  private readonly timeoutMs: number;
+  private readonly runProcess: (binary: string, args: string[], timeoutMs: number) => Promise<void>;
 
   constructor(
     private readonly storage: Pick<SupabaseStorageClient, "bucketName" | "download" | "upload" | "remove">,
@@ -70,12 +70,13 @@ export class ProductPromoVideoRenderer {
   ) {
     this.maxInputBytes = options.maxInputBytes ?? DEFAULT_MAX_INPUT_BYTES;
     this.maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-    this.timeoutMs = options.timeoutMs ?? 90_000;
-    this.runProcess = options.runProcess ?? ((binary, args) => defaultRunProcess(binary, args, this.timeoutMs));
+    this.runProcess = options.runProcess ?? defaultRunProcess;
     if (!Number.isSafeInteger(this.maxInputBytes) || this.maxInputBytes <= 0 ||
-        !Number.isSafeInteger(this.maxOutputBytes) || this.maxOutputBytes <= 0 ||
-        !Number.isSafeInteger(this.timeoutMs) || this.timeoutMs <= 0) {
-      throw new Error("Promo video input, output, and timeout limits must be positive safe integers.");
+        !Number.isSafeInteger(this.maxOutputBytes) || this.maxOutputBytes <= 0) {
+      throw new Error("Promo video input and output limits must be positive safe integers.");
+    }
+    if (options.timeoutMs !== undefined && (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs <= 0)) {
+      throw new Error("Promo video render timeout must be a positive safe integer.");
     }
   }
 
@@ -88,10 +89,9 @@ export class ProductPromoVideoRenderer {
     if (!image) return { generated: false, reason: "No validated product image is available in private storage." };
     if (!this.storage.download) return { generated: false, reason: "Supabase Storage download is not available in this runtime." };
 
-    let tempDir: string | undefined;
+    const tempDir = await mkdtemp(join(tmpdir(), "affiliateos-promo-"));
     let uploadedKey: string | undefined;
     try {
-      tempDir = await mkdtemp(join(tmpdir(), "affiliateos-promo-"));
       const imageBytes = await this.storage.download(image.objectKey, this.maxInputBytes);
       if (imageBytes.byteLength === 0 || imageBytes.byteLength > this.maxInputBytes ||
           !isStructurallyValidMedia(image.mimeType, imageBytes)) {
@@ -112,7 +112,7 @@ export class ProductPromoVideoRenderer {
           "-t", String(VIDEO_DURATION_SECONDS), "-r", String(VIDEO_FPS),
           "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
           "-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath
-        ]);
+        ], this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
       } catch (error) {
         const code = (error as NodeJS.ErrnoException)?.code;
         if (code === "ENOENT") return { generated: false, reason: "FFmpeg is not installed in this API runtime." };
@@ -132,9 +132,7 @@ export class ProductPromoVideoRenderer {
       const prior = await this.assets.findByProductAndHash(product.id, sha256);
       if (prior) return { generated: false, asset: prior, reason: "An identical generated video already exists." };
 
-      // Use a unique object key so concurrent renderers cannot overwrite or delete
-      // the object referenced by the winning database row during duplicate cleanup.
-      const objectKey = `products/${product.id}/${sha256}-${randomUUID()}.mp4`;
+      const objectKey = `products/${product.id}/${sha256}.mp4`;
       const stored = await this.storage.upload({ key: objectKey, bytes: videoBytes, contentType: "video/mp4", upsert: true });
       uploadedKey = stored.key;
       const asset: ProductMediaAsset = {
@@ -164,7 +162,7 @@ export class ProductPromoVideoRenderer {
       if (uploadedKey) {
         try { await this.storage.remove(uploadedKey); } catch {}
       }
-      if (tempDir) await rm(tempDir, { recursive: true, force: true });
+      await rm(tempDir, { recursive: true, force: true });
     }
   }
 }
