@@ -14,6 +14,12 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
   async findById(id: string) { return this.rows.get(id); }
   async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(intake.normalizedUrlHash); if (existing) return existing; this.rows.set(intake.id, intake); return intake; }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
+  async updateIfResolving(id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake) {
+    const current = this.rows.get(id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return undefined;
+    this.rows.set(id, intake);
+    return intake;
+  }
   async claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string) {
     const current = this.rows.get(id);
     if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return false;
