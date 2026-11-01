@@ -463,6 +463,13 @@
       "when": 1794050405012,
       "tag": "0069_forward_repair_missing_tiktok_and_content_products",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794050405013,
+      "tag": "0070_product_media_assets",
+      "breakpoints": true
     }
   ]
 }
