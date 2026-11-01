@@ -87,7 +87,6 @@ export class ProductMediaIngestionService {
 
     const stored: ProductMediaAsset[] = [];
     const skipped: Array<{ url: string; reason: string }> = [];
-    const existing = await this.assets.listByProduct(input.productId);
     // Video is the preferred campaign format. Do not require an image before
     // ingesting a valid video; image candidates are useful fallback media only.
     const orderedCandidates = [...input.candidates].sort((left, right) =>
@@ -126,7 +125,13 @@ export class ProductMediaIngestionService {
           sha256, sourceUrl: candidate.url, createdAt: new Date().toISOString()
         };
         try {
-          stored.push(await this.assets.save(asset));
+          const persisted = await this.assets.save(asset);
+          // A concurrent insert may return the winning row instead of throwing.
+          // Remove only this worker's uniquely named object when that happens.
+          if (persisted.objectKey !== savedObject.key) {
+            try { await this.storage.remove(savedObject.key); } catch {}
+          }
+          stored.push(persisted);
         } catch (error) {
           try { await this.storage.remove(savedObject.key); } catch {}
           throw error;
