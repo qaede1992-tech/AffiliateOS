@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createApp } from "../src/app.js";
 import type { Services } from "../src/domain/container.js";
 import { InMemoryShopeeAffiliateLinkIntakeRepository } from "../src/domain/repository.js";
-import { ShopeeAffiliateLinkIntakeService } from "../src/domain/shopee-affiliate-link-intake.js";
+import { ShopeeAffiliateLinkIntakeService, type ShopeeAffiliateLinkIntake, type ShopeeAffiliateLinkIntakeRepository } from "../src/domain/shopee-affiliate-link-intake.js";
 
 test("Shopee link intake persists resolved product identity and awaits verified offer data", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
@@ -239,4 +239,124 @@ test("stale resolver cannot complete after a newer resolver has reclaimed the in
   });
   assert.equal(currentCompletion?.status, "awaiting_offer_data");
   assert.equal(currentCompletion?.shopId, "123");
+});
+
+test("scheduled stale intake recovery processes a bounded batch and ignores fresh rows", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const staleAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  const freshAt = new Date().toISOString();
+  const makeIntake = (id: string, updatedAt: string) => ({
+    id, marketplaceSlug: "shopee-affiliate-feed" as const,
+    affiliateUrl: `https://s.shopee.co.id/${id}`,
+    normalizedUrlHash: createHash("sha256").update(id).digest("hex"),
+    status: "resolving" as const, sourceMetadata: {}, createdAt: updatedAt, updatedAt
+  });
+  await repository.saveIfAbsent(makeIntake("stale-a", staleAt));
+  await repository.saveIfAbsent(makeIntake("stale-b", staleAt));
+  await repository.saveIfAbsent(makeIntake("fresh", freshAt));
+  let calls = 0;
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => {
+    calls += 1;
+    return { status: "unresolved", affiliateUrl, reason: "temporary restriction" };
+  });
+
+  const result = await service.recoverStaleResolvingBatch({ batchSize: 2, concurrency: 2, resolverTimeoutMs: 1_000 });
+  assert.deepEqual(result, { scanned: 2, recovered: 2, failed: 2, skipped: 0 });
+  assert.equal(calls, 2);
+  assert.equal((await repository.findByUrlHash(createHash("sha256").update("fresh").digest("hex")))?.status, "resolving");
+});
+
+test("parallel recovery workers use compare-and-set so only one resolver runs per intake", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const url = "https://s.shopee.co.id/recovery-race";
+  const staleAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  await repository.saveIfAbsent({
+    id: "recovery-race", marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: url,
+    normalizedUrlHash: createHash("sha256").update(url).digest("hex"),
+    status: "resolving", sourceMetadata: {}, createdAt: staleAt, updatedAt: staleAt
+  });
+  let calls = 0;
+  const resolver = async (affiliateUrl: string) => {
+    calls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return { status: "unresolved" as const, affiliateUrl, reason: "no product identity" };
+  };
+  const first = new ShopeeAffiliateLinkIntakeService(repository, resolver);
+  const second = new ShopeeAffiliateLinkIntakeService(repository, resolver);
+  const results = await Promise.all([
+    first.recoverStaleResolvingBatch({ batchSize: 10, concurrency: 1, resolverTimeoutMs: 1_000 }),
+    second.recoverStaleResolvingBatch({ batchSize: 10, concurrency: 1, resolverTimeoutMs: 1_000 })
+  ]);
+  assert.equal(calls, 1);
+  assert.equal(results.reduce((sum, result) => sum + result.recovered, 0), 1);
+  assert.equal(results.reduce((sum, result) => sum + result.skipped, 0), 1);
+});
+
+test("recovery metrics do not double-count an intake completed by another worker", async () => {
+  const baseRepository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const url = "https://s.shopee.co.id/recovery-metrics-race";
+  const staleAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  const intake: ShopeeAffiliateLinkIntake = {
+    id: "recovery-metrics-race",
+    marketplaceSlug: "shopee-affiliate-feed" as const,
+    affiliateUrl: url,
+    normalizedUrlHash: createHash("sha256").update(url).digest("hex"),
+    status: "resolving" as const,
+    sourceMetadata: {},
+    createdAt: staleAt,
+    updatedAt: staleAt
+  };
+  await baseRepository.saveIfAbsent(intake);
+  const repository: ShopeeAffiliateLinkIntakeRepository = {
+    findByUrlHash: (hash: string) => baseRepository.findByUrlHash(hash),
+    findByProductIdentity: (shopId: string, itemId: string) => baseRepository.findByProductIdentity(shopId, itemId),
+    findById: (id: string) => baseRepository.findById(id),
+    saveIfAbsent: (value: ShopeeAffiliateLinkIntake) => baseRepository.saveIfAbsent(value),
+    update: (value: ShopeeAffiliateLinkIntake) => baseRepository.update(value),
+    // Both workers retain the same stale snapshot; the second sees the first worker's completed row.
+    listStaleResolving: async () => [intake],
+    claimStaleResolving: (id: string, expectedUpdatedAt: string, claimedAt: string) =>
+      baseRepository.claimStaleResolving(id, expectedUpdatedAt, claimedAt),
+    updateIfResolving: (id: string, expectedUpdatedAt: string, value: ShopeeAffiliateLinkIntake) =>
+      baseRepository.updateIfResolving(id, expectedUpdatedAt, value)
+  };
+  let resolverCalls = 0;
+  const resolver = async (affiliateUrl: string) => {
+    resolverCalls += 1;
+    return { status: "unresolved" as const, affiliateUrl, reason: "temporary restriction" };
+  };
+  const first = new ShopeeAffiliateLinkIntakeService(repository, resolver);
+  const second = new ShopeeAffiliateLinkIntakeService(repository, resolver);
+  const options = { batchSize: 1, concurrency: 1, resolverTimeoutMs: 1_000 };
+
+  const firstResult = await first.recoverStaleResolvingBatch(options);
+  const secondResult = await second.recoverStaleResolvingBatch(options);
+
+  assert.deepEqual(firstResult, { scanned: 1, recovered: 1, failed: 1, skipped: 0 });
+  assert.deepEqual(secondResult, { scanned: 1, recovered: 0, failed: 0, skipped: 1 });
+  assert.equal(resolverCalls, 1);
+});
+
+test("resolver timeout marks stale intake unresolved and late completion cannot overwrite it", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const url = "https://s.shopee.co.id/recovery-timeout";
+  const staleAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  await repository.saveIfAbsent({
+    id: "recovery-timeout", marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: url,
+    normalizedUrlHash: createHash("sha256").update(url).digest("hex"),
+    status: "resolving", sourceMetadata: {}, createdAt: staleAt, updatedAt: staleAt
+  });
+  let releaseResolver!: (value: { status: "resolved"; affiliateUrl: string; productUrl: string; shopId: string; itemId: string }) => void;
+  const resolverPromise = new Promise<{ status: "resolved"; affiliateUrl: string; productUrl: string; shopId: string; itemId: string }>((resolve) => { releaseResolver = resolve; });
+  const service = new ShopeeAffiliateLinkIntakeService(repository, () => resolverPromise);
+  const result = await service.recoverStaleResolvingBatch({ batchSize: 1, concurrency: 1, resolverTimeoutMs: 1_000 });
+  assert.equal(result.failed, 1);
+  const afterTimeout = await repository.findByUrlHash(createHash("sha256").update(url).digest("hex"));
+  assert.equal(afterTimeout?.status, "unresolved");
+  assert.match(afterTimeout?.reason ?? "", /timed out/i);
+
+  releaseResolver({ status: "resolved", affiliateUrl: url, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const afterLateCompletion = await repository.findByUrlHash(createHash("sha256").update(url).digest("hex"));
+  assert.equal(afterLateCompletion?.status, "unresolved");
 });
