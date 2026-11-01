@@ -50,6 +50,7 @@ function normalizeAffiliateUrl(raw: string): string {
   return url.toString();
 }
 const STALE_RESOLVING_INTAKE_MS = 5 * 60_000;
+export type ShopeeIntakeRecoveryResult = { scanned: number; recovered: number; failed: number; skipped: number };
 
 export class ShopeeAffiliateLinkIntakeService {
   constructor(private readonly repository: ShopeeAffiliateLinkIntakeRepository, private readonly resolver: typeof resolveShopeeAffiliateLink = resolveShopeeAffiliateLink) {}
