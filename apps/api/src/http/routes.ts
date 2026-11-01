@@ -181,7 +181,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     auditSecurityEvent(request.log, request, "shopee_affiliate_link_intake_submitted", { intakeId: intake.id, status: intake.status });
     return reply.status(201).send(intake);
   });
-  app.get("/api/v1/shopee/affiliate-link-intakes/:intakeId", async (request, reply) => {
+  app.get("/api/v1/shopee/affiliate-link-intakes/:intakeId", writeGuard, async (request, reply) => {
     const { intakeId } = shopeeAffiliateLinkIntakeParamsSchema.parse(request.params);
     const intake = await services.shopeeAffiliateLinkIntakes.get(intakeId);
     if (!intake) return reply.status(404).send({ error: "NOT_FOUND", message: "Shopee affiliate link intake tidak ditemukan." });
