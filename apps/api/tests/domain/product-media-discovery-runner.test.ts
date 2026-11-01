@@ -44,7 +44,7 @@ test("discovers, validates, and stores a public product video", async () => {
 
 test("refuses discovery before non-media eligibility passes", async () => {
   let fetched = false;
-  const runner = new ProductMediaDiscoveryRunner({ upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never, {
+  const runner = new ProductMediaDiscoveryRunner({ bucketName: "b", upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never, {
     async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save(asset: ProductMediaAsset) { return asset; }
   }, { maxImageBytes: 1024, maxVideoBytes: 1024 }, (async () => { fetched = true; throw new Error("should not fetch"); }) as never);
   await assert.rejects(() => runner.discover(product, false), /must pass non-media affiliate eligibility/);
