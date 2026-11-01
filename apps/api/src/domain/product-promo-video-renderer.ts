@@ -132,7 +132,9 @@ export class ProductPromoVideoRenderer {
       const prior = await this.assets.findByProductAndHash(product.id, sha256);
       if (prior) return { generated: false, asset: prior, reason: "An identical generated video already exists." };
 
-      const objectKey = `products/${product.id}/${sha256}.mp4`;
+      // Use a unique object key so concurrent renders cannot overwrite or remove
+      // the object referenced by the render that successfully saves its asset.
+      const objectKey = `products/${product.id}/${sha256}-${randomUUID()}.mp4`;
       const stored = await this.storage.upload({ key: objectKey, bytes: videoBytes, contentType: "video/mp4", upsert: true });
       uploadedKey = stored.key;
       const asset: ProductMediaAsset = {
