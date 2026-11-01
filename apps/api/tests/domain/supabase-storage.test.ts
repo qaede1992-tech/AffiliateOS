@@ -105,6 +105,42 @@ describe("SupabaseStorageClient", () => {
     assert.equal(upstreamSignal.aborted, true);
   });
 
+  it("aborts a stalled buffered media upload at the configured Storage timeout", async () => {
+    const client = new SupabaseStorageClient({
+      supabaseUrl: "https://project.supabase.co",
+      serviceKey: "server-secret",
+      bucket: "affiliate-media",
+      uploadTimeoutMs: 10,
+      fetchImpl: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      })
+    });
+    await assert.rejects(
+      client.upload({ key: "products/product-1/video.mp4", bytes: new Uint8Array([1]), contentType: "video/mp4" }),
+      (error: unknown) => error instanceof Error && error.name === "TimeoutError"
+    );
+  });
+
+  it("aborts a stalled signed URL request at the configured Storage timeout", async () => {
+    const client = new SupabaseStorageClient({
+      supabaseUrl: "https://project.supabase.co",
+      serviceKey: "server-secret",
+      bucket: "affiliate-media",
+      uploadTimeoutMs: 10,
+      fetchImpl: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      })
+    });
+    await assert.rejects(
+      client.createSignedUrl("products/product-1/video.mp4", 300),
+      (error: unknown) => error instanceof Error && error.name === "TimeoutError"
+    );
+  });
+
   it("aborts a stalled Storage request when the configured upload timeout expires", async () => {
     const client = new SupabaseStorageClient({
       supabaseUrl: "https://project.supabase.co",
