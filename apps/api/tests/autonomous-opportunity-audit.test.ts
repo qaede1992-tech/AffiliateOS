@@ -46,7 +46,7 @@ test("selection audit explains when publishable media is required but absent", (
   assert.equal(result.selected.length, 0);
   assert.equal(result.audit.length, 1);
   assert.ok(
-    result.audit[0]?.reasons.includes("Product has no HTTPS image or video suitable for autopublishing"),
+    result.audit[0]?.reasons.includes("Product has no validated, persisted image or video suitable for autopublishing"),
     JSON.stringify(result.audit[0]?.reasons)
   );
 });
