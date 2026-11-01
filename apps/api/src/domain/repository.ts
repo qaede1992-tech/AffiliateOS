@@ -24,6 +24,12 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
     return intake;
   }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
+  async listStaleResolving(cutoff: string, limit: number) {
+    return [...this.rows.values()]
+      .filter((row) => row.status === "resolving" && row.updatedAt < cutoff)
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, limit);
+  }
   async updateIfResolving(id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake) {
     const current = this.rows.get(id);
     if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return undefined;
