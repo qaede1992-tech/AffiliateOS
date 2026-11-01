@@ -85,6 +85,66 @@ describe("campaign orchestrator", () => {
     assert.equal(content.created.length, 0);
   });
 
+  it("blocks an autonomous Instagram campaign until a validated product video is stored", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const productMediaAssets = { async listByProduct() { return []; } };
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        campaigns as never, new StubTracking() as never, content as never,
+        undefined, undefined, undefined, undefined, undefined, productMediaAssets as never
+      ).execute({ opportunity, offer, product, idempotencyKey: "instagram-video-required-run", platforms: ["instagram"] }),
+      /stored, validated product video is required before autonomous social campaign creation/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+  it("still requires a stored product video for autonomous TikTok campaigns", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const productMediaAssets = { async listByProduct() { return []; } };
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        campaigns as never,
+        new StubTracking() as never,
+        content as never,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        productMediaAssets as never
+      ).execute({
+        opportunity,
+        offer,
+        product,
+        idempotencyKey: "tiktok-video-required-run",
+        platforms: ["tiktok"]
+      }),
+      /stored, validated product video is required before autonomous social campaign creation/
+    );
+
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
+  it("attaches the validated stored video as the sole Instagram campaign media asset", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const mediaAssets = new StubMediaAssets();
+    const videoAsset = { id: "video-asset-1", productId: product.id, kind: "video", bucket: "affiliate-media", objectKey: `products/${product.id}/hash.mp4`, mimeType: "video/mp4", byteSize: 1234, sha256: "abc", sourceUrl: "https://cdn.example.test/video.mp4", createdAt: "2026-10-01T00:00:00.000Z" };
+    const productMediaAssets = { async listByProduct() { return [videoAsset]; } };
+    const result = await new CampaignOrchestrator(
+      campaigns as never, new StubTracking() as never, content as never, undefined, undefined, undefined,
+      mediaAssets as never, undefined, productMediaAssets as never
+    ).execute({ opportunity, offer, product, idempotencyKey: "instagram-video-run", platforms: ["instagram"] });
+    assert.equal(result.content.length, 1);
+    assert.deepEqual(result.content[0]?.mediaAssetIds, [mediaAssets.assets[0]?.id]);
+    assert.equal(mediaAssets.assets[0]?.kind, "video");
+    assert.equal(mediaAssets.assets[0]?.source, "object-storage");
+    assert.equal(mediaAssets.assets[0]?.reference, `affiliate-media/products/${product.id}/hash.mp4`);
+  });
+
   it("connects a selected opportunity to campaign, tracking, and platform-specific content", async () => {
     const content = new StubContent();
     const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"] });
