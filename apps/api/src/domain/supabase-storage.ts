@@ -90,6 +90,7 @@ export class SupabaseStorageClient {
     new Uint8Array(body).set(input.bytes);
     const response = await this.fetchImpl(url, {
       method: "POST",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
       headers: this.headers({
         "Content-Type": input.contentType,
         "x-upsert": input.upsert ? "true" : "false",
@@ -126,6 +127,7 @@ export class SupabaseStorageClient {
     const safeKey = validateObjectKey(key);
     const response = await this.fetchImpl(`${this.endpoint("object")}/${encodeURIComponent(this.bucket)}`, {
       method: "DELETE",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ prefixes: [safeKey] })
     });
@@ -138,6 +140,7 @@ export class SupabaseStorageClient {
     const objectPath = safeKey.split("/").map(encodeURIComponent).join("/");
     const response = await this.fetchImpl(`${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${objectPath}`, {
       method: "GET",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
       headers: this.headers()
     });
     await this.assertSuccess(response, "download");
@@ -183,6 +186,7 @@ export class SupabaseStorageClient {
     const objectPath = safeKey.split("/").map(encodeURIComponent).join("/");
     const response = await this.fetchImpl(`${this.endpoint("object/sign")}/${encodeURIComponent(this.bucket)}/${objectPath}`, {
       method: "POST",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ expiresIn: expiresInSeconds })
     });
