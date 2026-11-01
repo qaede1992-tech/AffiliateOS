@@ -95,7 +95,7 @@ export class ShopeeAffiliateLinkIntakeService {
     if (!claimed) return (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing;
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    let result;
+    let result: Awaited<ReturnType<typeof resolveShopeeAffiliateLink>>;
     try {
       result = await Promise.race([
         this.resolver(normalizedUrl),
