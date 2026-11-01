@@ -292,6 +292,51 @@ test("parallel recovery workers use compare-and-set so only one resolver runs pe
   assert.equal(results.reduce((sum, result) => sum + result.skipped, 0), 1);
 });
 
+test("recovery metrics do not double-count an intake completed by another worker", async () => {
+  const baseRepository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const url = "https://s.shopee.co.id/recovery-metrics-race";
+  const staleAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  const intake = {
+    id: "recovery-metrics-race",
+    marketplaceSlug: "shopee-affiliate-feed" as const,
+    affiliateUrl: url,
+    normalizedUrlHash: createHash("sha256").update(url).digest("hex"),
+    status: "resolving" as const,
+    sourceMetadata: {},
+    createdAt: staleAt,
+    updatedAt: staleAt
+  };
+  await baseRepository.saveIfAbsent(intake);
+  const repository = {
+    findByUrlHash: (hash: string) => baseRepository.findByUrlHash(hash),
+    findByProductIdentity: (shopId: string, itemId: string) => baseRepository.findByProductIdentity(shopId, itemId),
+    findById: (id: string) => baseRepository.findById(id),
+    saveIfAbsent: (value: typeof intake) => baseRepository.saveIfAbsent(value),
+    update: (value: typeof intake) => baseRepository.update(value),
+    // Both workers retain the same stale snapshot; the second sees the first worker's completed row.
+    listStaleResolving: async () => [intake],
+    claimStaleResolving: (id: string, expectedUpdatedAt: string, claimedAt: string) =>
+      baseRepository.claimStaleResolving(id, expectedUpdatedAt, claimedAt),
+    updateIfResolving: (id: string, expectedUpdatedAt: string, value: typeof intake) =>
+      baseRepository.updateIfResolving(id, expectedUpdatedAt, value)
+  };
+  let resolverCalls = 0;
+  const resolver = async (affiliateUrl: string) => {
+    resolverCalls += 1;
+    return { status: "unresolved" as const, affiliateUrl, reason: "temporary restriction" };
+  };
+  const first = new ShopeeAffiliateLinkIntakeService(repository, resolver);
+  const second = new ShopeeAffiliateLinkIntakeService(repository, resolver);
+  const options = { batchSize: 1, concurrency: 1, resolverTimeoutMs: 1_000 };
+
+  const firstResult = await first.recoverStaleResolvingBatch(options);
+  const secondResult = await second.recoverStaleResolvingBatch(options);
+
+  assert.deepEqual(firstResult, { scanned: 1, recovered: 1, failed: 1, skipped: 0 });
+  assert.deepEqual(secondResult, { scanned: 1, recovered: 0, failed: 0, skipped: 1 });
+  assert.equal(resolverCalls, 1);
+});
+
 test("resolver timeout marks stale intake unresolved and late completion cannot overwrite it", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   const url = "https://s.shopee.co.id/recovery-timeout";
