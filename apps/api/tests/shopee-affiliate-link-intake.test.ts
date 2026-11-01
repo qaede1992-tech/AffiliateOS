@@ -108,8 +108,12 @@ test("different affiliate URLs resolving to the same Shopee product deduplicate 
     status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
   }));
   const first = await service.submit("https://s.shopee.co.id/first");
-  const second = await service.submit("https://s.shopee.co.id/second");
+  const secondUrl = "https://s.shopee.co.id/second";
+  const second = await service.submit(secondUrl);
   assert.equal(first.id, second.id);
+  const duplicate = await repository.findByUrlHash(createHash("sha256").update(secondUrl).digest("hex"));
+  assert.equal(duplicate?.status, "failed");
+  assert.equal(duplicate?.sourceMetadata.duplicateOfIntakeId, first.id);
 });
 
 test("verified feed offer reconciles a matching intake without inventing offer values", async () => {
