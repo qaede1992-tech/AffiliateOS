@@ -7,6 +7,7 @@ import { publisherSupportsContent, type DistributionEngine, type DistributionPla
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
 import type { MediaAssetRepository } from "./media-asset.js";
+import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 
 export type CampaignOrchestratorInput = {
   opportunity: ScoredOpportunity;
@@ -87,7 +88,8 @@ export class CampaignOrchestrator {
     private readonly distribution?: DistributionEngine,
     private readonly autonomousRuns?: AutonomousRunService,
     private readonly mediaAssets?: MediaAssetRepository,
-    private readonly contentStory?: ContentStoryService
+    private readonly contentStory?: ContentStoryService,
+    private readonly productMediaAssets?: ProductMediaAssetRepository
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
@@ -102,6 +104,15 @@ export class CampaignOrchestrator {
     const executionOffer = liveOffer;
     const liveProduct = await this.content.validateProductForPublication(input.product.id);
     if (liveProduct.id !== input.offer.productId) throw new Error("Live product and affiliate offer are inconsistent.");
+    // Autonomous Instagram and TikTok campaigns must use a validated, persisted video.
+    const requestedPlatforms = input.platforms ?? defaultPlatforms;
+    const requestsVideoCampaign = requestedPlatforms.some((platform) => platform === "instagram" || platform === "tiktok");
+    if (input.idempotencyKey && this.productMediaAssets && requestsVideoCampaign) {
+      const storedProductMedia = await this.productMediaAssets.listByProduct(liveProduct.id);
+      if (!storedProductMedia.some((asset) => asset.kind === "video")) {
+        throw new Error("A stored, validated product video is required before autonomous social campaign creation.");
+      }
+    }
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const run = input.idempotencyKey && this.autonomousRuns
@@ -213,6 +224,13 @@ export class CampaignOrchestrator {
       }
 
       const trackingLinks = [trackingLink];
+      if (!input.storyProducts?.length && this.contentStory && content.some((item) => item.mediaAssetIds?.length)) {
+        if (!completedRunRecovery) {
+          for (const item of content) {
+            await this.contentStory.replaceProducts(item.id, [{ productId: liveProduct.id, affiliateOfferId: executionOffer.id, position: 0, role: "primary" }]);
+          }
+        }
+      }
       if (input.storyProducts?.length) {
         if (!this.contentStory) throw new Error("Multi-product story orchestration requires a content story service.");
         const storyItems = [{ product: liveProduct, offer: executionOffer, role: "primary" as const, position: 0 }, ...input.storyProducts.filter((item) => item.product.id !== liveProduct.id).sort((a, b) => a.position - b.position)];
@@ -254,13 +272,37 @@ export class CampaignOrchestrator {
   ) {
     if (!this.mediaAssets) return content;
 
-    const media = content.platform === "instagram"
-      ? { kind: "image" as const, reference: product.imageUrl }
-      : content.platform === "tiktok"
-        ? product.videoUrl
-          ? { kind: "video" as const, reference: product.videoUrl }
-          : { kind: "image" as const, reference: product.imageUrl }
-        : undefined;
+    const media = content.platform === "instagram" || content.platform === "tiktok"
+      ? product.videoUrl
+        ? { kind: "video" as const, reference: product.videoUrl }
+        : { kind: "image" as const, reference: product.imageUrl }
+      : undefined;
+
+    if (this.productMediaAssets) {
+      const productAssets = await this.productMediaAssets.listByProduct(product.id);
+      const preferredKind = productAssets.some((asset) => asset.kind === "video") ? "video" : "image";
+      const stored = productAssets.find((asset) => asset.kind === preferredKind);
+      if (stored && this.mediaAssets) {
+        const existingAssets = await this.mediaAssets.listByContent(content.id);
+        const reference = stored.bucket + "/" + stored.objectKey;
+        const existingStored = existingAssets.find((asset) => asset.source === "object-storage" && asset.reference === reference);
+        if (existingStored) {
+          const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
+            ? [existingStored.id]
+            : [...new Set([...(content.mediaAssetIds ?? []), existingStored.id])];
+          if (selectedIds.length !== (content.mediaAssetIds ?? []).length || selectedIds.some((id, index) => id !== content.mediaAssetIds?.[index])) {
+            return this.content.update(content.id, { mediaAssetIds: selectedIds });
+          }
+          return content;
+        }
+        const now = new Date().toISOString();
+        const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, createdAt: now, updatedAt: now });
+        const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
+          ? [asset.id]
+          : [...new Set([...(content.mediaAssetIds ?? []), asset.id])];
+        return this.content.update(content.id, { mediaAssetIds: selectedIds });
+      }
+    }
 
     if (!media?.reference) return content;
 
