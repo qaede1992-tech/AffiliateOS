@@ -61,6 +61,33 @@ describe("autonomous cycle", () => {
     assert.deepEqual(calls, ["discover:media-fails", "discover:media-works", "list-videos", "execute"]);
   });
 
+  it("fails closed when the stored-video index is unavailable", async () => {
+    const candidates = [{ product: { id: "video-index-unavailable" } as never, offers: [] }];
+    const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
+    let executionCalled = false;
+    const execution = {
+      async previewSelection() {
+        return { selected: [{ product: candidates[0]!.product, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+      },
+      async runOnce(input: { publishableVideoProductIds?: string[] }) {
+        executionCalled = true;
+        assert.deepEqual(input.publishableVideoProductIds, []);
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() { return { productId: candidates[0]!.product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
+      async generatePromoVideo() { return { generated: false, reason: "No valid media source." }; },
+      async listVideoProductIds() { throw new Error("media index temporarily unavailable"); }
+    };
+    const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
+
+    const result = await service.runOnce({ publicationEnabled: false });
+
+    assert.ok(result);
+    assert.equal(executionCalled, true);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
