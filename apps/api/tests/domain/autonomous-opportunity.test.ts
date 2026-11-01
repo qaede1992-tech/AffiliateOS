@@ -367,3 +367,31 @@ describe("autonomous commission amount guard", () => {
   });
 
 });
+
+
+describe("validated media selection gate", () => {
+  it("does not treat an unverified HTTPS catalog URL as publishable media", () => {
+    const candidate = {
+      product: product("unverified-image", { imageUrl: "https://cdn.example.test/image.jpg" }),
+      offers: [offer("unverified-image")]
+    };
+    const selector = new AutonomousOpportunitySelector();
+    const withoutStoredMedia = selector.select([candidate], {
+      minimumScore: 0,
+      maximumResults: 1,
+      requirePublishableMedia: true
+    });
+    assert.equal(withoutStoredMedia.selected.length, 0);
+    assert.ok(withoutStoredMedia.rejected[0]?.reasons.some((reason) => reason.includes("HTTPS image or video")));
+    const withStoredImage = selector.select(
+      [candidate],
+      { minimumScore: 0, maximumResults: 1, requirePublishableMedia: true },
+      new Map(),
+      {},
+      new Map(),
+      new Set(),
+      new Set(["unverified-image"])
+    );
+    assert.equal(withStoredImage.selected[0]?.product.id, "unverified-image");
+  });
+});
