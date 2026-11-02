@@ -236,8 +236,8 @@ function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined
     ...(validQuality(salesQuality) ? { soldCount: salesQuality } : {}),
     ...(validQuality(reviewQuality) ? { reviewCount: reviewQuality } : {}),
     ...(validQuality(ratingQuality) ? { ratingMilli: ratingQuality } : {}),
-    ...(typeof rawQuality.source === "string" ? { source: rawQuality.source } : typeof source.source === "string" ? { source: source.source } : existing?.dataQuality?.source),
-    ...(typeof rawQuality.capturedAt === "string" ? { capturedAt: rawQuality.capturedAt } : existing?.dataQuality?.capturedAt)
+    ...(typeof rawQuality.source === "string" ? { source: rawQuality.source } : typeof source.source === "string" ? { source: source.source } : existing?.dataQuality?.source ? { source: existing.dataQuality.source } : {}),
+    ...(typeof rawQuality.capturedAt === "string" ? { capturedAt: rawQuality.capturedAt } : existing?.dataQuality?.capturedAt ? { capturedAt: existing.dataQuality.capturedAt } : {})
   };
   if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined && Object.keys(dataQuality).length === 0) return undefined;
   return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt, ...(Object.keys(dataQuality).length ? { dataQuality } : {}) };
