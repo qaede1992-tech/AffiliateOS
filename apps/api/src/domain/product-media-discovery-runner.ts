@@ -6,6 +6,7 @@ import { ProductMediaIngestionService } from "./product-media-ingestion.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from "./product-promo-video-renderer.js";
+import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
   maxProductPageBytes?: number;
@@ -22,24 +23,6 @@ const isShopeeHost = (hostname: string): boolean => {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   return host === "shopee.co.id" || host.endsWith(".shopee.co.id") ||
     host === "shopee.com" || host.endsWith(".shopee.com");
-};
-
-const hasVerifiedRightsEvidence = (asset: import("./product-media-ingestion.js").ProductMediaAsset): boolean => {
-  if (
-    asset.rightsStatus !== "verified" ||
-    !asset.rightsBasis ||
-    !asset.rightsEvidenceUrl ||
-    !asset.rightsVerifiedAt ||
-    !asset.sourcePublisher?.trim()
-  ) {
-    return false;
-  }
-  try {
-    const evidenceUrl = new URL(asset.rightsEvidenceUrl);
-    return evidenceUrl.protocol === "https:" && Number.isFinite(Date.parse(asset.rightsVerifiedAt));
-  } catch {
-    return false;
-  }
 };
 
 /**
@@ -84,7 +67,7 @@ export class ProductMediaDiscoveryRunner {
     const ids = new Set(assets.filter((asset) =>
       asset.bucket === this.bucketName &&
       (asset.kind === "image" || asset.kind === "video") &&
-      hasVerifiedRightsEvidence(asset)
+      hasCurrentVerifiedRights(asset)
     ).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => ids.has(productId));
   }
@@ -107,7 +90,7 @@ export class ProductMediaDiscoveryRunner {
     const productIdsWithVideo = new Set(assets.filter((asset) =>
       asset.bucket === this.bucketName &&
       asset.kind === "video" &&
-      (!requireVerifiedRights || hasVerifiedRightsEvidence(asset))
+      (!requireVerifiedRights || hasCurrentVerifiedRights(asset))
     ).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => productIdsWithVideo.has(productId));
   }
