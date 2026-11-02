@@ -259,3 +259,46 @@ test("only treats videos with verified rights evidence as publishable while pres
   assert.deepEqual(await runner.listVideoProductIds(productIds), productIds);
   assert.deepEqual(await runner.listPublishableVideoProductIds([...productIds, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"]), [productIds[1]]);
 });
+
+
+test("rejects future verification timestamps and credentialed evidence URLs during media selection", async () => {
+  const productIds = [
+    "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+    "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
+    "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3"
+  ];
+  const base = {
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    kind: "image" as const,
+    bucket: "affiliate-media",
+    objectKey: "products/test/image.jpg",
+    mimeType: "image/jpeg",
+    byteSize: 32,
+    sha256: "e".repeat(64),
+    sourceUrl: "https://cdn.example.test/image.jpg",
+    sourcePublisher: "Example publisher",
+    rightsStatus: "verified" as const,
+    rightsBasis: "explicit_permission" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/permission",
+    rightsVerifiedAt: "2026-11-01T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [
+    { ...base, productId: productIds[0]!, rightsVerifiedAt: new Date(Date.now() + 60_000).toISOString() },
+    { ...base, productId: productIds[1]!, rightsEvidenceUrl: "https://reviewer:secret@publisher.example.test/permission" },
+    { ...base, productId: productIds[2]!, rightsBasis: "unsupported" as ProductMediaAsset["rightsBasis"] }
+  ];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProducts(ids: string[]) { return assets.filter((asset) => ids.includes(asset.productId)); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  assert.deepEqual(await runner.listPublishableMediaProductIds(productIds), []);
+});
