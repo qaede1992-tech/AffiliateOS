@@ -73,6 +73,9 @@ test("ingests a valid product video without requiring a product image", async ()
   assert.equal(uploads.length, 1);
   assert.equal(uploads[0]?.contentType, "video/mp4");
   assert.equal(saved.length, 1);
+  assert.equal(saved[0]?.rightsStatus, "unverified");
+  assert.equal(saved[0]?.rightsBasis, null);
+  assert.equal(saved[0]?.rightsEvidenceUrl, null);
 });
 
 
