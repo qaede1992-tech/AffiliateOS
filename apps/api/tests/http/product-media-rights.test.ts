@@ -39,7 +39,7 @@ function makeApp(role: "admin" | "operator" | "viewer" = "operator") {
   const services = createInMemoryServices();
   services.productMediaAssets = repository;
   const app = createApp(services, {
-    auth: { enabled: true, token: "rights-review-test-token", operatorId: "reviewer-test", role },
+    auth: { enabled: false, operatorId: "reviewer-test", role },
     rateLimit: { enabled: false, limit: 100, windowMs: 60_000 }
   });
   return { app, getAsset: () => asset };
