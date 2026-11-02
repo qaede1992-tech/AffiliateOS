@@ -6,6 +6,24 @@ import type { Services } from "../src/domain/container.js";
 import { InMemoryShopeeAffiliateLinkIntakeRepository } from "../src/domain/repository.js";
 import { ShopeeAffiliateLinkIntakeService, type ShopeeAffiliateLinkIntake, type ShopeeAffiliateLinkIntakeRepository } from "../src/domain/shopee-affiliate-link-intake.js";
 
+test("documented Shopee an_redir link flows through intake to verified product identity without page fetch", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const service = new ShopeeAffiliateLinkIntakeService(repository);
+  const productUrl = "https://shopee.co.id/product/305325624/29463945555?gads_t_sig=example";
+  const affiliateUrl = "https://s.shopee.co.id/an_redir?origin_link=" +
+    encodeURIComponent(productUrl) + "&affiliate_id=12345&sub_id=affiliateos-test";
+
+  const intake = await service.submit(affiliateUrl);
+
+  assert.equal(intake.status, "awaiting_offer_data");
+  assert.equal(intake.canonicalProductUrl, productUrl);
+  assert.equal(intake.shopId, "305325624");
+  assert.equal(intake.itemId, "29463945555");
+  assert.equal(intake.affiliateUrl, affiliateUrl);
+  assert.equal(intake.sourceMetadata.resolution, "resolved");
+  assert.equal((await service.get(intake.id))?.canonicalProductUrl, productUrl);
+});
+
 test("Shopee link intake persists resolved product identity and awaits verified offer data", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => ({ status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456" }));
