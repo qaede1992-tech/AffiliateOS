@@ -112,6 +112,11 @@ test("lists stored video product ids with one bulk repository read", async () =>
       byteSize: 32,
       sha256: "a".repeat(64),
       sourceUrl: "https://cdn.example.test/video.mp4",
+      sourcePublisher: null,
+      rightsStatus: "unverified",
+      rightsBasis: null,
+      rightsEvidenceUrl: null,
+      rightsVerifiedAt: null,
       createdAt: "2026-10-30T00:00:00.000Z"
     },
     {
@@ -124,6 +129,11 @@ test("lists stored video product ids with one bulk repository read", async () =>
       byteSize: 32,
       sha256: "b".repeat(64),
       sourceUrl: "https://cdn.example.test/image.jpg",
+      sourcePublisher: null,
+      rightsStatus: "unverified",
+      rightsBasis: null,
+      rightsEvidenceUrl: null,
+      rightsVerifiedAt: null,
       createdAt: "2026-10-30T00:00:00.000Z"
     }
   ];
