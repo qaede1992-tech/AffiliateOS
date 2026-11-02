@@ -257,6 +257,11 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
   const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
   if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom wajib tidak ditemukan: ${missing.join(", ")}.` }] };
   const indexes = new Map(headers.map((header, index) => [header, index]));
+  const ratingHeadersPresent = ["Rating", "Rating Produk", "Penilaian"].filter((header) => indexes.has(header));
+  const reviewHeadersPresent = ["Jumlah Ulasan", "Ulasan", "Review Count"].filter((header) => indexes.has(header));
+  if (ratingHeadersPresent.length > 1 || reviewHeadersPresent.length > 1) {
+    return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom rating dan satu kolom jumlah ulasan agar sumber data tidak ambigu." }] };
+  }
   const rows: ParsedShopeeAffiliateCsvRow[] = [];
   const errors: ShopeeAffiliateCsvParseResult["errors"] = [];
   const seenIds = new Set<string>();
