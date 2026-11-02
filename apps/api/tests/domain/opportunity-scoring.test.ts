@@ -30,7 +30,7 @@ describe("opportunity scoring", () => {
     const expired = offer({ affiliateLinkExpiresAt: "2026-09-20T00:00:00.000Z" });
     const result = scoreOpportunity({ product: product(), offers: [expired], audience: ["skincare"] });
     assert.equal(result.offerId, undefined);
-    assert.equal(result.breakdown.commission, 50);
+    assert.equal(result.breakdown.commission, 0);
   });
   it("does not mistake missing demand evidence for a measured zero", () => {
     const result = scoreOpportunity({
