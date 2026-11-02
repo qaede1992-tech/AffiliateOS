@@ -179,7 +179,9 @@ test("only treats media with complete verified rights evidence as publishable", 
     "55555555-5555-4555-8555-555555555555",
     "66666666-6666-4666-8666-666666666666",
     "77777777-7777-4777-8777-777777777777",
-    "88888888-8888-4888-8888-888888888888"
+    "88888888-8888-4888-8888-888888888888",
+    "99999999-9999-4999-8999-999999999991",
+    "99999999-9999-4999-8999-999999999992"
   ];
   const baseAsset = {
     id: "99999999-9999-4999-8999-999999999999",
@@ -200,7 +202,9 @@ test("only treats media with complete verified rights evidence as publishable", 
     { ...baseAsset, productId: productIds[0]!, rightsStatus: "unverified" },
     { ...baseAsset, productId: productIds[1]!, rightsStatus: "revoked" },
     { ...baseAsset, productId: productIds[2]!, rightsStatus: "verified" },
-    { ...baseAsset, productId: productIds[3]!, rightsStatus: "verified", rightsEvidenceUrl: null }
+    { ...baseAsset, productId: productIds[3]!, rightsStatus: "verified", rightsEvidenceUrl: null },
+    { ...baseAsset, productId: productIds[4]!, rightsStatus: "verified", sourcePublisher: null },
+    { ...baseAsset, productId: productIds[5]!, rightsStatus: "verified", sourcePublisher: "   " }
   ];
   const repository = {
     async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
@@ -237,7 +241,8 @@ test("only treats videos with verified rights evidence as publishable while pres
   };
   const assets: ProductMediaAsset[] = [
     { ...shared, productId: productIds[0]!, rightsStatus: "unverified" },
-    { ...shared, productId: productIds[1]!, rightsStatus: "verified" }
+    { ...shared, productId: productIds[1]!, rightsStatus: "verified" },
+    { ...shared, productId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", rightsStatus: "verified", sourcePublisher: null }
   ];
   const repository = {
     async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
@@ -252,5 +257,5 @@ test("only treats videos with verified rights evidence as publishable while pres
   );
 
   assert.deepEqual(await runner.listVideoProductIds(productIds), productIds);
-  assert.deepEqual(await runner.listPublishableVideoProductIds(productIds), [productIds[1]]);
+  assert.deepEqual(await runner.listPublishableVideoProductIds([...productIds, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"]), [productIds[1]]);
 });
