@@ -30,7 +30,7 @@ const verified: ProductMediaAsset = {
   rightsStatus: "verified",
   rightsBasis: "explicit_permission",
   rightsEvidenceUrl: "https://publisher.example.test/permission",
-  rightsVerifiedAt: "2026-11-02T00:00:00.000Z",
+  rightsVerifiedAt: "2020-01-01T00:00:00.000Z",
   createdAt: "2026-11-02T00:00:00.000Z"
 };
 
@@ -58,7 +58,9 @@ test("blocks unverified, revoked, or incomplete rights evidence at provider disp
     { ...verified, rightsStatus: "revoked" as const },
     { ...verified, rightsEvidenceUrl: "http://publisher.example.test/permission" },
     { ...verified, sourcePublisher: "   " },
-    { ...verified, rightsVerifiedAt: "not-a-date" }
+    { ...verified, rightsVerifiedAt: "not-a-date" },
+    { ...verified, rightsVerifiedAt: new Date(Date.now() + 60_000).toISOString() },
+    { ...verified, rightsEvidenceUrl: "https://reviewer:secret@publisher.example.test/permission" }
   ]) {
     await assert.rejects(
       assertProductMediaRightsForPublication([media], [productId], repository(asset)),
