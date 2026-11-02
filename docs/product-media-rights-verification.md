@@ -1,0 +1,83 @@
+# Product Media Rights Verification
+
+## Status and scope
+
+This document defines the next implementation boundary for the product-media rights fields introduced by migration `0071_product_media_rights_provenance`. It is a design specification only: it does not change application behavior, database state, credentials, storage objects, deployments, or publication settings.
+
+The system must fail closed. A stored or generated media file is not evidence that AffiliateOS has permission to publish it. An HTTPS evidence URL is a reference for a human review, not proof by itself.
+
+## Required invariants
+
+1. Every ingested or generated asset starts as `unverified`.
+2. Only an authenticated `admin` may verify or revoke media rights. The current API authentication model supplies one configured operator role; the route must reject `operator` and `viewer` roles rather than treating all write-capable users as reviewers.
+3. Verification is an explicit human attestation after inspecting the actual evidence and confirming that it covers the exact asset, publisher, intended commercial use, media formats, territories, platforms, and validity period relevant to the planned publication.
+4. A URL, a publisher name, successful download, product-page visibility, or a generated derivative alone never changes an asset to `verified`.
+5. Every verify/revoke action creates an append-only audit record containing the asset ID, actor ID, actor role, action, prior and resulting state, basis, evidence reference, reason, and timestamp. Never log access tokens, secrets, or evidence contents.
+6. Revocation immediately removes the asset from all publishable-media queries. A later re-verification is a new audited action; it must not erase the revocation history.
+7. The final publication gate re-reads current persisted rights state immediately before execution. A cached selection or prior preview is not sufficient.
+8. The API must not fetch arbitrary evidence URLs to validate them. That would create an SSRF surface and still would not establish legal permission. Evidence inspection is performed by the authorized reviewer outside the server's network trust boundary.
+
+## State transitions
+
+Allowed transitions:
+
+- `unverified -> verified`: admin supplies a supported rights basis, HTTPS evidence reference, publisher/source identity, and a meaningful review reason; the service records reviewer and server-generated verification time.
+- `unverified -> revoked`: admin records why the asset is prohibited or unusable; this is allowed to preserve a durable decision.
+- `verified -> revoked`: admin records a revocation reason; publication eligibility is removed immediately.
+- `revoked -> verified`: only after a fresh review of current evidence; record a new audit event and new verification time.
+
+No public, operator, viewer, ingestion, renderer, discovery, or autonomous-cycle endpoint may set a rights status.
+
+## Evidence and basis policy
+
+Supported bases remain the schema enum:
+
+- `explicit_permission`: written permission from the rights holder or an authorized representative.
+- `license`: a license whose terms cover the intended use and distribution.
+- `public_domain`: a defensible public-domain basis for the specific work and relevant jurisdiction.
+- `user_owned`: the user confirms ownership and authority to grant the intended use.
+- `platform_authorization`: platform-provided authorization that expressly covers the intended reuse.
+
+A reviewer must not select a basis merely because it is the closest option. If the evidence does not fit a supported basis, leave the asset unverified and add a future schema value only through a separately reviewed migration.
+
+The evidence reference should point to a durable, access-controlled record or authoritative source. Avoid placing private signed URLs or confidential permission documents in ordinary logs. If a private evidence store is introduced, persist a non-secret reference to it, not a bearer URL.
+
+## API contract for implementation
+
+The implementation should add admin-only endpoints with strict Zod validation:
+
+- `GET /api/v1/product-media-assets?rightsStatus=unverified`: paginated review queue; return metadata needed to identify the asset and product, but never return private storage credentials or signed download URLs.
+- `POST /api/v1/product-media-assets/:assetId/rights/verify`: require `rightsBasis`, `rightsEvidenceUrl`, `sourcePublisher`, and a non-empty reviewer reason. The server supplies actor ID, role, and timestamp.
+- `POST /api/v1/product-media-assets/:assetId/rights/revoke`: require a non-empty reason; preserve prior provenance and append an audit event.
+
+The service must reject malformed/non-HTTPS evidence references, unsupported bases, missing publisher identity, empty reasons, unknown assets, and attempts by non-admin roles. It must not accept `rightsVerifiedAt`, `actorId`, or `rightsStatus` from the request body; those are server-controlled.
+
+Use optimistic concurrency or a transaction that locks the asset row while changing its status and inserting the audit event. If either write fails, neither should commit. Audit rows are append-only to the application role; no update/delete route should exist.
+
+## Authorization constraint in the current application
+
+`AuthContext` currently contains `operatorId` and one configured role (`admin | operator | viewer`). It is not a multi-user identity/role system. The first implementation can safely gate the endpoints on `request.auth.role === "admin"`, with actor ID taken from `request.auth.operatorId`. Do not imply that this is per-user RBAC. A future multi-user identity system must bind the actor ID and role to a verified principal before exposing reviewer permissions.
+
+## Publication gate requirements
+
+- Keep readiness checks separate from rights checks so an unverified generated video does not cause endless re-rendering.
+- Only assets with `rightsStatus = verified`, a supported basis, HTTPS evidence reference, non-empty publisher identity, and server-generated verification timestamp are publishable.
+- Image and video checks must use the same provenance predicate.
+- Revoke must affect both preview and final execution; the final execution path must query current state again.
+- Do not inherit source-media rights onto rendered videos. A derivative may require its own rights review for source footage, music, trademarks, and other incorporated material.
+
+## Required automated tests
+
+- unauthenticated requests receive 401; viewer/operator receive 403; admin can access the review queue and submit valid decisions.
+- request bodies cannot spoof actor, role, timestamp, or status.
+- each invalid/missing evidence field and empty reason is rejected.
+- verification creates exactly one audit event and sets server timestamp/actor.
+- revocation removes an asset from publishable image and video sets immediately.
+- re-verification after revocation creates a new event without deleting earlier events.
+- concurrent verify/revoke attempts cannot leave state and audit history inconsistent.
+- audit history has no application update/delete path.
+- publication preview and final execution both fail closed after revocation.
+
+## Rollout boundaries
+
+This workflow must be delivered behind tests and migration checks in a separate reviewed PR. Do not apply migrations to production or staging, change RLS/privileges, deploy, enable autonomous publication, or publish content as part of implementation. The owner must review and approve the PR before merge or deployment.
