@@ -360,3 +360,14 @@ test("preserves optional review lower-bound quality in normalized preview CSV", 
   assert.equal(result.rows[0]?.ratingMilli, 4900);
   assert.deepEqual(result.rows[0]?.reviewCount, { value: 1200, quality: "lower_bound", sourceText: "1200+" });
 });
+
+
+test("rejects preview review counts without an explicit quality classification", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,review_count_value,review_count_quality",
+    "0,105,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/105,https://s.shopee.co.id/abc,1200,",
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /review_count_quality harus exact, lower_bound, atau missing/);
+});
