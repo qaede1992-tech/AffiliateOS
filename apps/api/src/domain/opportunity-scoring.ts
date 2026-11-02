@@ -123,18 +123,19 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
     ? { score: clamp(discount * 0.6 + targetPrice * 0.4), confidence: 1 } : undefined;
 
   const availabilityKnown = offer?.availability === "in_stock" || offer?.availability === "limited";
-  const availability = offer?.availability === "in_stock" ? 100 : offer?.availability === "limited" ? 55 : 50;
+  const availability = !offer ? 0 : offer.availability === "in_stock" ? 100 : offer.availability === "limited" ? 55 : 50;
   const audienceEvidence = (input.audience?.length ?? 0) > 0 ? { score: audience.score, confidence: 1 } : undefined;
 
-  const totalEvidence = weightedAverage([
-    ...(commissionEvidence ? [{ ...commissionEvidence, weight: WEIGHTS.commission }] : []),
-    ...(demandEvidence ? [{ ...demandEvidence, weight: WEIGHTS.demand }] : []),
-    ...(audienceEvidence ? [{ ...audienceEvidence, weight: WEIGHTS.audienceFit }] : []),
-    ...(socialEvidence ? [{ ...socialEvidence, weight: WEIGHTS.socialProof }] : []),
-    ...(priceEvidence ? [{ ...priceEvidence, weight: WEIGHTS.priceAppeal }] : []),
-    ...(availabilityKnown ? [{ score: availability, weight: WEIGHTS.availability, confidence: 1 }] : [])
-  ]);
-  const score = totalEvidence?.score ?? 0;
+  // Missing evidence is neutral (50), never a false zero. Keep the denominator fixed
+  // so a product cannot receive an inflated score merely because most signals are absent.
+  const score = clamp(
+    (commissionEvidence?.score ?? 50) * WEIGHTS.commission / 100 +
+    (demandEvidence?.score ?? 50) * WEIGHTS.demand / 100 +
+    (audienceEvidence?.score ?? 50) * WEIGHTS.audienceFit / 100 +
+    (socialEvidence?.score ?? 50) * WEIGHTS.socialProof / 100 +
+    (priceEvidence?.score ?? 50) * WEIGHTS.priceAppeal / 100 +
+    (availabilityKnown ? availability : 50) * WEIGHTS.availability / 100
+  );
   const dataConfidence = clamp(
     (commissionEvidence ? WEIGHTS.commission * commissionEvidence.confidence : 0) +
     (demandEvidence ? WEIGHTS.demand * demandEvidence.confidence : 0) +
@@ -166,9 +167,9 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
     breakdown: {
       commission: Math.round((commissionEvidence?.score ?? 0) * 100) / 100,
       commissionRateBps, commissionAmountCents,
-      demand: Math.round(demand * 100) / 100,
+      demand: Math.round((demandEvidence?.score ?? 50) * 100) / 100,
       audienceFit: Math.round(audience.score * 100) / 100,
-      socialProof: Math.round(socialProof * 100) / 100,
+      socialProof: Math.round((socialEvidence?.score ?? 50) * 100) / 100,
       priceAppeal: Math.round((priceEvidence?.score ?? 50) * 100) / 100,
       availability, dataConfidence: Math.round(dataConfidence * 100) / 100,
       confidencePenalty: 0, total: Math.round(score * 100) / 100
