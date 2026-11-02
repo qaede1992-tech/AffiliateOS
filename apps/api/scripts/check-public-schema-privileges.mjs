@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Client } from "pg";
+import { findPublicSchemaDefaultAclGrants } from "./public-schema-privilege-audit.mjs";
 
 if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
   throw new Error("Refusing to run the public-schema privilege guard outside a GitHub Actions CI runner.");
@@ -60,25 +61,31 @@ try {
     ORDER BY p.proname, r.rolname
   `);
   const { rows: defaultAclRows } = await client.query(`
-    SELECT owner.rolname AS creator_role, d.defaclobjtype AS object_type,
-           grantee.rolname AS grantee, acl.privilege_type
+    SELECT COALESCE(n.nspname, '<global>') AS schema_name,
+           owner.rolname AS creator_role,
+           d.defaclobjtype AS object_type,
+           COALESCE(grantee.rolname, 'PUBLIC') AS grantee,
+           acl.privilege_type
     FROM pg_default_acl d
     JOIN pg_roles owner ON owner.oid = d.defaclrole
-    JOIN pg_namespace n ON n.oid = d.defaclnamespace
+    LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
     CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
-    JOIN pg_roles grantee ON grantee.oid = acl.grantee
-    WHERE n.nspname = 'public'
-      AND owner.rolname = current_user
-      AND grantee.rolname IN ('anon', 'authenticated')
-    ORDER BY d.defaclobjtype, grantee.rolname, acl.privilege_type
+    LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+    WHERE d.defaclnamespace = 0 OR n.nspname = 'public'
+    ORDER BY schema_name, creator_role, object_type, grantee, acl.privilege_type
   `);
+  const broadDefaultAclRows = findPublicSchemaDefaultAclGrants(defaultAclRows);
 
   assert.deepEqual(tableRows, [], "anon/authenticated must not have effective privileges on public tables or views.");
   assert.deepEqual(sequenceRows, [], "anon/authenticated must not have effective privileges on public sequences.");
   assert.deepEqual(routineRows, [], "anon/authenticated must not have effective EXECUTE privileges on public routines.");
-  assert.deepEqual(defaultAclRows, [], "The application migration role must not configure default public-schema privileges for anon/authenticated.");
+  assert.deepEqual(
+    broadDefaultAclRows,
+    [],
+    "No creator role or global default may grant public-schema privileges to anon, authenticated, or PUBLIC."
+  );
 
-  console.log("Public-schema privilege guard passed: no effective table, sequence, routine, or application-role default ACL privileges for anon/authenticated.");
+  console.log("Public-schema privilege guard passed: no effective table, sequence, routine, or broad public-schema default ACL privileges.");
 } finally {
   await client.end();
 }
