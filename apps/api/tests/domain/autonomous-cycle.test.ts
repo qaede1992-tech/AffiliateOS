@@ -54,6 +54,52 @@ describe("autonomous cycle", () => {
     assert.equal(calls.some((call) => call === "render:media-rejected"), false);
   });
 
+  it("logs aggregate media discovery outcomes without logging source URLs", async () => {
+    const product = { id: "media-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+    };
+    const execution = {
+      async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
+      async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() {
+        return {
+          productId: product.id,
+          pageFetched: false,
+          hasVideo: false,
+          stored: [{ kind: "image" }],
+          skipped: [{
+            url: "https://shopee.co.id/private-product-path",
+            reason: "Shopee product-page media extraction is disabled; only explicitly supplied catalog media can be ingested."
+          }]
+        };
+      },
+      async listPublishableMediaProductIds() { return [product.id]; },
+      async listVideoProductIds() { return []; },
+      async generatePromoVideo() { return { generated: false }; }
+    };
+    const logs: string[] = [];
+    const originalInfo = console.info;
+    console.info = (message?: unknown) => { logs.push(String(message)); };
+    try {
+      const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
+      await service.runOnce({ publicationEnabled: false });
+    } finally {
+      console.info = originalInfo;
+    }
+    const summary = logs.map((line) => {
+      try { return JSON.parse(line) as Record<string, unknown>; } catch { return undefined; }
+    }).find((entry) => entry?.event === "autonomous_media_discovery_summary");
+    assert.ok(summary);
+    assert.equal(summary.discoveryAttemptedCount, 1);
+    assert.equal(summary.storedImageCount, 1);
+    assert.equal(summary.storedVideoCount, 0);
+    assert.deepEqual(summary.skippedReasonCounts, { shopee_catalog_media_missing: 1 });
+    assert.equal(logs.some((line) => line.includes("private-product-path")), false);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
