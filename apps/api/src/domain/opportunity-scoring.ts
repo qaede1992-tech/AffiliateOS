@@ -1,4 +1,4 @@
-import type { AffiliateOffer, AudienceSegment, Product, ProductOpportunity } from "@affiliateos/shared";
+import type { AffiliateOffer, AudienceSegment, Product, ProductOpportunity, ProductMetricQuality } from "@affiliateos/shared";
 
 export type OpportunityScoringInput = {
   product: Product;
@@ -16,6 +16,8 @@ export type OpportunityScoreBreakdown = {
   socialProof: number;
   priceAppeal: number;
   availability: number;
+  /** Percentage of the fixed scoring model supported by observed data. */
+  dataConfidence: number;
   confidencePenalty: number;
   performanceAdjustment?: number;
   total: number;
@@ -30,71 +32,150 @@ const logScore = (value: number, scale: number) => {
 };
 const DISCOVERY_SIGNAL_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty", "makeup", "cosmetic", "skincare"], skincare: ["skincare", "skin", "serum", "moisturizer", "cosmetic"], baby: ["baby", "infant", "newborn", "diaper"], parenting: ["parent", "parenting", "baby", "family"], fashion: ["fashion", "clothing", "apparel", "shoes", "dress"], home: ["home", "decor", "furniture", "storage"], kitchen: ["kitchen", "cook", "cooking", "bake", "utensil"], electronics: ["electronic", "phone", "laptop", "gadget", "computer"], lifestyle: ["lifestyle", "wellness", "fitness", "travel"], "deal-hunters": ["deal", "discount", "sale", "promo", "bundle"] };
+const WEIGHTS = { commission: 25, demand: 20, audienceFit: 20, socialProof: 10, priceAppeal: 10, availability: 15 } as const;
+type Evidence = { score: number; confidence: number };
+function weightedAverage(parts: Array<{ score: number; weight: number; confidence?: number }>): Evidence | undefined {
+  const available = parts.filter((part) => Number.isFinite(part.score) && part.weight > 0);
+  const weight = available.reduce((sum, part) => sum + part.weight, 0);
+  if (weight === 0) return undefined;
+  return {
+    score: clamp(available.reduce((sum, part) => sum + part.score * part.weight, 0) / weight),
+    confidence: clamp(available.reduce((sum, part) => sum + part.weight * (part.confidence ?? 1), 0) / 100)
+  };
+}
+function metricConfidence(value: number | undefined, quality: ProductMetricQuality | undefined): number {
+  if (quality === "missing") return 0;
+  if (quality === "exact") return 1;
+  if (quality === "lower_bound") return 0.75;
+  return value !== undefined && value > 0 ? 0.8 : 0;
+}
+function metricKnown(value: number | undefined, quality: ProductMetricQuality | undefined): value is number {
+  return metricConfidence(value, quality) > 0 && value !== undefined;
+}
 function textFor(product: Product): string { return `${product.name} ${product.description ?? ""} ${product.category ?? ""}`.toLowerCase(); }
 function audienceFit(product: Product, audience: AudienceSegment[]): { score: number; matched: AudienceSegment[] } { if (audience.length === 0) return { score: 50, matched: [] }; const text = textFor(product); const matched = audience.filter((segment) => audienceCategories[segment].some((term) => text.includes(term))); return { score: clamp((matched.length / audience.length) * 100), matched }; }
 function isAffiliateLinkUsable(offer: AffiliateOffer, now = new Date()): boolean { return offer.affiliateLinkStatus === "active" && Boolean(offer.affiliateUrl) && (!offer.affiliateLinkExpiresAt || new Date(offer.affiliateLinkExpiresAt).getTime() > now.getTime()); }
 export function isExplicitlyAffiliateEligible(offer: AffiliateOffer): boolean {
   const metadata = offer.availabilityMetadata ?? {};
-  for (const key of ["affiliateEligible", "commissionEligible", "isEligible"]) {
-    if (metadata[key] === false) return false;
-  }
+  for (const key of ["affiliateEligible", "commissionEligible", "isEligible"]) if (metadata[key] === false) return false;
   return true;
 }
 function commissionScore(offer: AffiliateOffer): number { const rateScore = offer.commissionRateBps !== undefined ? clamp((offer.commissionRateBps / 2_000) * 100) : 0; if (offer.commissionAmountCents === undefined) return rateScore; return clamp(rateScore * 0.6 + logScore(Math.max(0, offer.commissionAmountCents), 4) * 0.4); }
 function bestOffer(productId: string, offers: AffiliateOffer[]): AffiliateOffer | undefined {
-  return offers
-    .filter((offer) => offer.productId === productId && offer.status === "active" && isAffiliateLinkUsable(offer) && offer.availability !== "out_of_stock" && isExplicitlyAffiliateEligible(offer))
-    .slice()
-    .sort((a, b) => {
-      const commissionA = commissionScore(a);
-      const commissionB = commissionScore(b);
-      const availabilityA = a.availability === "limited" ? 55 : 100;
-      const availabilityB = b.availability === "limited" ? 55 : 100;
-      const utilityA = commissionA * 0.25 + availabilityA * 0.15;
-      const utilityB = commissionB * 0.25 + availabilityB * 0.15;
-      return utilityB - utilityA ||
-        (b.commissionRateBps ?? 0) - (a.commissionRateBps ?? 0) ||
-        (b.commissionAmountCents ?? 0) - (a.commissionAmountCents ?? 0) ||
-        a.id.localeCompare(b.id);
-    })[0];
+  return offers.filter((offer) => offer.productId === productId && offer.status === "active" && isAffiliateLinkUsable(offer) && offer.availability !== "out_of_stock" && isExplicitlyAffiliateEligible(offer)).slice().sort((a, b) => {
+    const utilityA = commissionScore(a) * 0.25 + (a.availability === "limited" ? 55 : a.availability === "in_stock" ? 100 : 50) * 0.15;
+    const utilityB = commissionScore(b) * 0.25 + (b.availability === "limited" ? 55 : b.availability === "in_stock" ? 100 : 50) * 0.15;
+    return utilityB - utilityA || (b.commissionRateBps ?? 0) - (a.commissionRateBps ?? 0) || (b.commissionAmountCents ?? 0) - (a.commissionAmountCents ?? 0) || a.id.localeCompare(b.id);
+  })[0];
 }
 
 export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportunity {
   const { product } = input;
   if (product.status !== "active") {
     return {
-      product,
-      offerId: undefined,
-      score: 0,
-      reasons: ["Product is inactive"],
+      product, offerId: undefined, score: 0, reasons: ["Product is inactive"],
       disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.",
-      breakdown: { commission: 0, commissionRateBps: 0, commissionAmountCents: 0, demand: 0, audienceFit: 0, socialProof: 0, priceAppeal: 0, availability: 0, confidencePenalty: 0, total: 0 }
+      breakdown: { commission: 0, commissionRateBps: 0, commissionAmountCents: 0, demand: 0, audienceFit: 0, socialProof: 0, priceAppeal: 0, availability: 0, dataConfidence: 0, confidencePenalty: 0, total: 0 }
     };
   }
-  const offer = bestOffer(product.id, input.offers); const audience = audienceFit(product, input.audience ?? []);
+
+  const offer = bestOffer(product.id, input.offers);
+  const audience = audienceFit(product, input.audience ?? []);
+  const quality = product.discoverySignals?.dataQuality;
   const commissionRateBps = Math.max(0, offer?.commissionRateBps ?? 0);
-  const commissionRateScore = offer?.commissionRateBps !== undefined ? clamp((commissionRateBps / 2_000) * 100) : 0;
   const commissionAmountCents = Math.max(0, offer?.commissionAmountCents ?? 0);
-  const commissionAmountScore = offer?.commissionAmountCents !== undefined ? logScore(commissionAmountCents, 4) : 0;
-  const commission = offer ? (offer.commissionAmountCents === undefined ? commissionRateScore : clamp(commissionRateScore * 0.6 + commissionAmountScore * 0.4)) : 0;
-  const catalogDemand = logScore(product.soldCount, 5) * 0.7 + logScore(product.reviewCount, 5) * 0.3;
+  const commissionEvidence = offer && (offer.commissionRateBps !== undefined || offer.commissionAmountCents !== undefined)
+    ? { score: commissionScore(offer), confidence: 1 } : undefined;
+
+  const salesKnown = metricKnown(product.soldCount, quality?.soldCount);
+  const reviewsKnown = metricKnown(product.reviewCount, quality?.reviewCount);
+  const salesConfidence = metricConfidence(product.soldCount, quality?.soldCount);
+  const reviewsConfidence = metricConfidence(product.reviewCount, quality?.reviewCount);
   const reachSignals = product.discoverySignals;
   const capturedAtMs = reachSignals?.capturedAt ? Date.parse(reachSignals.capturedAt) : Number.NaN;
   const signalAgeMs = Number.isFinite(capturedAtMs) ? Math.max(0, Date.now() - capturedAtMs) : 0;
   const freshness = Number.isFinite(capturedAtMs) ? Math.pow(0.5, signalAgeMs / DISCOVERY_SIGNAL_HALF_LIFE_MS) : 1;
-  const audienceReach = (reachSignals?.audienceReachScore ?? 0) * freshness;
+  const audienceReachKnown = typeof reachSignals?.audienceReachScore === "number" && Number.isFinite(reachSignals.audienceReachScore);
   const observedReach = Math.max(reachSignals?.viewCount ?? 0, reachSignals?.impressionCount ?? 0);
-  const reachEvidence = observedReach > 0 ? logScore(observedReach, 8) * freshness : 0;
-  const demand = clamp(catalogDemand * 0.75 + audienceReach * 0.15 + reachEvidence * 0.10);
-  const socialProof = clamp((product.ratingMilli ?? 0) / 50 * 0.7 + logScore(product.reviewCount, 6) * 0.3);
-  const discount = product.originalPriceCents && product.originalPriceCents > product.priceCents ? clamp(((product.originalPriceCents - product.priceCents) / product.originalPriceCents) * 100) : 0;
-  const targetPrice = input.targetPriceMaxCents && input.targetPriceMaxCents > 0 ? clamp((1 - product.priceCents / input.targetPriceMaxCents) * 100) : 50;
-  const priceAppeal = clamp(discount * 0.6 + targetPrice * 0.4); const availability = offer ? (offer.availability === "limited" ? 55 : 100) : 0;
-  // An unconstrained audience is neutral, not negative: when no audience is configured,
-  // the catalog demand/review signals are the available evidence and should not be penalized.
-  const confidencePenalty = 0;
-  const total = clamp(commission * 0.25 + demand * 0.20 + audience.score * 0.20 + socialProof * 0.10 + priceAppeal * 0.10 + availability * 0.15 - confidencePenalty);
-  const reasons: string[] = []; if (commission >= 60) reasons.push("Strong commission potential"); if (demand >= 60) reasons.push(reachSignals?.audienceReachScore !== undefined || observedReach > 0 ? "Strong demand and audience-reach signals" : "Strong demand signals from sales and reviews"); if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`); if (priceAppeal >= 60) reasons.push("Competitive price or discount signal"); if (socialProof >= 70) reasons.push("Strong rating and review evidence"); if (!offer) reasons.push("No active affiliate offer available"); if (availability < 100 && availability > 0) reasons.push("Offer availability is limited");
-  return { product, offerId: offer?.id, score: Math.round(total * 100) / 100, reasons, disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.", breakdown: { commission: Math.round(commission * 100) / 100, commissionRateBps, commissionAmountCents, demand: Math.round(demand * 100) / 100, audienceFit: Math.round(audience.score * 100) / 100, socialProof: Math.round(socialProof * 100) / 100, priceAppeal: Math.round(priceAppeal * 100) / 100, availability, confidencePenalty, total: Math.round(total * 100) / 100 } };
+  const reachEvidenceKnown = observedReach > 0;
+  const demandEvidence = weightedAverage([
+    ...(salesKnown ? [{ score: logScore(product.soldCount, 5), weight: 70, confidence: salesConfidence }] : []),
+    ...(reviewsKnown ? [{ score: logScore(product.reviewCount, 5), weight: 30, confidence: reviewsConfidence }] : []),
+    ...(audienceReachKnown ? [{ score: clamp(reachSignals!.audienceReachScore! * freshness), weight: 15 }] : []),
+    ...(reachEvidenceKnown ? [{ score: logScore(observedReach, 8) * freshness, weight: 10 }] : [])
+  ]);
+  const demand = demandEvidence?.score ?? 0;
+
+  const ratingKnown = metricKnown(product.ratingMilli, quality?.ratingMilli);
+  const ratingConfidence = metricConfidence(product.ratingMilli, quality?.ratingMilli);
+  const socialEvidence = weightedAverage([
+    ...(ratingKnown ? [{ score: clamp((product.ratingMilli! / 50) * 100), weight: 70, confidence: ratingConfidence }] : []),
+    ...(reviewsKnown ? [{ score: logScore(product.reviewCount, 6), weight: 30, confidence: reviewsConfidence }] : [])
+  ]);
+  const socialProof = socialEvidence?.score ?? 0;
+
+  const hasDiscountEvidence = product.originalPriceCents !== undefined && product.originalPriceCents > 0;
+  const discount = hasDiscountEvidence && product.originalPriceCents! > product.priceCents
+    ? clamp(((product.originalPriceCents! - product.priceCents) / product.originalPriceCents!) * 100) : 0;
+  const hasTargetPrice = input.targetPriceMaxCents !== undefined && input.targetPriceMaxCents > 0;
+  const targetPrice = hasTargetPrice ? clamp((1 - product.priceCents / input.targetPriceMaxCents!) * 100) : 50;
+  const priceEvidence = hasDiscountEvidence || hasTargetPrice
+    ? { score: clamp(discount * 0.6 + targetPrice * 0.4), confidence: 1 } : undefined;
+
+  const availabilityKnown = offer?.availability === "in_stock" || offer?.availability === "limited";
+  const availability = offer?.availability === "in_stock" ? 100 : offer?.availability === "limited" ? 55 : 50;
+  const audienceEvidence = (input.audience?.length ?? 0) > 0 ? { score: audience.score, confidence: 1 } : undefined;
+
+  const totalEvidence = weightedAverage([
+    ...(commissionEvidence ? [{ ...commissionEvidence, weight: WEIGHTS.commission }] : []),
+    ...(demandEvidence ? [{ ...demandEvidence, weight: WEIGHTS.demand }] : []),
+    ...(audienceEvidence ? [{ ...audienceEvidence, weight: WEIGHTS.audienceFit }] : []),
+    ...(socialEvidence ? [{ ...socialEvidence, weight: WEIGHTS.socialProof }] : []),
+    ...(priceEvidence ? [{ ...priceEvidence, weight: WEIGHTS.priceAppeal }] : []),
+    ...(availabilityKnown ? [{ score: availability, weight: WEIGHTS.availability, confidence: 1 }] : [])
+  ]);
+  const score = totalEvidence?.score ?? 0;
+  const dataConfidence = clamp(
+    (commissionEvidence ? WEIGHTS.commission * commissionEvidence.confidence : 0) +
+    (demandEvidence ? WEIGHTS.demand * demandEvidence.confidence : 0) +
+    (audienceEvidence ? WEIGHTS.audienceFit : 0) +
+    (socialEvidence ? WEIGHTS.socialProof * socialEvidence.confidence : 0) +
+    (priceEvidence ? WEIGHTS.priceAppeal : 0) +
+    (availabilityKnown ? WEIGHTS.availability : 0)
+  );
+
+  const reasons: string[] = [];
+  if (commissionEvidence && commissionEvidence.score >= 60) reasons.push("Strong commission potential");
+  if (demandEvidence && demand >= 60) reasons.push(reachEvidenceKnown || audienceReachKnown ? "Strong demand and audience-reach signals" : "Strong demand signals from recorded sales/reviews");
+  if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`);
+  if (priceEvidence && priceEvidence.score >= 60) reasons.push("Competitive price or discount signal");
+  if (socialEvidence && socialProof >= 70) reasons.push("Strong rating and review evidence");
+  if (!offer) reasons.push("No active affiliate offer available");
+  if (offer?.availability === "limited") reasons.push("Offer availability is limited");
+  const missingSignals = [
+    !salesKnown && !audienceReachKnown && !reachEvidenceKnown ? "sales/reach data" : undefined,
+    !ratingKnown && !reviewsKnown ? "rating/review data" : undefined,
+    !priceEvidence ? "price comparison data" : undefined,
+    !availabilityKnown ? "confirmed availability" : undefined
+  ].filter(Boolean);
+  if (missingSignals.length) reasons.push(`Additional data unavailable: ${missingSignals.join(", ")}`);
+
+  return {
+    product, offerId: offer?.id, score: Math.round(score * 100) / 100, reasons,
+    disclaimer: "Score is normalized over observed evidence only. Data confidence indicates how much of the scoring model is supported by verified data; unavailable data is not treated as a zero score. This score does not guarantee conversions or profit.",
+    breakdown: {
+      commission: Math.round((commissionEvidence?.score ?? 0) * 100) / 100,
+      commissionRateBps, commissionAmountCents,
+      demand: Math.round(demand * 100) / 100,
+      audienceFit: Math.round(audience.score * 100) / 100,
+      socialProof: Math.round(socialProof * 100) / 100,
+      priceAppeal: Math.round((priceEvidence?.score ?? 50) * 100) / 100,
+      availability, dataConfidence: Math.round(dataConfidence * 100) / 100,
+      confidencePenalty: 0, total: Math.round(score * 100) / 100
+    }
+  };
 }
-export function rankOpportunities(inputs: OpportunityScoringInput[]): ScoredOpportunity[] { return inputs.map(scoreOpportunity).sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id)); }
+
+export function rankOpportunities(inputs: OpportunityScoringInput[]): ScoredOpportunity[] {
+  return inputs.map(scoreOpportunity).sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id));
+}
