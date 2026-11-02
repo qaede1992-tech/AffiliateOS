@@ -101,7 +101,7 @@ export class ProductMediaDiscoveryRunner {
       throw new Error("Product must pass non-media affiliate eligibility before discovery.");
     }
     const existing = await this.assets.listByProduct(product.id);
-    if (existing.some((asset) => asset.bucket === this.bucketName && asset.kind === "video")) {
+    if (existing.some((asset) => asset.bucket === this.bucketName && asset.kind === "video" && hasCurrentVerifiedRights(asset))) {
       return { productId: product.id, pageFetched: false, hasVideo: true, stored: existing, skipped };
     }
     let pageUrl: URL;
