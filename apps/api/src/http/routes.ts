@@ -216,7 +216,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         ...(row.soldCount.value !== null ? { soldCount: row.soldCount.value } : {}),
         ...(row.commissionRateBps !== null ? { commissionRateBps: row.commissionRateBps } : {}),
         ...(row.commissionAmountRupiah !== null ? { commissionAmountCents: row.commissionAmountRupiah * 100 } : {}),
-        metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality }
+        metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality, dataQuality: { soldCount: row.soldCount.quality, ratingMilli: "missing", reviewCount: "missing", source: "shopee-affiliate-csv" } }
       }))
     });
     for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
