@@ -45,14 +45,6 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       .map(toAsset);
   }
 
-  async updateRights(assetId: string, productId: string, rights: Pick<ProductMediaAsset, "rightsStatus" | "rightsBasis" | "rightsEvidenceUrl" | "rightsVerifiedAt" | "sourcePublisher">): Promise<ProductMediaAsset | undefined> {
-    const rows = await this.db.update(productMediaAssets).set(rights).where(and(
-      eq(productMediaAssets.id, assetId),
-      eq(productMediaAssets.productId, productId)
-    )).returning();
-    return rows[0] ? toAsset(rows[0]) : undefined;
-  }
-
   async save(asset: ProductMediaAsset): Promise<ProductMediaAsset> {
     const rows = await this.db.insert(productMediaAssets).values({
       ...asset,
