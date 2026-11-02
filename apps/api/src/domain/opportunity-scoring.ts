@@ -165,13 +165,13 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
     product, offerId: offer?.id, score: Math.round(score * 100) / 100, reasons,
     disclaimer: "Score is normalized over observed evidence only. Data confidence indicates how much of the scoring model is supported by verified data; unavailable data is not treated as a zero score. This score does not guarantee conversions or profit.",
     breakdown: {
-      commission: Math.round((commissionEvidence?.score ?? 0) * 100) / 100,
+      commission: Math.round((commissionEvidence?.score ?? 50) * 100) / 100,
       commissionRateBps, commissionAmountCents,
       demand: Math.round((demandEvidence?.score ?? 50) * 100) / 100,
       audienceFit: Math.round(audience.score * 100) / 100,
       socialProof: Math.round((socialEvidence?.score ?? 50) * 100) / 100,
       priceAppeal: Math.round((priceEvidence?.score ?? 50) * 100) / 100,
-      availability, dataConfidence: Math.round(dataConfidence * 100) / 100,
+      availability: availabilityKnown ? availability : 50, dataConfidence: Math.round(dataConfidence * 100) / 100,
       confidencePenalty: 0, total: Math.round(score * 100) / 100
     }
   };
