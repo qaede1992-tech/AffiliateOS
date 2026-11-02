@@ -51,6 +51,11 @@ export const productMediaAssets = pgTable("product_media_assets", {
   byteSize: bigint("byte_size", { mode: "number" }).notNull(),
   sha256: varchar("sha256", { length: 64 }).notNull(),
   sourceUrl: varchar("source_url", { length: 2048 }).notNull(),
+  sourcePublisher: varchar("source_publisher", { length: 255 }),
+  rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
+  rightsBasis: varchar("rights_basis", { length: 40 }),
+  rightsEvidenceUrl: varchar("rights_evidence_url", { length: 2048 }),
+  rightsVerifiedAt: timestamp("rights_verified_at", { withTimezone: true, mode: "string" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
