@@ -14,7 +14,7 @@ The system must fail closed. A stored or generated media file is not evidence th
 4. A URL, a publisher name, successful download, product-page visibility, or a generated derivative alone never changes an asset to `verified`.
 5. Every verify/revoke action creates an append-only audit record containing the asset ID, actor ID, actor role, action, prior and resulting state, basis, evidence reference, reason, and timestamp. Never log access tokens, secrets, or evidence contents.
 6. Revocation immediately removes the asset from all publishable-media queries. A later re-verification is a new audited action; it must not erase the revocation history.
-7. The final publication gate re-reads current persisted rights state immediately before execution. A cached selection or prior preview is not sufficient.
+7. A cached selection or preview is never sufficient authorization to publish. Rights must be re-read at the last responsible moment on the actual publication path.
 8. The API must not fetch arbitrary evidence URLs to validate them. That would create an SSRF surface and still would not establish legal permission. Evidence inspection is performed by the authorized reviewer outside the server's network trust boundary.
 
 ## State transitions
@@ -63,7 +63,10 @@ Use optimistic concurrency or a transaction that locks the asset row while chang
 - Keep readiness checks separate from rights checks so an unverified generated video does not cause endless re-rendering.
 - Only assets with `rightsStatus = verified`, a supported basis, HTTPS evidence reference, non-empty publisher identity, and server-generated verification timestamp are publishable.
 - Image and video checks must use the same provenance predicate.
-- Revoke must affect both preview and final execution; the final execution path must query current state again.
+- Re-check current rights when selecting a product, but treat this as an early eligibility check only; it does not authorize a later publication by itself.
+- The actual publisher/worker must resolve the content's product and exact media asset IDs, then re-read the current rights state immediately before handing media to the platform provider. A scheduled job, retry, or recovered run must perform this check again rather than relying on the state captured when the job was created.
+- If the rights lookup fails, the asset is missing, the media-to-product association is ambiguous, or any asset is unverified/revoked, block the entire affected publication before any provider upload/post request. Do not silently fall back to a cached URL, a legacy media record, or a caller-supplied product ID.
+- Revocation must block subsequent provider dispatches for both images and videos, including already queued jobs. A request already accepted by an external platform cannot reliably be recalled by this gate; record that boundary and surface the in-flight publication state for operator action.
 - Do not inherit source-media rights onto rendered videos. A derivative may require its own rights review for source footage, music, trademarks, and other incorporated material.
 
 ## Required automated tests
@@ -76,7 +79,11 @@ Use optimistic concurrency or a transaction that locks the asset row while chang
 - re-verification after revocation creates a new event without deleting earlier events.
 - concurrent verify/revoke attempts cannot leave state and audit history inconsistent.
 - audit history has no application update/delete path.
-- publication preview and final execution both fail closed after revocation.
+- publication preview and final selection both fail closed after revocation.
+- a scheduled job created while rights were verified is blocked if rights are revoked before provider dispatch.
+- retries and recovered autonomous runs re-read rights; lookup failures fail closed.
+- ambiguous or missing media-to-product associations block publication.
+- a revocation racing with dispatch is handled consistently and its in-flight boundary is auditable.
 
 ## Rollout boundaries
 
