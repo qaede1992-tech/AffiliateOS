@@ -49,11 +49,15 @@ export async function assertProductMediaRightsForPublication(
     }
     if (media.source !== "object-storage") continue;
     const separator = media.reference.indexOf("/");
-    if (separator <= 0 || separator === media.reference.length - 1) continue;
+    if (separator <= 0 || separator === media.reference.length - 1) {
+      throw new Error("Object-storage media reference is invalid; publication is blocked.");
+    }
     const bucket = media.reference.slice(0, separator);
     const objectKey = media.reference.slice(separator + 1);
     const segments = objectKey.split("/");
-    if (segments[0] !== "products") continue;
+    if (segments[0] !== "products") {
+      throw new Error("Object-storage media has no verified product-rights provenance; publication is blocked.");
+    }
 
     const productId = segments[1] ?? "";
     if (!productId || !linkedIds.has(productId)) {
