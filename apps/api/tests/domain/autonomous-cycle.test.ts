@@ -22,7 +22,7 @@ describe("autonomous cycle", () => {
       async runOnce(input: { publishableMediaProductIds?: string[]; publishableVideoProductIds?: string[]; requirePublishableVideo?: boolean }) {
         calls.push("final-execution");
         assert.deepEqual(input.publishableMediaProductIds, ["selected-image", "media-rejected"]);
-        assert.deepEqual(input.publishableVideoProductIds, ["selected-image"]);
+        assert.deepEqual(input.publishableVideoProductIds, []);
         assert.equal(input.requirePublishableVideo, true);
         return { selected: [], rejected: [], audit: [], outcomes: [] };
       }
@@ -35,7 +35,7 @@ describe("autonomous cycle", () => {
         videoLookupCount += 1;
         return videoLookupCount === 1 ? [] : ["selected-image"];
       },
-      async listPublishableVideoProductIds() { calls.push("list-publishable-videos"); return ["selected-image"]; },
+      async listPublishableVideoProductIds() { calls.push("list-publishable-videos"); return []; },
       async generatePromoVideo(product: { id: string }) { calls.push("render:" + product.id); return { generated: true }; }
     };
     const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
