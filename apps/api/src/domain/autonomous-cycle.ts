@@ -62,7 +62,7 @@ export class AutonomousCycleService {
     const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: false });
     const productIds = candidateList.map((candidate) => candidate.product.id);
     const videoIds = this.productMediaDiscovery
-      ? await this.productMediaDiscovery.listVideoProductIds(productIds)
+      ? await this.productMediaDiscovery.listPublishableVideoProductIds(productIds)
       : input.publishableVideoProductIds ?? [];
     const mediaIds = this.productMediaDiscovery
       ? await this.productMediaDiscovery.listPublishableMediaProductIds(productIds)
@@ -141,7 +141,15 @@ export class AutonomousCycleService {
           }));
         }
         try {
-          videoIds = await this.productMediaDiscovery.listVideoProductIds(productIds);
+          // Keep readiness separate from publication rights: an unverified generated video
+          // must not trigger endless rendering, but it must not pass the final publish gate.
+          const storedVideoIds = await this.productMediaDiscovery.listVideoProductIds(productIds);
+          videoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(productIds);
+          for (const id of storedVideoIds) {
+            if (!videoIds.includes(id)) {
+              console.info(JSON.stringify({ event: "autonomous_product_video_rights_unverified", productId: id }));
+            }
+          }
         } catch (error) {
           videoIds = [];
           console.warn(JSON.stringify({
@@ -188,7 +196,7 @@ export class AutonomousCycleService {
           }
         }
         try {
-          videoIds = await this.productMediaDiscovery.listVideoProductIds(productIds);
+          videoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(productIds);
         } catch (error) {
           videoIds = [];
           console.warn(JSON.stringify({
