@@ -86,7 +86,15 @@ test("blocks externally hosted URLs for affiliate-linked product content", async
   const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/video.mp4" };
   await assert.rejects(
     assertProductMediaRightsForPublication([external], [productId], repository(verified)),
-    /Externally hosted media has no persisted product-rights record/
+    /Externally hosted media has no persisted rights provenance/
+  );
+});
+
+test("blocks external media even when content has no linked products", async () => {
+  const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/video.mp4" };
+  await assert.rejects(
+    assertProductMediaRightsForPublication([external], []),
+    /no persisted rights provenance/
   );
 });
 
