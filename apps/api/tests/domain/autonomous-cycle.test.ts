@@ -35,6 +35,7 @@ describe("autonomous cycle", () => {
         videoLookupCount += 1;
         return videoLookupCount === 1 ? [] : ["selected-image"];
       },
+      async listPublishableVideoProductIds() { calls.push("list-publishable-videos"); return ["selected-image"]; },
       async generatePromoVideo(product: { id: string }) { calls.push("render:" + product.id); return { generated: true }; }
     };
     const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
@@ -46,9 +47,10 @@ describe("autonomous cycle", () => {
       "discover:media-rejected",
       "list-media",
       "list-videos",
+      "list-publishable-videos",
       "media-ready-selection",
       "render:selected-image",
-      "list-videos",
+      "list-publishable-videos",
       "final-execution"
     ]);
     assert.equal(calls.some((call) => call === "render:media-rejected"), false);
