@@ -21,9 +21,13 @@ const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
 
   try {
     const evidence = new URL(asset.rightsEvidenceUrl);
+    const verifiedAt = Date.parse(asset.rightsVerifiedAt);
     return evidence.protocol === "https:" &&
       Boolean(evidence.hostname) &&
-      Number.isFinite(Date.parse(asset.rightsVerifiedAt));
+      !evidence.username &&
+      !evidence.password &&
+      Number.isFinite(verifiedAt) &&
+      verifiedAt <= Date.now();
   } catch {
     return false;
   }
