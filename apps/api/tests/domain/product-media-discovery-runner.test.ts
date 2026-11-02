@@ -216,3 +216,41 @@ test("only treats media with complete verified rights evidence as publishable", 
 
   assert.deepEqual(await runner.listPublishableMediaProductIds(productIds), [productIds[2]]);
 });
+
+
+test("only treats videos with verified rights evidence as publishable while preserving readiness", async () => {
+  const productIds = ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"];
+  const shared = {
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    kind: "video" as const,
+    bucket: "affiliate-media",
+    objectKey: "products/test/video.mp4",
+    mimeType: "video/mp4" as const,
+    byteSize: 64,
+    sha256: "d".repeat(64),
+    sourceUrl: "https://cdn.example.test/video.mp4",
+    sourcePublisher: "Example publisher",
+    rightsBasis: "license" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/license",
+    rightsVerifiedAt: "2026-11-02T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [
+    { ...shared, productId: productIds[0]!, rightsStatus: "unverified" },
+    { ...shared, productId: productIds[1]!, rightsStatus: "verified" }
+  ];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProducts(ids: string[]) { return assets.filter((asset) => ids.includes(asset.productId)); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  assert.deepEqual(await runner.listVideoProductIds(productIds), productIds);
+  assert.deepEqual(await runner.listPublishableVideoProductIds(productIds), [productIds[1]]);
+});
