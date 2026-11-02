@@ -13,6 +13,7 @@ import { api, type AffiliateOfferVerification } from "./api/client";
 import { WorkflowPanel } from "./components/WorkflowPanel";
 import { IntegrationSetupPanel } from "./components/IntegrationSetupPanel";
 import { ShopeeCsvImportPanel } from "./components/ShopeeCsvImportPanel";
+import { ProductMediaIntakePanel } from "./components/ProductMediaIntakePanel";
 import { AutonomousObservabilityPanel } from "./components/AutonomousObservabilityPanel";
 import { PublicSite } from "./PublicSite";
 import "./styles.css";
@@ -211,6 +212,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
             <a className="nav-item" href="#offers">Offers</a>
             <a className="nav-item" href="#marketplaces">Marketplace Connections</a>
             <a className="nav-item" href="#shopee-csv-import">Impor CSV Shopee</a>
+            <a className="nav-item" href="#product-media-intake">Media Produk</a>
             <a className="nav-item" href="#conversions">Conversions</a>
             <a className="nav-item" href="#commissions">Commissions</a>
           </nav>
@@ -275,6 +277,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
 
         <section className="workspace-grid">
           <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={loadDashboard} />
+          <ProductMediaIntakePanel />
         </section>
 
         <section className="workspace-grid">
