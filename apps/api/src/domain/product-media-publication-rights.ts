@@ -44,6 +44,9 @@ export async function assertProductMediaRightsForPublication(
   const productScoped: Array<{ bucket: string; objectKey: string; productId: string }> = [];
 
   for (const media of mediaAssets) {
+    if (media.source === "url" && linkedIds.size > 0) {
+      throw new Error("Externally hosted media has no persisted product-rights record; publication is blocked.");
+    }
     if (media.source !== "object-storage") continue;
     const separator = media.reference.indexOf("/");
     if (separator <= 0 || separator === media.reference.length - 1) continue;
