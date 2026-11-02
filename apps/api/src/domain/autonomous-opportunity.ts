@@ -11,6 +11,8 @@ export type OpportunitySelectionPolicy = {
   minimumCommissionRateBps?: number;
   minimumCommissionAmountCents?: number;
   minimumDemandScore?: number;
+  /** Minimum percentage of scoring evidence required before autonomous selection. Defaults to 35. */
+  minimumDataConfidence?: number;
   explorationRate?: number;
   explorationMinimumEvidenceClicks?: number;
   /** Require media that can be consumed by the social publishers before autonomous selection. */
@@ -54,7 +56,8 @@ const rejectionReasons = (
   requiredAudience: AudienceSegment[],
   minimumCommissionRateBps: number,
   minimumCommissionAmountCents: number,
-  minimumDemandScore: number
+  minimumDemandScore: number,
+  minimumDataConfidence: number
 ): string[] => {
   const reasons = [...item.reasons];
   if (item.product.status !== "active") reasons.push("Product is not active");
@@ -63,7 +66,9 @@ const rejectionReasons = (
   if (requiredAudience.length > 0 && item.breakdown.audienceFit <= 0) reasons.push("Does not match the required audience");
   if (item.breakdown.commissionRateBps < minimumCommissionRateBps) reasons.push("Commission rate is below the minimum");
   if ((item.breakdown.commissionAmountCents ?? 0) < minimumCommissionAmountCents) reasons.push("Commission amount is below the minimum");
-  if (item.breakdown.demand < minimumDemandScore) reasons.push("Demand score is below the minimum");
+  if (minimumDemandScore > 0 && !item.breakdown.demandEvidenceAvailable) reasons.push("Demand evidence is unavailable");
+  else if (item.breakdown.demand < minimumDemandScore) reasons.push("Demand score is below the minimum");
+  if (item.breakdown.dataConfidence < minimumDataConfidence) reasons.push(`Data confidence ${item.breakdown.dataConfidence} is below minimum ${minimumDataConfidence}`);
   return unique(reasons);
 };
 
@@ -131,15 +136,16 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
+      const minimumDataConfidence = Math.max(0, Math.min(100, candidatePolicy.minimumDataConfidence ?? 35));
       const selectedOffer = item.offerId ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId) : undefined;
       const hasCommissionSignal = Boolean(selectedOffer && (selectedOffer.commissionRateBps !== undefined || selectedOffer.commissionAmountCents !== undefined));
-      return item.score >= minimumScore && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
+      return item.score >= minimumScore && item.breakdown.dataConfidence >= minimumDataConfidence && Boolean(item.offerId) && isExecutableAffiliateOffer(item.product.id, selectedOffer) &&
         (!candidatePolicy.requirePublishableMedia || hasPublishableMedia(item.product, publishableVideoProductIds, publishableMediaProductIds)) && (!candidatePolicy.requirePublishableVideo || hasPublishableVideo(item.product, publishableVideoProductIds)) &&
         (!candidatePolicy.requireCommissionSignal || hasCommissionSignal) &&
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
         (item.breakdown.commissionAmountCents ?? 0) >= minimumCommissionAmountCents &&
-        item.breakdown.demand >= minimumDemandScore &&
+        (minimumDemandScore === 0 || (item.breakdown.demandEvidenceAvailable && item.breakdown.demand >= minimumDemandScore)) &&
         item.product.status === "active";
     });
 
@@ -159,6 +165,7 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
+      const minimumDataConfidence = Math.max(0, Math.min(100, candidatePolicy.minimumDataConfidence ?? 35));
       return {
         productId: item.product.id,
         score: item.score,
@@ -170,7 +177,7 @@ export class AutonomousOpportunitySelector {
             ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds, publishableMediaProductIds) ? ["Product has no validated, persisted image or video suitable for autopublishing"] : []),
             ...(candidatePolicy.requirePublishableVideo && !hasPublishableVideo(item.product, publishableVideoProductIds) ? ["Product has no validated, publishable video"] : []),
             ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
-            ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
+            ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore, minimumDataConfidence)
           ]
       };
     });
@@ -181,6 +188,7 @@ export class AutonomousOpportunitySelector {
       const minimumCommissionRateBps = Math.max(0, candidatePolicy.minimumCommissionRateBps ?? 0);
       const minimumCommissionAmountCents = Math.max(0, candidatePolicy.minimumCommissionAmountCents ?? 0);
       const minimumDemandScore = Math.max(0, Math.min(100, candidatePolicy.minimumDemandScore ?? 0));
+      const minimumDataConfidence = Math.max(0, Math.min(100, candidatePolicy.minimumDataConfidence ?? 35));
       const exploration = selectedIds.has(item.product.id) && isExplorationSelection(item, performance, candidatePolicy, adaptiveExplorationRates);
       const selectionMode: OpportunitySelectionAudit["selectionMode"] = selectedIds.has(item.product.id) ? (exploration ? "exploration" : "exploitation") : undefined;
       const selectedOffer = item.offerId
@@ -194,7 +202,7 @@ export class AutonomousOpportunitySelector {
           ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds, publishableMediaProductIds) ? ["Product has no validated, persisted image or video suitable for autopublishing"] : []),
           ...(candidatePolicy.requirePublishableVideo && !hasPublishableVideo(item.product, publishableVideoProductIds) ? ["Product has no validated, publishable video"] : []),
           ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
-          ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
+          ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore, minimumDataConfidence)
         ];
       return {
         auditId: randomUUID(),
