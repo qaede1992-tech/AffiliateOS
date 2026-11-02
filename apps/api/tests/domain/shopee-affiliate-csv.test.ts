@@ -321,7 +321,7 @@ test("imports optional rating and review evidence from CSV when the source provi
   const csv = [
     headers + ",Rating Produk,Jumlah Ulasan",
     '101,Produk Teruji,55000,8.500,Toko Teruji,8%,Rp4.400,https://shopee.co.id/product/1/101,https://s.shopee.co.id/abc,"4,9","1.2RB+"',
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.errors.length, 0);
   assert.equal(result.rows[0]?.ratingMilli, 4900);
@@ -332,7 +332,7 @@ test("keeps rating and review metrics explicitly missing when optional CSV colum
   const csv = [
     headers,
     "102,Produk Tanpa Rating,55000,850,Toko,8%,4400,https://shopee.co.id/product/1/102,https://s.shopee.co.id/abc",
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.errors.length, 0);
   assert.equal(result.rows[0]?.ratingMilli, undefined);
@@ -343,7 +343,7 @@ test("rejects malformed optional rating or review metrics instead of silently tr
   const csv = [
     headers + ",Rating,Jumlah Ulasan",
     "103,Produk Invalid,55000,850,Toko,8%,4400,https://shopee.co.id/product/1/103,https://s.shopee.co.id/abc,6,1.2.3",
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.rows.length, 0);
   assert.match(result.errors[0]?.message ?? "", /Rating harus berupa angka antara 0 dan 5/);
@@ -354,7 +354,7 @@ test("preserves optional review lower-bound quality in normalized preview CSV", 
   const csv = [
     "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,rating_milli,review_count_value,review_count_quality",
     "0,104,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/104,https://s.shopee.co.id/abc,4900,1200,lower_bound",
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.errors.length, 0);
   assert.equal(result.rows[0]?.ratingMilli, 4900);
@@ -366,7 +366,7 @@ test("rejects preview review counts without an explicit quality classification",
   const csv = [
     "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,review_count_value,review_count_quality",
     "0,105,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/105,https://s.shopee.co.id/abc,1200,",
-  ].join("\\n");
+  ].join("\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.rows.length, 0);
   assert.match(result.errors[0]?.message ?? "", /review_count_quality harus exact, lower_bound, atau missing/);
