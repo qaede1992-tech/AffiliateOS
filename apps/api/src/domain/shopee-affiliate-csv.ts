@@ -211,7 +211,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       if (!/^\d+$/.test(rate) || !Number.isSafeInteger(rateValue) || rateValue > 10000) rowProblems.push("commission_rate_bps harus bilangan bulat antara 0 dan 10000");
       if (!/^\d+$/.test(commission) || !Number.isSafeInteger(commissionValue) || !Number.isSafeInteger(commissionValue * 100)) rowProblems.push("commission_amount_idr tidak valid");
       if (ratingText && (!/^\d+$/.test(ratingText) || !Number.isInteger(ratingMilli) || ratingMilli! < 0 || ratingMilli! > 5000)) rowProblems.push("rating_milli harus bilangan bulat antara 0 dan 5000");
-      if (reviewQualityText && !["exact", "lower_bound", "missing"].includes(reviewQualityText)) rowProblems.push("review_count_quality harus exact, lower_bound, atau missing");
+      if (indexes.has("review_count_quality") && !["exact", "lower_bound", "missing"].includes(reviewQualityText)) rowProblems.push("review_count_quality harus exact, lower_bound, atau missing");
       if (reviewQualityText === "missing" && reviewValueText && reviewValueText !== "0") rowProblems.push("review_count_value harus kosong atau 0 jika quality missing");
       if (reviewQualityText && reviewQualityText !== "missing" && (!/^\d+$/.test(reviewValueText) || !Number.isSafeInteger(Number(reviewValueText)))) rowProblems.push("review_count_value tidak valid");
       if (Number.isSafeInteger(priceValue) && Number.isSafeInteger(commissionValue) && commissionValue > priceValue) rowProblems.push("Komisi tidak boleh melebihi harga produk");
