@@ -172,3 +172,47 @@ test("lists stored video product ids with one bulk repository read", async () =>
   assert.equal(bulkCalls, 1);
   assert.equal(perProductCalls, 0);
 });
+
+
+test("only treats media with complete verified rights evidence as publishable", async () => {
+  const productIds = [
+    "55555555-5555-4555-8555-555555555555",
+    "66666666-6666-4666-8666-666666666666",
+    "77777777-7777-4777-8777-777777777777",
+    "88888888-8888-4888-8888-888888888888"
+  ];
+  const baseAsset = {
+    id: "99999999-9999-4999-8999-999999999999",
+    kind: "image" as const,
+    bucket: "affiliate-media",
+    objectKey: "products/test/image.jpg",
+    mimeType: "image/jpeg",
+    byteSize: 32,
+    sha256: "c".repeat(64),
+    sourceUrl: "https://cdn.example.test/image.jpg",
+    sourcePublisher: "Example publisher",
+    rightsBasis: "explicit_permission" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/permission",
+    rightsVerifiedAt: "2026-11-02T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [
+    { ...baseAsset, productId: productIds[0]!, rightsStatus: "unverified" },
+    { ...baseAsset, productId: productIds[1]!, rightsStatus: "revoked" },
+    { ...baseAsset, productId: productIds[2]!, rightsStatus: "verified" },
+    { ...baseAsset, productId: productIds[3]!, rightsStatus: "verified", rightsEvidenceUrl: null }
+  ];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProducts(ids: string[]) { return assets.filter((asset) => ids.includes(asset.productId)); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  assert.deepEqual(await runner.listPublishableMediaProductIds(productIds), [productIds[2]]);
+});
