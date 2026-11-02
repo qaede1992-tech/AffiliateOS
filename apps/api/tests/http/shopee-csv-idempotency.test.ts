@@ -166,7 +166,7 @@ test("Shopee CSV import persists available rating and review evidence with sourc
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Rating Produk,Jumlah Ulasan",
       '789,Produk Dengan Bukti,Rp55.000,8.500,Toko Bukti,8%,Rp4.400,https://shopee.co.id/product/1/789,https://s.shopee.co.id/evidence,4.9,1.2RB+',
-    ].join("\\n");
+    ].join("\n");
     const imported = await app.inject({
       method: "POST",
       url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
