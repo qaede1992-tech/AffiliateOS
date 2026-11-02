@@ -194,3 +194,27 @@ describe("opportunity scoring", () => {
     assert.ok(result.breakdown.dataConfidence > 80);
     assert.ok(result.reasons.includes("Strong rating and review evidence"));
   });
+
+
+  it("explains sales-only demand without implying that ratings or reviews were observed", () => {
+    const result = scoreOpportunity({
+      product: product({
+        soldCount: 10_000,
+        reviewCount: 0,
+        ratingMilli: undefined,
+        discoverySignals: {
+          dataQuality: {
+            soldCount: "lower_bound",
+            reviewCount: "missing",
+            ratingMilli: "missing",
+            source: "shopee-affiliate-csv",
+          },
+        },
+      }),
+      offers: [offer()],
+      audience: ["skincare"],
+    });
+    assert.ok(result.reasons.includes("Strong demand from recorded sales"));
+    assert.ok(result.reasons.includes("Additional data unavailable: rating data, review count data"));
+    assert.ok(!result.reasons.some((reason) => reason.includes("recorded reviews")));
+  });
