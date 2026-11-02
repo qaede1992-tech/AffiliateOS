@@ -160,6 +160,9 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const missing = previewHeaders.filter((header) => !initialHeaders.includes(header));
     if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom format preview tidak ditemukan: ${missing.join(", ")}.` }] };
     const indexes = new Map(initialHeaders.map((header, index) => [header, index]));
+    if (indexes.has("review_count_value") !== indexes.has("review_count_quality")) {
+      return { rows: [], errors: [{ row: 1, message: "review_count_value dan review_count_quality harus disediakan bersama." }] };
+    }
     const previewErrors: ShopeeAffiliateCsvParseResult["errors"] = [];
     const previewRows: ParsedShopeeAffiliateCsvRow[] = [];
     const seenPreviewIds = new Set<string>();
@@ -186,11 +189,14 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const reviewValueText = (record[indexes.get("review_count_value") ?? -1] ?? "").trim();
       const reviewQualityText = (record[indexes.get("review_count_quality") ?? -1] ?? "").trim();
       const ratingMilli = ratingText ? Number(ratingText) : undefined;
-      const reviewCount = reviewQualityText === "missing"
+      const reviewCountValue = reviewValueText ? Number(reviewValueText) : null;
+      const reviewCount = reviewQualityText === "missing" || !reviewQualityText
         ? { value: null, quality: "missing" as const, sourceText: "" }
-        : reviewValueText || reviewQualityText
-          ? parseSales(reviewValueText)
-          : { value: null, quality: "missing" as const, sourceText: "" };
+        : {
+            value: reviewCountValue,
+            quality: reviewQualityText as ShopeeSalesValue["quality"],
+            sourceText: reviewQualityText === "lower_bound" ? `${reviewValueText}+` : reviewValueText,
+          };
       const rowProblems: string[] = [];
       const priceValue = Number(price);
       const salesValue = Number(sales);
@@ -205,7 +211,6 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       if (!/^\d+$/.test(rate) || !Number.isSafeInteger(rateValue) || rateValue > 10000) rowProblems.push("commission_rate_bps harus bilangan bulat antara 0 dan 10000");
       if (!/^\d+$/.test(commission) || !Number.isSafeInteger(commissionValue) || !Number.isSafeInteger(commissionValue * 100)) rowProblems.push("commission_amount_idr tidak valid");
       if (ratingText && (!/^\d+$/.test(ratingText) || !Number.isInteger(ratingMilli) || ratingMilli! < 0 || ratingMilli! > 5000)) rowProblems.push("rating_milli harus bilangan bulat antara 0 dan 5000");
-      if (Boolean(reviewValueText) !== Boolean(reviewQualityText)) rowProblems.push("review_count_value dan review_count_quality harus disediakan bersama");
       if (reviewQualityText && !["exact", "lower_bound", "missing"].includes(reviewQualityText)) rowProblems.push("review_count_quality harus exact, lower_bound, atau missing");
       if (reviewQualityText === "missing" && reviewValueText && reviewValueText !== "0") rowProblems.push("review_count_value harus kosong atau 0 jika quality missing");
       if (reviewQualityText && reviewQualityText !== "missing" && (!/^\d+$/.test(reviewValueText) || !Number.isSafeInteger(Number(reviewValueText)))) rowProblems.push("review_count_value tidak valid");
