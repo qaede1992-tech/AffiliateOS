@@ -37,6 +37,23 @@ test("rejects an an_redir origin_link outside Shopee without fetching it", async
   assert.match(result.reason ?? "", /valid HTTPS Shopee product URL/);
 });
 
+test("rejects credential-bearing Shopee an_redir origin links without fetching them", async () => {
+  const origins = [
+    "https://user@shopee.co.id/product/305325624/29463945555",
+    "https://user:password@shopee.co.id/product/305325624/29463945555"
+  ];
+  for (const origin of origins) {
+    const affiliateUrl = "https://s.shopee.co.id/an_redir?origin_link=" + encodeURIComponent(origin) + "&affiliate_id=12345";
+    let called = false;
+    const fetcher = (async () => { called = true; return mockResponse("https://shopee.co.id/"); }) as typeof fetchPublicHttps;
+    const result = await resolveShopeeAffiliateLink(affiliateUrl, {}, fetcher);
+    assert.equal(called, false);
+    assert.equal(result.status, "unresolved");
+    assert.match(result.reason ?? "", /valid HTTPS Shopee product URL/);
+    assert.equal(result.productUrl, undefined);
+  }
+});
+
 test("resolves a short affiliate link when redirects land directly on a Shopee product URL", async () => {
   let fetchOptions: Parameters<typeof fetchPublicHttps>[1] | undefined;
   const fetcher = (async (_url: string, options: Parameters<typeof fetchPublicHttps>[1]) => { fetchOptions = options; return mockResponse("https://shopee.co.id/product/305325624/29463945555"); }) as typeof fetchPublicHttps;
