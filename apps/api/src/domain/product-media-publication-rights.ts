@@ -9,7 +9,7 @@ const VERIFIED_BASES = new Set([
   "platform_authorization"
 ]);
 
-const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
+export const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
   if (
     asset.rightsStatus !== "verified" ||
     !asset.rightsBasis ||
