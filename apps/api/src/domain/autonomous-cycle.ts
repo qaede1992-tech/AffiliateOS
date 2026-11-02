@@ -32,6 +32,17 @@ export type AutonomousCycleResult = {
 
 export type AutonomousCycleSkipReason = "already_running" | "lock_busy";
 
+const classifyMediaSkipReason = (reason: string): string => {
+  const normalized = reason.toLowerCase();
+  if (normalized.includes("shopee product-page media extraction is disabled")) return "shopee_catalog_media_missing";
+  if (normalized.includes("no public video candidate")) return "no_public_video_candidate";
+  if (normalized.includes("response is not html")) return "product_page_not_html";
+  if (normalized.includes("https") && (normalized.includes("invalid") || normalized.includes("credential"))) return "invalid_media_url";
+  if (normalized.includes("timeout")) return "media_fetch_timeout";
+  if (normalized.includes("blocked") || normalized.includes("private network")) return "media_fetch_blocked";
+  return "other";
+};
+
 export class AutonomousCycleService {
   private running = false;
   private lastSkipReason?: AutonomousCycleSkipReason;
@@ -116,12 +127,29 @@ export class AutonomousCycleService {
           requirePublishableVideo: false,
           requireCommissionSignal: true
         });
+        const mediaDiscoverySummary = {
+          attemptedCount: 0,
+          failedCount: 0,
+          storedImageCount: 0,
+          storedVideoCount: 0,
+          skippedReasonCounts: {} as Record<string, number>
+        };
         for (const selected of preliminary.selected) {
           const candidate = candidateList.find((item) => item.product.id === selected.product.id);
           if (!candidate) continue;
           try {
-            await this.productMediaDiscovery.discover(candidate.product, true);
+            const discovery = await this.productMediaDiscovery.discover(candidate.product, true);
+            mediaDiscoverySummary.attemptedCount += 1;
+            for (const asset of discovery.stored) {
+              if (asset.kind === "image") mediaDiscoverySummary.storedImageCount += 1;
+              if (asset.kind === "video") mediaDiscoverySummary.storedVideoCount += 1;
+            }
+            for (const skipped of discovery.skipped) {
+              const reasonCode = classifyMediaSkipReason(skipped.reason);
+              mediaDiscoverySummary.skippedReasonCounts[reasonCode] = (mediaDiscoverySummary.skippedReasonCounts[reasonCode] ?? 0) + 1;
+            }
           } catch (error) {
+            mediaDiscoverySummary.failedCount += 1;
             console.warn(JSON.stringify({
               event: "autonomous_product_media_discovery_failed",
               productId: candidate.product.id,
@@ -196,6 +224,20 @@ export class AutonomousCycleService {
             reason: error instanceof Error ? error.message : "Product video index lookup failed."
           }));
         }
+        console.info(JSON.stringify({
+          event: "autonomous_media_discovery_summary",
+          candidateCount: candidateList.length,
+          preliminarySelectedCount: preliminary.selected.length,
+          discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
+          discoveryFailedCount: mediaDiscoverySummary.failedCount,
+          storedImageCount: mediaDiscoverySummary.storedImageCount,
+          storedVideoCount: mediaDiscoverySummary.storedVideoCount,
+          skippedReasonCounts: mediaDiscoverySummary.skippedReasonCounts,
+          mediaReadySelectedCount: mediaReady.selected.length,
+          mediaReadyRejectedCount: mediaReady.rejected.length,
+          publishableMediaProductCount: mediaIds.length,
+          publishableVideoProductCount: videoIds.length
+        }));
       }
       const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
       const executionInput: AutonomousExecutionInput = {
