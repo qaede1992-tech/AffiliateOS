@@ -82,6 +82,14 @@ test("blocks missing, duplicate, and unlinked product media records", async () =
   );
 });
 
+test("blocks externally hosted URLs for affiliate-linked product content", async () => {
+  const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/video.mp4" };
+  await assert.rejects(
+    assertProductMediaRightsForPublication([external], [productId], repository(verified)),
+    /Externally hosted media has no persisted product-rights record/
+  );
+});
+
 test("does not apply the product-media gate to content-scoped uploads", async () => {
   const contentOwned = { ...media, reference: "affiliate-media/content/11111111-1111-4111-8111-111111111111/video.mp4" };
   await assert.doesNotReject(assertProductMediaRightsForPublication([contentOwned], [productId]));
