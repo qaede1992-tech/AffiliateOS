@@ -263,7 +263,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.patch("/api/v1/products/:productId/media-assets/:assetId/rights", writeGuard, async (request, reply) => {
     const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
     const input = updateProductMediaRightsSchema.parse(request.body);
-    if (!services.productMediaAssets) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights storage is not configured." });
+    if (!services.productMediaAssets?.updateRights) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights review is not configured." });
     const existing = (await services.productMediaAssets.listByProduct(productId)).find((asset) => asset.id === assetId);
     if (!existing) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
     const rights = input.status === "verified"
