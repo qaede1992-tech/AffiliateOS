@@ -22,7 +22,7 @@ function isShopeeHost(hostname: string): boolean {
 function productIdentity(rawUrl: string): { shopId: string; itemId: string } | undefined {
   let url: URL;
   try { url = new URL(rawUrl); } catch { return undefined; }
-  if (url.protocol !== "https:" || !isShopeeHost(url.hostname)) return undefined;
+  if (url.protocol !== "https:" || url.username || url.password || !isShopeeHost(url.hostname)) return undefined;
   for (const pattern of PRODUCT_PATHS) {
     const match = pattern.exec(url.pathname + url.search);
     if (match?.[1] && match[2]) return { shopId: match[1], itemId: match[2] };
@@ -51,7 +51,7 @@ function extractCanonicalUrl(html: string, baseUrl: string): string | undefined 
       if (!raw) continue;
       try {
         const candidate = new URL(raw, baseUrl);
-        if (candidate.protocol === "https:" && isShopeeHost(candidate.hostname)) return candidate.toString();
+        if (candidate.protocol === "https:" && !candidate.username && !candidate.password && isShopeeHost(candidate.hostname)) return candidate.toString();
       } catch { /* Ignore malformed metadata. */ }
     }
   }
