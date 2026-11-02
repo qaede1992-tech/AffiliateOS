@@ -90,7 +90,18 @@ test("blocks externally hosted URLs for affiliate-linked product content", async
   );
 });
 
-test("does not apply the product-media gate to content-scoped uploads", async () => {
+test("blocks content-scoped uploads until their own rights provenance is verified", async () => {
   const contentOwned = { ...media, reference: "affiliate-media/content/11111111-1111-4111-8111-111111111111/video.mp4" };
-  await assert.doesNotReject(assertProductMediaRightsForPublication([contentOwned], [productId]));
+  await assert.rejects(
+    assertProductMediaRightsForPublication([contentOwned], [productId]),
+    /no verified product-rights provenance/
+  );
+});
+
+test("blocks unknown object-storage paths instead of bypassing rights checks", async () => {
+  const unknownPath = { ...media, reference: "affiliate-media/legacy/video.mp4" };
+  await assert.rejects(
+    assertProductMediaRightsForPublication([unknownPath], [productId]),
+    /no verified product-rights provenance/
+  );
 });
