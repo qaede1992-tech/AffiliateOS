@@ -66,7 +66,8 @@ const rejectionReasons = (
   if (requiredAudience.length > 0 && item.breakdown.audienceFit <= 0) reasons.push("Does not match the required audience");
   if (item.breakdown.commissionRateBps < minimumCommissionRateBps) reasons.push("Commission rate is below the minimum");
   if ((item.breakdown.commissionAmountCents ?? 0) < minimumCommissionAmountCents) reasons.push("Commission amount is below the minimum");
-  if (item.breakdown.demand < minimumDemandScore) reasons.push("Demand score is below the minimum");
+  if (minimumDemandScore > 0 && !item.breakdown.demandEvidenceAvailable) reasons.push("Demand evidence is unavailable");
+  else if (item.breakdown.demand < minimumDemandScore) reasons.push("Demand score is below the minimum");
   if (item.breakdown.dataConfidence < minimumDataConfidence) reasons.push(`Data confidence ${item.breakdown.dataConfidence} is below minimum ${minimumDataConfidence}`);
   return unique(reasons);
 };
@@ -144,7 +145,7 @@ export class AutonomousOpportunitySelector {
         (requiredAudience.length === 0 || item.breakdown.audienceFit > 0) &&
         item.breakdown.commissionRateBps >= minimumCommissionRateBps &&
         (item.breakdown.commissionAmountCents ?? 0) >= minimumCommissionAmountCents &&
-        item.breakdown.demand >= minimumDemandScore &&
+        (minimumDemandScore === 0 || (item.breakdown.demandEvidenceAvailable && item.breakdown.demand >= minimumDemandScore)) &&
         item.product.status === "active";
     });
 
