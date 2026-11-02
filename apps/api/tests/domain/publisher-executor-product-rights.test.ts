@@ -57,7 +57,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"]) {
   const mediaAssets = new InMemoryMediaAssetRepository();
   await mediaAssets.save(media);
   const contentProducts = {
-    async listByContent() { return [{ contentId, productId, position: 0, role: "primary", createdAt: content.createdAt }]; },
+    async listByContent() { return [{ contentId, productId, position: 0, role: "primary" as const, createdAt: content.createdAt }]; },
     async replaceForContent() { return []; }
   };
   const productMediaAssets: ProductMediaAssetRepository = {
