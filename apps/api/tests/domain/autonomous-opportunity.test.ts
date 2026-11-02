@@ -260,7 +260,7 @@ describe("autonomous opportunity selection", () => {
       { product: product("high-demand"), offers: [offer("high-demand")] }
     ], { minimumScore: 0, minimumDemandScore: 10 });
     assert.deepEqual(result.selected.map((item) => item.product.id), ["high-demand"]);
-    assert.ok(result.rejected.find((item) => item.productId === "low-demand")?.reasons.includes("Demand score is below the minimum"));
+    assert.ok(result.rejected.find((item) => item.productId === "low-demand")?.reasons.includes("Demand evidence is unavailable"));
   });
 
   it("clamps invalid policy guard values to safe bounds", () => {
