@@ -90,3 +90,17 @@ Use optimistic concurrency or a transaction that locks the asset row while chang
 ## Rollout boundaries
 
 This workflow must be delivered behind tests and migration checks in a separate reviewed PR. Do not apply migrations to production or staging, change RLS/privileges, deploy, enable autonomous publication, or publish content as part of implementation. The owner must review and approve the PR before merge or deployment.
+
+
+## Repository implementation findings (2026-11-02)
+
+- `writeGuard` delegates to `requireOperator`, which is broader than rights-review permission. Each rights endpoint must therefore add an explicit `request.auth?.role === "admin"` check and return 403 otherwise; relying on `writeGuard` alone is insufficient.
+- The configured authentication context contains one `operatorId` and one configured role. The audit actor is that configured operator ID, not a claim of independently verified human identity or multi-user RBAC.
+- The existing `TransactionManager` is deliberately narrow: its generic transaction callback currently exposes conversion and commission repositories, while marketplace import has a separate transaction method. Do not widen either unrelated workflow merely to implement media rights.
+- Implement a focused `ProductMediaRightsWorkflow` repository/service boundary, backed by the actual Drizzle database transaction in the DB composition layer. Its verify/revoke operation must lock the `product_media_assets` row, validate the current state, update provenance, and insert the audit event in one transaction. A missing asset, invalid transition, or failed audit insert must roll back the entire operation.
+- Keep the audit repository separate from the mutable media-asset repository. The application runtime needs only the permissions required to read and append audit events; it must have no update/delete path for audit rows. The migration must enable RLS and follow the existing private-table privilege pattern, with no grants to `public`, `anon`, or `authenticated`.
+- The service should return the updated asset and newly inserted audit event only after transaction commit. HTTP handlers must not construct actor IDs or timestamps from request data.
+- The current `PublisherExecutor.execute()` performs the product-media rights lookup after resolving credentials and immediately before `publisher.publish()`. `PublicationWorker` routes scheduled jobs, retries, and stale-processing recovery through this method. Worker reconciliation of already accepted provider operations calls `PublisherExecutor.check()` and does not initiate a new provider media upload; it must not be mistaken for a fresh dispatch path.
+- The last-mile check is not a cancellation mechanism for provider operations already accepted externally. Revocation blocks future dispatch attempts; accepted/in-flight operations remain subject to reconciliation and manual platform-side action where available.
+
+The migration and runtime workflow are intentionally not implemented by this documentation update. The prior attempt to create the audit migration was blocked by a safety check; do not work around that block or apply any schema change to staging or production. Resume implementation only through an allowed, separately reviewed change path.
