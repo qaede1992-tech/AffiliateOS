@@ -201,7 +201,7 @@ export class AutonomousOpportunitySelector {
           ...(candidatePolicy.requirePublishableMedia && !hasPublishableMedia(item.product, publishableVideoProductIds, publishableMediaProductIds) ? ["Product has no validated, persisted image or video suitable for autopublishing"] : []),
           ...(candidatePolicy.requirePublishableVideo && !hasPublishableVideo(item.product, publishableVideoProductIds) ? ["Product has no validated, publishable video"] : []),
           ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
-          ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore)
+          ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore, minimumDataConfidence)
         ];
       return {
         auditId: randomUUID(),
