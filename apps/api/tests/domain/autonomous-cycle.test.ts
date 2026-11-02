@@ -60,7 +60,11 @@ describe("autonomous cycle", () => {
       async listCandidates() { return [{ product: product as never, offers: [] }]; }
     };
     const execution = {
-      async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
+      async previewSelection(input: { requirePublishableMedia?: boolean }) {
+        return input.requirePublishableMedia
+          ? { selected: [], rejected: [], audit: [] }
+          : { selected: [{ product: product as never, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+      },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
     const discovery = {
