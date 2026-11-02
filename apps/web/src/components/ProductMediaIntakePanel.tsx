@@ -22,7 +22,7 @@ export function ProductMediaIntakePanel() {
       setProducts(response.data);
       setSelectedId((current) => current && response.data.some((product) => product.id === current)
         ? current
-        : response.data.find((product) => !product.imageUrl || !product.videoUrl)?.id ?? response.data[0]?.id ?? "");
+        : response.data.find((product) => !product.imageUrl && !product.videoUrl)?.id ?? response.data[0]?.id ?? "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Daftar produk tidak dapat dimuat.");
     } finally {
