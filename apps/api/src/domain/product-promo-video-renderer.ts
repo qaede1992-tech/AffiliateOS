@@ -149,6 +149,11 @@ export class ProductPromoVideoRenderer {
         byteSize: videoBytes.byteLength,
         sha256,
         sourceUrl: "generated:ffmpeg",
+        sourcePublisher: "AffiliateOS",
+        rightsStatus: "unverified",
+        rightsBasis: null,
+        rightsEvidenceUrl: null,
+        rightsVerifiedAt: null,
         createdAt: new Date().toISOString()
       };
       try {
