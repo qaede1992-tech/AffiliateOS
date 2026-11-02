@@ -84,15 +84,25 @@ export class ProductMediaDiscoveryRunner {
   }
 
   async listVideoProductIds(productIds: string[]): Promise<string[]> {
+    return this.listProductIdsWithVideo(productIds, false);
+  }
+
+  async listPublishableVideoProductIds(productIds: string[]): Promise<string[]> {
+    return this.listProductIdsWithVideo(productIds, true);
+  }
+
+  private async listProductIdsWithVideo(productIds: string[], requireVerifiedRights: boolean): Promise<string[]> {
     const uniqueProductIds = [...new Set(productIds)];
     if (uniqueProductIds.length === 0) return [];
 
     const assets = this.assets.listByProducts
       ? await this.assets.listByProducts(uniqueProductIds)
       : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
-    const productIdsWithVideo = new Set(
-      assets.filter((asset) => asset.bucket === this.bucketName && asset.kind === "video").map((asset) => asset.productId)
-    );
+    const productIdsWithVideo = new Set(assets.filter((asset) =>
+      asset.bucket === this.bucketName &&
+      asset.kind === "video" &&
+      (!requireVerifiedRights || hasVerifiedRightsEvidence(asset))
+    ).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => productIdsWithVideo.has(productId));
   }
 
