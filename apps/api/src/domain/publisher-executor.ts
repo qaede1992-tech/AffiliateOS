@@ -96,7 +96,7 @@ export class PublisherExecutor {
     const resolved = assets as NonNullable<(typeof assets)[number]>[];
     if (resolved.some((asset) => asset.contentId !== content.id)) throw new Error("A configured media asset does not belong to the content.");
     const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
-    const linkedProductIds = linkedProducts.map((item) => item.productId);
+    const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
     if (requireProductMediaRights) {
       await assertProductMediaRightsForPublication(resolved, linkedProductIds, this.productMediaAssets);
     }
