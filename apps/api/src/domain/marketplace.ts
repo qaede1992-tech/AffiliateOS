@@ -227,9 +227,9 @@ function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined
   const engagementCount = nonNegativeInteger(source.engagementCount) ?? existing?.engagementCount;
   const capturedAt = typeof source.capturedAt === "string" && Number.isFinite(Date.parse(source.capturedAt)) ? source.capturedAt : existing?.capturedAt;
   const rawQuality = source.dataQuality && typeof source.dataQuality === "object" ? source.dataQuality as Record<string, unknown> : {};
-  const salesQuality = rawQuality.soldCount ?? source.salesQuality ?? existing?.dataQuality?.soldCount;
-  const reviewQuality = rawQuality.reviewCount ?? existing?.dataQuality?.reviewCount;
-  const ratingQuality = rawQuality.ratingMilli ?? existing?.dataQuality?.ratingMilli;
+  const salesQuality = (rawQuality.soldCount === "missing" || source.salesQuality === "missing") ? (existing?.dataQuality?.soldCount ?? "missing") : rawQuality.soldCount ?? source.salesQuality ?? existing?.dataQuality?.soldCount;
+  const reviewQuality = rawQuality.reviewCount === "missing" ? (existing?.dataQuality?.reviewCount ?? "missing") : rawQuality.reviewCount ?? existing?.dataQuality?.reviewCount;
+  const ratingQuality = rawQuality.ratingMilli === "missing" ? (existing?.dataQuality?.ratingMilli ?? "missing") : rawQuality.ratingMilli ?? existing?.dataQuality?.ratingMilli;
   const validQuality = (value: unknown): value is "exact" | "lower_bound" | "missing" => value === "exact" || value === "lower_bound" || value === "missing";
   const dataQuality = {
     ...(validQuality(salesQuality) ? { soldCount: salesQuality } : {}),
