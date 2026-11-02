@@ -37,7 +37,7 @@ export function ProductMediaIntakePanel() {
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("id-ID");
     return [...products]
-      .sort((a, b) => Number(!a.imageUrl && !a.videoUrl) - Number(!b.imageUrl && !b.videoUrl) || a.name.localeCompare(b.name, "id"))
+      .sort((a, b) => Number(!b.imageUrl && !b.videoUrl) - Number(!a.imageUrl && !a.videoUrl) || a.name.localeCompare(b.name, "id"))
       .filter((product) => !query || product.name.toLocaleLowerCase("id-ID").includes(query) || product.externalProductId.toLocaleLowerCase("id-ID").includes(query));
   }, [products, search]);
 
