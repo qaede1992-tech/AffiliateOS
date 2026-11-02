@@ -42,3 +42,13 @@ test("rejects non-Shopee affiliate links without making a request", async () => 
   assert.equal(result.status, "unresolved");
   assert.equal(called, false);
 });
+
+test("rejects canonical product URLs that embed credentials", async () => {
+  const html = '<link rel="canonical" href="https://reviewer:secret@shopee.co.id/product/305325624/29463945555">';
+  const fetcher = (async () => mockResponse("https://shopee.co.id/universal-link/abc", html)) as typeof fetchPublicHttps;
+  const result = await resolveShopeeAffiliateLink("https://s.shopee.co.id/short", {}, fetcher);
+
+  assert.equal(result.status, "unresolved");
+  assert.equal(result.productUrl, undefined);
+  assert.match(result.reason ?? "", /canonical product URL/);
+});
