@@ -10,8 +10,8 @@ test("detects anon and authenticated defaults from any creator role", () => {
   ]);
 
   assert.deepEqual(findings, [
-    { schemaName: "public", creatorRole: "supabase_admin", objectType: "S", grantee: "authenticated", privilegeType: "USAGE" },
-    { schemaName: "public", creatorRole: "supabase_admin", objectType: "r", grantee: "anon", privilegeType: "SELECT" }
+    { schemaName: "public", creatorRole: "supabase_admin", objectType: "r", grantee: "anon", privilegeType: "SELECT" },
+    { schemaName: "public", creatorRole: "supabase_admin", objectType: "S", grantee: "authenticated", privilegeType: "USAGE" }
   ]);
 });
 
