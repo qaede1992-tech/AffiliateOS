@@ -52,6 +52,8 @@ BEGIN
           rights_basis IS NOT NULL
           AND rights_evidence_url IS NOT NULL
           AND rights_verified_at IS NOT NULL
+          AND source_publisher IS NOT NULL
+          AND length(btrim(source_publisher)) > 0
         )
       );
   END IF;
