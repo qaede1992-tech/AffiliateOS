@@ -50,7 +50,7 @@ The implementation should add admin-only endpoints with strict Zod validation:
 - `POST /api/v1/product-media-assets/:assetId/rights/verify`: require `rightsBasis`, `rightsEvidenceUrl`, `sourcePublisher`, and a non-empty reviewer reason. The server supplies actor ID, role, and timestamp.
 - `POST /api/v1/product-media-assets/:assetId/rights/revoke`: require a non-empty reason; preserve prior provenance and append an audit event.
 
-The service must reject malformed/non-HTTPS evidence references, unsupported bases, missing publisher identity, empty reasons, unknown assets, and attempts by non-admin roles. It must not accept `rightsVerifiedAt`, `actorId`, or `rightsStatus` from the request body; those are server-controlled.
+The service must reject malformed/non-HTTPS evidence references, evidence URLs containing embedded username/password credentials, unsupported bases, missing publisher identity, empty reasons, unknown assets, and attempts by non-admin roles. It must not accept `rightsVerifiedAt`, `actorId`, or `rightsStatus` from the request body; those are server-controlled.
 
 Use optimistic concurrency or a transaction that locks the asset row while changing its status and inserting the audit event. If either write fails, neither should commit. Audit rows are append-only to the application role; no update/delete route should exist.
 
@@ -61,7 +61,7 @@ Use optimistic concurrency or a transaction that locks the asset row while chang
 ## Publication gate requirements
 
 - Keep readiness checks separate from rights checks so an unverified generated video does not cause endless re-rendering.
-- Only assets with `rightsStatus = verified`, a supported basis, HTTPS evidence reference, non-empty publisher identity, and server-generated verification timestamp are publishable.
+- Only assets with `rightsStatus = verified`, a supported basis, HTTPS evidence reference without embedded credentials, non-empty publisher identity, and a valid server-generated verification timestamp that is not in the future are publishable.
 - Image and video checks must use the same provenance predicate.
 - Re-check current rights when selecting a product, but treat this as an early eligibility check only; it does not authorize a later publication by itself.
 - The actual publisher/worker must resolve the content's product and exact media asset IDs, then re-read the current rights state immediately before handing media to the platform provider. A scheduled job, retry, or recovered run must perform this check again rather than relying on the state captured when the job was created.
