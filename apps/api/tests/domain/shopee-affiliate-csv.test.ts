@@ -315,3 +315,59 @@ test("rejects insecure or credential-bearing optional product image URLs", () =>
   assert.equal(result.rows.length, 0);
   assert.match(result.errors[0]?.message ?? "", /image_url harus berupa URL HTTPS/);
 });
+
+
+test("imports optional rating and review evidence from CSV when the source provides it", () => {
+  const csv = [
+    headers + ",Rating Produk,Jumlah Ulasan",
+    '101,Produk Teruji,55000,8.500,Toko Teruji,8%,Rp4.400,https://shopee.co.id/product/1/101,https://s.shopee.co.id/abc,"4,9","1.2RB+"',
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.ratingMilli, 4900);
+  assert.deepEqual(result.rows[0]?.reviewCount, { value: 1200, quality: "lower_bound", sourceText: "1.2RB+" });
+});
+
+test("keeps rating and review metrics explicitly missing when optional CSV columns are absent", () => {
+  const csv = [
+    headers,
+    "102,Produk Tanpa Rating,55000,850,Toko,8%,4400,https://shopee.co.id/product/1/102,https://s.shopee.co.id/abc",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.ratingMilli, undefined);
+  assert.deepEqual(result.rows[0]?.reviewCount, { value: null, quality: "missing", sourceText: "" });
+});
+
+test("rejects malformed optional rating or review metrics instead of silently treating them as zero", () => {
+  const csv = [
+    headers + ",Rating,Jumlah Ulasan",
+    "103,Produk Invalid,55000,850,Toko,8%,4400,https://shopee.co.id/product/1/103,https://s.shopee.co.id/abc,6,1.2.3",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /Rating harus berupa angka antara 0 dan 5/);
+  assert.match(result.errors[0]?.message ?? "", /Jumlah ulasan tidak dapat dibaca/);
+});
+
+test("preserves optional review lower-bound quality in normalized preview CSV", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,rating_milli,review_count_value,review_count_quality",
+    "0,104,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/104,https://s.shopee.co.id/abc,4900,1200,lower_bound",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.ratingMilli, 4900);
+  assert.deepEqual(result.rows[0]?.reviewCount, { value: 1200, quality: "lower_bound", sourceText: "1200+" });
+});
+
+
+test("rejects preview review counts without an explicit quality classification", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,review_count_value,review_count_quality",
+    "0,105,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/105,https://s.shopee.co.id/abc,1200,",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /review_count_quality harus exact, lower_bound, atau missing/);
+});

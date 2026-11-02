@@ -172,3 +172,25 @@ describe("opportunity scoring", () => {
   });
 
 });
+
+
+  it("uses verified imported rating and review metrics as positive social-proof evidence", () => {
+    const enriched = product({
+      soldCount: 8500,
+      reviewCount: 1200,
+      ratingMilli: 4900,
+      discoverySignals: {
+        dataQuality: {
+          soldCount: "exact",
+          reviewCount: "lower_bound",
+          ratingMilli: "exact",
+          source: "shopee-affiliate-csv",
+        },
+      },
+    });
+    const result = scoreOpportunity({ product: enriched, offers: [offer()], audience: ["skincare"] });
+    assert.ok(result.breakdown.demand > 70);
+    assert.ok(result.breakdown.socialProof > 80);
+    assert.ok(result.breakdown.dataConfidence > 80);
+    assert.ok(result.reasons.includes("Strong rating and review evidence"));
+  });

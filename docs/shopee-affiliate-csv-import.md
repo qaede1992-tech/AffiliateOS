@@ -26,7 +26,7 @@ Parser mendukung dua bentuk data:
 ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra
 ```
 
-Urutan kolom boleh berbeda karena parser memetakan berdasarkan nama header, tetapi semua sembilan header wajib ada dan tidak boleh duplikat. Parser menerima nilai harga/komisi Rupiah dengan pemisah ribuan titik, nilai singkat berakhiran `RB`, persentase komisi sampai 100%, dan jumlah penjualan eksak atau perkiraan berakhiran `RB`.
+Urutan kolom boleh berbeda karena parser memetakan berdasarkan nama header, tetapi semua sembilan header wajib ada dan tidak boleh duplikat. Parser menerima nilai harga/komisi Rupiah dengan pemisah ribuan titik, nilai singkat berakhiran `RB`, persentase komisi sampai 100%, dan jumlah penjualan eksak atau perkiraan berakhiran `RB`. Kolom tambahan `Rating`/`Rating Produk`/`Penilaian` (skala 0–5) dan `Jumlah Ulasan`/`Ulasan`/`Review Count` bersifat opsional. Jika file sumber benar-benar memuatnya, parser menyimpan rating dan jumlah ulasan beserta kualitas exact/lower_bound. Kolom yang tidak tersedia tetap ditandai missing, bukan dianggap bernilai nol.
 
 ### B. Format preview bulk-link yang sebelumnya dibagikan
 
@@ -36,7 +36,7 @@ File `shopee_affiliate_import_preview.csv` yang ditemukan di Library percakapan 
 index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url
 ```
 
-Parser juga menerima bentuk ini. Kolom `index` boleh ada; field penting lain dipetakan berdasarkan nama header. `price_idr` dan `commission_amount_idr` harus berupa bilangan Rupiah bulat; `commission_rate_bps` harus bilangan bulat 0–10000; `sold_count_quality` harus `exact`, `lower_bound`, atau `missing`. Nilai `lower_bound` dipertahankan sebagai perkiraan batas bawah, bukan diubah menjadi jumlah pasti.
+Parser juga menerima bentuk ini. Kolom `index` boleh ada; field penting lain dipetakan berdasarkan nama header. `price_idr` dan `commission_amount_idr` harus berupa bilangan Rupiah bulat; `commission_rate_bps` harus bilangan bulat 0–10000; `sold_count_quality` harus `exact`, `lower_bound`, atau `missing`. Nilai `lower_bound` dipertahankan sebagai perkiraan batas bawah, bukan diubah menjadi jumlah pasti. Format preview juga dapat menyertakan kolom opsional `rating_milli` (integer 0–5000), serta pasangan `review_count_value` dan `review_count_quality` (`exact`, `lower_bound`, atau `missing`). Kedua kolom jumlah ulasan harus hadir bersama.
 
 Untuk kedua bentuk, setiap baris harus memiliki jumlah kolom yang sama dengan header, ID produk tidak boleh berulang, nominal komisi tidak boleh melebihi harga, dan URL produk/affiliate harus HTTPS pada host Shopee yang diizinkan.
 
