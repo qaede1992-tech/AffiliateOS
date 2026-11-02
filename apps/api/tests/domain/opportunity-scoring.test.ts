@@ -32,6 +32,14 @@ describe("opportunity scoring", () => {
     assert.equal(result.offerId, undefined);
     assert.equal(result.breakdown.commission, 50);
   });
+  it("does not mistake missing demand evidence for a measured zero", () => {
+    const result = scoreOpportunity({
+      product: product({ soldCount: 0, reviewCount: 0, ratingMilli: undefined, discoverySignals: { dataQuality: { soldCount: "missing", reviewCount: "missing", ratingMilli: "missing" } } }),
+      offers: [offer()]
+    });
+    assert.equal(result.breakdown.demand, 50);
+    assert.equal(result.breakdown.demandEvidenceAvailable, false);
+  });
   it("does not mutate the candidate offer collection", () => { const lower = offer({ id: "offer-b", commissionRateBps: 500 }); const higher = offer({ id: "offer-a", commissionRateBps: 1500 }); const offers = [lower, higher]; scoreOpportunity({ product: product(), offers }); assert.deepEqual(offers.map((item) => item.id), ["offer-b", "offer-a"]); });
   it("prefers an in-stock offer when commission utility is otherwise comparable", () => {
     const result = scoreOpportunity({
