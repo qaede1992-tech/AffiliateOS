@@ -150,7 +150,14 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
 
   const reasons: string[] = [];
   if (commissionEvidence && commissionEvidence.score >= 60) reasons.push("Strong commission potential");
-  if (demandEvidence && demand >= 60) reasons.push(reachEvidenceKnown || audienceReachKnown ? "Strong demand and audience-reach signals" : "Strong demand signals from recorded sales/reviews");
+  if (demandEvidence && demand >= 60) {
+    const demandSources = [
+      ...(salesKnown ? ["recorded sales"] : []),
+      ...(reviewsKnown ? ["recorded reviews"] : []),
+      ...(audienceReachKnown || reachEvidenceKnown ? ["audience reach"] : [])
+    ];
+    reasons.push(`Strong demand from ${demandSources.join(", ")}`);
+  }
   if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`);
   if (priceEvidence && priceEvidence.score >= 60) reasons.push("Competitive price or discount signal");
   if (socialEvidence && socialProof >= 70) reasons.push("Strong rating and review evidence");
@@ -158,7 +165,8 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   if (offer?.availability === "limited") reasons.push("Offer availability is limited");
   const missingSignals = [
     !salesKnown && !audienceReachKnown && !reachEvidenceKnown ? "sales/reach data" : undefined,
-    !ratingKnown && !reviewsKnown ? "rating/review data" : undefined,
+    !ratingKnown ? "rating data" : undefined,
+    !reviewsKnown ? "review count data" : undefined,
     !priceEvidence ? "price comparison data" : undefined,
     !availabilityKnown ? "confirmed availability" : undefined
   ].filter(Boolean);

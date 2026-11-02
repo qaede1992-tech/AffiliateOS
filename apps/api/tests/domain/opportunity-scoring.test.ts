@@ -83,7 +83,7 @@ describe("opportunity scoring", () => {
       audience: ["skincare"]
     });
     assert.ok(highReach.breakdown.demand > baseline.breakdown.demand);
-    assert.ok(highReach.reasons.includes("Strong demand and audience-reach signals"));
+    assert.ok(highReach.reasons.includes("Strong demand from recorded sales, recorded reviews, audience reach"));
   });
   it("decays stale discovery reach signals instead of treating them as current", () => {
     const recent = scoreOpportunity({
@@ -118,7 +118,7 @@ describe("opportunity scoring", () => {
     assert.ok(result.score > 70);
     assert.equal(result.breakdown.socialProof, 50);
     assert.ok(result.breakdown.dataConfidence < 100);
-    assert.ok(result.reasons.some((reason) => reason.includes("rating/review data")));
+    assert.ok(result.reasons.includes("Additional data unavailable: rating data, review count data"));
   });
 
   it("normalizes demand over known sales evidence when review count is unavailable", () => {
@@ -193,4 +193,28 @@ describe("opportunity scoring", () => {
     assert.ok(result.breakdown.socialProof > 80);
     assert.ok(result.breakdown.dataConfidence > 80);
     assert.ok(result.reasons.includes("Strong rating and review evidence"));
+  });
+
+
+  it("explains sales-only demand without implying that ratings or reviews were observed", () => {
+    const result = scoreOpportunity({
+      product: product({
+        soldCount: 10_000,
+        reviewCount: 0,
+        ratingMilli: undefined,
+        discoverySignals: {
+          dataQuality: {
+            soldCount: "lower_bound",
+            reviewCount: "missing",
+            ratingMilli: "missing",
+            source: "shopee-affiliate-csv",
+          },
+        },
+      }),
+      offers: [offer()],
+      audience: ["skincare"],
+    });
+    assert.ok(result.reasons.includes("Strong demand from recorded sales"));
+    assert.ok(result.reasons.includes("Additional data unavailable: rating data, review count data"));
+    assert.ok(!result.reasons.some((reason) => reason.includes("recorded reviews")));
   });
