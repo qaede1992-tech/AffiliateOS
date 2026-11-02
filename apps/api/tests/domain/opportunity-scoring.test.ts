@@ -100,4 +100,67 @@ describe("opportunity scoring", () => {
     assert.deepEqual(results.map((item) => item.product.id), ["product-a", "product-b"]);
     assert.ok(results[0].score > results[1].score);
   });
+  it("does not treat unavailable rating and review metrics as zero-score evidence", () => {
+    const incomplete = product({
+      ratingMilli: undefined,
+      reviewCount: 0,
+      discoverySignals: { dataQuality: { ratingMilli: "missing", reviewCount: "missing", soldCount: "exact", source: "shopee-affiliate-csv" } }
+    });
+    const result = scoreOpportunity({ product: incomplete, offers: [offer()], audience: ["skincare"] });
+    assert.ok(result.score > 70);
+    assert.equal(result.breakdown.socialProof, 0);
+    assert.ok(result.breakdown.dataConfidence < 100);
+    assert.ok(result.reasons.some((reason) => reason.includes("rating/review data")));
+  });
+
+  it("normalizes demand over known sales evidence when review count is unavailable", () => {
+    const exactSales = product({
+      soldCount: 8500,
+      reviewCount: 0,
+      ratingMilli: undefined,
+      discoverySignals: { dataQuality: { soldCount: "exact", reviewCount: "missing", ratingMilli: "missing" } }
+    });
+    const lowerBoundSales = product({
+      soldCount: 8500,
+      reviewCount: 0,
+      ratingMilli: undefined,
+      discoverySignals: { dataQuality: { soldCount: "lower_bound", reviewCount: "missing", ratingMilli: "missing" } }
+    });
+    const exact = scoreOpportunity({ product: exactSales, offers: [offer()], audience: ["skincare"] });
+    const lowerBound = scoreOpportunity({ product: lowerBoundSales, offers: [offer()], audience: ["skincare"] });
+    assert.ok(exact.breakdown.demand > 90);
+    assert.equal(exact.breakdown.demand, lowerBound.breakdown.demand);
+    assert.ok(exact.breakdown.dataConfidence > lowerBound.breakdown.dataConfidence);
+  });
+
+  it("does not assume an unknown offer availability is in stock", () => {
+    const result = scoreOpportunity({
+      product: product(),
+      offers: [offer({ availability: "unknown" })],
+      audience: ["skincare"]
+    });
+    assert.equal(result.breakdown.availability, 50);
+    assert.ok(result.breakdown.dataConfidence < 100);
+  });
+
+  it("preserves zero as a measured value only when its quality is explicitly exact", () => {
+    const unknownZero = product({
+      soldCount: 0,
+      reviewCount: 0,
+      ratingMilli: undefined,
+      discoverySignals: { dataQuality: { soldCount: "missing", reviewCount: "missing", ratingMilli: "missing" } }
+    });
+    const measuredZero = product({
+      soldCount: 0,
+      reviewCount: 0,
+      ratingMilli: undefined,
+      discoverySignals: { dataQuality: { soldCount: "exact", reviewCount: "exact", ratingMilli: "missing" } }
+    });
+    const unknown = scoreOpportunity({ product: unknownZero, offers: [offer()], audience: ["skincare"] });
+    const measured = scoreOpportunity({ product: measuredZero, offers: [offer()], audience: ["skincare"] });
+    assert.equal(unknown.breakdown.demand, 0);
+    assert.equal(measured.breakdown.demand, 0);
+    assert.ok(measured.breakdown.dataConfidence > unknown.breakdown.dataConfidence);
+  });
+
 });
