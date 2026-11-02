@@ -346,7 +346,7 @@ test("rejects malformed optional rating or review metrics instead of silently tr
   ].join("\\n");
   const result = parseShopeeAffiliateCsv(csv);
   assert.equal(result.rows.length, 0);
-  assert.match(result.errors[0]?.message ?? "", /Rating harus berupa angka entre 0 dan 5|Rating harus berupa angka antara 0 dan 5/);
+  assert.match(result.errors[0]?.message ?? "", /Rating harus berupa angka antara 0 dan 5/);
   assert.match(result.errors[0]?.message ?? "", /Jumlah ulasan tidak dapat dibaca/);
 });
 
