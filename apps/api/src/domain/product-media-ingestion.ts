@@ -23,12 +23,26 @@ export interface ProductMediaAsset {
   createdAt: string;
 }
 
+export interface ProductMediaRightsReviewCommand {
+  status: "verified" | "revoked";
+  rightsBasis?: Exclude<ProductMediaAsset["rightsBasis"], null>;
+  rightsEvidenceUrl?: string;
+  sourcePublisher?: string;
+  actorId: string;
+  actorRole: "admin";
+  reason: string;
+}
+
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   listByProduct(productId: string): Promise<ProductMediaAsset[]>;
   listByProducts?(productIds: string[]): Promise<ProductMediaAsset[]>;
   save(asset: ProductMediaAsset): Promise<ProductMediaAsset>;
-  updateRights?(assetId: string, productId: string, rights: Pick<ProductMediaAsset, "rightsStatus" | "rightsBasis" | "rightsEvidenceUrl" | "rightsVerifiedAt" | "sourcePublisher">): Promise<ProductMediaAsset | undefined>;
+  /**
+   * Implementations must atomically update the asset and append its immutable rights-audit row.
+   * Repositories without that transaction must omit this method so the HTTP route fails closed.
+   */
+  reviewRights?(assetId: string, productId: string, review: ProductMediaRightsReviewCommand): Promise<ProductMediaAsset | undefined>;
 }
 
 export interface ProductMediaIngestionPolicy {
