@@ -107,13 +107,23 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution);
 
-    await service.previewSelection();
-    await service.runOnce();
+    // Even forged caller-provided IDs must not bypass the persisted media/rights lookup.
+    const untrustedIds = ["product-preview"];
+    await service.previewSelection({
+      publishableMediaProductIds: untrustedIds,
+      publishableVideoProductIds: untrustedIds
+    });
+    await service.runOnce({
+      publishableMediaProductIds: untrustedIds,
+      publishableVideoProductIds: untrustedIds
+    });
 
     assert.equal(previewCalls.length, 2);
     for (const call of previewCalls) {
       assert.equal((call as { requirePublishableMedia?: boolean }).requirePublishableMedia, true);
       assert.equal((call as { requireCommissionSignal?: boolean }).requireCommissionSignal, true);
+      assert.deepEqual((call as { publishableMediaProductIds?: string[] }).publishableMediaProductIds, []);
+      assert.deepEqual((call as { publishableVideoProductIds?: string[] }).publishableVideoProductIds, []);
     }
   });
 
