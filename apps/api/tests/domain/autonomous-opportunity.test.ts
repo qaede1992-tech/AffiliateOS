@@ -394,4 +394,13 @@ describe("validated media selection gate", () => {
     );
     assert.equal(withStoredImage.selected[0]?.product.id, "unverified-image");
   });
+  it("rejects low-confidence product scores when the policy requires stronger evidence", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("partial-evidence"), offers: [offer("partial-evidence")] }
+    ], { minimumScore: 0, maximumResults: 1, minimumDataConfidence: 80 });
+    assert.equal(result.selected.length, 0);
+    assert.ok(result.rejected[0]?.reasons.some((reason) => reason.includes("Data confidence")));
+    assert.ok((result.audit[0]?.score ?? 0) >= 0);
+  });
+
 });
