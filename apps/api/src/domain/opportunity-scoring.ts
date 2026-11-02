@@ -12,6 +12,7 @@ export type OpportunityScoreBreakdown = {
   commissionRateBps: number;
   commissionAmountCents: number;
   demand: number;
+  demandEvidenceAvailable: boolean;
   audienceFit: number;
   socialProof: number;
   priceAppeal: number;
@@ -75,7 +76,7 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
     return {
       product, offerId: undefined, score: 0, reasons: ["Product is inactive"],
       disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.",
-      breakdown: { commission: 0, commissionRateBps: 0, commissionAmountCents: 0, demand: 0, audienceFit: 0, socialProof: 0, priceAppeal: 0, availability: 0, dataConfidence: 0, confidencePenalty: 0, total: 0 }
+      breakdown: { commission: 0, commissionRateBps: 0, commissionAmountCents: 0, demand: 0, demandEvidenceAvailable: false, audienceFit: 0, socialProof: 0, priceAppeal: 0, availability: 0, dataConfidence: 0, confidencePenalty: 0, total: 0 }
     };
   }
 
@@ -168,6 +169,7 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
       commission: Math.round((commissionEvidence?.score ?? 50) * 100) / 100,
       commissionRateBps, commissionAmountCents,
       demand: Math.round((demandEvidence?.score ?? 50) * 100) / 100,
+      demandEvidenceAvailable: Boolean(demandEvidence),
       audienceFit: Math.round(audience.score * 100) / 100,
       socialProof: Math.round((socialEvidence?.score ?? 50) * 100) / 100,
       priceAppeal: Math.round((priceEvidence?.score ?? 50) * 100) / 100,
