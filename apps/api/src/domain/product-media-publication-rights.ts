@@ -31,9 +31,9 @@ const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
 
 /**
  * Re-checks product-scoped object-storage media immediately before provider
- * dispatch. Content-scoped uploads are handled by the separate content-owned
- * media workflow; product-scoped objects must match a persisted product media
- * row and its current verified rights state.
+ * dispatch. Only product-scoped objects with a persisted, currently verified
+ * provenance row are accepted. Content-scoped and legacy object paths remain
+ * blocked until their own auditable rights workflow exists.
  */
 export async function assertProductMediaRightsForPublication(
   mediaAssets: MediaAsset[],
@@ -44,8 +44,8 @@ export async function assertProductMediaRightsForPublication(
   const productScoped: Array<{ bucket: string; objectKey: string; productId: string }> = [];
 
   for (const media of mediaAssets) {
-    if (media.source === "url" && linkedIds.size > 0) {
-      throw new Error("Externally hosted media has no persisted product-rights record; publication is blocked.");
+    if (media.source === "url") {
+      throw new Error("Externally hosted media has no persisted rights provenance; publication is blocked.");
     }
     if (media.source !== "object-storage") continue;
     const separator = media.reference.indexOf("/");
