@@ -62,7 +62,8 @@ const validateUrl = (raw: string, allowedHosts?: string[]): URL => {
   }
   if (isIP(hostname)) throw new Error("IP literal URLs are not allowed.");
   if (allowedHosts && !allowedHosts.some((entry) => {
-    const allowed = entry.toLowerCase().replace(/^\\.+|\\.+$/g, "");
+    const normalizedAllowed = entry.toLowerCase();
+    const allowed = normalizedAllowed.endsWith(".") ? normalizedAllowed.slice(0, -1) : normalizedAllowed;
     return allowed.length > 0 && (hostname === allowed || hostname.endsWith("." + allowed));
   })) {
     throw new Error("Hostname is not in the allowed host list.");
