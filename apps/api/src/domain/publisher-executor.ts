@@ -5,6 +5,8 @@ import type { MediaAssetRepository } from "./media-asset.js";
 import { publisherSupportsContent, type PublicationCheckResult, type SocialPublisher } from "./distribution-engine.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { ContentProductRepository, SocialAccountRepository } from "./repository.js";
+import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
+import { assertProductMediaRightsForPublication } from "./product-media-publication-rights.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { resolvePublisherMediaAssets } from "./publisher-media-resolver.js";
@@ -28,7 +30,8 @@ export class PublisherExecutor {
     private readonly mediaAssets?: MediaAssetRepository,
     private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator,
     private readonly mediaStorage?: SupabaseStorageClient,
-    private readonly contentProducts?: ContentProductRepository
+    private readonly contentProducts?: ContentProductRepository,
+    private readonly productMediaAssets?: ProductMediaAssetRepository
   ) {}
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval): Promise<PublishExecutionResult> {
@@ -53,7 +56,7 @@ export class PublisherExecutor {
 
     try {
       const credential = await this.resolveCredential(account);
-      const mediaAssets = await this.resolveMediaAssets(content);
+      const mediaAssets = await this.resolveMediaAssets(content, true);
       const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
     if (result.status === "accepted") {
       return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
@@ -86,14 +89,18 @@ export class PublisherExecutor {
     return this.credentialResolver.resolve(account.credentialReference);
   }
 
-  private async resolveMediaAssets(content: Content) {
+  private async resolveMediaAssets(content: Content, requireProductMediaRights = false) {
     if (!this.mediaAssets || !content.mediaAssetIds?.length) return [];
     const assets = await Promise.all(content.mediaAssetIds.map((id) => this.mediaAssets?.findById(id)));
     if (assets.some((asset) => !asset)) throw new Error("One or more configured media assets do not exist.");
     const resolved = assets as NonNullable<(typeof assets)[number]>[];
     if (resolved.some((asset) => asset.contentId !== content.id)) throw new Error("A configured media asset does not belong to the content.");
     const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
-    return resolvePublisherMediaAssets(content, resolved, this.mediaStorage, linkedProducts.map((item) => item.productId));
+    const linkedProductIds = linkedProducts.map((item) => item.productId);
+    if (requireProductMediaRights) {
+      await assertProductMediaRightsForPublication(resolved, linkedProductIds, this.productMediaAssets);
+    }
+    return resolvePublisherMediaAssets(content, resolved, this.mediaStorage, linkedProductIds);
   }
 
   private async findAccount(content: Content): Promise<SocialAccount> {
