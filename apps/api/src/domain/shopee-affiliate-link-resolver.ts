@@ -72,7 +72,8 @@ function safeFailure(affiliateUrl: string, reason: string): ShopeeAffiliateLinkR
  * fetching a product page or extracting platform creative materials.
  */
 function resolveEmbeddedOriginLink(input: URL, affiliateUrl: string): ShopeeAffiliateLinkResolution | undefined {
-  if (!input.pathname.replace(/\\/+$/, "").endsWith("/an_redir")) return undefined;
+  const path = input.pathname.endsWith("/") ? input.pathname.slice(0, -1) : input.pathname;
+  if (path !== "/an_redir") return undefined;
   const originLink = input.searchParams.get("origin_link");
   if (!originLink) return safeFailure(affiliateUrl, "Shopee an_redir link is missing its origin_link parameter.");
   const identity = productIdentity(originLink);
