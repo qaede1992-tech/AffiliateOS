@@ -214,9 +214,23 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         ...(row.videoUrl ? { videoUrl: row.videoUrl } : {}),
         availability: "unknown" as const,
         ...(row.soldCount.value !== null ? { soldCount: row.soldCount.value } : {}),
+        ...(row.reviewCount.value !== null ? { reviewCount: row.reviewCount.value } : {}),
+        ...(row.ratingMilli !== undefined ? { ratingMilli: row.ratingMilli } : {}),
         ...(row.commissionRateBps !== null ? { commissionRateBps: row.commissionRateBps } : {}),
         ...(row.commissionAmountRupiah !== null ? { commissionAmountCents: row.commissionAmountRupiah * 100 } : {}),
-        metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality, dataQuality: { soldCount: row.soldCount.quality, ratingMilli: "missing", reviewCount: "missing", source: "shopee-affiliate-csv" } }
+        metadata: {
+          source: "shopee-affiliate-csv",
+          moneyUnit: "IDR",
+          shopName: row.shopName,
+          salesSourceText: row.soldCount.sourceText,
+          salesQuality: row.soldCount.quality,
+          dataQuality: {
+            soldCount: row.soldCount.quality,
+            reviewCount: row.reviewCount.quality,
+            ratingMilli: row.ratingMilli !== undefined ? "exact" : "missing",
+            source: "shopee-affiliate-csv"
+          }
+        }
       }))
     });
     for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
