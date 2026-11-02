@@ -263,6 +263,14 @@ describe("autonomous opportunity selection", () => {
     assert.ok(result.rejected.find((item) => item.productId === "low-demand")?.reasons.includes("Demand evidence is unavailable"));
   });
 
+  it("records data confidence in every autonomous decision audit", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("confidence-audit"), offers: [offer("confidence-audit")] }
+    ], { minimumScore: 0, maximumResults: 1 });
+    const audit = result.audit.find((item) => item.productId === "confidence-audit");
+    assert.ok(audit?.reasons.some((reason) => reason.startsWith("Data confidence:")));
+  });
+
   it("clamps invalid policy guard values to safe bounds", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("guarded"), offers: [offer("guarded")] }

@@ -195,7 +195,7 @@ export class AutonomousOpportunitySelector {
         ? offersByProductId.get(item.product.id)?.find((offer) => offer.id === item.offerId)
         : undefined;
       const reasons = selectedIds.has(item.product.id)
-        ? [exploration ? "Selected for controlled exploration" : "Selected"]
+        ? [exploration ? "Selected for controlled exploration" : "Selected", ...item.reasons]
         : [
           ...(!item.offerId ? ["No affiliate offer selected"] : []),
           ...(item.offerId && !isExecutableAffiliateOffer(item.product.id, selectedOffer) ? ["Selected affiliate offer is not executable or is not bound to this product"] : []),
@@ -204,6 +204,7 @@ export class AutonomousOpportunitySelector {
           ...(candidatePolicy.requireCommissionSignal && !hasCommissionSignalForProduct(item.product.id, item.offerId, offersByProductId) ? ["Affiliate offer has no commission rate or amount signal"] : []),
           ...rejectionReasons(item, minimumScore, requiredAudience, minimumCommissionRateBps, minimumCommissionAmountCents, minimumDemandScore, minimumDataConfidence)
         ];
+      reasons.push(`Data confidence: ${item.breakdown.dataConfidence.toFixed(1)}% of scoring evidence is available`);
       return {
         auditId: randomUUID(),
         productId: item.product.id,
