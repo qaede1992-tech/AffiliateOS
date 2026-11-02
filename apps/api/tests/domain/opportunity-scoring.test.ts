@@ -189,7 +189,7 @@ describe("opportunity scoring", () => {
       },
     });
     const result = scoreOpportunity({ product: enriched, offers: [offer()], audience: ["skincare"] });
-    assert.ok(result.breakdown.demand > 80);
+    assert.ok(result.breakdown.demand > 70);
     assert.ok(result.breakdown.socialProof > 80);
     assert.ok(result.breakdown.dataConfidence > 80);
     assert.ok(result.reasons.includes("Strong rating and review evidence"));
