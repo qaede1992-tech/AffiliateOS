@@ -35,73 +35,86 @@ test("rejects local hostnames and redirect destinations before requesting them",
 });
 
 
-test("rejects an initial hostname outside the optional allowlist before DNS resolution", async () => {
+test("blocks Shopee hosts and redirect destinations before requesting them", async () => {
   let lookups = 0;
   let requests = 0;
   const resolveHost = (async () => {
-    lookups += 1;
+    lookups++;
+    return [{ address: "8.8.8.8", family: 4 }];
+  }) as never;
+  const fetchImpl = ((options: unknown, callback: (response: EventEmitter & { statusCode?: number; headers?: Record<string, string>; resume: () => void }) => void) => {
+    requests++;
+    const response = new EventEmitter() as EventEmitter & { statusCode?: number; headers?: Record<string, string>; resume: () => void };
+    response.statusCode = 302;
+    response.headers = { location: "https://shopee.co.id/product/1/2" };
+    response.resume = () => {};
+    callback(response);
+    const request = new EventEmitter() as EventEmitter & { setTimeout: () => void; end: () => void; destroy: () => void };
+    request.setTimeout = () => {};
+    request.end = () => {};
+    request.destroy = () => {};
+    return request;
+  }) as never;
+
+  await assert.rejects(
+    () => fetchPublicHttps("https://shop.example.test/product/1", {
+      maxBytes: 100, resolveHost, fetchImpl, blockedHostnames: ["shopee.co.id", "shopee.com"]
+    }),
+    /blocked by the fetch policy/
+  );
+  assert.equal(lookups, 1);
+  assert.equal(requests, 1);
+});
+
+test("enforces allowed hostnames before DNS resolution", async () => {
+  let lookups = 0;
+  let requests = 0;
+  const resolveHost = (async () => {
+    lookups++;
     return [{ address: "8.8.8.8", family: 4 }];
   }) as never;
   const fetchImpl = (() => {
-    requests += 1;
+    requests++;
     throw new Error("request should not occur");
   }) as never;
 
   await assert.rejects(
-    () => fetchPublicHttps("https://example.com/image.jpg", {
-      maxBytes: 100,
-      allowedHosts: ["shopee.co.id", "shopee.com"],
-      resolveHost,
-      fetchImpl
+    () => fetchPublicHttps("https://cdn.example.test/image.jpg", {
+      maxBytes: 100, resolveHost, fetchImpl, allowedHosts: ["shopee.co.id", "shopee.com"]
     }),
-    /allowed host list/
+    /not allowed by the fetch policy/
   );
   assert.equal(lookups, 0);
   assert.equal(requests, 0);
 });
 
-test("rejects redirect destinations outside the optional allowlist before DNS resolution", async () => {
-  const resolvedHosts: string[] = [];
-  const requestedHosts: string[] = [];
-  const fetchImpl = ((options: { hostname: string }, callback: (response: unknown) => void) => {
-    requestedHosts.push(options.hostname);
-    const request = new EventEmitter() as EventEmitter & {
-      setTimeout: (timeoutMs: number, callback?: () => void) => unknown;
-      end: () => void;
-      destroy: (error?: Error) => unknown;
-    };
-    request.setTimeout = () => request;
-    request.end = () => {
-      const response = new EventEmitter() as EventEmitter & {
-        statusCode: number;
-        headers: Record<string, string>;
-        resume: () => void;
-      };
-      response.statusCode = 302;
-      response.headers = { location: "https://example.com/redirected" };
-      response.resume = () => {};
-      queueMicrotask(() => callback(response));
-    };
-    request.destroy = (error?: Error) => {
-      if (error) request.emit("error", error);
-      return request;
-    };
-    return request;
-  }) as never;
-  const resolveHost = (async (hostname: string) => {
-    resolvedHosts.push(hostname);
+test("does not follow redirects outside allowed hostnames", async () => {
+  let lookups = 0;
+  let requests = 0;
+  const resolveHost = (async () => {
+    lookups++;
     return [{ address: "8.8.8.8", family: 4 }];
+  }) as never;
+  const fetchImpl = ((options: unknown, callback: (response: EventEmitter & { statusCode?: number; headers?: Record<string, string>; resume: () => void }) => void) => {
+    requests++;
+    const response = new EventEmitter() as EventEmitter & { statusCode?: number; headers?: Record<string, string>; resume: () => void };
+    response.statusCode = 302;
+    response.headers = { location: "https://cdn.example.test/redirected-file" };
+    response.resume = () => {};
+    callback(response);
+    const request = new EventEmitter() as EventEmitter & { setTimeout: () => void; end: () => void; destroy: () => void };
+    request.setTimeout = () => {};
+    request.end = () => {};
+    request.destroy = () => {};
+    return request;
   }) as never;
 
   await assert.rejects(
     () => fetchPublicHttps("https://s.shopee.co.id/short", {
-      maxBytes: 100,
-      allowedHosts: ["shopee.co.id", "shopee.com"],
-      resolveHost,
-      fetchImpl
+      maxBytes: 100, resolveHost, fetchImpl, allowedHosts: ["shopee.co.id", "shopee.com"]
     }),
-    /allowed host list/
+    /not allowed by the fetch policy/
   );
-  assert.deepEqual(resolvedHosts, ["s.shopee.co.id"]);
-  assert.deepEqual(requestedHosts, ["s.shopee.co.id"]);
+  assert.equal(lookups, 1);
+  assert.equal(requests, 1);
 });
