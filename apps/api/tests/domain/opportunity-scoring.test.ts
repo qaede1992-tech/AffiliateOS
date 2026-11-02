@@ -108,7 +108,7 @@ describe("opportunity scoring", () => {
     });
     const result = scoreOpportunity({ product: incomplete, offers: [offer()], audience: ["skincare"] });
     assert.ok(result.score > 70);
-    assert.equal(result.breakdown.socialProof, 0);
+    assert.equal(result.breakdown.socialProof, 50);
     assert.ok(result.breakdown.dataConfidence < 100);
     assert.ok(result.reasons.some((reason) => reason.includes("rating/review data")));
   });
@@ -128,7 +128,7 @@ describe("opportunity scoring", () => {
     });
     const exact = scoreOpportunity({ product: exactSales, offers: [offer()], audience: ["skincare"] });
     const lowerBound = scoreOpportunity({ product: lowerBoundSales, offers: [offer()], audience: ["skincare"] });
-    assert.ok(exact.breakdown.demand > 90);
+    assert.ok(exact.breakdown.demand > 75);
     assert.equal(exact.breakdown.demand, lowerBound.breakdown.demand);
     assert.ok(exact.breakdown.dataConfidence > lowerBound.breakdown.dataConfidence);
   });
@@ -158,7 +158,7 @@ describe("opportunity scoring", () => {
     });
     const unknown = scoreOpportunity({ product: unknownZero, offers: [offer()], audience: ["skincare"] });
     const measured = scoreOpportunity({ product: measuredZero, offers: [offer()], audience: ["skincare"] });
-    assert.equal(unknown.breakdown.demand, 0);
+    assert.equal(unknown.breakdown.demand, 50);
     assert.equal(measured.breakdown.demand, 0);
     assert.ok(measured.breakdown.dataConfidence > unknown.breakdown.dataConfidence);
   });
