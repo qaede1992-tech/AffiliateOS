@@ -104,3 +104,20 @@ This workflow must be delivered behind tests and migration checks in a separate 
 - The last-mile check is not a cancellation mechanism for provider operations already accepted externally. Revocation blocks future dispatch attempts; accepted/in-flight operations remain subject to reconciliation and manual platform-side action where available.
 
 The migration and runtime workflow are intentionally not implemented by this documentation update. The prior attempt to create the audit migration was blocked by a safety check; do not work around that block or apply any schema change to staging or production. Resume implementation only through an allowed, separately reviewed change path.
+
+
+## Content-scoped upload gap and interim publication policy (2026-11-02)
+
+A code inspection of `MediaUploadService` and the `/api/v1/content/media-upload` route found that content-scoped uploads are stored under `content/<contentId>/...`, but the current `MediaAsset` record does not persist an uploader principal, ownership attestation, rights basis, evidence reference, or review timestamp. The route admits the configured `admin` or `operator` role, while the current authentication model represents one configured operator identity rather than a separately authenticated end-user. Therefore, the current implementation cannot substantiate a `user_owned` rights claim for these uploads.
+
+Until a separate auditable content-media provenance workflow exists:
+
+- Do not treat content-scoped uploads as automatically owner-authorized or rights-verified.
+- Block content-scoped object-storage media from provider dispatch, even when the content has no linked affiliate product.
+- Block externally hosted URL media from provider dispatch because it has no persisted rights provenance.
+- Block unknown/legacy object-storage key namespaces rather than silently bypassing the product-media rights check.
+- Keep product-scoped media eligible only through the exact-match, current verified provenance row already enforced by `PublisherExecutor.execute()`.
+
+The implementation now applies this interim fail-closed policy in `assertProductMediaRightsForPublication`. Tests cover content-scoped media, unknown object-storage namespaces, and external URLs on content with no linked products. This intentionally may block existing manually uploaded content until the separate workflow is implemented; that is safer than treating upload capability as proof of publication rights.
+
+A future content-media workflow should persist the uploader principal and an explicit rights declaration at upload time, keep ownership/permission evidence private, require admin review where the declaration is insufficient, append immutable audit events for changes, and re-check current status immediately before provider dispatch. The actor must be a verified principal; do not infer it from a broad `admin`/`operator` role or a client-supplied field.
