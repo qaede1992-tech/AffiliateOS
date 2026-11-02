@@ -24,6 +24,18 @@ const isShopeeHost = (hostname: string): boolean => {
     host === "shopee.com" || host.endsWith(".shopee.com");
 };
 
+const hasVerifiedRightsEvidence = (asset: import("./product-media-ingestion.js").ProductMediaAsset): boolean => {
+  if (asset.rightsStatus !== "verified" || !asset.rightsBasis || !asset.rightsEvidenceUrl || !asset.rightsVerifiedAt) {
+    return false;
+  }
+  try {
+    const evidenceUrl = new URL(asset.rightsEvidenceUrl);
+    return evidenceUrl.protocol === "https:" && Number.isFinite(Date.parse(asset.rightsVerifiedAt));
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Discovers public product media only after the caller has selected a candidate
  * using non-media affiliate criteria. It does not bypass login, CAPTCHA, or bot
@@ -63,7 +75,11 @@ export class ProductMediaDiscoveryRunner {
     const assets = this.assets.listByProducts
       ? await this.assets.listByProducts(uniqueProductIds)
       : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
-    const ids = new Set(assets.filter((asset) => asset.bucket === this.bucketName && (asset.kind === "image" || asset.kind === "video")).map((asset) => asset.productId));
+    const ids = new Set(assets.filter((asset) =>
+      asset.bucket === this.bucketName &&
+      (asset.kind === "image" || asset.kind === "video") &&
+      hasVerifiedRightsEvidence(asset)
+    ).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => ids.has(productId));
   }
 
