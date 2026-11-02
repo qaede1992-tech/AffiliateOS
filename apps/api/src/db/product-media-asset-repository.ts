@@ -14,6 +14,11 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   byteSize: row.byteSize,
   sha256: row.sha256,
   sourceUrl: row.sourceUrl,
+  sourcePublisher: row.sourcePublisher,
+  rightsStatus: row.rightsStatus as ProductMediaAsset["rightsStatus"],
+  rightsBasis: row.rightsBasis as ProductMediaAsset["rightsBasis"],
+  rightsEvidenceUrl: row.rightsEvidenceUrl,
+  rightsVerifiedAt: row.rightsVerifiedAt,
   createdAt: row.createdAt
 });
 
