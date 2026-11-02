@@ -151,3 +151,41 @@ test("Shopee CSV import keeps affiliate accounts separate for the same marketpla
     await app.close();
   }
 });
+
+
+test("Shopee CSV import persists available rating and review evidence with source quality", async () => {
+  const app = createApp();
+  try {
+    const affiliateResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/affiliates",
+      payload: { name: "Product Evidence Partner", email: "product-evidence@example.com" },
+    });
+    assert.equal(affiliateResponse.statusCode, 201);
+    const affiliate = affiliateResponse.json();
+    const csv = [
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Rating Produk,Jumlah Ulasan",
+      '789,Produk Dengan Bukti,Rp55.000,8.500,Toko Bukti,8%,Rp4.400,https://shopee.co.id/product/1/789,https://s.shopee.co.id/evidence,4.9,1.2RB+',
+    ].join("\\n");
+    const imported = await app.inject({
+      method: "POST",
+      url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+      payload: { affiliateId: affiliate.id, csv, sourceReference: "verified-product-evidence.csv" },
+    });
+    assert.equal(imported.statusCode, 201);
+    const productsResponse = await app.inject({ method: "GET", url: "/api/v1/products" });
+    assert.equal(productsResponse.statusCode, 200);
+    const product = productsResponse.json().data[0];
+    assert.equal(product.ratingMilli, 4900);
+    assert.equal(product.reviewCount, 1200);
+    assert.equal(product.soldCount, 8500);
+    assert.deepEqual(product.discoverySignals.dataQuality, {
+      soldCount: "exact",
+      reviewCount: "lower_bound",
+      ratingMilli: "exact",
+      source: "shopee-affiliate-csv",
+    });
+  } finally {
+    await app.close();
+  }
+});
