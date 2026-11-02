@@ -165,7 +165,8 @@ export class MarketplaceService {
       return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds };
     }
     for (const item of input.items) {
-      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existing?.ratingMilli, reviewCount: item.reviewCount ?? existing?.reviewCount, soldCount: item.soldCount ?? existing?.soldCount, imageUrl: item.imageUrl, videoUrl: item.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+      const existingProduct = await this.products.findByMarketplaceProduct(connection.id, item.externalProductId.trim());
+      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl: item.imageUrl, videoUrl: item.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
       const product = await this.persistProduct(connection, productInput);
       importedProducts += 1;
       const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;
