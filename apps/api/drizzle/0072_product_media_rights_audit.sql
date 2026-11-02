@@ -26,14 +26,13 @@ REVOKE ALL ON TABLE public.product_media_rights_audits FROM PUBLIC, anon, authen
 GRANT SELECT, INSERT ON TABLE public.product_media_rights_audits TO affiliateos_runtime;
 
 DROP POLICY IF EXISTS affiliateos_runtime_select ON public.product_media_rights_audits;
-CREATE POLICY affiliateos_runtime_select
-  ON public.product_media_rights_audits
-  FOR SELECT TO affiliateos_runtime USING (true);
-
 DROP POLICY IF EXISTS affiliateos_runtime_insert ON public.product_media_rights_audits;
-CREATE POLICY affiliateos_runtime_insert
+DROP POLICY IF EXISTS affiliateos_runtime_all ON public.product_media_rights_audits;
+CREATE POLICY affiliateos_runtime_all
   ON public.product_media_rights_audits
-  FOR INSERT TO affiliateos_runtime WITH CHECK (true);
+  FOR ALL TO affiliateos_runtime
+  USING (true)
+  WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION public.prevent_product_media_rights_audit_mutation()
 RETURNS trigger
