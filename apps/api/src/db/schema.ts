@@ -62,3 +62,22 @@ export const productMediaAssets = pgTable("product_media_assets", {
   uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
   index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc())
 ]);
+
+export const productMediaRightsAudits = pgTable("product_media_rights_audits", {
+  id: uuid("id").primaryKey(),
+  assetId: uuid("asset_id").notNull().references(() => productMediaAssets.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  previousRightsStatus: varchar("previous_rights_status", { length: 20 }).notNull(),
+  newRightsStatus: varchar("new_rights_status", { length: 20 }).notNull(),
+  rightsBasis: varchar("rights_basis", { length: 40 }),
+  rightsEvidenceUrl: varchar("rights_evidence_url", { length: 2048 }),
+  sourcePublisher: varchar("source_publisher", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("product_media_rights_audits_asset_created_idx").on(table.assetId, table.createdAt.desc()),
+  index("product_media_rights_audits_product_created_idx").on(table.productId, table.createdAt.desc())
+]);
