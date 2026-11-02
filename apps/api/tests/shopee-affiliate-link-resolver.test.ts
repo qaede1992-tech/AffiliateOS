@@ -10,6 +10,33 @@ const mockResponse = (url: string, html = "") => ({
   bytes: new TextEncoder().encode(html)
 });
 
+test("resolves Shopee's documented an_redir origin_link locally without fetching the product page", async () => {
+  const productUrl = "https://shopee.co.id/product/305325624/29463945555?gads_t_sig=example";
+  const affiliateUrl = "https://s.shopee.co.id/an_redir?origin_link=" + encodeURIComponent(productUrl) + "&affiliate_id=12345&sub_id=12345-test";
+  let called = false;
+  const fetcher = (async () => { called = true; return mockResponse("https://shopee.co.id/"); }) as typeof fetchPublicHttps;
+
+  const result = await resolveShopeeAffiliateLink(affiliateUrl, {}, fetcher);
+
+  assert.equal(called, false);
+  assert.equal(result.status, "resolved");
+  assert.equal(result.productUrl, productUrl);
+  assert.equal(result.shopId, "305325624");
+  assert.equal(result.itemId, "29463945555");
+});
+
+test("rejects an an_redir origin_link outside Shopee without fetching it", async () => {
+  const affiliateUrl = "https://s.shopee.co.id/an_redir?origin_link=" + encodeURIComponent("https://example.com/product/1/2") + "&affiliate_id=12345";
+  let called = false;
+  const fetcher = (async () => { called = true; return mockResponse("https://shopee.co.id/"); }) as typeof fetchPublicHttps;
+
+  const result = await resolveShopeeAffiliateLink(affiliateUrl, {}, fetcher);
+
+  assert.equal(called, false);
+  assert.equal(result.status, "unresolved");
+  assert.match(result.reason ?? "", /valid HTTPS Shopee product URL/);
+});
+
 test("resolves a short affiliate link when redirects land directly on a Shopee product URL", async () => {
   let fetchOptions: Parameters<typeof fetchPublicHttps>[1] | undefined;
   const fetcher = (async (_url: string, options: Parameters<typeof fetchPublicHttps>[1]) => { fetchOptions = options; return mockResponse("https://shopee.co.id/product/305325624/29463945555"); }) as typeof fetchPublicHttps;

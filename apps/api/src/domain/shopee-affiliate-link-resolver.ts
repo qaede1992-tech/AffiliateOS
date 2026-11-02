@@ -65,6 +65,37 @@ function safeFailure(affiliateUrl: string, reason: string): ShopeeAffiliateLinkR
   return { status: "unresolved", affiliateUrl, reason };
 }
 
+/**
+ * Shopee documents affiliate links in the form /an_redir?origin_link=<encoded
+ * product URL>&affiliate_id=... . The destination is already embedded in the
+ * affiliate URL supplied by the operator, so resolve it locally without
+ * fetching a product page or extracting platform creative materials.
+ */
+function resolveEmbeddedOriginLink(input: URL, affiliateUrl: string): ShopeeAffiliateLinkResolution | undefined {
+  const path = input.pathname.endsWith("/") ? input.pathname.slice(0, -1) : input.pathname;
+  if (path !== "/an_redir") return undefined;
+  const originLink = input.searchParams.get("origin_link");
+  if (!originLink) return safeFailure(affiliateUrl, "Shopee an_redir link is missing its origin_link parameter.");
+  const identity = productIdentity(originLink);
+  if (!identity) return safeFailure(affiliateUrl, "Shopee an_redir origin_link must be a valid HTTPS Shopee product URL.");
+  let productUrl: string;
+  try {
+    const destination = new URL(originLink);
+    destination.hash = "";
+    productUrl = destination.toString();
+  } catch {
+    return safeFailure(affiliateUrl, "Shopee an_redir origin_link is not a valid URL.");
+  }
+  return {
+    status: "resolved",
+    affiliateUrl,
+    landingUrl: input.toString(),
+    productUrl,
+    shopId: identity.shopId,
+    itemId: identity.itemId
+  };
+}
+
 /** Resolves Shopee affiliate short links without cookies or access-control bypass. */
 export async function resolveShopeeAffiliateLink(
   affiliateUrl: string,
@@ -76,6 +107,8 @@ export async function resolveShopeeAffiliateLink(
   if (input.protocol !== "https:" || input.username || input.password || !isShopeeHost(input.hostname)) {
     return safeFailure(affiliateUrl, "Only credential-free Shopee HTTPS affiliate links are supported.");
   }
+  const embedded = resolveEmbeddedOriginLink(input, affiliateUrl);
+  if (embedded) return embedded;
   try {
     const page: SafeHttpResponse = await fetcher(input.toString(), {
       maxBytes: options.maxPageBytes ?? 2_000_000,
