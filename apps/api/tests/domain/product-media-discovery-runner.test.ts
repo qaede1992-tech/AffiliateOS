@@ -99,6 +99,55 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
 });
 
+test("continues discovering catalog images when an existing video has unverified rights", async () => {
+  const existingVideo: ProductMediaAsset = {
+    id: "33333333-3333-4333-8333-333333333333",
+    productId: product.id,
+    kind: "video",
+    bucket: "affiliate-media",
+    objectKey: `products/${product.id}/existing-video.mp4`,
+    mimeType: "video/mp4",
+    byteSize: 32,
+    sha256: "a".repeat(64),
+    sourceUrl: "https://cdn.example.test/video.mp4",
+    sourcePublisher: null,
+    rightsStatus: "unverified",
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    createdAt: "2026-10-30T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [existingVideo];
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash(id: string, hash: string) { return assets.find((asset) => asset.productId === id && asset.sha256 === hash); },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  const fetched: string[] = [];
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async (url: string) => {
+      fetched.push(url);
+      return { url, status: 200, headers: { "content-type": "image/png" }, bytes: png };
+    }) as never
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cdn.example.test/catalog-image.png"
+  }, true);
+
+  assert.deepEqual(fetched, ["https://cdn.example.test/catalog-image.png"]);
+  assert.equal(result.pageFetched, false);
+  assert.equal(result.hasVideo, true);
+  assert.equal(assets.some((asset) => asset.kind === "image"), true);
+  assert.equal(assets.find((asset) => asset.kind === "video")?.rightsStatus, "unverified");
+});
+
 test("lists stored video product ids with one bulk repository read", async () => {
   const secondProductId = "22222222-2222-4222-8222-222222222222";
   const assets: ProductMediaAsset[] = [
