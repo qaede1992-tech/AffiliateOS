@@ -10,9 +10,14 @@ const mockResponse = (url: string, html = "") => ({
   bytes: new TextEncoder().encode(html)
 });
 
-test("resolves a short affiliate link when redirects land directly on a Shopee product URL", async () => {
-  const fetcher = (async () => mockResponse("https://shopee.co.id/product/305325624/29463945555")) as typeof fetchPublicHttps;
+test("resolves a short affiliate link using only Shopee redirect hosts", async () => {
+  let allowedHosts: string[] | undefined;
+  const fetcher = (async (_url: string, options: Parameters<typeof fetchPublicHttps>[1]) => {
+    allowedHosts = options.allowedHosts;
+    return mockResponse("https://shopee.co.id/product/305325624/29463945555");
+  }) as typeof fetchPublicHttps;
   const result = await resolveShopeeAffiliateLink("https://s.shopee.co.id/short", {}, fetcher);
+  assert.deepEqual(allowedHosts, ["shopee.co.id", "shopee.com"]);
   assert.equal(result.status, "resolved");
   assert.equal(result.shopId, "305325624");
   assert.equal(result.itemId, "29463945555");
