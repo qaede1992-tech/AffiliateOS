@@ -61,12 +61,14 @@ export class AutonomousCycleService {
   }> {
     const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: false });
     const productIds = candidateList.map((candidate) => candidate.product.id);
+    // Never trust caller-supplied product IDs as proof of media rights.
+    // Without the persisted media/rights repository, fail closed.
     const videoIds = this.productMediaDiscovery
       ? await this.productMediaDiscovery.listPublishableVideoProductIds(productIds)
-      : input.publishableVideoProductIds ?? [];
+      : [];
     const mediaIds = this.productMediaDiscovery
       ? await this.productMediaDiscovery.listPublishableMediaProductIds(productIds)
-      : input.publishableMediaProductIds ?? videoIds;
+      : [];
     const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
     const result = await this.execution.previewSelection({
       ...input,
@@ -101,8 +103,10 @@ export class AutonomousCycleService {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
-      let videoIds = input.publishableVideoProductIds ?? [];
-      let mediaIds = input.publishableMediaProductIds ?? videoIds;
+      // Caller-supplied IDs are not evidence of publication rights.
+      // If media discovery/storage is unavailable, the final media gates stay empty.
+      let videoIds: string[] = [];
+      let mediaIds: string[] = [];
       if (this.productMediaDiscovery) {
         // Pass 1: affiliate eligibility only. This pass never creates media or content.
         const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true }]));
