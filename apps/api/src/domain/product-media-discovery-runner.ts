@@ -25,7 +25,13 @@ const isShopeeHost = (hostname: string): boolean => {
 };
 
 const hasVerifiedRightsEvidence = (asset: import("./product-media-ingestion.js").ProductMediaAsset): boolean => {
-  if (asset.rightsStatus !== "verified" || !asset.rightsBasis || !asset.rightsEvidenceUrl || !asset.rightsVerifiedAt) {
+  if (
+    asset.rightsStatus !== "verified" ||
+    !asset.rightsBasis ||
+    !asset.rightsEvidenceUrl ||
+    !asset.rightsVerifiedAt ||
+    !asset.sourcePublisher?.trim()
+  ) {
     return false;
   }
   try {
