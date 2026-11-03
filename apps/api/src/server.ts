@@ -108,7 +108,11 @@ const services = createServices(
   createOfficialTikTokContentPostingClient({ credentialResolver: socialCredentialResolver }),
   mediaStorage,
   undefined,
-  environment.AUTONOMOUS_PUBLICATION_ENABLED
+  environment.AUTONOMOUS_PUBLICATION_ENABLED,
+  {
+    clientId: environment.OPENVERSE_CLIENT_ID,
+    clientSecret: environment.OPENVERSE_CLIENT_SECRET
+  }
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,

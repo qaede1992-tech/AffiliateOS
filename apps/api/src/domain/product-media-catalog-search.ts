@@ -35,6 +35,8 @@ export interface ProductMediaCatalogSearchOptions {
   endpoint?: string;
   timeoutMs?: number;
   maxResults?: number;
+  clientId?: string;
+  clientSecret?: string;
 }
 
 const normalize = (value: string): string => value
@@ -152,6 +154,52 @@ interface OpenverseResponse {
   results?: OpenverseImage[];
 }
 
+interface OpenverseTokenResponse {
+  access_token?: unknown;
+  expires_in?: unknown;
+}
+
+const openverseTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+
+const getOpenverseAccessToken = async (
+  clientId: string,
+  clientSecret: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<string> => {
+  const cached = openverseTokenCache.get(clientId);
+  if (cached && cached.expiresAt > Date.now()) return cached.accessToken;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_secret: clientSecret
+    });
+    const response = await fetchImpl("https://api.openverse.org/v1/auth_tokens/token/", {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+      body,
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`Openverse authentication failed with HTTP ${response.status}.`);
+    const payload = await response.json() as OpenverseTokenResponse;
+    if (typeof payload.access_token !== "string" || !payload.access_token.trim()) {
+      throw new Error("Openverse authentication response did not contain an access token.");
+    }
+    const expiresIn = typeof payload.expires_in === "number" && Number.isFinite(payload.expires_in)
+      ? Math.max(0, payload.expires_in)
+      : 3600;
+    const expiresAt = Date.now() + Math.max(0, expiresIn * 1000 - 60_000);
+    openverseTokenCache.set(clientId, { accessToken: payload.access_token, expiresAt });
+    return payload.access_token;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 /**
  * Searches Openverse's documented public API for commercially usable,
  * modification-permitting license families. Rights remain unverified because
@@ -168,6 +216,14 @@ export async function searchOpenverseProductMedia(
     throw new Error("maxResults must be an integer between 1 and 20.");
   }
 
+  if (Boolean(options.clientId) !== Boolean(options.clientSecret)) {
+    throw new Error("Openverse client ID and client secret must be configured together.");
+  }
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const accessToken = options.clientId && options.clientSecret
+    ? await getOpenverseAccessToken(options.clientId, options.clientSecret, fetchImpl, options.timeoutMs ?? 8_000)
+    : undefined;
   const endpoint = new URL(options.endpoint ?? "https://api.openverse.org/v1/images/");
   if (endpoint.protocol !== "https:" || endpoint.hostname !== "api.openverse.org") {
     throw new Error("Openverse endpoint must use the official api.openverse.org HTTPS host.");
@@ -181,9 +237,12 @@ export async function searchOpenverseProductMedia(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
   try {
-    const response = await (options.fetchImpl ?? fetch)(endpoint.toString(), {
+    const response = await fetchImpl(endpoint.toString(), {
       method: "GET",
-      headers: { accept: "application/json" },
+      headers: {
+        accept: "application/json",
+        ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {})
+      },
       signal: controller.signal
     });
     if (!response.ok) throw new Error(`Openverse search failed with HTTP ${response.status}.`);
