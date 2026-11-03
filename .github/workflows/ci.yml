@@ -45,7 +45,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://affiliateos:affiliateos@localhost:5432/affiliateos
         run: |
-          printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
+          printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\\n' > .env
           node --env-file=.env apps/api/scripts/prepare-public-schema-privilege-check.mjs
           npm run db:migrate
           timeout --signal=TERM --kill-after=30s 15m npm test
@@ -60,11 +60,13 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node apps/api/scripts/check-migration-timestamps.mjs
       - name: Configure CI database environment
-        run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
+        run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\\n' > .env
       - name: Apply migrations
         run: npm run db:migrate
       - name: Verify migrated database
         run: npm run db:verify
+      - name: Test Supabase-managed default ACL detection
+        run: node --env-file=.env apps/api/scripts/test-public-schema-privilege-audit.mjs
       - name: Verify public-schema privileges
         run: node --env-file=.env apps/api/scripts/check-public-schema-privileges.mjs
       - name: Verify runtime-role RLS baseline
@@ -110,10 +112,10 @@ jobs:
           trap 'docker rm --force affiliateos-api >/dev/null 2>&1 || true; docker rm --force affiliateos-postgres >/dev/null 2>&1 || true; docker network rm affiliateos-smoke >/dev/null 2>&1 || true' EXIT
           token='ci-smoke-test-token-123456789012345678901234'
           docker network create affiliateos-smoke
-          docker run --detach --name affiliateos-postgres --network affiliateos-smoke \
-            --env POSTGRES_DB=affiliateos \
-            --env POSTGRES_USER=affiliateos \
-            --env POSTGRES_PASSWORD=affiliateos \
+          docker run --detach --name affiliateos-postgres --network affiliateos-smoke \\
+            --env POSTGRES_DB=affiliateos \\
+            --env POSTGRES_USER=affiliateos \\
+            --env POSTGRES_PASSWORD=affiliateos \\
             postgres:16-alpine
           for attempt in $(seq 1 30); do
             if docker exec affiliateos-postgres pg_isready -U affiliateos -d affiliateos >/dev/null 2>&1; then
@@ -125,10 +127,10 @@ jobs:
             fi
             sleep 1
           done
-          docker run --detach --name affiliateos-api --network affiliateos-smoke --publish 3001:3001 \
-            --env DATABASE_URL=postgresql://affiliateos:affiliateos@affiliateos-postgres:5432/affiliateos \
-            --env API_CORS_ORIGIN=http://localhost:5173 \
-            --env API_AUTH_TOKEN="$token" \
+          docker run --detach --name affiliateos-api --network affiliateos-smoke --publish 3001:3001 \\
+            --env DATABASE_URL=postgresql://affiliateos:affiliateos@affiliateos-postgres:5432/affiliateos \\
+            --env API_CORS_ORIGIN=http://localhost:5173 \\
+            --env API_AUTH_TOKEN="$token" \\
             affiliateos-api:ci
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:3001/api/v1/health >/dev/null; then
@@ -144,14 +146,14 @@ jobs:
           test "$readiness_status" = '200'
           unauthorized_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3001/api/v1/auth/me)
           test "$unauthorized_status" = '401'
-          authorized_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            --header "Authorization: Bearer $token" \
+          authorized_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \\
+            --header "Authorization: Bearer $token" \\
             http://127.0.0.1:3001/api/v1/auth/me)
           test "$authorized_status" = '200'
-          cookie_headers=$(curl --silent --include --request POST --header 'Content-Type: application/json' --data "{\"token\":\"$token\"}" http://127.0.0.1:3001/api/v1/auth/login)
-          printf '%s\n' "$cookie_headers" | grep -F 'affiliateos_session=' >/dev/null
-          printf '%s\n' "$cookie_headers" | grep -F 'HttpOnly' >/dev/null
-          printf '%s\n' "$cookie_headers" | grep -F 'SameSite=Strict' >/dev/null
+          cookie_headers=$(curl --silent --include --request POST --header 'Content-Type: application/json' --data "{\\"token\\":\\"$token\\"}" http://127.0.0.1:3001/api/v1/auth/login)
+          printf '%s\\n' "$cookie_headers" | grep -F 'affiliateos_session=' >/dev/null
+          printf '%s\\n' "$cookie_headers" | grep -F 'HttpOnly' >/dev/null
+          printf '%s\\n' "$cookie_headers" | grep -F 'SameSite=Strict' >/dev/null
       - name: Smoke test web container
         run: |
           set -euo pipefail
