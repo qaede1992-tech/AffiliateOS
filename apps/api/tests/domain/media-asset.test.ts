@@ -15,14 +15,34 @@ const asset: MediaAsset = {
 };
 
 describe("MediaAsset", () => {
-  it("accepts HTTPS media URLs", () => {
+  it("accepts credential-free HTTPS media URLs with a hostname", () => {
     assert.equal(isPublicMediaUrl(asset.reference), true);
     assert.doesNotThrow(() => validateMediaAsset(asset));
   });
 
   it("rejects non-HTTPS URL references", () => {
     assert.equal(isPublicMediaUrl("http://cdn.example.com/video.mp4"), false);
-    assert.throws(() => validateMediaAsset({ ...asset, reference: "http://cdn.example.com/video.mp4" }), /HTTPS URL/);
+    assert.throws(() => validateMediaAsset({ ...asset, reference: "http://cdn.example.com/video.mp4" }), /credential-free public HTTPS URL/);
+  });
+
+  it("rejects URL references containing embedded credentials", () => {
+    const reference = "https://user:password@cdn.example.com/video.mp4";
+    assert.equal(isPublicMediaUrl(reference), false);
+    assert.throws(() => validateMediaAsset({ ...asset, reference }), /credential-free public HTTPS URL/);
+  });
+
+  it("rejects IP literals and local-only hostnames", () => {
+    for (const reference of [
+      "https://127.0.0.1/video.mp4",
+      "https://[::1]/video.mp4",
+      "https://localhost/video.mp4",
+      "https://media.local/video.mp4",
+      "https://metadata.google.internal/video.mp4",
+      "https://media/video.mp4"
+    ]) {
+      assert.equal(isPublicMediaUrl(reference), false, reference);
+      assert.throws(() => validateMediaAsset({ ...asset, reference }), /credential-free public HTTPS URL/);
+    }
   });
 
   it("rejects invalid byte sizes", () => {
