@@ -22,7 +22,7 @@ describe("autonomous cycle", () => {
       async runOnce(input: { publishableMediaProductIds?: string[]; publishableVideoProductIds?: string[]; requirePublishableVideo?: boolean }) {
         calls.push("final-execution");
         assert.deepEqual(input.publishableMediaProductIds, ["selected-image", "media-rejected"]);
-        assert.deepEqual(input.publishableVideoProductIds, ["selected-image"]);
+        assert.deepEqual(input.publishableVideoProductIds, []);
         assert.equal(input.requirePublishableVideo, true);
         return { selected: [], rejected: [], audit: [], outcomes: [] };
       }
@@ -35,6 +35,7 @@ describe("autonomous cycle", () => {
         videoLookupCount += 1;
         return videoLookupCount === 1 ? [] : ["selected-image"];
       },
+      async listPublishableVideoProductIds() { calls.push("list-publishable-videos"); return []; },
       async generatePromoVideo(product: { id: string }) { calls.push("render:" + product.id); return { generated: true }; }
     };
     const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
@@ -46,9 +47,10 @@ describe("autonomous cycle", () => {
       "discover:media-rejected",
       "list-media",
       "list-videos",
+      "list-publishable-videos",
       "media-ready-selection",
       "render:selected-image",
-      "list-videos",
+      "list-publishable-videos",
       "final-execution"
     ]);
     assert.equal(calls.some((call) => call === "render:media-rejected"), false);
@@ -155,13 +157,23 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution);
 
-    await service.previewSelection();
-    await service.runOnce();
+    // Even forged caller-provided IDs must not bypass the persisted media/rights lookup.
+    const untrustedIds = ["product-preview"];
+    await service.previewSelection({
+      publishableMediaProductIds: untrustedIds,
+      publishableVideoProductIds: untrustedIds
+    });
+    await service.runOnce({
+      publishableMediaProductIds: untrustedIds,
+      publishableVideoProductIds: untrustedIds
+    });
 
     assert.equal(previewCalls.length, 2);
     for (const call of previewCalls) {
       assert.equal((call as { requirePublishableMedia?: boolean }).requirePublishableMedia, true);
       assert.equal((call as { requireCommissionSignal?: boolean }).requireCommissionSignal, true);
+      assert.deepEqual((call as { publishableMediaProductIds?: string[] }).publishableMediaProductIds, []);
+      assert.deepEqual((call as { publishableVideoProductIds?: string[] }).publishableVideoProductIds, []);
     }
   });
 

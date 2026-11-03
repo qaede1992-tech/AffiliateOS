@@ -99,6 +99,55 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
 });
 
+test("continues discovering catalog images when an existing video has unverified rights", async () => {
+  const existingVideo: ProductMediaAsset = {
+    id: "33333333-3333-4333-8333-333333333333",
+    productId: product.id,
+    kind: "video",
+    bucket: "affiliate-media",
+    objectKey: `products/${product.id}/existing-video.mp4`,
+    mimeType: "video/mp4",
+    byteSize: 32,
+    sha256: "a".repeat(64),
+    sourceUrl: "https://cdn.example.test/video.mp4",
+    sourcePublisher: null,
+    rightsStatus: "unverified",
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    createdAt: "2026-10-30T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [existingVideo];
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash(id: string, hash: string) { return assets.find((asset) => asset.productId === id && asset.sha256 === hash); },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  const fetched: string[] = [];
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async (url: string) => {
+      fetched.push(url);
+      return { url, status: 200, headers: { "content-type": "image/png" }, bytes: png };
+    }) as never
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cdn.example.test/catalog-image.png"
+  }, true);
+
+  assert.deepEqual(fetched, ["https://cdn.example.test/catalog-image.png"]);
+  assert.equal(result.pageFetched, false);
+  assert.equal(result.hasVideo, true);
+  assert.equal(assets.some((asset) => asset.kind === "image"), true);
+  assert.equal(assets.find((asset) => asset.kind === "video")?.rightsStatus, "unverified");
+});
+
 test("lists stored video product ids with one bulk repository read", async () => {
   const secondProductId = "22222222-2222-4222-8222-222222222222";
   const assets: ProductMediaAsset[] = [
@@ -112,6 +161,11 @@ test("lists stored video product ids with one bulk repository read", async () =>
       byteSize: 32,
       sha256: "a".repeat(64),
       sourceUrl: "https://cdn.example.test/video.mp4",
+      sourcePublisher: null,
+      rightsStatus: "unverified",
+      rightsBasis: null,
+      rightsEvidenceUrl: null,
+      rightsVerifiedAt: null,
       createdAt: "2026-10-30T00:00:00.000Z"
     },
     {
@@ -124,6 +178,11 @@ test("lists stored video product ids with one bulk repository read", async () =>
       byteSize: 32,
       sha256: "b".repeat(64),
       sourceUrl: "https://cdn.example.test/image.jpg",
+      sourcePublisher: null,
+      rightsStatus: "unverified",
+      rightsBasis: null,
+      rightsEvidenceUrl: null,
+      rightsVerifiedAt: null,
       createdAt: "2026-10-30T00:00:00.000Z"
     }
   ];
@@ -161,4 +220,134 @@ test("lists stored video product ids with one bulk repository read", async () =>
   );
   assert.equal(bulkCalls, 1);
   assert.equal(perProductCalls, 0);
+});
+
+
+test("only treats media with complete verified rights evidence as publishable", async () => {
+  const productIds = [
+    "55555555-5555-4555-8555-555555555555",
+    "66666666-6666-4666-8666-666666666666",
+    "77777777-7777-4777-8777-777777777777",
+    "88888888-8888-4888-8888-888888888888",
+    "99999999-9999-4999-8999-999999999991",
+    "99999999-9999-4999-8999-999999999992"
+  ];
+  const baseAsset = {
+    id: "99999999-9999-4999-8999-999999999999",
+    kind: "image" as const,
+    bucket: "affiliate-media",
+    objectKey: "products/test/image.jpg",
+    mimeType: "image/jpeg",
+    byteSize: 32,
+    sha256: "c".repeat(64),
+    sourceUrl: "https://cdn.example.test/image.jpg",
+    sourcePublisher: "Example publisher",
+    rightsBasis: "explicit_permission" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/permission",
+    rightsVerifiedAt: "2026-11-02T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [
+    { ...baseAsset, productId: productIds[0]!, rightsStatus: "unverified" },
+    { ...baseAsset, productId: productIds[1]!, rightsStatus: "revoked" },
+    { ...baseAsset, productId: productIds[2]!, rightsStatus: "verified" },
+    { ...baseAsset, productId: productIds[3]!, rightsStatus: "verified", rightsEvidenceUrl: null },
+    { ...baseAsset, productId: productIds[4]!, rightsStatus: "verified", sourcePublisher: null },
+    { ...baseAsset, productId: productIds[5]!, rightsStatus: "verified", sourcePublisher: "   " }
+  ];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProducts(ids: string[]) { return assets.filter((asset) => ids.includes(asset.productId)); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  assert.deepEqual(await runner.listPublishableMediaProductIds(productIds), [productIds[2]]);
+});
+
+
+test("only treats videos with verified rights evidence as publishable while preserving readiness", async () => {
+  const productIds = ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"];
+  const shared = {
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    kind: "video" as const,
+    bucket: "affiliate-media",
+    objectKey: "products/test/video.mp4",
+    mimeType: "video/mp4" as const,
+    byteSize: 64,
+    sha256: "d".repeat(64),
+    sourceUrl: "https://cdn.example.test/video.mp4",
+    sourcePublisher: "Example publisher",
+    rightsBasis: "license" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/license",
+    rightsVerifiedAt: "2026-11-02T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [
+    { ...shared, productId: productIds[0]!, rightsStatus: "unverified" },
+    { ...shared, productId: productIds[1]!, rightsStatus: "verified" },
+    { ...shared, productId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", rightsStatus: "verified", sourcePublisher: null }
+  ];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProducts(ids: string[]) { return assets.filter((asset) => ids.includes(asset.productId)); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  assert.deepEqual(await runner.listVideoProductIds(productIds), productIds);
+  assert.deepEqual(await runner.listPublishableVideoProductIds([...productIds, "dddddddd-dddd-4ddd-8ddd-dddddddddddd"]), [productIds[1]]);
+});
+
+
+test("rejects future verification timestamps and credentialed evidence URLs during media selection", async () => {
+  const productIds = [
+    "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+    "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
+    "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3"
+  ];
+  const base = {
+    id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    kind: "image" as const,
+    bucket: "affiliate-media",
+    objectKey: "products/test/image.jpg",
+    mimeType: "image/jpeg",
+    byteSize: 32,
+    sha256: "e".repeat(64),
+    sourceUrl: "https://cdn.example.test/image.jpg",
+    sourcePublisher: "Example publisher",
+    rightsStatus: "verified" as const,
+    rightsBasis: "explicit_permission" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/permission",
+    rightsVerifiedAt: "2026-11-01T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [
+    { ...base, productId: productIds[0]!, rightsVerifiedAt: new Date(Date.now() + 60_000).toISOString() },
+    { ...base, productId: productIds[1]!, rightsEvidenceUrl: "https://reviewer:secret@publisher.example.test/permission" },
+    { ...base, productId: productIds[2]!, rightsBasis: "unsupported" as ProductMediaAsset["rightsBasis"] }
+  ];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProducts(ids: string[]) { return assets.filter((asset) => ids.includes(asset.productId)); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  assert.deepEqual(await runner.listPublishableMediaProductIds(productIds), []);
 });

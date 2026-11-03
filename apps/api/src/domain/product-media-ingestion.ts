@@ -15,6 +15,11 @@ export interface ProductMediaAsset {
   byteSize: number;
   sha256: string;
   sourceUrl: string;
+  sourcePublisher: string | null;
+  rightsStatus: "unverified" | "verified" | "revoked";
+  rightsBasis: "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization" | null;
+  rightsEvidenceUrl: string | null;
+  rightsVerifiedAt: string | null;
   createdAt: string;
 }
 
@@ -122,7 +127,8 @@ export class ProductMediaIngestionService {
         const asset: ProductMediaAsset = {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
           objectKey: savedObject.key, mimeType, byteSize: response.bytes.byteLength,
-          sha256, sourceUrl: candidate.url, createdAt: new Date().toISOString()
+          sha256, sourceUrl: candidate.url, sourcePublisher: null, rightsStatus: "unverified",
+          rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null, createdAt: new Date().toISOString()
         };
         try {
           const persisted = await this.assets.save(asset);

@@ -6,6 +6,7 @@ import { ProductMediaIngestionService } from "./product-media-ingestion.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from "./product-promo-video-renderer.js";
+import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
   maxProductPageBytes?: number;
@@ -63,20 +64,34 @@ export class ProductMediaDiscoveryRunner {
     const assets = this.assets.listByProducts
       ? await this.assets.listByProducts(uniqueProductIds)
       : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
-    const ids = new Set(assets.filter((asset) => asset.bucket === this.bucketName && (asset.kind === "image" || asset.kind === "video")).map((asset) => asset.productId));
+    const ids = new Set(assets.filter((asset) =>
+      asset.bucket === this.bucketName &&
+      (asset.kind === "image" || asset.kind === "video") &&
+      hasCurrentVerifiedRights(asset)
+    ).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => ids.has(productId));
   }
 
   async listVideoProductIds(productIds: string[]): Promise<string[]> {
+    return this.listProductIdsWithVideo(productIds, false);
+  }
+
+  async listPublishableVideoProductIds(productIds: string[]): Promise<string[]> {
+    return this.listProductIdsWithVideo(productIds, true);
+  }
+
+  private async listProductIdsWithVideo(productIds: string[], requireVerifiedRights: boolean): Promise<string[]> {
     const uniqueProductIds = [...new Set(productIds)];
     if (uniqueProductIds.length === 0) return [];
 
     const assets = this.assets.listByProducts
       ? await this.assets.listByProducts(uniqueProductIds)
       : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
-    const productIdsWithVideo = new Set(
-      assets.filter((asset) => asset.bucket === this.bucketName && asset.kind === "video").map((asset) => asset.productId)
-    );
+    const productIdsWithVideo = new Set(assets.filter((asset) =>
+      asset.bucket === this.bucketName &&
+      asset.kind === "video" &&
+      (!requireVerifiedRights || hasCurrentVerifiedRights(asset))
+    ).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => productIdsWithVideo.has(productId));
   }
 
@@ -86,7 +101,7 @@ export class ProductMediaDiscoveryRunner {
       throw new Error("Product must pass non-media affiliate eligibility before discovery.");
     }
     const existing = await this.assets.listByProduct(product.id);
-    if (existing.some((asset) => asset.bucket === this.bucketName && asset.kind === "video")) {
+    if (existing.some((asset) => asset.bucket === this.bucketName && asset.kind === "video" && hasCurrentVerifiedRights(asset))) {
       return { productId: product.id, pageFetched: false, hasVideo: true, stored: existing, skipped };
     }
     let pageUrl: URL;

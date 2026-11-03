@@ -8,6 +8,7 @@ import type { ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
 import type { MediaAssetRepository } from "./media-asset.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
+import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 export type CampaignOrchestratorInput = {
   opportunity: ScoredOpportunity;
@@ -109,7 +110,7 @@ export class CampaignOrchestrator {
     const requestsVideoCampaign = requestedPlatforms.some((platform) => platform === "instagram" || platform === "tiktok");
     if (input.idempotencyKey && this.productMediaAssets && requestsVideoCampaign) {
       const storedProductMedia = await this.productMediaAssets.listByProduct(liveProduct.id);
-      if (!storedProductMedia.some((asset) => asset.kind === "video")) {
+      if (!storedProductMedia.some((asset) => asset.kind === "video" && hasCurrentVerifiedRights(asset))) {
         throw new Error("A stored, validated product video is required before autonomous social campaign creation.");
       }
     }
@@ -280,8 +281,10 @@ export class CampaignOrchestrator {
 
     if (this.productMediaAssets) {
       const productAssets = await this.productMediaAssets.listByProduct(product.id);
-      const preferredKind = productAssets.some((asset) => asset.kind === "video") ? "video" : "image";
-      const stored = productAssets.find((asset) => asset.kind === preferredKind);
+      // Never attach an asset that the final publisher rights gate will reject.
+      const publishableAssets = productAssets.filter(hasCurrentVerifiedRights);
+      const preferredKind = publishableAssets.some((asset) => asset.kind === "video") ? "video" : "image";
+      const stored = publishableAssets.find((asset) => asset.kind === preferredKind);
       if (stored && this.mediaAssets) {
         const existingAssets = await this.mediaAssets.listByContent(content.id);
         const reference = stored.bucket + "/" + stored.objectKey;
