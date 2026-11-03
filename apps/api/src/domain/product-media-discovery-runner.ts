@@ -170,7 +170,10 @@ export class ProductMediaDiscoveryRunner {
           const query = buildProductMediaSearchQuery(identity);
           const discovered = await searchOpenverseProductMedia(identity, { maxResults: 10 });
           const now = new Date().toISOString();
-          const records = discovered.map((candidate) => ({
+          const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
+            identityStatus: "strong_match" | "review_required"
+          } => candidate.identityStatus !== "rejected");
+          const records = accepted.map((candidate) => ({
             id: randomUUID(),
             productId: product.id,
             provider: candidate.provider,
