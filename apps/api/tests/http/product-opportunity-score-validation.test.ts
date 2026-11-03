@@ -46,3 +46,22 @@ test("product scoring rejects impossible calendar dates after PostgreSQL timesta
     product: { ...product, createdAt: "2026-02-30 04:15:51.205+00" }
   }));
 });
+
+
+test("product scoring normalizes nullable PostgreSQL product columns to undefined", () => {
+  const parsed = scoreProductSchema.parse({
+    product: {
+      ...product,
+      description: null,
+      category: null,
+      originalPriceCents: null,
+      ratingMilli: null,
+      imageUrl: null
+    }
+  });
+  assert.equal(parsed.product.description, undefined);
+  assert.equal(parsed.product.category, undefined);
+  assert.equal(parsed.product.originalPriceCents, undefined);
+  assert.equal(parsed.product.ratingMilli, undefined);
+  assert.equal(parsed.product.imageUrl, undefined);
+});
