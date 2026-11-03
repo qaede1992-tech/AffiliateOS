@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
-import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsReviewCommand } from "../domain/product-media-ingestion.js";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../domain/product-media-ingestion.js";
 import { productMediaAssets, productMediaRightsAudits } from "./schema.js";
 
 type DatabaseExecutor = any;
@@ -90,6 +90,28 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       });
       return toAsset(updated);
     });
+  }
+
+  async listRightsAudits(productId: string, assetId: string): Promise<ProductMediaRightsAudit[]> {
+    const rows = await this.db.select().from(productMediaRightsAudits).where(and(
+      eq(productMediaRightsAudits.productId, productId),
+      eq(productMediaRightsAudits.assetId, assetId)
+    )).orderBy(desc(productMediaRightsAudits.createdAt));
+    return rows.map((row: typeof productMediaRightsAudits.$inferSelect) => ({
+      id: row.id,
+      assetId: row.assetId,
+      productId: row.productId,
+      actorId: row.actorId,
+      actorRole: row.actorRole,
+      action: row.action as ProductMediaRightsAudit["action"],
+      reason: row.reason,
+      previousRightsStatus: row.previousRightsStatus,
+      newRightsStatus: row.newRightsStatus,
+      rightsBasis: row.rightsBasis as ProductMediaRightsAudit["rightsBasis"],
+      rightsEvidenceUrl: row.rightsEvidenceUrl,
+      sourcePublisher: row.sourcePublisher,
+      createdAt: row.createdAt
+    }));
   }
 
   async save(asset: ProductMediaAsset): Promise<ProductMediaAsset> {
