@@ -119,19 +119,19 @@ export function ProductMediaRightsPanel() {
 
   const revoke = async (asset: ProductMediaAssetView) => {
     const selectedProductId = productId;
-    const selectionRequestId = requestSequence.current;
+    const selectionRequestId = productSelectionSequence.current;
     const reason = (forms[asset.id] ?? initialForm()).reason.trim();
     if (!reason) { setError("Isi alasan pencabutan hak media terlebih dahulu."); return; }
     if (!window.confirm("Cabut status hak media ini? Media tidak akan lolos gerbang publikasi produk.")) return;
     setBusyAssetId(asset.id); setError(null); setNotice(null);
     try {
       await api.reviewProductMediaRights(selectedProductId, asset.id, { status: "revoked", reason });
-      if (selectionRequestId !== requestSequence.current) return;
+      if (selectionRequestId !== productSelectionSequence.current) return;
       setNotice("Status hak media dicabut dan dicatat dalam audit.");
       await loadAssets(selectedProductId);
     } catch (requestError) {
-      if (selectionRequestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
-    } finally { if (selectionRequestId === requestSequence.current) setBusyAssetId(null); }
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
   if (checkingRole) return <section className="analytics-section"><p className="empty">Memeriksa akses admin…</p></section>;
@@ -150,7 +150,7 @@ export function ProductMediaRightsPanel() {
           <option value="">Pilih produk</option>
           {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
         </select>
-        <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading}>Muat ulang aset</button>
+        <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading || Boolean(busyAssetId)}>Muat ulang aset</button>
       </div>
       {loading && <p className="empty">Memuat media dan preview privat…</p>}
       {!loading && productId && assets.length === 0 && <p className="empty">Belum ada aset media tersimpan untuk produk ini.</p>}
@@ -202,8 +202,8 @@ export function ProductMediaRightsPanel() {
                   <label htmlFor={`rights-reason-${asset.id}`}>Alasan pemeriksaan / pencabutan</label>
                   <textarea id={`rights-reason-${asset.id}`} value={form.reason} onChange={(event) => updateForm(asset.id, "reason", event.target.value)} rows={2} disabled={busyAssetId === asset.id} />
                   <div className="product-media-rights-actions">
-                    <button type="button" onClick={() => void verify(asset)} disabled={busyAssetId === asset.id || asset.rightsStatus === "verified"}>{busyAssetId === asset.id ? "Menyimpan…" : "Verifikasi hak"}</button>
-                    {asset.rightsStatus !== "revoked" && <button type="button" className="secondary-button" onClick={() => void revoke(asset)} disabled={busyAssetId === asset.id}>Cabut hak</button>}
+                    <button type="button" onClick={() => void verify(asset)} disabled={Boolean(busyAssetId) || asset.rightsStatus === "verified"}>{busyAssetId === asset.id ? "Menyimpan…" : "Verifikasi hak"}</button>
+                    {asset.rightsStatus !== "revoked" && <button type="button" className="secondary-button" onClick={() => void revoke(asset)} disabled={Boolean(busyAssetId)}>Cabut hak</button>}
                   </div>
                 </div>
               </div>
