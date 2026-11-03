@@ -198,8 +198,23 @@ export class ProductMediaDiscoveryRunner {
           }));
           const saved = await this.catalogCandidates.saveMany(records);
           candidatesFound = saved.length;
+          console.info(JSON.stringify({
+            event: "product_media_catalog_search_completed",
+            provider: "openverse",
+            productId: product.id,
+            resultCount: discovered.length,
+            acceptedCount: accepted.length,
+            savedCount: candidatesFound
+          }));
         } catch (error) {
-          skipped.push({ url: "https://api.openverse.org/v1/images/", reason: error instanceof Error ? "Openverse candidate search failed: " + error.message : "Openverse candidate search failed." });
+          const message = error instanceof Error ? error.message : "Openverse candidate search failed.";
+          console.warn(JSON.stringify({
+            event: "product_media_catalog_search_failed",
+            provider: "openverse",
+            productId: product.id,
+            reason: message
+          }));
+          skipped.push({ url: "https://api.openverse.org/v1/images/", reason: "Openverse candidate search failed: " + message });
         }
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
