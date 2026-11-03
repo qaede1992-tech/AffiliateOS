@@ -51,3 +51,37 @@ test("returns unknown metadata for structurally incomplete MP4 containers", () =
     width: null, height: null, durationMs: null, hasAudio: null
   });
 });
+
+test("does not infer an absent audio track when an MP4 track handler is unreadable", () => {
+  const ftyp = box("ftyp", Uint8Array.from([105,115,111,109,0,0,0,0]));
+  const mdat = box("mdat", Uint8Array.from([1]));
+  const mvhdPayload = new Uint8Array(20);
+  new DataView(mvhdPayload.buffer).setUint32(12, 1000);
+  new DataView(mvhdPayload.buffer).setUint32(16, 12000);
+  const malformedTrack = box("trak", box("tkhd", new Uint8Array(84)));
+  const file = concat(ftyp, mdat, box("moov", concat(box("mvhd", mvhdPayload), malformedTrack)));
+  assert.equal(extractProductMediaTechnicalMetadata("video/mp4", file).hasAudio, null);
+});
+
+test("uses video-track dimensions rather than dimensions from a non-video track", () => {
+  const ftyp = box("ftyp", Uint8Array.from([105,115,111,109,0,0,0,0]));
+  const mdat = box("mdat", Uint8Array.from([1]));
+  const mvhdPayload = new Uint8Array(20);
+  new DataView(mvhdPayload.buffer).setUint32(12, 1000);
+  new DataView(mvhdPayload.buffer).setUint32(16, 12000);
+  const makeTrack = (handler: string, width: number, height: number) => {
+    const tkhdPayload = new Uint8Array(84);
+    new DataView(tkhdPayload.buffer).setUint32(76, width * 65536);
+    new DataView(tkhdPayload.buffer).setUint32(80, height * 65536);
+    const handlerPayload = Uint8Array.from([0,0,0,0,0,0,0,0,...Buffer.from(handler)]);
+    return box("trak", concat(box("tkhd", tkhdPayload), box("mdia", box("hdlr", handlerPayload))));
+  };
+  const file = concat(ftyp, mdat, box("moov", concat(
+    box("mvhd", mvhdPayload),
+    makeTrack("meta", 100, 100),
+    makeTrack("vide", 720, 1280)
+  )));
+  const metadata = extractProductMediaTechnicalMetadata("video/mp4", file);
+  assert.equal(metadata.width, 720);
+  assert.equal(metadata.height, 1280);
+});
