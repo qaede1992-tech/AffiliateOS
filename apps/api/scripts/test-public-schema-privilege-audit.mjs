@@ -27,12 +27,27 @@ try {
   assert.equal(rows[0]?.role, "affiliateos", "ACL fixtures must use the dedicated CI database role.");
   assert.equal(rows[0]?.is_superuser, "on", "ACL fixtures require the ephemeral CI superuser.");
 
-  const existing = await client.query("SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin'");
-  assert.equal(existing.rowCount, 0, "The isolated CI database must not contain a pre-existing supabase_admin role.");
+  const existing = await client.query("SELECT 1 FROM pg_roles WHERE rolname IN ('supabase_admin', 'supabase_implicit_creator')");
+  assert.equal(existing.rowCount, 0, "The isolated CI database must not contain pre-existing Supabase fixture roles.");
 
   await client.query("BEGIN");
   transactionStarted = true;
   await client.query("CREATE ROLE supabase_admin NOLOGIN");
+  await client.query("CREATE ROLE supabase_implicit_creator NOLOGIN");
+  await client.query("GRANT CREATE ON SCHEMA public TO supabase_implicit_creator");
+  await client.query("SET ROLE supabase_implicit_creator");
+  await client.query("CREATE FUNCTION public.affiliateos_implicit_acl_probe() RETURNS integer LANGUAGE sql IMMUTABLE AS 'SELECT 1'");
+  await client.query("RESET ROLE");
+  const implicitAclRole = await client.query("SELECT oid FROM pg_roles WHERE rolname = 'supabase_implicit_creator'");
+  const implicitFunctionDefaults = await client.query(
+    "SELECT 1 FROM pg_default_acl WHERE defaclrole = $1::oid AND defaclobjtype = 'f'",
+    [implicitAclRole.rows[0].oid]
+  );
+  assert.equal(implicitFunctionDefaults.rowCount, 0, "The implicit-default fixture must have no pg_default_acl function override.");
+  const implicitFunctionPrivilege = await client.query(
+    "SELECT has_function_privilege('anon', 'public.affiliateos_implicit_acl_probe()', 'EXECUTE') AS allowed"
+  );
+  assert.equal(implicitFunctionPrivilege.rows[0]?.allowed, true, "The PostgreSQL built-in function default must expose EXECUTE to PUBLIC in the baseline.");
   await client.query("ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin GRANT SELECT ON TABLES TO authenticated");
   await client.query("ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon");
   await client.query("ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO authenticated");
@@ -62,7 +77,36 @@ try {
   assert.ok(keys.has("public:supabase_admin:S:authenticated"), "The audit must detect schema-specific sequence defaults created by supabase_admin.");
   assert.ok(keys.has("public:supabase_admin:f:PUBLIC"), "The audit must detect schema-specific function defaults granted to PUBLIC.");
 
-  console.log("Supabase-managed default ACL fixture passed: global and public-schema grants from supabase_admin were detected.");
+  const effectiveFunctionAclRows = await client.query(`
+    SELECT 'public' AS schema_name,
+           owner.rolname AS creator_role,
+           'f' AS object_type,
+           COALESCE(grantee.rolname, 'PUBLIC') AS grantee,
+           acl.privilege_type
+    FROM pg_roles owner
+    LEFT JOIN pg_default_acl global_function_acl
+      ON global_function_acl.defaclrole = owner.oid
+     AND global_function_acl.defaclnamespace = 0
+     AND global_function_acl.defaclobjtype = 'f'
+    LEFT JOIN pg_default_acl public_function_acl
+      ON public_function_acl.defaclrole = owner.oid
+     AND public_function_acl.defaclnamespace = 'public'::regnamespace
+     AND public_function_acl.defaclobjtype = 'f'
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(global_function_acl.defaclacl, acldefault('f', owner.oid))
+      || COALESCE(public_function_acl.defaclacl, '{}'::aclitem[])
+    ) AS acl
+    LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+    WHERE owner.rolname = 'supabase_implicit_creator'
+      AND acl.privilege_type = 'EXECUTE'
+  `);
+  const implicitFindings = findPublicSchemaDefaultAclGrants(effectiveFunctionAclRows.rows);
+  assert.ok(
+    implicitFindings.some((finding) => finding.creatorRole === "supabase_implicit_creator" && finding.grantee === "PUBLIC" && finding.privilegeType === "EXECUTE"),
+    "The audit must detect built-in PUBLIC EXECUTE for a creator with no pg_default_acl function row."
+  );
+
+  console.log("Supabase-managed default ACL fixture passed: explicit Supabase defaults and implicit PostgreSQL function defaults were detected.");
 } finally {
   if (transactionStarted) await client.query("ROLLBACK");
   await client.end();
