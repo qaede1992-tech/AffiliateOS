@@ -351,3 +351,33 @@ test("rejects future verification timestamps and credentialed evidence URLs duri
 
   assert.deepEqual(await runner.listPublishableMediaProductIds(productIds), []);
 });
+
+test("scores only current rights-verified persisted media for target platform readiness", async () => {
+  const asset: ProductMediaAsset = {
+    id: "asset-1", productId: product.id, kind: "image", bucket: "affiliate-media",
+    objectKey: `products/${product.id}/image.jpg`, mimeType: "image/jpeg", byteSize: 1024,
+    width: 1080, height: 1080, sha256: "hash", sourceUrl: "https://cdn.example.test/image.jpg",
+    sourcePublisher: "Example", rightsStatus: "verified", rightsBasis: "user_owned",
+    rightsEvidenceUrl: "https://example.test/rights", rightsVerifiedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString()
+  };
+  const repository = {
+    async listByProduct() { return [asset]; },
+    async findByProductAndHash() { return asset; },
+    async save(value: ProductMediaAsset) { return value; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "k" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+  const scores = await runner.listMediaReadinessScores([product.id], ["tiktok"]);
+  assert.equal(scores[product.id], 100);
+  const revokedRunner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "k" }), remove: async () => {} } as never,
+    { ...repository, async listByProduct() { return [{ ...asset, rightsStatus: "revoked" as const }]; } },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+  const revokedScores = await revokedRunner.listMediaReadinessScores([product.id], ["tiktok"]);
+  assert.equal(revokedScores[product.id], 0);
+});
