@@ -269,6 +269,14 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     if (!previewUrl) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
     return { url: previewUrl, expiresInSeconds: 300 };
   });
+  app.get("/api/v1/products/:productId/media-assets/:assetId/rights-audits", adminGuard, async (request, reply) => {
+    const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
+    const repository = services.productMediaAssets;
+    if (!repository?.listRightsAudits) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_AUDIT_UNAVAILABLE", message: "Product media rights audit history is not configured." });
+    const asset = (await repository.listByProduct(productId)).find((item) => item.id === assetId);
+    if (!asset) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    return list(await repository.listRightsAudits(productId, assetId));
+  });
   app.patch("/api/v1/products/:productId/media-assets/:assetId/rights", adminGuard, async (request, reply) => {
     const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
     const input = updateProductMediaRightsSchema.parse(request.body);
