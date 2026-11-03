@@ -108,7 +108,12 @@ export class CampaignOrchestrator {
     // Autonomous Instagram and TikTok campaigns must use a validated, persisted video.
     const requestedPlatforms = input.platforms ?? defaultPlatforms;
     const requestsVideoCampaign = requestedPlatforms.some((platform) => platform === "instagram" || platform === "tiktok");
-    if (input.idempotencyKey && this.productMediaAssets && requestsVideoCampaign) {
+    if (input.idempotencyKey && requestsVideoCampaign) {
+      // An autonomous idempotency key marks an unattended execution. Missing
+      // rights storage must never disable the product-media publication gate.
+      if (!this.productMediaAssets) {
+        throw new Error("Product media rights repository is required before autonomous social campaign creation.");
+      }
       const storedProductMedia = await this.productMediaAssets.listByProduct(liveProduct.id);
       if (!storedProductMedia.some((asset) => asset.kind === "video" && hasCurrentVerifiedRights(asset))) {
         throw new Error("A stored, validated product video is required before autonomous social campaign creation.");
