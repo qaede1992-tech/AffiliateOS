@@ -86,7 +86,7 @@ export function evaluateMediaReadiness(
   } else if (platform === "instagram" && asset.kind === "video") {
     checks.push(check("container", asset.mimeType === "video/mp4" || asset.mimeType === "video/quicktime" ? "pass" : "fail", "Reels menerima container MP4 atau MOV."));
     if (sizeValid) checks.push(check("file_size_limit", asset.byteSize! <= MAX_INSTAGRAM_VIDEO_BYTES ? "pass" : "fail", "Batas ukuran video Reels adalah 1 GB."));
-    if (hasDimensions) checks.push(check("video_dimensions", Math.max(width!, height!) <= 1920 ? "pass" : "fail", "Sisi terpanjang video Reels dibatasi 1920 piksel."));
+    if (hasDimensions) checks.push(check("video_dimensions", width! <= 1920 ? "pass" : "fail", "Lebar horizontal video Reels maksimal 1920 piksel."));
     if (typeof asset.durationSeconds !== "number" || !Number.isFinite(asset.durationSeconds) || asset.durationSeconds <= 0) {
       checks.push(check("duration", "unknown", "Durasi video belum tersedia."));
     } else {
