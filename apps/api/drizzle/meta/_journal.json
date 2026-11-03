@@ -498,6 +498,13 @@
       "when": 1794050405017,
       "tag": "0074_content_media_technical_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1794050405018,
+      "tag": "0075_product_media_rights_audit_search_path",
+      "breakpoints": true
     }
   ]
 }
