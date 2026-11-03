@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Product } from "@affiliateos/shared";
-import { api, type ProductMediaAssetView, type ProductMediaRightsBasis } from "../api/client";
+import { api, type ProductMediaAssetView, type ProductMediaRightsAuditView, type ProductMediaRightsBasis } from "../api/client";
 
 type ReviewForm = { rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string };
 const basisOptions: Array<{ value: ProductMediaRightsBasis; label: string }> = [
@@ -20,6 +20,7 @@ export function ProductMediaRightsPanel() {
   const [productId, setProductId] = useState("");
   const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [audits, setAudits] = useState<Record<string, ProductMediaRightsAuditView[]>>({});
   const [forms, setForms] = useState<Record<string, ReviewForm>>({});
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -43,17 +44,24 @@ export function ProductMediaRightsPanel() {
   }, []);
 
   const loadAssets = async (selectedProductId: string) => {
-    if (!selectedProductId) { setAssets([]); setPreviews({}); return; }
+    if (!selectedProductId) { setAssets([]); setPreviews({}); setAudits({}); return; }
     setLoading(true);
     setError(null);
     try {
       const response = await api.productMediaAssets(selectedProductId);
       setAssets(response.data);
-      const signed = await Promise.all(response.data.map(async (asset) => {
-        try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
-        catch { return [asset.id, ""] as const; }
-      }));
+      const [signed, history] = await Promise.all([
+        Promise.all(response.data.map(async (asset) => {
+          try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
+          catch { return [asset.id, ""] as const; }
+        })),
+        Promise.all(response.data.map(async (asset) => {
+          try { return [asset.id, (await api.productMediaRightsAudits(selectedProductId, asset.id)).data] as const; }
+          catch { return [asset.id, []] as const; }
+        }))
+      ]);
       setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
+      setAudits(Object.fromEntries(history));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
@@ -140,6 +148,22 @@ export function ProductMediaRightsPanel() {
                 <small>{(asset.byteSize / 1024).toFixed(1)} KiB · SHA-256 {asset.sha256.slice(0, 16)}…</small>
                 {asset.rightsStatus === "verified" && <p className="analytics-note">Dasar: {asset.rightsBasis} · Penerbit: {asset.sourcePublisher} · Diverifikasi: {asset.rightsVerifiedAt ? new Date(asset.rightsVerifiedAt).toLocaleString("id-ID") : "—"}</p>}
                 {safeEvidenceUrl(asset.rightsEvidenceUrl) && <p><a href={safeEvidenceUrl(asset.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
+                <details className="product-media-rights-history">
+                  <summary>Riwayat pemeriksaan ({(audits[asset.id] ?? []).length})</summary>
+                  {(audits[asset.id] ?? []).length === 0
+                    ? <p className="analytics-note">Belum ada catatan perubahan hak.</p>
+                    : <ol>
+                        {(audits[asset.id] ?? []).map((entry) => (
+                          <li key={entry.id}>
+                            <strong>{entry.action === "verify" ? "Verifikasi" : "Pencabutan"} · {entry.previousRightsStatus} → {entry.newRightsStatus}</strong>
+                            <small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId} ({entry.actorRole})</small>
+                            <p>{entry.reason}</p>
+                            {entry.rightsBasis && <small>Dasar: {entry.rightsBasis} · Penerbit: {entry.sourcePublisher ?? "—"}</small>}
+                            {safeEvidenceUrl(entry.rightsEvidenceUrl) && <a href={safeEvidenceUrl(entry.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Bukti pada saat pemeriksaan</a>}
+                          </li>
+                        ))}
+                      </ol>}
+                </details>
                 <div className="affiliate-form">
                   <label htmlFor={`rights-basis-${asset.id}`}>Dasar hak</label>
                   <select id={`rights-basis-${asset.id}`} value={form.rightsBasis} onChange={(event) => updateForm(asset.id, "rightsBasis", event.target.value)} disabled={busyAssetId === asset.id}>
