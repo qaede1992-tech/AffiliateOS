@@ -3,6 +3,7 @@ import test from "node:test";
 import { createApp } from "../../src/app.js";
 import { createInMemoryServices } from "../../src/domain/container.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../../src/domain/product-media-ingestion.js";
+import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "../../src/domain/product-media-candidate.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
 const assetId = "44444444-4444-4444-8444-444444444444";
@@ -22,6 +23,15 @@ const initialAsset: ProductMediaAsset = {
   rightsEvidenceUrl: null,
   rightsVerifiedAt: null,
   createdAt: "2026-11-02T00:00:00.000Z"
+};
+
+const candidate: ProductMediaCandidateRecord = {
+  id: "66666666-6666-4666-8666-666666666666", productId, provider: "openverse", candidateHash: "b".repeat(64),
+  query: "wireless headphones", title: "Wireless Headphones Model X", imageUrl: "https://images.example.test/model-x.jpg",
+  landingPageUrl: "https://source.example.test/model-x", creator: "Photographer", creatorUrl: "https://source.example.test/creator",
+  license: "by", licenseVersion: "4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0/", sourcePublisher: "example",
+  identityScore: 78, identityStatus: "review_required", identityReasons: ["Title similarity only; manual review required."],
+  reviewStatus: "pending", rightsStatus: "unverified", createdAt: "2026-11-03T00:00:00.000Z", updatedAt: "2026-11-03T00:00:00.000Z"
 };
 
 function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositoryConfigured = true) {
@@ -56,6 +66,11 @@ function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositor
   };
   const services = createInMemoryServices();
   services.productMediaAssets = repository;
+  const candidateRepository: ProductMediaCandidateRepository = {
+    async saveMany(rows) { return rows; },
+    async listPendingByProduct(id) { return id === productId ? [candidate] : []; }
+  };
+  services.productMediaCandidates = candidateRepository;
   services.productMediaPreviewUrl = async (ownerProductId, id) => ownerProductId === productId && id === assetId ? "https://storage.example.test/signed/product.jpg" : undefined;
   const app = createApp(services, {
     auth: { enabled: false, operatorId: "reviewer-test", role },
@@ -64,6 +79,29 @@ function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositor
   return { app, getAsset: () => asset, getReview: () => lastReview };
 }
 
+test("admin can list pending product media candidates with provenance and unverified rights", async () => {
+  const { app } = makeApp();
+  try {
+    const response = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-candidates` });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().data.length, 1);
+    assert.equal(response.json().data[0].identityStatus, "review_required");
+    assert.equal(response.json().data[0].rightsStatus, "unverified");
+    assert.equal(response.json().data[0].landingPageUrl, candidate.landingPageUrl);
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot read pending product media candidates", async () => {
+  const { app } = makeApp("operator");
+  try {
+    const response = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-candidates` });
+    assert.equal(response.statusCode, 403);
+  } finally {
+    await app.close();
+  }
+});
 test("admin can list product media and verify rights with credential-free HTTPS evidence and a reason", async () => {
   const { app, getAsset, getReview } = makeApp();
   try {
