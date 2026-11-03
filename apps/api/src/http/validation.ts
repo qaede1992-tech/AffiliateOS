@@ -3,11 +3,11 @@ import { z } from "zod";
 const nonEmptyText = z.string().trim().min(1);
 const entityId = z.string().uuid();
 const isoTimestamp = z.string().datetime({ offset: true });
-const postgresTimestampPattern = /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?[+-]\\d{2}(?::?\\d{2})?$/;
+const postgresTimestampPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}(?::?\d{2})?$/;
 const normalizeProductTimestamp = (value: string): string => value
   .replace(" ", "T")
-  .replace(/([+-]\\d{2})(\\d{2})$/, "$1:$2")
-  .replace(/([+-]\\d{2})$/, "$1:00");
+  .replace(/([+-]\d{2})(\d{2})$/, "$1:$2")
+  .replace(/([+-]\d{2})$/, "$1:00");
 const postgresTimestamp = z.string().regex(postgresTimestampPattern).refine(
   (value) => Number.isFinite(Date.parse(normalizeProductTimestamp(value))),
   { message: "Invalid ISO datetime" }
