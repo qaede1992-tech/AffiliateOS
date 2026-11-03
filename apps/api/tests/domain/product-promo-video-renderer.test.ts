@@ -25,6 +25,11 @@ const imageAsset: ProductMediaAsset = {
   byteSize: imageBytes.byteLength,
   sha256: "a".repeat(64),
   sourceUrl: "https://cdn.example.test/product.png",
+  sourcePublisher: "Example",
+  rightsStatus: "verified",
+  rightsBasis: "user_owned",
+  rightsEvidenceUrl: "https://example.test/rights",
+  rightsVerifiedAt: "2026-10-31T00:00:00.000Z",
   createdAt: "2026-10-31T00:00:00.000Z"
 };
 
@@ -81,6 +86,38 @@ test("does not render or download when no validated product image exists", async
   };
   const repository = {
     async listByProduct() { return []; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const renderer = new ProductPromoVideoRenderer(storage as never, repository, {
+    runProcess: async () => { renders++; }
+  });
+  const result = await renderer.render(product);
+  assert.equal(result.generated, false);
+  assert.match(result.reason ?? "", /No validated product image/);
+  assert.equal(downloads, 0);
+  assert.equal(renders, 0);
+});
+
+test("does not render from a product image whose usage rights are unverified", async () => {
+  const unverifiedImage = {
+    ...imageAsset,
+    rightsStatus: "unverified" as const,
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    sourcePublisher: null
+  };
+  let downloads = 0;
+  let renders = 0;
+  const storage = {
+    bucketName: "affiliate-media",
+    async download() { downloads++; return imageBytes; },
+    async upload() { throw new Error("must not upload"); },
+    async remove() {}
+  };
+  const repository = {
+    async listByProduct() { return [unverifiedImage]; },
     async findByProductAndHash() { return undefined; },
     async save(asset: ProductMediaAsset) { return asset; }
   };
