@@ -9,7 +9,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.product_media_assets'::regclass AND conname = 'product_media_assets_dimensions_positive_check') THEN
     ALTER TABLE public.product_media_assets
       ADD CONSTRAINT product_media_assets_dimensions_positive_check
-      CHECK ((width_px IS NULL OR width_px > 0) AND (height_px IS NULL OR height_px > 0));
+      CHECK ((width_px IS NULL AND height_px IS NULL) OR (width_px > 0 AND height_px > 0));
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.product_media_assets'::regclass AND conname = 'product_media_assets_duration_positive_check') THEN
     ALTER TABLE public.product_media_assets
