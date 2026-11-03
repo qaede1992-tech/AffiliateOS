@@ -260,11 +260,35 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     if (!services.productMediaAssets) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights storage is not configured." });
-    return list((await services.productMediaAssets.listByProduct(productId)).map((asset) => ({
+    // Use the latest Creator Info when exactly one active TikTok account is
+    // configured. If account selection or the provider request is ambiguous,
+    // leave the duration check unknown rather than guessing an account limit.
+    let tiktokMaxVideoPostDurationSec: number | undefined;
+    try {
+      const tiktokAccounts = (await services.socialAccounts.list()).filter(
+        (account) => account.platform === "tiktok" && account.status === "active"
+      );
+      if (tiktokAccounts.length === 1) {
+        const account = await services.socialAccounts.getForPublisher(tiktokAccounts[0]!.id);
+        const creatorInfo = await services.tiktokCreatorInfo.getCreatorInfo(account);
+        if (typeof creatorInfo.maxVideoPostDurationSec === "number" &&
+          Number.isFinite(creatorInfo.maxVideoPostDurationSec) &&
+          creatorInfo.maxVideoPostDurationSec > 0) {
+          tiktokMaxVideoPostDurationSec = creatorInfo.maxVideoPostDurationSec;
+        }
+      }
+    } catch {
+      // Technical preflight must remain available during provider outages.
+      // The evaluator reports an unknown duration limit in this case.
+    }
+    const assets = await services.productMediaAssets.listByProduct(productId);
+    return list(assets.map((asset) => ({
       ...asset,
       technicalReadiness: {
         instagram: evaluateProductMediaAssetReadiness("instagram", asset),
-        tiktok: evaluateProductMediaAssetReadiness("tiktok", asset)
+        tiktok: evaluateProductMediaAssetReadiness("tiktok", asset, {
+          ...(tiktokMaxVideoPostDurationSec === undefined ? {} : { tiktokMaxVideoPostDurationSec })
+        })
       }
     })));
   });
