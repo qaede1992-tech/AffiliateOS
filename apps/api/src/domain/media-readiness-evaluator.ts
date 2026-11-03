@@ -57,9 +57,11 @@ export function evaluateMediaReadiness(
   if (platform === "tiktok" && asset.kind === "image") {
     checks.push(check("format", asset.mimeType === "image/jpeg" || asset.mimeType === "image/webp" ? "pass" : "fail", "Foto TikTok harus JPEG atau WebP."));
     if (sizeValid) checks.push(check("file_size_limit", asset.byteSize! <= MAX_TIKTOK_PHOTO_BYTES ? "pass" : "fail", "Batas ukuran foto TikTok adalah 20 MB."));
-    if (hasDimensions) const longestEdge = Math.max(width!, height!);
+    if (hasDimensions) {
+      const longestEdge = Math.max(width!, height!);
       const shortestEdge = Math.min(width!, height!);
       checks.push(check("photo_dimensions", longestEdge <= 1920 && shortestEdge <= 1080 ? "pass" : "fail", "Resolusi foto maksimal 1920 × 1080 piksel, termasuk orientasi potret 1080 × 1920."));
+    }
   } else if (platform === "tiktok" && asset.kind === "video") {
     checks.push(check("container", asset.mimeType === "video/mp4" ? "pass" : "fail", "Container video pada jalur ini harus MP4."));
     if (sizeValid) checks.push(check("file_size_limit", asset.byteSize! <= MAX_TIKTOK_VIDEO_BYTES ? "pass" : "fail", "Batas ukuran video TikTok adalah 4 GB."));
