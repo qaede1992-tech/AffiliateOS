@@ -39,6 +39,8 @@ const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty
 const WEIGHTS = { commission: 22.5, demand: 18, audienceFit: 18, socialProof: 9, priceAppeal: 9, availability: 13.5, mediaReadiness: 10 } as const;
 /** Maximum score lift from the neutral media baseline (50) to fully ready (100). */
 export const MEDIA_READINESS_MAX_SCORE_LIFT = WEIGHTS.mediaReadiness * 0.5;
+/** Maximum data-confidence lift when the media-readiness evidence becomes available. */
+export const MEDIA_READINESS_MAX_CONFIDENCE_LIFT = WEIGHTS.mediaReadiness;
 type Evidence = { score: number; confidence: number };
 function weightedAverage(parts: Array<{ score: number; weight: number; confidence?: number }>): Evidence | undefined {
   const available = parts.filter((part) => Number.isFinite(part.score) && part.weight > 0);
