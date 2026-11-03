@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../../src/app.js";
 import { createInMemoryServices } from "../../src/domain/container.js";
-import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsReviewCommand } from "../../src/domain/product-media-ingestion.js";
+import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../../src/domain/product-media-ingestion.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
 const assetId = "44444444-4444-4444-8444-444444444444";
@@ -27,14 +27,17 @@ const initialAsset: ProductMediaAsset = {
 function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositoryConfigured = true) {
   let asset = { ...initialAsset };
   let lastReview: ProductMediaRightsReviewCommand | undefined;
+  const auditRows: ProductMediaRightsAudit[] = [];
   const repository: ProductMediaAssetRepository = {
     async findByProductAndHash() { return undefined; },
     async listByProduct(id) { return id === productId ? [asset] : []; },
+    async listRightsAudits(ownerProductId, id) { return ownerProductId === productId && id === assetId ? [...auditRows] : []; },
     async save(value) { asset = value; return value; },
     ...(auditRepositoryConfigured ? {
       async reviewRights(id: string, ownerProductId: string, review: ProductMediaRightsReviewCommand) {
         if (id !== assetId || ownerProductId !== productId) return undefined;
         lastReview = review;
+        auditRows.unshift({ id: "55555555-5555-4555-8555-555555555555", assetId, productId, actorId: review.actorId, actorRole: review.actorRole, action: review.status === "verified" ? "verify" : "revoke", reason: review.reason, previousRightsStatus: asset.rightsStatus, newRightsStatus: review.status, rightsBasis: review.status === "verified" ? review.rightsBasis ?? null : asset.rightsBasis, rightsEvidenceUrl: review.status === "verified" ? review.rightsEvidenceUrl ?? null : asset.rightsEvidenceUrl, sourcePublisher: review.status === "verified" ? review.sourcePublisher ?? null : asset.sourcePublisher, createdAt: new Date().toISOString() });
         if (review.status === "verified") {
           asset = {
             ...asset,
@@ -243,6 +246,42 @@ test("operator cannot request private product media previews", async () => {
     const response = await app.inject({
       method: "GET",
       url: `/api/v1/products/${productId}/media-assets/${assetId}/preview`
+    });
+    assert.equal(response.statusCode, 403);
+  } finally {
+    await app.close();
+  }
+});
+
+
+test("admin can read immutable rights audit history for the exact product media asset", async () => {
+  const { app } = makeApp();
+  try {
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
+      payload: { status: "verified", rightsBasis: "explicit_permission", rightsEvidenceUrl: "https://publisher.example.test/proof", sourcePublisher: "Publisher", reason: "Permission checked." }
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/rights-audits`
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().data.length, 1);
+    assert.equal(response.json().data[0].action, "verify");
+    assert.equal(response.json().data[0].actorId, "reviewer-test");
+    assert.equal(response.json().data[0].reason, "Permission checked.");
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot read product media rights audit history", async () => {
+  const { app } = makeApp("operator");
+  try {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/rights-audits`
     });
     assert.equal(response.statusCode, 403);
   } finally {
