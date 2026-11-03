@@ -28,6 +28,7 @@ export interface ProductMediaAssetRepository {
   listByProduct(productId: string): Promise<ProductMediaAsset[]>;
   listByProducts?(productIds: string[]): Promise<ProductMediaAsset[]>;
   save(asset: ProductMediaAsset): Promise<ProductMediaAsset>;
+  updateRights?(assetId: string, productId: string, rights: Pick<ProductMediaAsset, "rightsStatus" | "rightsBasis" | "rightsEvidenceUrl" | "rightsVerifiedAt" | "sourcePublisher">): Promise<ProductMediaAsset | undefined>;
 }
 
 export interface ProductMediaIngestionPolicy {
