@@ -42,6 +42,16 @@ test("Instagram Reels known duration and size violations fail", () => {
   assert.equal(result.status, "not_ready");
 });
 
+test("Instagram Reels applies the documented horizontal-width limit, not a longest-edge limit", () => {
+  const portrait = evaluateMediaReadiness("instagram", { id: "v5", kind: "video", mimeType: "video/mp4", byteSize: 10_000_000, widthPx: 1080, heightPx: 2560, durationSeconds: 60, hasAudio: true });
+  assert.equal(portrait.checks.find((item) => item.key === "video_dimensions")?.status, "pass");
+  assert.equal(portrait.status, "review_required");
+
+  const tooWide = evaluateMediaReadiness("instagram", { id: "v6", kind: "video", mimeType: "video/mp4", byteSize: 10_000_000, widthPx: 2048, heightPx: 1080, durationSeconds: 60, hasAudio: true });
+  assert.equal(tooWide.checks.find((item) => item.key === "video_dimensions")?.status, "fail");
+  assert.equal(tooWide.status, "not_ready");
+});
+
 
 test("persisted product media metadata is adapted with duration converted from milliseconds", () => {
   const result = evaluateProductMediaAssetReadiness("tiktok", {
