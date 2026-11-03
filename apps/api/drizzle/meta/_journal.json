@@ -505,6 +505,13 @@
       "when": 1794050405018,
       "tag": "0075_product_media_rights_audit_search_path",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1794050405019,
+      "tag": "0076_product_media_candidates",
+      "breakpoints": true
     }
   ]
 }
