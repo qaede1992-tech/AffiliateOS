@@ -153,6 +153,10 @@ export class ProductPromoVideoRenderer {
         objectKey: stored.key,
         mimeType: "video/mp4",
         byteSize: videoBytes.byteLength,
+        width: 720,
+        height: 1280,
+        durationMs: VIDEO_DURATION_SECONDS * 1000,
+        hasAudio: false,
         sha256,
         sourceUrl: "generated:ffmpeg",
         // A derivative is a new asset and must receive its own explicit review.
