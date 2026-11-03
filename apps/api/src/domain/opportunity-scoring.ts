@@ -5,6 +5,8 @@ export type OpportunityScoringInput = {
   offers: AffiliateOffer[];
   audience?: AudienceSegment[];
   targetPriceMaxCents?: number;
+  /** 0-100 technical media readiness score from verified, persisted product assets. */
+  mediaReadinessScore?: number;
 };
 
 export type OpportunityScoreBreakdown = {
@@ -16,6 +18,7 @@ export type OpportunityScoreBreakdown = {
   socialProof: number;
   priceAppeal: number;
   availability: number;
+  mediaReadiness?: number;
   confidencePenalty: number;
   performanceAdjustment?: number;
   total: number;
@@ -93,8 +96,12 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   // An unconstrained audience is neutral, not negative: when no audience is configured,
   // the catalog demand/review signals are the available evidence and should not be penalized.
   const confidencePenalty = 0;
-  const total = clamp(commission * 0.25 + demand * 0.20 + audience.score * 0.20 + socialProof * 0.10 + priceAppeal * 0.10 + availability * 0.15 - confidencePenalty);
+  // Preserve the previous score when media metadata is absent (neutral 50),
+  // while making verified media readiness a material 10% selection signal.
+  const mediaReadiness = clamp(Number.isFinite(input.mediaReadinessScore) ? input.mediaReadinessScore! : 50);
+  const catalogScore = commission * 0.25 + demand * 0.20 + audience.score * 0.20 + socialProof * 0.10 + priceAppeal * 0.10 + availability * 0.15;
+  const total = clamp(catalogScore * 0.9 + mediaReadiness * 0.1 - confidencePenalty);
   const reasons: string[] = []; if (commission >= 60) reasons.push("Strong commission potential"); if (demand >= 60) reasons.push(reachSignals?.audienceReachScore !== undefined || observedReach > 0 ? "Strong demand and audience-reach signals" : "Strong demand signals from sales and reviews"); if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`); if (priceAppeal >= 60) reasons.push("Competitive price or discount signal"); if (socialProof >= 70) reasons.push("Strong rating and review evidence"); if (!offer) reasons.push("No active affiliate offer available"); if (availability < 100 && availability > 0) reasons.push("Offer availability is limited");
-  return { product, offerId: offer?.id, score: Math.round(total * 100) / 100, reasons, disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.", breakdown: { commission: Math.round(commission * 100) / 100, commissionRateBps, commissionAmountCents, demand: Math.round(demand * 100) / 100, audienceFit: Math.round(audience.score * 100) / 100, socialProof: Math.round(socialProof * 100) / 100, priceAppeal: Math.round(priceAppeal * 100) / 100, availability, confidencePenalty, total: Math.round(total * 100) / 100 } };
+  return { product, offerId: offer?.id, score: Math.round(total * 100) / 100, reasons, disclaimer: "Score is a decision-support signal based on available catalog data; it does not guarantee conversions or profit.", breakdown: { commission: Math.round(commission * 100) / 100, commissionRateBps, commissionAmountCents, demand: Math.round(demand * 100) / 100, audienceFit: Math.round(audience.score * 100) / 100, socialProof: Math.round(socialProof * 100) / 100, priceAppeal: Math.round(priceAppeal * 100) / 100, availability, mediaReadiness, confidencePenalty, total: Math.round(total * 100) / 100 } };
 }
 export function rankOpportunities(inputs: OpportunityScoringInput[]): ScoredOpportunity[] { return inputs.map(scoreOpportunity).sort((a, b) => b.score - a.score || a.product.id.localeCompare(b.product.id)); }
