@@ -6,7 +6,7 @@ import type { AutonomousOptimizationRunResult, AutonomousOptimizationRunner } fr
 import type { AutonomousExplorationEvaluationRunner, ExplorationEvaluationRunResult } from "./autonomous-exploration-evaluation-runner.js";
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 import type { ProductMediaDiscoveryRunner } from "./product-media-discovery-runner.js";
-import { MEDIA_READINESS_MAX_SCORE_LIFT } from "./opportunity-scoring.js";
+import { MEDIA_READINESS_MAX_CONFIDENCE_LIFT, MEDIA_READINESS_MAX_SCORE_LIFT } from "./opportunity-scoring.js";
 
 export interface AutonomousCandidateProvider {
   listCandidates(options?: { resolveAffiliateLinks?: boolean }): Promise<AutonomousExecutionCandidate[]>;
@@ -130,12 +130,15 @@ export class AutonomousCycleService {
         // verified media can lift a preliminary score by at most five points. This
         // discovery-only buffer never lowers the final selection threshold.
         const defaultMinimumScore = input.policy?.minimumScore ?? 60;
+        const defaultMinimumDataConfidence = input.policy?.minimumDataConfidence ?? 35;
         const preliminaryMinimumScore = Math.max(0, defaultMinimumScore - MEDIA_READINESS_MAX_SCORE_LIFT);
+        const preliminaryMinimumDataConfidence = Math.max(0, defaultMinimumDataConfidence - MEDIA_READINESS_MAX_CONFIDENCE_LIFT);
         const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [
           key,
           {
             ...value,
             minimumScore: Math.max(0, (value.minimumScore ?? defaultMinimumScore) - MEDIA_READINESS_MAX_SCORE_LIFT),
+            minimumDataConfidence: Math.max(0, (value.minimumDataConfidence ?? defaultMinimumDataConfidence) - MEDIA_READINESS_MAX_CONFIDENCE_LIFT),
             requirePublishableMedia: false,
             requirePublishableVideo: false,
             requireCommissionSignal: true
@@ -145,7 +148,7 @@ export class AutonomousCycleService {
           ...input,
           idempotencyNamespace: input.idempotencyNamespace ?? "autonomous-execution",
           candidates: candidateList,
-          policy: { ...input.policy, minimumScore: preliminaryMinimumScore, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
+          policy: { ...input.policy, minimumScore: preliminaryMinimumScore, minimumDataConfidence: preliminaryMinimumDataConfidence, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
           policiesByMarketplace: preliminaryPolicies,
           requirePublishableMedia: false,
           requirePublishableVideo: false,
@@ -269,6 +272,8 @@ export class AutonomousCycleService {
           candidateCount: candidateList.length,
           preliminaryMinimumScore,
           finalMinimumScore: defaultMinimumScore,
+          preliminaryMinimumDataConfidence,
+          finalMinimumDataConfidence: defaultMinimumDataConfidence,
           preliminarySelectedCount: preliminary.selected.length,
           discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
           discoveryFailedCount: mediaDiscoverySummary.failedCount,
