@@ -100,6 +100,18 @@ test("preserves the existing TikTok URL-media path while product-media rights re
   assert.equal(legacy.getProviderCalls(), 1);
 });
 
+test("preserves legacy content-scoped object-storage media during the product-rights rollout", async () => {
+  const legacyStorageMedia: MediaAsset = {
+    ...media,
+    source: "object-storage",
+    reference: "affiliate-media/content/11111111-1111-4111-8111-111111111111/legacy-video.mp4"
+  };
+  const legacy = await setup("unverified", legacyStorageMedia);
+  const result = await legacy.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  assert.equal(result.status, "published");
+  assert.equal(legacy.getProviderCalls(), 1);
+});
+
 test("publisher re-reads current product-media rights immediately before provider dispatch", async () => {
   const unverified = await setup("unverified");
   await assert.rejects(
