@@ -71,10 +71,10 @@ test("passes the configured timeout while rendering and persisting a generated 9
   assert.equal(result.asset?.kind, "video");
   assert.equal(result.asset?.mimeType, "video/mp4");
   assert.equal(result.asset?.sourceUrl, "generated:ffmpeg");
-  assert.equal(result.asset?.rightsStatus, "verified");
-  assert.equal(result.asset?.rightsBasis, "user_owned");
-  assert.equal(result.asset?.rightsEvidenceUrl, imageAsset.rightsEvidenceUrl);
-  assert.equal(result.asset?.sourcePublisher, imageAsset.sourcePublisher);
+  assert.equal(result.asset?.rightsStatus, "unverified");
+  assert.equal(result.asset?.rightsBasis, null);
+  assert.equal(result.asset?.rightsEvidenceUrl, null);
+  assert.equal(result.asset?.sourcePublisher, "AffiliateOS");
   assert.equal(assets.length, 2);
   assert.equal(uploaded.length, 1);
 });
