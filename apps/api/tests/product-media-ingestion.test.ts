@@ -290,3 +290,29 @@ test("a product mismatch leaves the media asset and rights audit untouched", asy
   assert.equal(reviewed, undefined);
   assert.deepEqual(fixture.snapshot(), { asset: original, audits: [] });
 });
+
+test("persists image dimensions extracted from downloaded PNG bytes", async () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  const stored: Array<Record<string, unknown>> = [];
+  const storage = {
+    upload: async (input: { key: string; contentType: string }) => ({ bucket: "affiliate-media", key: input.key }),
+    remove: async () => {}
+  } as never;
+  const repository = {
+    findByProductAndHash: async () => undefined,
+    save: async (asset: Record<string, unknown>) => { stored.push(asset); return asset; }
+  } as never;
+  const fetcher = (async () => ({ status: 200, headers: {}, url: "https://cdn.example.com/product.png", bytes: png })) as never;
+  const service = new ProductMediaIngestionService(storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher);
+  const result = await service.ingest({
+    productId,
+    nonMediaEligibilityPassed: true,
+    candidates: [{ kind: "image", url: "https://cdn.example.com/product.png", source: "catalog" }]
+  });
+  assert.equal(result.stored.length, 1);
+  assert.equal(result.stored[0]?.width, 1);
+  assert.equal(result.stored[0]?.height, 1);
+  assert.equal(result.stored[0]?.durationMs, null);
+  assert.equal(result.stored[0]?.hasAudio, null);
+  assert.equal(stored.length, 1);
+});
