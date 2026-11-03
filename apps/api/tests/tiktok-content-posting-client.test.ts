@@ -466,3 +466,43 @@ test("TikTok provider HTTP errors retain status and code for safe route mapping"
     return true;
   });
 });
+
+
+test("TikTok FILE_UPLOAD rejects a mismatched GET Content-Length before uploading any chunk", async () => {
+  const videoSize = 4 * 1024 * 1024;
+  let uploadedChunks = 0;
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        const body = JSON.parse(String(init?.body));
+        assert.equal(body.source_info.video_size, videoSize);
+        return new Response(JSON.stringify({ data: { publish_id: "publish-length-mismatch", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(Buffer.alloc(videoSize), {
+          status: 200,
+          headers: { "content-type": "video/mp4", "content-length": String(videoSize - 1) }
+        });
+      }
+      if (init?.method === "PUT") uploadedChunks += 1;
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish({
+      content,
+      account,
+      mediaAssets: [{ ...asset, byteSize: videoSize }],
+      tiktokApproval: approval,
+      idempotencyKey: "idem-content-length-mismatch"
+    }),
+    /size changed during download/
+  );
+  assert.equal(uploadedChunks, 0);
+});
