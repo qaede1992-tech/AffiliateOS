@@ -8,6 +8,11 @@ test("TikTok photo passes when known format, size, and dimensions pass", () => {
   assert.ok(result.checks.every((item) => item.status === "pass"));
 });
 
+test("TikTok photo exceeding the 1080p short-edge limit fails", () => {
+  const result = evaluateMediaReadiness("tiktok", { id: "p-square", kind: "image", mimeType: "image/jpeg", byteSize: 2_000_000, widthPx: 1920, heightPx: 1920 });
+  assert.equal(result.status, "not_ready");
+});
+
 test("TikTok photo with unsupported PNG format fails", () => {
   const result = evaluateMediaReadiness("tiktok", { id: "p2", kind: "image", mimeType: "image/png", byteSize: 2_000_000, widthPx: 1080, heightPx: 1920 });
   assert.equal(result.status, "not_ready");
