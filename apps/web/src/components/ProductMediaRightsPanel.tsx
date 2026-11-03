@@ -81,6 +81,7 @@ export function ProductMediaRightsPanel() {
     setAssets([]);
     setPreviews({});
     setAudits({});
+    setBusyAssetId(null);
     setError(null);
     setNotice(null);
     setProductId(selectedProductId);
@@ -110,7 +111,7 @@ export function ProductMediaRightsPanel() {
       setNotice("Hak media berhasil diverifikasi dan dicatat dalam audit.");
       await loadAssets(selectedProductId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
+      if (selectionRequestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
     } finally { if (selectionRequestId === requestSequence.current) setBusyAssetId(null); }
   };
 
@@ -127,7 +128,7 @@ export function ProductMediaRightsPanel() {
       setNotice("Status hak media dicabut dan dicatat dalam audit.");
       await loadAssets(selectedProductId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
+      if (selectionRequestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
     } finally { if (selectionRequestId === requestSequence.current) setBusyAssetId(null); }
   };
 
