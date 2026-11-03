@@ -46,7 +46,7 @@ const productMedia = (rightsStatus: ProductMediaAsset["rightsStatus"]): ProductM
   rightsVerifiedAt: "2026-11-02T00:00:00.000Z", createdAt: "2026-11-02T00:00:00.000Z"
 });
 
-async function setup(rightsStatus: ProductMediaAsset["rightsStatus"]) {
+async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configuredMedia: MediaAsset = media) {
   const contents = new InMemoryRepository<Content>();
   await contents.save(content);
   const products = new InMemoryProductCatalogRepository();
@@ -55,7 +55,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"]) {
   const socialAccounts = new InMemorySocialAccountRepository();
   await socialAccounts.save(account);
   const mediaAssets = new InMemoryMediaAssetRepository();
-  await mediaAssets.save(media);
+  await mediaAssets.save(configuredMedia);
   const contentProducts = {
     async listByContent() { return [{ contentId, productId, position: 0, role: "primary" as const, createdAt: content.createdAt }]; },
     async replaceForContent() { return []; }
@@ -100,4 +100,29 @@ test("publisher re-reads current product-media rights immediately before provide
   const result = await verified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
   assert.equal(result.status, "published");
   assert.equal(verified.getProviderCalls(), 1);
+});
+
+
+test("keeps legacy external URL media publishable without changing the TikTok dispatch path", async () => {
+  const legacyUrl: MediaAsset = {
+    ...media,
+    source: "url",
+    reference: "https://cdn.example.test/legacy-tiktok-video.mp4"
+  };
+  const fixture = await setup("unverified", legacyUrl);
+  const result = await fixture.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  assert.equal(result.status, "published");
+  assert.equal(fixture.getProviderCalls(), 1);
+});
+
+test("keeps legacy content-scoped storage media publishable while product media rights remain unverified", async () => {
+  const legacyUpload: MediaAsset = {
+    ...media,
+    source: "object-storage",
+    reference: `affiliate-media/content/${contentId}/legacy-tiktok-video.mp4`
+  };
+  const fixture = await setup("unverified", legacyUpload);
+  const result = await fixture.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  assert.equal(result.status, "published");
+  assert.equal(fixture.getProviderCalls(), 1);
 });
