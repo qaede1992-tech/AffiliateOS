@@ -4,17 +4,20 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, shopeeCommissionReportSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
-import { requireOperator } from "./auth.js";
+import { requireAdmin, requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
+import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
+import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
+const adminGuard = { preHandler: requireAdmin };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
   app.register(async (mediaApp) => {
@@ -88,7 +91,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/publication-jobs", writeGuard, async () => list(await services.publicationJobs.list()));
   app.get("/api/v1/social-accounts/:socialAccountId/tiktok/creator-info", writeGuard, async (request, reply) => {
     const { socialAccountId } = socialAccountIdSchema.parse(request.params);
-    const account = await services.socialAccounts.getForProviderOperation(socialAccountId);
+    const account = await services.socialAccounts.getForPublisher(socialAccountId);
     if (account.platform !== "tiktok") return reply.status(400).send({ error: "INVALID_SOCIAL_ACCOUNT_PLATFORM", message: "The social account must be a TikTok account." });
     try {
       return await services.tiktokCreatorInfo.getCreatorInfo(account);
@@ -174,13 +177,48 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get<{ Reply: ListResponse<Offer> }>("/api/v1/offers", async () => list(await services.offers.list())); app.post<{ Body: CreateOfferRequest; Reply: Offer }>("/api/v1/offers", writeGuard, async (request, reply) => reply.status(201).send(await services.offers.create(createOfferSchema.parse(request.body))));
   app.get<{ Reply: ListResponse<Conversion> }>("/api/v1/conversions", async () => list(await services.conversions.list())); app.post<{ Body: CreateConversionRequest; Reply: Conversion }>("/api/v1/conversions", writeGuard, async (request, reply) => reply.status(201).send(await services.conversions.create(createConversionSchema.parse(request.body))));
   app.post("/api/v1/conversions/:conversionId/attribution", writeGuard, async (request, reply) => { const params = conversionIdSchema.parse(request.params); const attribution = await services.attribution.create(params.conversionId, createConversionAttributionSchema.parse(request.body)); return reply.status(201).send(attribution); }); app.get("/api/v1/conversions/:conversionId/attribution", async (request) => { const { conversionId } = conversionIdSchema.parse(request.params); const attribution = await services.attribution.get(conversionId); return attribution ?? { conversionId, attributed: false }; });
-  app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => { const input = scoreProductSchema.parse(request.body); return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance); });
-  app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => reply.status(201).send(await services.marketplace.importShopeeAffiliateFeed(importShopeeAffiliateFeedSchema.parse(request.body)))); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
+  app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => {
+    const input = scoreProductSchema.parse(request.body);
+    const assets = services.productMediaAssets
+      ? (await services.productMediaAssets.listByProduct(input.product.id)).filter(hasCurrentVerifiedRights)
+      : [];
+    const platformScores = (["instagram", "tiktok"] as const).map((platform) => {
+      if (assets.length === 0) return 0;
+      return Math.max(...assets.map((asset) => {
+        const readiness = evaluateProductMediaAssetReadiness(platform, asset);
+        if (readiness.checks.length === 0) return 0;
+        const points = readiness.checks.reduce((sum, item) =>
+          sum + (item.status === "pass" ? 1 : item.status === "unknown" ? 0.35 : 0), 0);
+        return (points / readiness.checks.length) * 100;
+      }));
+    });
+    const mediaReadinessScore = platformScores.reduce((sum, score) => sum + score, 0) / platformScores.length;
+    return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance, mediaReadinessScore);
+  });
+  app.post("/api/v1/shopee/affiliate-link-intakes", writeGuard, async (request, reply) => {
+    const { affiliateUrl } = createShopeeAffiliateLinkIntakeSchema.parse(request.body);
+    const intake = await services.shopeeAffiliateLinkIntakes.submit(affiliateUrl);
+    auditSecurityEvent(request.log, request, "shopee_affiliate_link_intake_submitted", { intakeId: intake.id, status: intake.status });
+    return reply.status(201).send(intake);
+  });
+  app.get("/api/v1/shopee/affiliate-link-intakes/:intakeId", writeGuard, async (request, reply) => {
+    const { intakeId } = shopeeAffiliateLinkIntakeParamsSchema.parse(request.params);
+    const intake = await services.shopeeAffiliateLinkIntakes.get(intakeId);
+    if (!intake) return reply.status(404).send({ error: "NOT_FOUND", message: "Shopee affiliate link intake tidak ditemukan." });
+    return intake;
+  });
+  app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => {
+    const input = importShopeeAffiliateFeedSchema.parse(request.body);
+    const result = await services.marketplace.importShopeeAffiliateFeed(input);
+    for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
+    return reply.status(201).send(result);
+  }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
     let parsed;
     try { parsed = parseShopeeAffiliateCsv(input.csv); }
     catch (error) { return reply.status(400).send({ error: "INVALID_SHOPEE_AFFILIATE_CSV", message: error instanceof Error ? error.message : "CSV Shopee tidak valid." }); }
     if (parsed.errors.length > 0 || parsed.rows.length === 0) return reply.status(400).send({ error: "INVALID_SHOPEE_AFFILIATE_CSV", message: "CSV berisi baris yang tidak valid; tidak ada data yang diimpor.", errors: parsed.errors, validRows: parsed.rows.length });
+    if (parsed.rows.some((row) => row.commissionRateBps === null && row.commissionAmountRupiah === null)) return reply.status(400).send({ error: "MISSING_VERIFIED_COMMISSION", message: "CSV harus memuat komisi yang terverifikasi untuk setiap produk; tidak ada data yang diimpor." });
     const result = await services.marketplace.importShopeeAffiliateFeed({
       affiliateId: input.affiliateId,
       ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
@@ -193,13 +231,29 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         productUrl: row.productUrl,
         affiliateUrl: row.affiliateUrl,
         ...(row.imageUrl ? { imageUrl: row.imageUrl } : {}),
+        ...(row.videoUrl ? { videoUrl: row.videoUrl } : {}),
         availability: "unknown" as const,
         ...(row.soldCount.value !== null ? { soldCount: row.soldCount.value } : {}),
+        ...(row.reviewCount.value !== null ? { reviewCount: row.reviewCount.value } : {}),
+        ...(row.ratingMilli !== undefined ? { ratingMilli: row.ratingMilli } : {}),
         ...(row.commissionRateBps !== null ? { commissionRateBps: row.commissionRateBps } : {}),
         ...(row.commissionAmountRupiah !== null ? { commissionAmountCents: row.commissionAmountRupiah * 100 } : {}),
-        metadata: { source: "shopee-affiliate-csv", moneyUnit: "IDR", shopName: row.shopName, salesSourceText: row.soldCount.sourceText, salesQuality: row.soldCount.quality }
+        metadata: {
+          source: "shopee-affiliate-csv",
+          moneyUnit: "IDR",
+          shopName: row.shopName,
+          salesSourceText: row.soldCount.sourceText,
+          salesQuality: row.soldCount.quality,
+          dataQuality: {
+            soldCount: row.soldCount.quality,
+            reviewCount: row.reviewCount.quality,
+            ratingMilli: row.ratingMilli !== undefined ? "exact" : "missing",
+            source: "shopee-affiliate-csv"
+          }
+        }
       }))
     });
+    for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
     const [products, offers, trackingLinks] = await Promise.all([
@@ -234,7 +288,70 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     });
     return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
   });
-  app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => { const { productId } = productMediaParamsSchema.parse(request.params); return services.marketplace.updateProductMedia(productId, updateProductMediaSchema.parse(request.body)); }); app.get("/api/v1/affiliate-offers", async () => list(await services.marketplace.listAffiliateOffers())); app.get("/api/v1/affiliate-offers/verification", async () => list(await services.marketplace.listAffiliateOfferVerification()));
+  app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => { const { productId } = productMediaParamsSchema.parse(request.params); return services.marketplace.updateProductMedia(productId, updateProductMediaSchema.parse(request.body)); });
+  app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    if (!services.productMediaAssets) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights storage is not configured." });
+    let tiktokMaxVideoPostDurationSec: number | undefined;
+    try {
+      const tiktokAccounts = (await services.socialAccounts.list()).filter(
+        (account) => account.platform === "tiktok" && account.status === "active"
+      );
+      if (tiktokAccounts.length === 1) {
+        const account = await services.socialAccounts.getForPublisher(tiktokAccounts[0]!.id);
+        const creatorInfo = await services.tiktokCreatorInfo.getCreatorInfo(account);
+        if (typeof creatorInfo.maxVideoPostDurationSec === "number" &&
+          Number.isFinite(creatorInfo.maxVideoPostDurationSec) && creatorInfo.maxVideoPostDurationSec > 0) {
+          tiktokMaxVideoPostDurationSec = creatorInfo.maxVideoPostDurationSec;
+        }
+      }
+    } catch {
+      // Keep the technical preflight available during provider outages; duration remains unknown.
+    }
+    const assets = await services.productMediaAssets.listByProduct(productId);
+    return list(assets.map((asset) => ({
+      ...asset,
+      technicalReadiness: {
+        instagram: evaluateProductMediaAssetReadiness("instagram", asset),
+        tiktok: evaluateProductMediaAssetReadiness("tiktok", asset, {
+          ...(tiktokMaxVideoPostDurationSec === undefined ? {} : { tiktokMaxVideoPostDurationSec })
+        })
+      }
+    })));
+  });
+  app.get("/api/v1/products/:productId/media-assets/:assetId/preview", adminGuard, async (request, reply) => {
+    const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
+    const createPreviewUrl = services.productMediaPreviewUrl;
+    if (!createPreviewUrl) return reply.status(503).send({ error: "PRODUCT_MEDIA_PREVIEW_UNAVAILABLE", message: "Private product media preview is not configured." });
+    const previewUrl = await createPreviewUrl(productId, assetId);
+    if (!previewUrl) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    return { url: previewUrl, expiresInSeconds: 300 };
+  });
+  app.get("/api/v1/products/:productId/media-assets/:assetId/rights-audits", adminGuard, async (request, reply) => {
+    const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
+    const repository = services.productMediaAssets;
+    if (!repository?.listRightsAudits) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_AUDIT_UNAVAILABLE", message: "Product media rights audit history is not configured." });
+    const asset = (await repository.listByProduct(productId)).find((item) => item.id === assetId);
+    if (!asset) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    return list(await repository.listRightsAudits(productId, assetId));
+  });
+  app.patch("/api/v1/products/:productId/media-assets/:assetId/rights", adminGuard, async (request, reply) => {
+    const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
+    const input = updateProductMediaRightsSchema.parse(request.body);
+    const repository = services.productMediaAssets;
+    const reviewRights = repository?.reviewRights;
+    if (!repository || !reviewRights) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Atomic product media rights review and audit storage are not configured." });
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    const updated = await reviewRights.call(repository, assetId, productId, {
+      ...input,
+      actorId,
+      actorRole: "admin"
+    });
+    if (!updated) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    auditSecurityEvent(request.log, request, "product_media_rights_updated", { productId, assetId, status: updated.rightsStatus, rightsBasis: updated.rightsBasis ?? undefined });
+    return updated;
+  }); app.get("/api/v1/affiliate-offers", async () => list(await services.marketplace.listAffiliateOffers())); app.get("/api/v1/affiliate-offers/verification", async () => list(await services.marketplace.listAffiliateOfferVerification()));
   app.post("/api/v1/marketplaces", writeGuard, async (request, reply) => { const connection = await services.marketplace.createConnection(createMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_created", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return reply.status(201).send(connection); }); app.get("/api/v1/marketplaces/:connectionSlug", async (request) => services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug)); app.patch("/api/v1/marketplaces/:connectionSlug", writeGuard, async (request) => { const connection = await services.marketplace.updateConnection(marketplaceSlugSchema.parse(request.params).connectionSlug, updateMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_updated", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return connection; }); app.put("/api/v1/marketplaces/:connectionSlug/enabled", writeGuard, async (request, reply) => { const input = marketplaceEnableSchema.parse(request.body); const connection = await services.marketplace.setEnabled(marketplaceSlugSchema.parse(request.params).connectionSlug, input.enabled, "confirmation" in input ? input.confirmation : undefined); auditSecurityEvent(request.log, request, "marketplace_connection_enabled_changed", { connectionSlug: connection.slug, enabled: connection.enabled }); return connection; }); app.put("/api/v1/marketplaces/:connectionSlug/affiliate-account", writeGuard, async (request) => services.marketplace.bindAffiliateAccount(marketplaceSlugSchema.parse(request.params).connectionSlug, bindAffiliateAccountSchema.parse(request.body).affiliateId)); app.post("/api/v1/marketplaces/:connectionSlug/conversions/sync", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); const { since } = marketplaceConversionSyncSchema.parse(request.body); return services.shopeeConversionSync.sync(connectionSlug, since); }); app.post("/api/v1/marketplaces/:connectionSlug/reports/shopee/commission/reconcile", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); return services.shopeeCommissionReportReconciliation.reconcile(connectionSlug, shopeeCommissionReportSchema.parse(request.body)); }); app.post("/api/v1/marketplaces/:connectionSlug/test", writeGuard, async (request) => { const connection = await services.marketplace.testConnection(marketplaceSlugSchema.parse(request.params).connectionSlug); request.log.info({ event: "marketplace_connection_tested", connectionSlug: connection.slug, healthStatus: connection.healthStatus }); return connection; }); app.get("/api/v1/marketplaces/:connectionSlug/health", async (request) => { const connection = await services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug); return { status: connection.healthStatus, error: connection.healthStatus === "unhealthy" ? "Marketplace connection is unhealthy." : undefined, lastCheckedAt: connection.lastCheckedAt, lastSuccessfulCheckAt: connection.lastSuccessfulCheckAt, lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt }; }); app.post("/api/v1/marketplaces/:connectionSlug/products/discover", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); return list(await services.marketplace.discoverProducts(connectionSlug)); }); app.get("/api/v1/marketplaces/:connectionSlug/products/search", async (request) => { const { connectionSlug, query } = marketplaceSearchSchema.parse({ ...(request.params as object), ...(request.query as object) }); return list(await services.marketplace.searchProducts(connectionSlug, query)); }); app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return services.marketplace.getProduct(connectionSlug, externalProductId); }); app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return list(await services.marketplace.getOffers(connectionSlug, externalProductId)); }); app.post("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers/:externalOfferId/affiliate-link", writeGuard, async (request) => { const input = marketplaceLinkSchema.parse(request.params); return services.marketplace.generateAffiliateLink(input.connectionSlug, input.externalProductId, input.externalOfferId); });
   app.get("/api/v1/campaigns", async () => list(await services.campaigns.list())); app.post("/api/v1/campaigns", writeGuard, async (request, reply) => reply.status(201).send(await services.campaigns.create(createCampaignSchema.parse(request.body)))); app.get("/api/v1/campaigns/:campaignId", async (request) => services.campaigns.get(campaignIdSchema.parse(request.params).campaignId)); app.patch("/api/v1/campaigns/:campaignId", writeGuard, async (request) => services.campaigns.update(campaignIdSchema.parse(request.params).campaignId, updateCampaignSchema.parse(request.body))); app.get("/api/v1/campaigns/:campaignId/offers", async (request) => list(await services.campaigns.listOffers(campaignIdSchema.parse(request.params).campaignId))); app.post("/api/v1/campaigns/:campaignId/offers/:affiliateOfferId", writeGuard, async (request, reply) => { const params = campaignOfferParamsSchema.parse(request.params); return reply.status(201).send(await services.campaigns.attachOffer(params.campaignId, params.affiliateOfferId)); }); app.delete("/api/v1/campaigns/:campaignId/offers/:affiliateOfferId", writeGuard, async (request) => { const params = campaignOfferParamsSchema.parse(request.params); await services.campaigns.removeOffer(params.campaignId, params.affiliateOfferId); return { status: "removed" }; });
   app.get("/api/v1/tracking-links", async (request) => { const { campaignId } = trackingLinkQuerySchema.parse(request.query); return list(await services.tracking.list(campaignId)); }); app.post("/api/v1/tracking-links", writeGuard, async (request, reply) => reply.status(201).send(await services.tracking.create(createTrackingLinkSchema.parse(request.body)))); app.get("/api/v1/tracking-links/:trackingLinkId", async (request) => services.tracking.get(trackingLinkIdSchema.parse(request.params).trackingLinkId)); app.post("/api/v1/tracking-links/:trackingLinkId/clicks", writeGuard, async (request) => services.tracking.recordClick(trackingLinkIdSchema.parse(request.params).trackingLinkId, recordClickSchema.parse(request.body))); app.get("/api/v1/tracking-links/:trackingLinkId/stats", async (request) => services.tracking.stats(trackingLinkIdSchema.parse(request.params).trackingLinkId));

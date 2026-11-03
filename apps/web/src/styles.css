@@ -436,3 +436,36 @@ nav { display: grid; gap: 5px; }
   font-size: 0.85rem;
   line-height: 1.6;
 }
+
+
+.product-media-rights-list { display: grid; gap: 18px; margin-top: 22px; }
+.product-media-rights-item { display: grid; grid-template-columns: minmax(180px, 300px) minmax(0, 1fr); gap: 22px; padding: 18px; border: 1px solid #d0cabe; background: rgba(255, 253, 247, .62); }
+.product-media-rights-preview { display: flex; align-items: center; justify-content: center; min-height: 180px; overflow: hidden; background: #e8e3d9; }
+.product-media-rights-preview img, .product-media-rights-preview video { display: block; width: 100%; max-height: 360px; object-fit: contain; }
+.product-media-rights-preview span { padding: 20px; color: #697477; font-size: 12px; text-align: center; }
+.product-media-rights-details { min-width: 0; }
+.product-media-rights-details .panel-heading { padding-bottom: 12px; }
+.product-media-rights-details .panel-heading h3 { font-size: 1.2rem; }
+.product-media-rights-details > small { color: #858c8a; font-family: "Courier New", monospace; font-size: 10px; overflow-wrap: anywhere; }
+.product-media-rights-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.product-media-rights-actions .secondary-button { background: #f1eee7; color: #6d4235; border: 1px solid #bda99d; }
+@media (max-width: 760px) {
+  .product-media-rights-item { grid-template-columns: minmax(0, 1fr); }
+  .product-media-rights-preview { min-height: 150px; }
+}
+
+
+.product-media-rights-history { margin: 14px 0; padding: 12px 14px; border: 1px solid #d0cabe; background: rgba(255, 253, 247, .5); }
+.product-media-rights-history summary { cursor: pointer; font-weight: 650; font-size: 12px; }
+.product-media-rights-history ol { display: grid; gap: 12px; margin: 14px 0 0; padding-left: 20px; }
+.product-media-rights-history li { padding-left: 4px; }
+.product-media-rights-history li strong, .product-media-rights-history li small { display: block; }
+.product-media-rights-history li small { margin-top: 4px; color: #777f7e; overflow-wrap: anywhere; }
+.product-media-rights-history li p { margin: 6px 0; font-size: 13px; }
+.product-media-rights-history li a { font-size: 12px; }
+
+
+.media-rights-confirmation { display: flex; align-items: flex-start; gap: 9px; color: #596669; font-size: 12px; line-height: 1.5; }
+.media-rights-confirmation input[type="checkbox"] { width: auto; min-width: 16px; margin: 2px 0 0; }
+.secondary-button { justify-self: start; padding: 8px 12px; border: 1px solid #c7c1b5; border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+.secondary-button:disabled { opacity: .6; cursor: not-allowed; }

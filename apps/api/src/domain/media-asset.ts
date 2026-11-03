@@ -12,6 +12,9 @@ export interface MediaAsset {
   mimeType?: string;
   byteSize?: number;
   durationSeconds?: number;
+  widthPx?: number;
+  heightPx?: number;
+  hasAudio?: boolean;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 }

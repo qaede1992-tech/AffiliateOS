@@ -19,22 +19,38 @@ const errors = [];
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
-function findCompensatedMigrationGaps({ missingMigrations, compensationTimestamp, appliedTimestamps, schemaObjectsPresent }) {
-  const expectedGapTags = [
+function findCompensatedMigrationGaps({
+  missingMigrations,
+  compensationTimestamp,
+  appliedTimestamps,
+  schemaObjectsPresent,
+  forwardRepairTimestamp
+}) {
+  const legacyGapTags = [
     "0056_tiktok_publication_approval_and_media_duration",
     "0057_content_products_multi_product_story"
   ];
+  const forwardRepairGapTag = "0067_reconcile_drifted_tiktok_and_content_products";
   const compensatedTags = new Set();
-  const exactHistoricalGapSet =
-    missingMigrations.length === expectedGapTags.length &&
-    expectedGapTags.every((tag) => missingMigrations.includes(tag));
+  const missing = new Set(missingMigrations);
+  const hasLegacyPair = legacyGapTags.every((tag) => missing.has(tag));
+  const onlyApprovedGaps = missingMigrations.every((tag) =>
+    legacyGapTags.includes(tag) || tag === forwardRepairGapTag
+  );
+  if (!onlyApprovedGaps || !schemaObjectsPresent) return compensatedTags;
   if (
-    exactHistoricalGapSet &&
+    hasLegacyPair &&
     compensationTimestamp !== null &&
-    appliedTimestamps.has(compensationTimestamp) &&
-    schemaObjectsPresent
+    appliedTimestamps.has(compensationTimestamp)
   ) {
-    return new Set(expectedGapTags);
+    for (const tag of legacyGapTags) compensatedTags.add(tag);
+  }
+  if (
+    missing.has(forwardRepairGapTag) &&
+    forwardRepairTimestamp !== null &&
+    appliedTimestamps.has(forwardRepairTimestamp)
+  ) {
+    compensatedTags.add(forwardRepairGapTag);
   }
   return compensatedTags;
 }
@@ -123,7 +139,7 @@ const expectedTables = [
   "affiliates", "offers", "conversions", "commissions", "marketplaces", "affiliate_accounts",
   "products", "affiliate_offers", "campaigns", "campaign_offers", "tracking_links", "clicks",
   "social_accounts", "content", "oauth_states", "conversion_attributions", "provider_events",
-  "publication_jobs", "media_assets", "publication_operations", "content_products"
+  "publication_jobs", "media_assets", "publication_operations", "content_products", "product_media_assets"
 ];
 const expectedIndexes = [
   "tracking_links_campaign_idx", "products_marketplace_external_unique", "commissions_conversion_unique",
@@ -131,7 +147,8 @@ const expectedIndexes = [
   "publication_jobs_idempotency_unique", "publication_jobs_due_idx",
   "publication_operations_provider_operation_unique", "media_assets_content_idx",
   "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx",
-  "campaigns_test_created_idx", "autonomous_runs_test_created_idx"
+  "campaigns_test_created_idx", "autonomous_runs_test_created_idx",
+  "product_media_assets_product_hash_unique", "product_media_assets_bucket_key_unique", "product_media_assets_product_kind_idx"
 ];
 const expectedColumns = [
   ["publication_jobs", "confirmed_at"],
@@ -139,7 +156,17 @@ const expectedColumns = [
   ["media_assets", "duration_seconds"],
   ["campaigns", "is_test"],
   ["autonomous_runs", "is_test"],
-  ["autonomous_action_outcomes", "recovery_quality_score"]
+  ["autonomous_action_outcomes", "recovery_quality_score"],
+  ["product_media_assets", "id"],
+  ["product_media_assets", "product_id"],
+  ["product_media_assets", "kind"],
+  ["product_media_assets", "bucket"],
+  ["product_media_assets", "object_key"],
+  ["product_media_assets", "mime_type"],
+  ["product_media_assets", "byte_size"],
+  ["product_media_assets", "sha256"],
+  ["product_media_assets", "source_url"],
+  ["product_media_assets", "created_at"]
 ];
 
 await client.connect();
@@ -165,7 +192,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'), ('product_media_assets', 'id'), ('product_media_assets', 'product_id'), ('product_media_assets', 'kind'), ('product_media_assets', 'bucket'), ('product_media_assets', 'object_key'), ('product_media_assets', 'mime_type'), ('product_media_assets', 'byte_size'), ('product_media_assets', 'sha256'), ('product_media_assets', 'source_url'), ('product_media_assets', 'created_at'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
@@ -470,11 +497,22 @@ try {
       reconciliationForeignKeysPresent &&
       reconciliationUniqueConstraintPresent &&
       reconciliationIndexesPresent;
+    const forwardRepairTag = "0069_forward_repair_missing_tiktok_and_content_products";
+    const forwardRepairMigration = trackedMigrations.find((migration) => migration.tag === forwardRepairTag);
+    const forwardRepairTimestamp = forwardRepairMigration ? Number(forwardRepairMigration.when) : null;
+    const forwardRepairLedgerRow = migrationRows.find(
+      (row) => Number(row.created_at) === forwardRepairTimestamp
+    );
+    const forwardRepairHashMatches = Boolean(
+      forwardRepairLedgerRow &&
+      trackedMigrationHashes.get(forwardRepairTimestamp)?.hashes.has(forwardRepairLedgerRow.hash)
+    );
     const compensatedTags = findCompensatedMigrationGaps({
       missingMigrations,
       compensationTimestamp,
       appliedTimestamps,
-      schemaObjectsPresent
+      schemaObjectsPresent: schemaObjectsPresent && forwardRepairHashMatches,
+      forwardRepairTimestamp
     });
 
     const uncompensatedMigrations = missingMigrations.filter((tag) => !compensatedTags.has(tag));
@@ -487,7 +525,7 @@ try {
       errors.push(`Drizzle migration ledger contains ${migrationRows.length} rows; expected ${expectedLedgerRows} rows for ${trackedMigrations.length} journal entries and ${compensatedTags.size} explicitly compensated historical gaps.`);
     }
     if (compensatedTags.size > 0) {
-      console.warn(`Historical migration ledger gaps explicitly compensated by ${compensationTag}: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
+      console.warn(`Historical migration ledger gaps explicitly compensated by verified forward repairs: ${[...compensatedTags].join(", ")}. Original ledger history remains unchanged.`);
     }
   }
   // Supabase keeps its own migration ledger separately from Drizzle's ledger.

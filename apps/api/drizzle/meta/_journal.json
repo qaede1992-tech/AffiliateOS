@@ -449,6 +449,62 @@
       "when": 1794050405008,
       "tag": "0067_reconcile_drifted_tiktok_and_content_products",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1794050405011,
+      "tag": "0068_shopee_affiliate_link_intakes",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794050405012,
+      "tag": "0069_forward_repair_missing_tiktok_and_content_products",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794050405013,
+      "tag": "0070_product_media_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794050405014,
+      "tag": "0071_product_media_rights_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1794050405015,
+      "tag": "0072_product_media_rights_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1794050405016,
+      "tag": "0073_product_media_technical_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1794050405017,
+      "tag": "0074_content_media_technical_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1794050405018,
+      "tag": "0075_product_media_rights_audit_search_path",
+      "breakpoints": true
     }
   ]
 }

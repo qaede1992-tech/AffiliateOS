@@ -4,8 +4,45 @@ import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import type { PublicationJob } from "./publication-job.js";
 import type { PublicationOperation, PublicationOperationRepository } from "./publication-operation.js";
 import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "./autonomous-run.js";
+import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "./shopee-affiliate-link-intake.js";
+import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 
 export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
+export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
+  private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
+  async findByUrlHash(hash: string) { return [...this.rows.values()].find((row) => row.normalizedUrlHash === hash); }
+  async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
+  async findById(id: string) { return this.rows.get(id); }
+  async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) {
+    const existingByUrl = [...this.rows.values()].find((row) => row.normalizedUrlHash === intake.normalizedUrlHash);
+    if (existingByUrl) return existingByUrl;
+    if (intake.shopId && intake.itemId) {
+      const existingByProduct = [...this.rows.values()].find((row) => row.shopId === intake.shopId && row.itemId === intake.itemId);
+      if (existingByProduct) return existingByProduct;
+    }
+    this.rows.set(intake.id, intake);
+    return intake;
+  }
+  async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
+  async listStaleResolving(cutoff: string, limit: number) {
+    return [...this.rows.values()]
+      .filter((row) => row.status === "resolving" && row.updatedAt < cutoff)
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, limit);
+  }
+  async updateIfResolving(id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake) {
+    const current = this.rows.get(id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return undefined;
+    this.rows.set(id, intake);
+    return intake;
+  }
+  async claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string) {
+    const current = this.rows.get(id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return false;
+    this.rows.set(id, { ...current, updatedAt: claimedAt });
+    return true;
+  }
+}
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
   private readonly entities = new Map<EntityId, T>();
@@ -119,10 +156,11 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   }
 }
 export interface RepositorySet {
+  shopeeAffiliateLinkIntakes?: ShopeeAffiliateLinkIntakeRepository;
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
+  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; productMediaAssets?: ProductMediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface CommissionRepository extends Repository<Commission> { findByConversionId(conversionId: EntityId): Promise<Commission | undefined>; }

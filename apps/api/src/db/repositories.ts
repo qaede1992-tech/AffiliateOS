@@ -1,9 +1,11 @@
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, ContentProduct, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "../domain/media-asset.js";
-import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets, contentProducts } from "./schema.js";
+import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets, contentProducts, shopeeAffiliateLinkIntakes } from "./schema.js";
 import { DrizzlePublicationJobRepository } from "./publication-job-repository.js";
 import { DrizzlePublicationOperationRepository } from "./publication-operation-repository.js";
+import { DrizzleProductMediaAssetRepository } from "./product-media-asset-repository.js";
+import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "../domain/shopee-affiliate-link-intake.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ContentProductRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
 
 type DatabaseExecutor = any;
@@ -21,7 +23,7 @@ const toClick = (row: typeof clicks.$inferSelect): Click => ({ id: row.id, track
 export const toContent = (row: typeof contentTable.$inferSelect, mediaAssetIds: string[] = []): Content => ({ id: row.id, productId: row.productId ?? undefined, campaignId: row.campaignId ?? undefined, socialAccountId: row.socialAccountId ?? undefined, mediaAssetIds: mediaAssetIds.length ? mediaAssetIds : undefined, platform: row.platform as Content["platform"], contentType: row.contentType, title: row.title ?? undefined, caption: row.caption ?? undefined, script: row.script ?? undefined, cta: row.cta ?? undefined, status: row.status as Content["status"], scheduledAt: row.scheduledAt ?? undefined, publishedAt: row.publishedAt ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 const toContentProduct = (row: typeof contentProducts.$inferSelect): ContentProduct => ({ contentId: row.contentId, productId: row.productId, affiliateOfferId: row.affiliateOfferId ?? undefined, position: row.position, role: row.role as ContentProduct["role"], createdAt: row.createdAt });
 const toSocialAccount = (row: typeof socialAccounts.$inferSelect): SocialAccount => ({ id: row.id, platform: row.platform, accountReference: row.accountReference, status: row.status as SocialAccount["status"], connection: row.connection, credentialReference: row.credentialReference ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
-const toMediaAsset = (row: typeof mediaAssets.$inferSelect): MediaAsset => ({ id: row.id, contentId: row.contentId, kind: row.kind as MediaAsset["kind"], source: row.source as MediaAsset["source"], reference: row.reference, mimeType: row.mimeType ?? undefined, byteSize: row.byteSize ?? undefined, durationSeconds: row.durationSeconds ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
+const toMediaAsset = (row: typeof mediaAssets.$inferSelect): MediaAsset => ({ id: row.id, contentId: row.contentId, kind: row.kind as MediaAsset["kind"], source: row.source as MediaAsset["source"], reference: row.reference, mimeType: row.mimeType ?? undefined, byteSize: row.byteSize ?? undefined, durationSeconds: row.durationSeconds ?? undefined, widthPx: row.widthPx ?? undefined, heightPx: row.heightPx ?? undefined, hasAudio: row.hasAudio ?? undefined, createdAt: row.createdAt, updatedAt: row.updatedAt });
 
 class DrizzleRepository<T extends { id: string }, Row extends { id: string }> {
   constructor(protected readonly db: DatabaseExecutor, protected readonly table: any, private readonly toDomain: (row: Row) => T, protected readonly toRow: (entity: T) => Row) {}
@@ -89,7 +91,7 @@ class DrizzleContentRepository extends DrizzleRepository<Content, typeof content
   }
 }
 class DrizzleMediaAssetRepository extends DrizzleRepository<MediaAsset, typeof mediaAssets.$inferSelect> implements MediaAssetRepository {
-  constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity, durationSeconds: entity.durationSeconds ?? null } as any)); }
+  constructor(db: DatabaseExecutor) { super(db, mediaAssets, toMediaAsset, (entity) => ({ ...entity, durationSeconds: entity.durationSeconds ?? null, widthPx: entity.widthPx ?? null, heightPx: entity.heightPx ?? null, hasAudio: entity.hasAudio ?? null } as any)); }
   async listByContent(contentId: string) { return (await this.db.select().from(mediaAssets).where(eq(mediaAssets.contentId, contentId))).map(toMediaAsset); }
   override async save(entity: MediaAsset) { if (await this.findById(entity.id)) await this.db.update(mediaAssets).set(this.toRow(entity)).where(eq(mediaAssets.id, entity.id)); else await super.save(entity); return entity; }
 }
@@ -106,7 +108,68 @@ class DrizzleContentProductRepository implements ContentProductRepository {
 }
 class DrizzleSocialAccountRepository extends DrizzleRepository<SocialAccount, typeof socialAccounts.$inferSelect> { constructor(db: DatabaseExecutor) { super(db, socialAccounts, toSocialAccount, (entity) => ({ ...entity, credentialReference: entity.credentialReference ?? null } as any)); } async findByPlatformAccount(platform: string, accountReference: string) { const rows = await this.db.select().from(socialAccounts).where(and(eq(socialAccounts.platform, platform), eq(socialAccounts.accountReference, accountReference))).limit(1); return rows[0] ? toSocialAccount(rows[0]) : undefined; } override async save(entity: SocialAccount) { if (await this.findById(entity.id)) await this.db.update(socialAccounts).set(this.toRow(entity)).where(eq(socialAccounts.id, entity.id)); else await super.save(entity); return entity; } }
 
+
+class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
+  constructor(private readonly db: DatabaseExecutor) {}
+  private map(row: typeof shopeeAffiliateLinkIntakes.$inferSelect): ShopeeAffiliateLinkIntake {
+    return { id: row.id, marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: row.affiliateUrl, normalizedUrlHash: row.normalizedUrlHash,
+      ...(row.canonicalProductUrl ? { canonicalProductUrl: row.canonicalProductUrl } : {}),
+      ...(row.shopId ? { shopId: row.shopId } : {}), ...(row.itemId ? { itemId: row.itemId } : {}),
+      status: row.status as ShopeeAffiliateLinkIntake["status"], ...(row.reason ? { reason: row.reason } : {}),
+      sourceMetadata: row.sourceMetadata, createdAt: row.createdAt, updatedAt: row.updatedAt };
+  }
+  async findByUrlHash(hash: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(eq(shopeeAffiliateLinkIntakes.normalizedUrlHash, hash)).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
+  async findByProductIdentity(shopId: string, itemId: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(and(eq(shopeeAffiliateLinkIntakes.shopId, shopId), eq(shopeeAffiliateLinkIntakes.itemId, itemId))).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
+  async findById(id: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(eq(shopeeAffiliateLinkIntakes.id, id)).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
+  async saveIfAbsent(entity: ShopeeAffiliateLinkIntake) {
+    const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
+    const rows = await this.db.insert(shopeeAffiliateLinkIntakes).values(values).onConflictDoNothing().returning();
+    if (rows[0]) return this.map(rows[0]);
+    const existingByUrl = await this.findByUrlHash(entity.normalizedUrlHash);
+    if (existingByUrl) return existingByUrl;
+    if (entity.shopId && entity.itemId) {
+      const existingByProduct = await this.findByProductIdentity(entity.shopId, entity.itemId);
+      if (existingByProduct) return existingByProduct;
+    }
+    throw new Error("Shopee affiliate link intake conflicted with an existing row that could not be resolved.");
+  }
+  async update(entity: ShopeeAffiliateLinkIntake) {
+    const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
+    const rows = await this.db.update(shopeeAffiliateLinkIntakes).set(values).where(eq(shopeeAffiliateLinkIntakes.id, entity.id)).returning();
+    return rows[0] ? this.map(rows[0]) : entity;
+  }
+  async listStaleResolving(cutoff: string, limit: number) {
+    const rows = await this.db.select().from(shopeeAffiliateLinkIntakes)
+      .where(and(eq(shopeeAffiliateLinkIntakes.status, "resolving"), lt(shopeeAffiliateLinkIntakes.updatedAt, cutoff)))
+      .orderBy(asc(shopeeAffiliateLinkIntakes.updatedAt))
+      .limit(limit);
+    return rows.map((row: typeof shopeeAffiliateLinkIntakes.$inferSelect) => this.map(row));
+  }
+  async updateIfResolving(id: string, expectedUpdatedAt: string, entity: ShopeeAffiliateLinkIntake) {
+    const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
+    const rows = await this.db.update(shopeeAffiliateLinkIntakes).set(values).where(and(
+      eq(shopeeAffiliateLinkIntakes.id, id),
+      eq(shopeeAffiliateLinkIntakes.status, "resolving"),
+      eq(shopeeAffiliateLinkIntakes.updatedAt, expectedUpdatedAt)
+    )).returning();
+    return rows[0] ? this.map(rows[0]) : undefined;
+  }
+  async claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string) {
+    const rows = await this.db.update(shopeeAffiliateLinkIntakes)
+      .set({ updatedAt: claimedAt })
+      .where(and(
+        eq(shopeeAffiliateLinkIntakes.id, id),
+        eq(shopeeAffiliateLinkIntakes.status, "resolving"),
+        eq(shopeeAffiliateLinkIntakes.updatedAt, expectedUpdatedAt)
+      ))
+      .returning({ id: shopeeAffiliateLinkIntakes.id });
+    return rows.length > 0;
+  }
+}
+
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
+  shopeeAffiliateLinkIntakes: new DrizzleShopeeAffiliateLinkIntakeRepository(db),
+  productMediaAssets: new DrizzleProductMediaAssetRepository(db),
   affiliates: new DrizzleRepository(db, affiliates, toAffiliate, (entity: Affiliate) => ({ id: entity.id, name: entity.name, email: entity.email, status: entity.status, createdAt: entity.createdAt })),
   offers: new DrizzleRepository(db, offers, toOffer, (entity: Offer) => ({ id: entity.id, name: entity.name, status: entity.status, commissionRateBps: entity.commissionRateBps, createdAt: entity.createdAt })),
   conversions: new DrizzleConversionRepository(db),

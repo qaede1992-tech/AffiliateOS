@@ -19,7 +19,7 @@ export const socialAccounts = pgTable("social_accounts", { id: uuid("id").primar
 export const content = pgTable("content", { id: uuid("id").primaryKey(), productId: uuid("product_id").references(() => products.id), campaignId: uuid("campaign_id").references(() => campaigns.id), socialAccountId: uuid("social_account_id").references(() => socialAccounts.id), platform: varchar("platform", { length: 50 }).notNull(), contentType: varchar("content_type", { length: 50 }).notNull(), title: varchar("title", { length: 500 }), caption: varchar("caption", { length: 5000 }), script: varchar("script", { length: 10000 }), cta: varchar("cta", { length: 500 }), status: varchar("status", { length: 20 }).notNull(), scheduledAt: timestamp("scheduled_at", { withTimezone: true, mode: "string" }), publishedAt: timestamp("published_at", { withTimezone: true, mode: "string" }), ...timestamps }, (table) => [index("content_campaign_status_idx").on(table.campaignId, table.status), index("content_scheduled_idx").on(table.scheduledAt), index("content_social_account_idx").on(table.socialAccountId)]);
 export const contentProducts = pgTable("content_products", { contentId: uuid("content_id").notNull().references(() => content.id), productId: uuid("product_id").notNull().references(() => products.id), affiliateOfferId: uuid("affiliate_offer_id").references(() => affiliateOffers.id), position: integer("position").notNull().default(0), role: varchar("role", { length: 30 }).notNull().default("recommendation"), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [primaryKey({ name: "content_products_pkey", columns: [table.contentId, table.productId] }), index("content_products_product_idx").on(table.productId), index("content_products_offer_idx").on(table.affiliateOfferId), index("content_products_content_position_idx").on(table.contentId, table.position)]);
 export const mediaAssets = pgTable("media_assets", { id: uuid("id").primaryKey(), contentId: uuid("content_id").notNull().references(() => content.id), kind: varchar("kind", { length: 20 }).notNull(), source: varchar("source", { length: 30 }).notNull(), reference: varchar("reference", { length: 4096 }).notNull(), mimeType: varchar("mime_type", { length: 100 }), byteSize: bigint("byte_size", { mode: "number" }),
-  durationSeconds: integer("duration_seconds"), ...timestamps }, (table) => [index("media_assets_content_idx").on(table.contentId), index("media_assets_content_kind_idx").on(table.contentId, table.kind)]);
+  durationSeconds: integer("duration_seconds"), widthPx: integer("width_px"), heightPx: integer("height_px"), hasAudio: boolean("has_audio"), ...timestamps }, (table) => [index("media_assets_content_idx").on(table.contentId), index("media_assets_content_kind_idx").on(table.contentId, table.kind)]);
 export const oauthStates = pgTable("oauth_states", { state: varchar("state", { length: 128 }).primaryKey(), platform: varchar("platform", { length: 50 }).notNull(), redirectUri: varchar("redirect_uri", { length: 2048 }).notNull(), expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [index("oauth_states_expires_idx").on(table.expiresAt)]);
 export const conversionAttributions = pgTable("conversion_attributions", { conversionId: uuid("conversion_id").primaryKey().references(() => conversions.id), trackingLinkId: uuid("tracking_link_id").notNull().references(() => trackingLinks.id), attributedAt: timestamp("attributed_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [index("conversion_attributions_tracking_link_idx").on(table.trackingLinkId, table.attributedAt)]);
 export const autonomousActionOutcomes = pgTable("autonomous_action_outcomes", { id: uuid("id").primaryKey(), campaignId: uuid("campaign_id").notNull().references(() => campaigns.id), action: varchar("action", { length: 20 }).notNull(), status: varchar("status", { length: 20 }).notNull(), mutated: boolean("mutated").notNull(), observedAt: timestamp("observed_at", { withTimezone: true, mode: "string" }).notNull(), error: varchar("error", { length: 2000 }),
@@ -38,3 +38,50 @@ export const autonomousDecisionAudits = pgTable("autonomous_decision_audits", { 
 export const autonomousExplorationStates = pgTable("autonomous_exploration_states", { id: uuid("id").primaryKey(), marketplaceId: uuid("marketplace_id").notNull().references(() => marketplaces.id), dimension: varchar("dimension", { length: 20 }).notNull(), dimensionKey: varchar("dimension_key", { length: 500 }).notNull(), sampleCount: integer("sample_count").notNull().default(0), promotedCount: integer("promoted_count").notNull().default(0), deprioritizedCount: integer("deprioritized_count").notNull().default(0), optimizationPositiveCount: integer("optimization_positive_count").notNull().default(0), optimizationNegativeCount: integer("optimization_negative_count").notNull().default(0), regimeRisingCount: integer("regime_rising_count").notNull().default(0), regimeStableCount: integer("regime_stable_count").notNull().default(0), regimeDecliningCount: integer("regime_declining_count").notNull().default(0), regimeVolatileCount: integer("regime_volatile_count").notNull().default(0), observedAt: timestamp("observed_at", { withTimezone: true, mode: "string" }).notNull(), ...timestamps }, (table) => [uniqueIndex("autonomous_exploration_states_scope_unique").on(table.marketplaceId, table.dimension, table.dimensionKey), index("autonomous_exploration_states_marketplace_dimension_idx").on(table.marketplaceId, table.dimension)]);
 export const autonomousExplorationStateEvents = pgTable("autonomous_exploration_state_events", { id: uuid("id").primaryKey(), stateId: uuid("state_id").notNull().references(() => autonomousExplorationStates.id), auditId: uuid("audit_id").notNull().references(() => autonomousDecisionAudits.id), status: varchar("status", { length: 40 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("autonomous_exploration_state_events_state_audit_unique").on(table.stateId, table.auditId), index("autonomous_exploration_state_events_audit_idx").on(table.auditId)]);
 export const autonomousExplorationOptimizationEvents = pgTable("autonomous_exploration_optimization_events", { id: uuid("id").primaryKey(), stateId: uuid("state_id").notNull().references(() => autonomousExplorationStates.id), actionOutcomeId: uuid("action_outcome_id").notNull().references(() => autonomousActionOutcomes.id), signal: varchar("signal", { length: 20 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("autonomous_exploration_optimization_events_state_outcome_unique").on(table.stateId, table.actionOutcomeId), index("autonomous_exploration_optimization_events_outcome_idx").on(table.actionOutcomeId)]);
+
+export const shopeeAffiliateLinkIntakes = pgTable("shopee_affiliate_link_intakes", { id: uuid("id").primaryKey(), marketplaceSlug: varchar("marketplace_slug", { length: 100 }).notNull().default("shopee-affiliate-feed"), affiliateUrl: varchar("affiliate_url", { length: 2048 }).notNull(), normalizedUrlHash: varchar("normalized_url_hash", { length: 64 }).notNull(), canonicalProductUrl: varchar("canonical_product_url", { length: 2048 }), shopId: varchar("shop_id", { length: 32 }), itemId: varchar("item_id", { length: 32 }), status: varchar("status", { length: 30 }).notNull().default("received"), reason: varchar("reason", { length: 1000 }), sourceMetadata: jsonb("source_metadata").$type<Record<string, unknown>>().notNull().default({}), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow() }, (table) => [uniqueIndex("shopee_link_intakes_url_hash_unique").on(table.normalizedUrlHash), uniqueIndex("shopee_link_intakes_product_identity_unique").on(table.marketplaceSlug, table.shopId, table.itemId).where(sql`${table.shopId} IS NOT NULL AND ${table.itemId} IS NOT NULL`), index("shopee_link_intakes_status_updated_idx").on(table.status, table.updatedAt)]);
+
+export const productMediaAssets = pgTable("product_media_assets", {
+  id: uuid("id").primaryKey(),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 10 }).notNull(),
+  bucket: varchar("bucket", { length: 100 }).notNull(),
+  objectKey: varchar("object_key", { length: 1024 }).notNull(),
+  mimeType: varchar("mime_type", { length: 50 }).notNull(),
+  byteSize: bigint("byte_size", { mode: "number" }).notNull(),
+  width: integer("width_px"),
+  height: integer("height_px"),
+  durationMs: bigint("duration_ms", { mode: "number" }),
+  hasAudio: boolean("has_audio"),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  sourceUrl: varchar("source_url", { length: 2048 }).notNull(),
+  sourcePublisher: varchar("source_publisher", { length: 255 }),
+  rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
+  rightsBasis: varchar("rights_basis", { length: 40 }),
+  rightsEvidenceUrl: varchar("rights_evidence_url", { length: 2048 }),
+  rightsVerifiedAt: timestamp("rights_verified_at", { withTimezone: true, mode: "string" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
+  uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
+  index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc())
+]);
+
+export const productMediaRightsAudits = pgTable("product_media_rights_audits", {
+  id: uuid("id").primaryKey(),
+  assetId: uuid("asset_id").notNull().references(() => productMediaAssets.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  previousRightsStatus: varchar("previous_rights_status", { length: 20 }).notNull(),
+  newRightsStatus: varchar("new_rights_status", { length: 20 }).notNull(),
+  rightsBasis: varchar("rights_basis", { length: 40 }),
+  rightsEvidenceUrl: varchar("rights_evidence_url", { length: 2048 }),
+  sourcePublisher: varchar("source_publisher", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("product_media_rights_audits_asset_created_idx").on(table.assetId, table.createdAt.desc()),
+  index("product_media_rights_audits_product_created_idx").on(table.productId, table.createdAt.desc())
+]);
