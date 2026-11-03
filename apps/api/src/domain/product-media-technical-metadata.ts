@@ -23,11 +23,11 @@ const imageDimensions = (mimeType: string, bytes: Uint8Array): { width: number; 
       const marker = bytes[offset++];
       if (marker === undefined || marker === 0xda || marker === 0xd9) break;
       if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
-      const length = (bytes[offset] << 8) | bytes[offset + 1];
+      const length = (bytes[offset]! << 8) | bytes[offset + 1]!;
       if (length < 2 || offset + length > bytes.length) return undefined;
       if ([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf].includes(marker)) {
         if (length < 8) return undefined;
-        return { height: (bytes[offset + 3] << 8) | bytes[offset + 4], width: (bytes[offset + 5] << 8) | bytes[offset + 6] };
+        return { height: (bytes[offset + 3]! << 8) | bytes[offset + 4]!, width: (bytes[offset + 5]! << 8) | bytes[offset + 6]! };
       }
       offset += length;
     }
