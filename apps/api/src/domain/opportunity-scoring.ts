@@ -37,6 +37,8 @@ const logScore = (value: number, scale: number) => {
 const DISCOVERY_SIGNAL_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty", "makeup", "cosmetic", "skincare"], skincare: ["skincare", "skin", "serum", "moisturizer", "cosmetic"], baby: ["baby", "infant", "newborn", "diaper"], parenting: ["parent", "parenting", "baby", "family"], fashion: ["fashion", "clothing", "apparel", "shoes", "dress"], home: ["home", "decor", "furniture", "storage"], kitchen: ["kitchen", "cook", "cooking", "bake", "utensil"], electronics: ["electronic", "phone", "laptop", "gadget", "computer"], lifestyle: ["lifestyle", "wellness", "fitness", "travel"], "deal-hunters": ["deal", "discount", "sale", "promo", "bundle"] };
 const WEIGHTS = { commission: 22.5, demand: 18, audienceFit: 18, socialProof: 9, priceAppeal: 9, availability: 13.5, mediaReadiness: 10 } as const;
+/** Maximum score lift from the neutral media baseline (50) to fully ready (100). */
+export const MEDIA_READINESS_MAX_SCORE_LIFT = WEIGHTS.mediaReadiness * 0.5;
 type Evidence = { score: number; confidence: number };
 function weightedAverage(parts: Array<{ score: number; weight: number; confidence?: number }>): Evidence | undefined {
   const available = parts.filter((part) => Number.isFinite(part.score) && part.weight > 0);
