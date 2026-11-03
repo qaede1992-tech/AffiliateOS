@@ -100,15 +100,23 @@ export const evaluateProductMediaIdentity = (
   if (brand && brandMatches) reasons.push("Merek cocok secara tekstual.");
   if (brand && !brandMatches) reasons.push("Merek tidak ditemukan pada judul hasil.");
 
+  const variant = identity.variant?.trim();
+  const variantMatches = !variant || hasExactIdentifier(candidateTitle, variant);
+  if (variant && variantMatches) reasons.push("Varian cocok secara tekstual.");
+  if (variant && !variantMatches) reasons.push("Varian tidak ditemukan pada judul hasil.");
+
   const titleScore = overlap(expectedTokens, actualTokens);
   if (titleScore > 0) reasons.push(`Kemiripan token identitas: ${Math.round(titleScore * 100)}%.`);
-  const score = Math.round(Math.min(1, titleScore * 0.65 + (brandMatches && brand ? 0.15 : 0) + (identifierMatches ? 0.35 : 0)) * 100);
+  const score = Math.round(Math.min(1, titleScore * 0.55 + (brandMatches && brand ? 0.15 : 0) + (identifierMatches ? 0.35 : 0) + (variantMatches && variant ? 0.1 : 0)) * 100);
 
-  if (primaryIdentifier && identifierMatches && brandMatches) {
+  if (primaryIdentifier && identifierMatches && brandMatches && variantMatches) {
     return { score: Math.max(score, 90), status: "strong_match", reasons };
   }
+  if (primaryIdentifier && identifierMatches && brandMatches && variant && !variantMatches) {
+    return { score, status: "review_required", reasons: [...reasons, "Model cocok, tetapi varian belum terbukti cocok; perlu pemeriksaan manual."] };
+  }
   if (!primaryIdentifier && brandMatches && titleScore >= 0.65 && score >= 65) {
-    return { score, status: "review_required", reasons: [...reasons, "Perlu verifikasi manusia untuk memastikan varian dan sumber media."] };
+    return { score, status: "review_required", reasons: [...reasons, "Perlu verifikasi manusia untuk memastikan model, varian, dan sumber media."] };
   }
   return { score, status: "rejected", reasons: [...reasons, "Kecocokan identitas belum cukup kuat."] };
 };
