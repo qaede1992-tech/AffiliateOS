@@ -75,12 +75,44 @@ test("resolves product-owned video only when that product is linked to the conte
   );
 });
 
-test("preserves existing HTTPS URL assets without requesting a signed URL", async () => {
-  const publicAsset = { ...asset, source: "url" as const, reference: "https://images.example/image.jpg" };
+test("preserves existing credential-free HTTPS URL assets without requesting a signed URL", async () => {
+  const publicAsset = { ...asset, source: "url" as const, reference: "https://images.example.com/image.jpg" };
   const storage = {
     bucketName: "affiliate-media",
     async createSignedUrl() { throw new Error("must not be called"); }
   };
   const [resolved] = await resolvePublisherMediaAssets({ id: contentId }, [publicAsset], storage);
   assert.equal(resolved, publicAsset);
+});
+
+test("rejects credentialed URL assets before they reach a publisher", async () => {
+  const credentialedAsset = { ...asset, source: "url" as const, reference: "https://user:password@images.example/image.jpg" };
+  await assert.rejects(
+    resolvePublisherMediaAssets({ id: contentId }, [credentialedAsset]),
+    /credential-free public HTTPS URL/
+  );
+});
+
+test("rejects IP-literal and local-only URL assets before they reach a publisher", async () => {
+  for (const reference of [
+    "https://127.0.0.1/image.jpg",
+    "https://[::1]/image.jpg",
+    "https://metadata.google.internal/image.jpg"
+  ]) {
+    await assert.rejects(
+      resolvePublisherMediaAssets({ id: contentId }, [{ ...asset, source: "url" as const, reference }]),
+      /credential-free public HTTPS URL/
+    );
+  }
+});
+
+test("rejects a signed URL containing embedded credentials", async () => {
+  const storage = {
+    bucketName: "affiliate-media",
+    async createSignedUrl() { return "https://user:password@project.supabase.co/signed"; }
+  };
+  await assert.rejects(
+    resolvePublisherMediaAssets({ id: contentId }, [asset], storage),
+    /credential-free public HTTPS URL/
+  );
 });
