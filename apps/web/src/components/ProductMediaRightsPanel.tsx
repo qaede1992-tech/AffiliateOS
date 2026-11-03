@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api, type ProductMediaAssetView, type ProductMediaRightsAuditView, type ProductMediaRightsBasis } from "../api/client";
 
@@ -26,6 +26,8 @@ export function ProductMediaRightsPanel() {
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const requestSequence = useRef(0);
+  const productSelectionSequence = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -44,11 +46,16 @@ export function ProductMediaRightsPanel() {
   }, []);
 
   const loadAssets = async (selectedProductId: string) => {
-    if (!selectedProductId) { setAssets([]); setPreviews({}); setAudits({}); return; }
+    const requestId = ++requestSequence.current;
+    setAssets([]);
+    setPreviews({});
+    setAudits({});
+    if (!selectedProductId) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
       const response = await api.productMediaAssets(selectedProductId);
+      if (requestId !== requestSequence.current) return;
       setAssets(response.data);
       const [signed, history] = await Promise.all([
         Promise.all(response.data.map(async (asset) => {
@@ -60,13 +67,26 @@ export function ProductMediaRightsPanel() {
           catch { return [asset.id, []] as const; }
         }))
       ]);
+      if (requestId !== requestSequence.current) return;
       setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
       setAudits(Object.fromEntries(history));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
+      if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
+  };
+
+  const selectProduct = (selectedProductId: string) => {
+    productSelectionSequence.current += 1;
+    requestSequence.current += 1;
+    setAssets([]);
+    setPreviews({});
+    setAudits({});
+    setBusyAssetId(null);
+    setError(null);
+    setNotice(null);
+    setProductId(selectedProductId);
   };
 
   useEffect(() => { if (isAdmin && productId) void loadAssets(productId); }, [isAdmin, productId]);
@@ -76,6 +96,8 @@ export function ProductMediaRightsPanel() {
   };
 
   const verify = async (asset: ProductMediaAssetView) => {
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
     const form = forms[asset.id] ?? initialForm();
     if (!form.rightsEvidenceUrl.trim() || !form.sourcePublisher.trim() || !form.reason.trim()) {
       setError("Lengkapi URL bukti HTTPS, pemilik/penerbit media, dan alasan pemeriksaan.");
@@ -83,29 +105,33 @@ export function ProductMediaRightsPanel() {
     }
     setBusyAssetId(asset.id); setError(null); setNotice(null);
     try {
-      await api.reviewProductMediaRights(productId, asset.id, {
+      await api.reviewProductMediaRights(selectedProductId, asset.id, {
         status: "verified", rightsBasis: form.rightsBasis, rightsEvidenceUrl: form.rightsEvidenceUrl.trim(),
         sourcePublisher: form.sourcePublisher.trim(), reason: form.reason.trim()
       });
+      if (selectionRequestId !== productSelectionSequence.current) return;
       setNotice("Hak media berhasil diverifikasi dan dicatat dalam audit.");
-      await loadAssets(productId);
+      await loadAssets(selectedProductId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
-    } finally { setBusyAssetId(null); }
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
   const revoke = async (asset: ProductMediaAssetView) => {
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
     const reason = (forms[asset.id] ?? initialForm()).reason.trim();
     if (!reason) { setError("Isi alasan pencabutan hak media terlebih dahulu."); return; }
     if (!window.confirm("Cabut status hak media ini? Media tidak akan lolos gerbang publikasi produk.")) return;
     setBusyAssetId(asset.id); setError(null); setNotice(null);
     try {
-      await api.reviewProductMediaRights(productId, asset.id, { status: "revoked", reason });
+      await api.reviewProductMediaRights(selectedProductId, asset.id, { status: "revoked", reason });
+      if (selectionRequestId !== productSelectionSequence.current) return;
       setNotice("Status hak media dicabut dan dicatat dalam audit.");
-      await loadAssets(productId);
+      await loadAssets(selectedProductId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
-    } finally { setBusyAssetId(null); }
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
   if (checkingRole) return <section className="analytics-section"><p className="empty">Memeriksa akses admin…</p></section>;
@@ -120,11 +146,11 @@ export function ProductMediaRightsPanel() {
       <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
       <div className="affiliate-form">
         <label htmlFor="product-media-rights-product">Produk</label>
-        <select id="product-media-rights-product" value={productId} onChange={(event) => setProductId(event.target.value)}>
+        <select id="product-media-rights-product" value={productId} onChange={(event) => selectProduct(event.target.value)}>
           <option value="">Pilih produk</option>
           {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
         </select>
-        <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading}>Muat ulang aset</button>
+        <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading || Boolean(busyAssetId)}>Muat ulang aset</button>
       </div>
       {loading && <p className="empty">Memuat media dan preview privat…</p>}
       {!loading && productId && assets.length === 0 && <p className="empty">Belum ada aset media tersimpan untuk produk ini.</p>}
@@ -176,8 +202,8 @@ export function ProductMediaRightsPanel() {
                   <label htmlFor={`rights-reason-${asset.id}`}>Alasan pemeriksaan / pencabutan</label>
                   <textarea id={`rights-reason-${asset.id}`} value={form.reason} onChange={(event) => updateForm(asset.id, "reason", event.target.value)} rows={2} disabled={busyAssetId === asset.id} />
                   <div className="product-media-rights-actions">
-                    <button type="button" onClick={() => void verify(asset)} disabled={busyAssetId === asset.id || asset.rightsStatus === "verified"}>{busyAssetId === asset.id ? "Menyimpan…" : "Verifikasi hak"}</button>
-                    {asset.rightsStatus !== "revoked" && <button type="button" className="secondary-button" onClick={() => void revoke(asset)} disabled={busyAssetId === asset.id}>Cabut hak</button>}
+                    <button type="button" onClick={() => void verify(asset)} disabled={Boolean(busyAssetId) || asset.rightsStatus === "verified"}>{busyAssetId === asset.id ? "Menyimpan…" : "Verifikasi hak"}</button>
+                    {asset.rightsStatus !== "revoked" && <button type="button" className="secondary-button" onClick={() => void revoke(asset)} disabled={Boolean(busyAssetId)}>Cabut hak</button>}
                   </div>
                 </div>
               </div>
