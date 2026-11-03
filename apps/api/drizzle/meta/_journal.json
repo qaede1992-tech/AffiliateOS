@@ -484,6 +484,13 @@
       "when": 1794050405015,
       "tag": "0072_product_media_rights_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1794050405016,
+      "tag": "0073_product_media_technical_metadata",
+      "breakpoints": true
     }
   ]
 }
