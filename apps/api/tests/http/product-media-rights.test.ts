@@ -297,3 +297,99 @@ test("operator cannot read product media rights audit history", async () => {
     await app.close();
   }
 });
+
+
+test("product media preflight uses the latest Creator Info duration limit for the sole active TikTok account", async () => {
+  const services = createInMemoryServices();
+  const tiktokAccount = await services.socialAccounts.create({
+    platform: "tiktok",
+    accountReference: "creator-preflight-test",
+    status: "active"
+  });
+  services.tiktokCreatorInfo = {
+    async getCreatorInfo(account) {
+      assert.equal(account.id, tiktokAccount.id);
+      return {
+        privacyLevelOptions: ["PUBLIC_TO_EVERYONE"],
+        commentDisabled: false,
+        duetDisabled: false,
+        stitchDisabled: false,
+        maxVideoPostDurationSec: 120
+      };
+    }
+  };
+  const video: ProductMediaAsset = {
+    ...initialAsset,
+    id: "66666666-6666-4666-8666-666666666666",
+    kind: "video",
+    objectKey: `products/${productId}/video.mp4`,
+    mimeType: "video/mp4",
+    byteSize: 1_000_000,
+    width: 720,
+    height: 1280,
+    durationMs: 121_000
+  };
+  services.productMediaAssets = {
+    async findByProductAndHash() { return undefined; },
+    async listByProduct(id) { return id === productId ? [video] : []; },
+    async save(value) { return value; }
+  };
+  const app = createApp(services, {
+    auth: { enabled: false, operatorId: "reviewer-test", role: "admin" },
+    rateLimit: { enabled: false, limit: 100, windowMs: 60_000 }
+  });
+  try {
+    const response = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-assets` });
+    assert.equal(response.statusCode, 200);
+    const readiness = response.json().data[0].technicalReadiness.tiktok;
+    assert.equal(readiness.status, "not_ready");
+    assert.ok(readiness.checks.some((item: { key: string; status: string; detail: string }) =>
+      item.key === "creator_duration_limit" && item.status === "fail" && item.detail.includes("120")
+    ));
+  } finally {
+    await app.close();
+  }
+});
+
+test("product media preflight leaves TikTok duration unknown when Creator Info is unavailable", async () => {
+  const services = createInMemoryServices();
+  await services.socialAccounts.create({
+    platform: "tiktok",
+    accountReference: "creator-preflight-outage",
+    status: "active"
+  });
+  services.tiktokCreatorInfo = {
+    async getCreatorInfo() { throw new Error("provider unavailable"); }
+  };
+  const video: ProductMediaAsset = {
+    ...initialAsset,
+    id: "77777777-7777-4777-8777-777777777777",
+    kind: "video",
+    objectKey: `products/${productId}/video-outage.mp4`,
+    mimeType: "video/mp4",
+    byteSize: 1_000_000,
+    width: 720,
+    height: 1280,
+    durationMs: 30_000
+  };
+  services.productMediaAssets = {
+    async findByProductAndHash() { return undefined; },
+    async listByProduct(id) { return id === productId ? [video] : []; },
+    async save(value) { return value; }
+  };
+  const app = createApp(services, {
+    auth: { enabled: false, operatorId: "reviewer-test", role: "admin" },
+    rateLimit: { enabled: false, limit: 100, windowMs: 60_000 }
+  });
+  try {
+    const response = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-assets` });
+    assert.equal(response.statusCode, 200);
+    const readiness = response.json().data[0].technicalReadiness.tiktok;
+    assert.equal(readiness.status, "review_required");
+    assert.ok(readiness.checks.some((item: { key: string; status: string }) =>
+      item.key === "creator_duration_limit" && item.status === "unknown"
+    ));
+  } finally {
+    await app.close();
+  }
+});
