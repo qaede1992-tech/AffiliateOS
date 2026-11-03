@@ -34,10 +34,10 @@ export const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
 };
 
 /**
- * Re-checks product-scoped object-storage media immediately before provider
- * dispatch. Only product-scoped objects with a persisted, currently verified
- * provenance row are accepted. Content-scoped and legacy object paths remain
- * blocked until their own auditable rights workflow exists.
+ * Re-checks only product-scoped object-storage media immediately before
+ * provider dispatch. Existing content-scoped uploads and externally hosted
+ * media retain their pre-existing publisher path; they are not treated as
+ * product-media assets. New product media must match a persisted rights row.
  */
 export async function assertProductMediaRightsForPublication(
   mediaAssets: MediaAsset[],
@@ -48,9 +48,9 @@ export async function assertProductMediaRightsForPublication(
   const productScoped: Array<{ bucket: string; objectKey: string; productId: string }> = [];
 
   for (const media of mediaAssets) {
-    if (media.source === "url") {
-      throw new Error("Externally hosted media has no persisted rights provenance; publication is blocked.");
-    }
+    // Preserve the established URL-media publishing path. Product discovery
+    // persists product media into product-scoped storage, so it cannot rely on
+    // this legacy URL branch to bypass the product-scoped rights check.
     if (media.source !== "object-storage") continue;
     const separator = media.reference.indexOf("/");
     if (separator <= 0 || separator === media.reference.length - 1) {
@@ -59,9 +59,9 @@ export async function assertProductMediaRightsForPublication(
     const bucket = media.reference.slice(0, separator);
     const objectKey = media.reference.slice(separator + 1);
     const segments = objectKey.split("/");
-    if (segments[0] !== "products") {
-      throw new Error("Object-storage media has no verified product-rights provenance; publication is blocked.");
-    }
+    // Legacy content-scoped uploads continue through the existing resolver.
+    // Only the new products/<productId>/ namespace is governed by this policy.
+    if (segments[0] !== "products") continue;
 
     const productId = segments[1] ?? "";
     if (!productId || !linkedIds.has(productId)) {

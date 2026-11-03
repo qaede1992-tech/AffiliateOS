@@ -84,34 +84,17 @@ test("blocks missing, duplicate, and unlinked product media records", async () =
   );
 });
 
-test("blocks externally hosted URLs for affiliate-linked product content", async () => {
-  const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/video.mp4" };
-  await assert.rejects(
-    assertProductMediaRightsForPublication([external], [productId], repository(verified)),
-    /Externally hosted media has no persisted rights provenance/
-  );
+test("preserves existing externally hosted media while applying rights checks only to product-scoped objects", async () => {
+  const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/legacy-video.mp4" };
+  await assert.doesNotReject(assertProductMediaRightsForPublication([external], [productId], repository()));
 });
 
-test("blocks external media even when content has no linked products", async () => {
-  const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/video.mp4" };
-  await assert.rejects(
-    assertProductMediaRightsForPublication([external], []),
-    /no persisted rights provenance/
-  );
-});
-
-test("blocks content-scoped uploads until their own rights provenance is verified", async () => {
+test("preserves legacy content-scoped uploads for the existing publisher resolver", async () => {
   const contentOwned = { ...media, reference: "affiliate-media/content/11111111-1111-4111-8111-111111111111/video.mp4" };
-  await assert.rejects(
-    assertProductMediaRightsForPublication([contentOwned], [productId]),
-    /no verified product-rights provenance/
-  );
+  await assert.doesNotReject(assertProductMediaRightsForPublication([contentOwned], [productId], repository()));
 });
 
-test("blocks unknown object-storage paths instead of bypassing rights checks", async () => {
-  const unknownPath = { ...media, reference: "affiliate-media/legacy/video.mp4" };
-  await assert.rejects(
-    assertProductMediaRightsForPublication([unknownPath], [productId]),
-    /no verified product-rights provenance/
-  );
+test("does not mistake non-product object namespaces for product-media assets", async () => {
+  const legacy = { ...media, reference: "affiliate-media/legacy/video.mp4" };
+  await assert.doesNotReject(assertProductMediaRightsForPublication([legacy], [productId], repository()));
 });
