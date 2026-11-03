@@ -6,6 +6,7 @@ import type { AutonomousOptimizationRunResult, AutonomousOptimizationRunner } fr
 import type { AutonomousExplorationEvaluationRunner, ExplorationEvaluationRunResult } from "./autonomous-exploration-evaluation-runner.js";
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 import type { ProductMediaDiscoveryRunner } from "./product-media-discovery-runner.js";
+import { MEDIA_READINESS_MAX_SCORE_LIFT } from "./opportunity-scoring.js";
 
 export interface AutonomousCandidateProvider {
   listCandidates(options?: { resolveAffiliateLinks?: boolean }): Promise<AutonomousExecutionCandidate[]>;
@@ -124,13 +125,27 @@ export class AutonomousCycleService {
       let mediaIds: string[] = [];
       let mediaReadinessScores: Record<string, number> = Object.fromEntries(candidateList.map((candidate) => [candidate.product.id, 0]));
       if (this.productMediaDiscovery) {
-        // Pass 1: affiliate eligibility only. This pass never creates media or content.
-        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true }]));
+        // Pass 1: discover media for candidates that could still reach the final score
+        // after the 10%-weighted media signal is known. The score baseline is 50, so
+        // verified media can lift a preliminary score by at most five points. This
+        // discovery-only buffer never lowers the final selection threshold.
+        const defaultMinimumScore = input.policy?.minimumScore ?? 60;
+        const preliminaryMinimumScore = Math.max(0, defaultMinimumScore - MEDIA_READINESS_MAX_SCORE_LIFT);
+        const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [
+          key,
+          {
+            ...value,
+            minimumScore: Math.max(0, (value.minimumScore ?? defaultMinimumScore) - MEDIA_READINESS_MAX_SCORE_LIFT),
+            requirePublishableMedia: false,
+            requirePublishableVideo: false,
+            requireCommissionSignal: true
+          }
+        ]));
         const preliminary = await this.execution.previewSelection({
           ...input,
           idempotencyNamespace: input.idempotencyNamespace ?? "autonomous-execution",
           candidates: candidateList,
-          policy: { ...input.policy, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
+          policy: { ...input.policy, minimumScore: preliminaryMinimumScore, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
           policiesByMarketplace: preliminaryPolicies,
           requirePublishableMedia: false,
           requirePublishableVideo: false,
@@ -252,6 +267,8 @@ export class AutonomousCycleService {
         console.info(JSON.stringify({
           event: "autonomous_media_discovery_summary",
           candidateCount: candidateList.length,
+          preliminaryMinimumScore,
+          finalMinimumScore: defaultMinimumScore,
           preliminarySelectedCount: preliminary.selected.length,
           discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
           discoveryFailedCount: mediaDiscoverySummary.failedCount,
