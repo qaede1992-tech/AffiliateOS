@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { Product } from "@affiliateos/shared";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
+import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 
 const execFile = promisify(execFileCallback);
@@ -85,7 +86,7 @@ export class ProductPromoVideoRenderer {
     const existingVideo = existing.find((asset) => asset.kind === "video");
     if (existingVideo) return { generated: false, asset: existingVideo, reason: "A validated product video already exists." };
 
-    const image = existing.find((asset) => asset.kind === "image" && asset.bucket === this.storage.bucketName);
+    const image = existing.find((asset) => asset.kind === "image" && asset.bucket === this.storage.bucketName && hasCurrentVerifiedRights(asset));
     if (!image) return { generated: false, reason: "No validated product image is available in private storage." };
     if (!this.storage.download) return { generated: false, reason: "Supabase Storage download is not available in this runtime." };
 
