@@ -51,3 +51,18 @@ test("returns unknown metadata for structurally incomplete MP4 containers", () =
     width: null, height: null, durationMs: null, hasAudio: null
   });
 });
+
+
+test("keeps audio-track metadata unknown when an MP4 track has no readable handler", () => {
+  const ftyp = box("ftyp", Uint8Array.from([105,115,111,109,0,0,0,0]));
+  const mdat = box("mdat", Uint8Array.from([1]));
+  const mvhdPayload = new Uint8Array(20);
+  new DataView(mvhdPayload.buffer).setUint32(12, 1000);
+  new DataView(mvhdPayload.buffer).setUint32(16, 12000);
+  const tkhdPayload = new Uint8Array(84);
+  new DataView(tkhdPayload.buffer).setUint32(76, 720 * 65536);
+  new DataView(tkhdPayload.buffer).setUint32(80, 1280 * 65536);
+  const trak = box("trak", box("tkhd", tkhdPayload));
+  const bytes = concat(ftyp, mdat, box("moov", concat(box("mvhd", mvhdPayload), trak)));
+  assert.equal(extractProductMediaTechnicalMetadata("video/mp4", bytes).hasAudio, null);
+});
