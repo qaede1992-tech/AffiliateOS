@@ -85,3 +85,32 @@ export const productMediaRightsAudits = pgTable("product_media_rights_audits", {
   index("product_media_rights_audits_asset_created_idx").on(table.assetId, table.createdAt.desc()),
   index("product_media_rights_audits_product_created_idx").on(table.productId, table.createdAt.desc())
 ]);
+
+
+/** Search leads are stored separately from downloadable assets; none are publishable until independently reviewed. */
+export const productMediaCandidates = pgTable("product_media_candidates", {
+  id: uuid("id").primaryKey(),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 40 }).notNull(),
+  candidateHash: varchar("candidate_hash", { length: 64 }).notNull(),
+  query: varchar("query", { length: 500 }).notNull(),
+  title: varchar("title", { length: 1000 }).notNull(),
+  imageUrl: varchar("image_url", { length: 2048 }).notNull(),
+  landingPageUrl: varchar("landing_page_url", { length: 2048 }).notNull(),
+  creator: varchar("creator", { length: 500 }),
+  creatorUrl: varchar("creator_url", { length: 2048 }),
+  license: varchar("license", { length: 40 }),
+  licenseVersion: varchar("license_version", { length: 40 }),
+  licenseUrl: varchar("license_url", { length: 2048 }),
+  sourcePublisher: varchar("source_publisher", { length: 255 }),
+  identityScore: integer("identity_score").notNull(),
+  identityStatus: varchar("identity_status", { length: 30 }).notNull(),
+  identityReasons: jsonb("identity_reasons").$type<string[]>().notNull().default([]),
+  reviewStatus: varchar("review_status", { length: 20 }).notNull().default("pending"),
+  rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  uniqueIndex("product_media_candidates_product_provider_hash_unique").on(table.productId, table.provider, table.candidateHash),
+  index("product_media_candidates_product_review_idx").on(table.productId, table.reviewStatus, table.createdAt.desc())
+]);
