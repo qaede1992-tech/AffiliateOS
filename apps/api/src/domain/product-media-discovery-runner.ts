@@ -198,8 +198,6 @@ export class ProductMediaDiscoveryRunner {
         } catch (error) {
           skipped.push({ url: "https://api.openverse.org/v1/images/", reason: error instanceof Error ? "Openverse candidate search failed: " + error.message : "Openverse candidate search failed." });
         }
-      } else {
-        skipped.push({ url: product.productUrl, reason: "Product media candidate repository is unavailable; catalog search was not persisted." });
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
       for (const candidate of [
