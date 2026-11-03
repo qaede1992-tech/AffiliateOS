@@ -1,0 +1,167 @@
+import { useEffect, useState } from "react";
+import type { Product } from "@affiliateos/shared";
+import { api, type ProductMediaAssetView, type ProductMediaRightsBasis } from "../api/client";
+
+type ReviewForm = { rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string };
+const basisOptions: Array<{ value: ProductMediaRightsBasis; label: string }> = [
+  { value: "explicit_permission", label: "Izin tertulis eksplisit" },
+  { value: "license", label: "Lisensi" },
+  { value: "public_domain", label: "Domain publik" },
+  { value: "user_owned", label: "Milik sendiri" },
+  { value: "platform_authorization", label: "Otorisasi platform" }
+];
+const initialForm = (): ReviewForm => ({ rightsBasis: "explicit_permission", rightsEvidenceUrl: "", sourcePublisher: "", reason: "" });
+
+export function ProductMediaRightsPanel() {
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingRole, setCheckingRole] = useState(true);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productId, setProductId] = useState("");
+  const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [forms, setForms] = useState<Record<string, ReviewForm>>({});
+  const [loading, setLoading] = useState(false);
+  const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.me().then(async (user) => {
+      if (!active) return;
+      if (user.role !== "admin") return;
+      setIsAdmin(true);
+      const response = await api.products();
+      if (!active) return;
+      setProducts(response.data);
+      if (response.data[0]) setProductId(response.data[0].id);
+    }).catch((requestError: unknown) => {
+      if (active) setError(requestError instanceof Error ? requestError.message : "Tidak dapat memeriksa hak akses admin.");
+    }).finally(() => { if (active) setCheckingRole(false); });
+    return () => { active = false; };
+  }, []);
+
+  const loadAssets = async (selectedProductId: string) => {
+    if (!selectedProductId) { setAssets([]); setPreviews({}); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.productMediaAssets(selectedProductId);
+      setAssets(response.data);
+      const signed = await Promise.all(response.data.map(async (asset) => {
+        try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
+        catch { return [asset.id, ""] as const; }
+      }));
+      setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { if (isAdmin && productId) void loadAssets(productId); }, [isAdmin, productId]);
+
+  const updateForm = (assetId: string, field: keyof ReviewForm, value: string) => {
+    setForms((current) => ({ ...current, [assetId]: { ...(current[assetId] ?? initialForm()), [field]: value } }));
+  };
+
+  const verify = async (asset: ProductMediaAssetView) => {
+    const form = forms[asset.id] ?? initialForm();
+    if (!form.rightsEvidenceUrl.trim() || !form.sourcePublisher.trim() || !form.reason.trim()) {
+      setError("Lengkapi URL bukti HTTPS, pemilik/penerbit media, dan alasan pemeriksaan.");
+      return;
+    }
+    setBusyAssetId(asset.id); setError(null); setNotice(null);
+    try {
+      await api.reviewProductMediaRights(productId, asset.id, {
+        status: "verified", rightsBasis: form.rightsBasis, rightsEvidenceUrl: form.rightsEvidenceUrl.trim(),
+        sourcePublisher: form.sourcePublisher.trim(), reason: form.reason.trim()
+      });
+      setNotice("Hak media berhasil diverifikasi dan dicatat dalam audit.");
+      await loadAssets(productId);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
+    } finally { setBusyAssetId(null); }
+  };
+
+  const revoke = async (asset: ProductMediaAssetView) => {
+    const reason = (forms[asset.id] ?? initialForm()).reason.trim();
+    if (!reason) { setError("Isi alasan pencabutan hak media terlebih dahulu."); return; }
+    if (!window.confirm("Cabut status hak media ini? Media tidak akan lolos gerbang publikasi produk.")) return;
+    setBusyAssetId(asset.id); setError(null); setNotice(null);
+    try {
+      await api.reviewProductMediaRights(productId, asset.id, { status: "revoked", reason });
+      setNotice("Status hak media dicabut dan dicatat dalam audit.");
+      await loadAssets(productId);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
+    } finally { setBusyAssetId(null); }
+  };
+
+  if (checkingRole) return <section className="analytics-section"><p className="empty">Memeriksa akses admin…</p></section>;
+  if (!isAdmin) return null;
+
+  return (
+    <section className="analytics-section" id="product-media-rights">
+      <div className="section-heading">
+        <div><p className="eyebrow">Kontrol hak penggunaan</p><h2>Review media produk</h2></div>
+        <span>Khusus admin</span>
+      </div>
+      <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
+      <div className="affiliate-form">
+        <label htmlFor="product-media-rights-product">Produk</label>
+        <select id="product-media-rights-product" value={productId} onChange={(event) => setProductId(event.target.value)}>
+          <option value="">Pilih produk</option>
+          {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+        </select>
+        <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading}>Muat ulang aset</button>
+      </div>
+      {loading && <p className="empty">Memuat media dan preview privat…</p>}
+      {!loading && productId && assets.length === 0 && <p className="empty">Belum ada aset media tersimpan untuk produk ini.</p>}
+      <div className="product-media-rights-list">
+        {assets.map((asset) => {
+          const form = forms[asset.id] ?? initialForm();
+          const preview = previews[asset.id];
+          return (
+            <article className="product-media-rights-item" key={asset.id}>
+              <div className="product-media-rights-preview">
+                {preview ? asset.kind === "video"
+                  ? <video src={preview} controls preload="metadata" />
+                  : <img src={preview} alt={`Media produk ${asset.productId}`} />
+                  : <span>Preview privat tidak tersedia</span>}
+              </div>
+              <div className="product-media-rights-details">
+                <div className="panel-heading">
+                  <div><p className="eyebrow">{asset.kind} · {asset.mimeType}</p><h3>{asset.id.slice(0, 8)}</h3></div>
+                  <span className={`badge ${asset.rightsStatus === "verified" ? "active" : "inactive"}`}>{asset.rightsStatus}</span>
+                </div>
+                <small>{(asset.byteSize / 1024).toFixed(1)} KiB · SHA-256 {asset.sha256.slice(0, 16)}…</small>
+                {asset.rightsStatus === "verified" && <p className="analytics-note">Dasar: {asset.rightsBasis} · Penerbit: {asset.sourcePublisher} · Diverifikasi: {asset.rightsVerifiedAt ? new Date(asset.rightsVerifiedAt).toLocaleString("id-ID") : "—"}</p>}
+                {asset.rightsEvidenceUrl && <p><a href={asset.rightsEvidenceUrl} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
+                <div className="affiliate-form">
+                  <label htmlFor={`rights-basis-${asset.id}`}>Dasar hak</label>
+                  <select id={`rights-basis-${asset.id}`} value={form.rightsBasis} onChange={(event) => updateForm(asset.id, "rightsBasis", event.target.value)} disabled={busyAssetId === asset.id}>
+                    {basisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <label htmlFor={`rights-evidence-${asset.id}`}>URL bukti (HTTPS)</label>
+                  <input id={`rights-evidence-${asset.id}`} type="url" value={form.rightsEvidenceUrl} onChange={(event) => updateForm(asset.id, "rightsEvidenceUrl", event.target.value)} placeholder="https://…" disabled={busyAssetId === asset.id} />
+                  <label htmlFor={`rights-publisher-${asset.id}`}>Pemilik / penerbit media</label>
+                  <input id={`rights-publisher-${asset.id}`} value={form.sourcePublisher} onChange={(event) => updateForm(asset.id, "sourcePublisher", event.target.value)} disabled={busyAssetId === asset.id} />
+                  <label htmlFor={`rights-reason-${asset.id}`}>Alasan pemeriksaan / pencabutan</label>
+                  <textarea id={`rights-reason-${asset.id}`} value={form.reason} onChange={(event) => updateForm(asset.id, "reason", event.target.value)} rows={2} disabled={busyAssetId === asset.id} />
+                  <div className="product-media-rights-actions">
+                    <button type="button" onClick={() => void verify(asset)} disabled={busyAssetId === asset.id || asset.rightsStatus === "verified"}>{busyAssetId === asset.id ? "Menyimpan…" : "Verifikasi hak"}</button>
+                    {asset.rightsStatus !== "revoked" && <button type="button" className="secondary-button" onClick={() => void revoke(asset)} disabled={busyAssetId === asset.id}>Cabut hak</button>}
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {error && <p className="error-message" role="alert">{error}</p>}
+      {notice && <p className="shopee-import-success" role="status">{notice}</p>}
+    </section>
+  );
+}
