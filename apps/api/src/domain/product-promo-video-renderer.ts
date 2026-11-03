@@ -86,8 +86,18 @@ export class ProductPromoVideoRenderer {
     const existingVideo = existing.find((asset) => asset.kind === "video");
     if (existingVideo) return { generated: false, asset: existingVideo, reason: "A validated product video already exists." };
 
-    const image = existing.find((asset) => asset.kind === "image" && asset.bucket === this.storage.bucketName && hasCurrentVerifiedRights(asset));
-    if (!image) return { generated: false, reason: "No validated product image is available in private storage." };
+    const image = existing.find((asset) =>
+      asset.kind === "image" &&
+      asset.bucket === this.storage.bucketName &&
+      hasCurrentVerifiedRights(asset) &&
+      (asset.rightsBasis === "user_owned" || asset.rightsBasis === "public_domain")
+    );
+    if (!image) {
+      return {
+        generated: false,
+        reason: "No verified private product image with a derivative-permitting rights basis is available."
+      };
+    }
     if (!this.storage.download) return { generated: false, reason: "Supabase Storage download is not available in this runtime." };
 
     let tempDir: string | undefined;
