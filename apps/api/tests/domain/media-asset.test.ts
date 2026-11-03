@@ -39,6 +39,8 @@ describe("MediaAsset", () => {
       "https://media.local/video.mp4",
       "https://metadata.google.internal/video.mp4",
       "https://media.invalid/video.mp4",
+      "https://media.example.test/video.mp4",
+      "https://media.example/video.mp4",
       "https://media.lan/video.mp4",
       "https://router.home.arpa/video.mp4",
       "https://home.arpa/video.mp4",
