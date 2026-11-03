@@ -14,6 +14,18 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
   async findById(id: string) { return this.rows.get(id); }
   async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) { const existing = await this.findByUrlHash(intake.normalizedUrlHash); if (existing) return existing; this.rows.set(intake.id, intake); return intake; }
   async update(intake: ShopeeAffiliateLinkIntake) { this.rows.set(intake.id, intake); return intake; }
+  async claimStaleResolving(id: string, expectedUpdatedAt: string, staleBefore: string, claimedAt: string) {
+    const current = this.rows.get(id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt || current.updatedAt >= staleBefore) return false;
+    this.rows.set(id, { ...current, updatedAt: claimedAt });
+    return true;
+  }
+  async updateResolving(intake: ShopeeAffiliateLinkIntake, expectedUpdatedAt: string) {
+    const current = this.rows.get(intake.id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return false;
+    this.rows.set(intake.id, intake);
+    return true;
+  }
 }
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {

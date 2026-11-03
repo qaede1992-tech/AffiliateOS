@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Affiliate, AffiliateAccount, AffiliateOffer, Campaign, CampaignOffer, ContentProduct, Click, Commission, Content, Conversion, MarketplaceConnection, Offer, Product, SocialAccount, TrackingLink } from "@affiliateos/shared";
 import type { MediaAsset, MediaAssetRepository } from "../domain/media-asset.js";
 import { affiliateAccounts, affiliateOffers, affiliates, campaigns, campaignOffers, clicks, commissions, content as contentTable, conversions, marketplaces, offers, products, socialAccounts, trackingLinks, mediaAssets, contentProducts, shopeeAffiliateLinkIntakes } from "./schema.js";
@@ -130,6 +130,27 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
     const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
     const rows = await this.db.update(shopeeAffiliateLinkIntakes).set(values).where(eq(shopeeAffiliateLinkIntakes.id, entity.id)).returning();
     return rows[0] ? this.map(rows[0]) : entity;
+  }
+  async claimStaleResolving(id: string, expectedUpdatedAt: string, staleBefore: string, claimedAt: string) {
+    const rows = await this.db.update(shopeeAffiliateLinkIntakes)
+      .set({ updatedAt: claimedAt })
+      .where(and(
+        eq(shopeeAffiliateLinkIntakes.id, id),
+        eq(shopeeAffiliateLinkIntakes.status, "resolving"),
+        eq(shopeeAffiliateLinkIntakes.updatedAt, expectedUpdatedAt),
+        lt(shopeeAffiliateLinkIntakes.updatedAt, staleBefore)
+      ))
+      .returning({ id: shopeeAffiliateLinkIntakes.id });
+    return rows.length === 1;
+  }
+  async updateResolving(entity: ShopeeAffiliateLinkIntake, expectedUpdatedAt: string) {
+    const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
+    const rows = await this.db.update(shopeeAffiliateLinkIntakes).set(values).where(and(
+      eq(shopeeAffiliateLinkIntakes.id, entity.id),
+      eq(shopeeAffiliateLinkIntakes.status, "resolving"),
+      eq(shopeeAffiliateLinkIntakes.updatedAt, expectedUpdatedAt)
+    )).returning({ id: shopeeAffiliateLinkIntakes.id });
+    return rows.length === 1;
   }
 }
 
