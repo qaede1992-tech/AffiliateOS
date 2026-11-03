@@ -46,11 +46,13 @@ export async function assertProductMediaRightsForPublication(
 ): Promise<void> {
   const linkedIds = new Set(linkedProductIds);
   const productScoped: Array<{ bucket: string; objectKey: string; productId: string }> = [];
+  const externalUrls: string[] = [];
 
   for (const media of mediaAssets) {
-    // Preserve the established URL-media publishing path. Product discovery
-    // persists product media into product-scoped storage, so it cannot rely on
-    // this legacy URL branch to bypass the product-scoped rights check.
+    if (media.source === "url") {
+      externalUrls.push(media.reference);
+      continue;
+    }
     if (media.source !== "object-storage") continue;
     const separator = media.reference.indexOf("/");
     if (separator <= 0 || separator === media.reference.length - 1) {
@@ -59,8 +61,9 @@ export async function assertProductMediaRightsForPublication(
     const bucket = media.reference.slice(0, separator);
     const objectKey = media.reference.slice(separator + 1);
     const segments = objectKey.split("/");
-    // Legacy content-scoped uploads continue through the existing resolver.
-    // Only the new products/<productId>/ namespace is governed by this policy.
+    // Existing content-scoped and other legacy storage namespaces keep
+    // their established publisher path. Only products/<productId>/ assets
+    // created by the product-media ingestion workflow use this rights gate.
     if (segments[0] !== "products") continue;
 
     const productId = segments[1] ?? "";
@@ -73,15 +76,33 @@ export async function assertProductMediaRightsForPublication(
     productScoped.push({ bucket, objectKey, productId });
   }
 
+  const productIds = [...new Set([
+    ...productScoped.map((asset) => asset.productId),
+    ...linkedProductIds
+  ])];
+  const persisted = repository && productIds.length > 0
+    ? repository.listByProducts
+      ? await repository.listByProducts(productIds)
+      : (await Promise.all(productIds.map((id) => repository.listByProduct(id)))).flat()
+    : [];
+
+  // Legacy content URLs remain compatible unless the URL is also registered
+  // as a source for one of the linked products. Registered product-source URLs
+  // must pass the same persisted provenance check as product-scoped objects.
+  for (const reference of externalUrls) {
+    const matches = persisted.filter((asset) =>
+      linkedIds.has(asset.productId) && asset.sourceUrl === reference
+    );
+    if (matches.length === 0) continue;
+    if (matches.length !== 1 || !hasCurrentVerifiedRights(matches[0]!)) {
+      throw new Error("Product media rights are missing, ambiguous, unverified, or revoked; publication is blocked.");
+    }
+  }
+
   if (productScoped.length === 0) return;
   if (!repository) {
     throw new Error("Product media rights repository is unavailable; publication is blocked.");
   }
-
-  const productIds = [...new Set(productScoped.map((asset) => asset.productId))];
-  const persisted = repository.listByProducts
-    ? await repository.listByProducts(productIds)
-    : (await Promise.all(productIds.map((id) => repository.listByProduct(id)))).flat();
 
   for (const candidate of productScoped) {
     const matches = persisted.filter((asset) =>

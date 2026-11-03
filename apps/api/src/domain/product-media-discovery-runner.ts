@@ -1,4 +1,4 @@
-import type { Product } from "@affiliateos/shared";
+import type { ContentPlatform, Product } from "@affiliateos/shared";
 import { extractProductMediaCandidates, type ProductMediaCandidate } from "./product-media-discovery.js";
 import { fetchPublicHttps } from "./public-https-fetch.js";
 import type { ProductMediaIngestionPolicy, ProductMediaIngestionResult } from "./product-media-ingestion.js";
@@ -7,6 +7,7 @@ import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from "./product-promo-video-renderer.js";
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
+import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
   maxProductPageBytes?: number;
@@ -70,6 +71,48 @@ export class ProductMediaDiscoveryRunner {
       hasCurrentVerifiedRights(asset)
     ).map((asset) => asset.productId));
     return uniqueProductIds.filter((productId) => ids.has(productId));
+  }
+
+  /**
+   * Produces a conservative 0-100 technical-readiness score from currently
+   * rights-verified, persisted assets. Unknown checks receive partial credit,
+   * never a pass; no verified asset yields zero.
+   */
+  async listMediaReadinessScores(
+    productIds: string[],
+    platforms: ContentPlatform[] = ["instagram", "tiktok"]
+  ): Promise<Record<string, number>> {
+    const uniqueProductIds = [...new Set(productIds)];
+    const uniquePlatforms = [...new Set(platforms.filter((platform) => platform === "instagram" || platform === "tiktok"))];
+    const result: Record<string, number> = {};
+    if (uniqueProductIds.length === 0) return result;
+    const assets = this.assets.listByProducts
+      ? await this.assets.listByProducts(uniqueProductIds)
+      : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
+    for (const productId of uniqueProductIds) {
+      const verified = assets.filter((asset) =>
+        asset.productId === productId &&
+        asset.bucket === this.bucketName &&
+        (asset.kind === "image" || asset.kind === "video") &&
+        hasCurrentVerifiedRights(asset)
+      );
+      if (verified.length === 0 || uniquePlatforms.length === 0) {
+        result[productId] = 0;
+        continue;
+      }
+      const platformScores = uniquePlatforms.map((platform) => {
+        const assetScores = verified.map((asset) => {
+          const readiness = evaluateProductMediaAssetReadiness(platform, asset);
+          if (readiness.checks.length === 0) return 0;
+          const points = readiness.checks.reduce((sum, item) =>
+            sum + (item.status === "pass" ? 1 : item.status === "unknown" ? 0.35 : 0), 0);
+          return (points / readiness.checks.length) * 100;
+        });
+        return Math.max(...assetScores);
+      });
+      result[productId] = Math.round((platformScores.reduce((sum, score) => sum + score, 0) / platformScores.length) * 100) / 100;
+    }
+    return result;
   }
 
   async listVideoProductIds(productIds: string[]): Promise<string[]> {

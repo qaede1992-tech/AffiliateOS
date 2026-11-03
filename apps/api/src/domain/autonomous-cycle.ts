@@ -80,6 +80,9 @@ export class AutonomousCycleService {
     const mediaIds = this.productMediaDiscovery
       ? await this.productMediaDiscovery.listPublishableMediaProductIds(productIds)
       : [];
+    const mediaReadinessScores = this.productMediaDiscovery
+      ? await this.productMediaDiscovery.listMediaReadinessScores(productIds, input.platforms)
+      : Object.fromEntries(productIds.map((id) => [id, 0]));
     const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
     const result = await this.execution.previewSelection({
       ...input,
@@ -89,6 +92,7 @@ export class AutonomousCycleService {
       requirePublishableVideo: true,
       publishableVideoProductIds: videoIds,
       publishableMediaProductIds: mediaIds,
+      mediaReadinessScores,
       requireCommissionSignal: true
     });
     return {
@@ -118,6 +122,7 @@ export class AutonomousCycleService {
       // If media discovery/storage is unavailable, the final media gates stay empty.
       let videoIds: string[] = [];
       let mediaIds: string[] = [];
+      let mediaReadinessScores: Record<string, number> = Object.fromEntries(candidateList.map((candidate) => [candidate.product.id, 0]));
       if (this.productMediaDiscovery) {
         // Pass 1: affiliate eligibility only. This pass never creates media or content.
         const preliminaryPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true }]));
@@ -190,6 +195,13 @@ export class AutonomousCycleService {
           }));
         }
 
+        try {
+          mediaReadinessScores = await this.productMediaDiscovery.listMediaReadinessScores(productIds, input.platforms);
+        } catch (error) {
+          mediaReadinessScores = Object.fromEntries(productIds.map((id) => [id, 0]));
+          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", reason: error instanceof Error ? error.message : "Media readiness scoring failed." }));
+        }
+
         // Pass 2: final affiliate selection. It requires verified, persisted product media,
         // but does not require a video yet. Only products selected here may incur video rendering.
         const mediaReadyPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: false, requireCommissionSignal: true }]));
@@ -203,6 +215,7 @@ export class AutonomousCycleService {
           requirePublishableVideo: false,
           publishableMediaProductIds: mediaIds,
           publishableVideoProductIds: videoIds,
+          mediaReadinessScores,
           requireCommissionSignal: true
         });
 
@@ -261,6 +274,7 @@ export class AutonomousCycleService {
         requirePublishableVideo: true,
         publishableMediaProductIds: mediaIds,
         publishableVideoProductIds: videoIds,
+        mediaReadinessScores,
         requireCommissionSignal: true
       };
       const result = await this.execution.runOnce(executionInput);

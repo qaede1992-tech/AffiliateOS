@@ -108,7 +108,12 @@ export class CampaignOrchestrator {
     // Autonomous Instagram and TikTok campaigns must use a validated, persisted video.
     const requestedPlatforms = input.platforms ?? defaultPlatforms;
     const requestsVideoCampaign = requestedPlatforms.some((platform) => platform === "instagram" || platform === "tiktok");
-    if (input.idempotencyKey && this.productMediaAssets && requestsVideoCampaign) {
+    if (input.idempotencyKey && requestsVideoCampaign) {
+      // An autonomous idempotency key marks an unattended execution. Missing
+      // rights storage must never disable the product-media publication gate.
+      if (!this.productMediaAssets) {
+        throw new Error("Product media rights repository is required before autonomous social campaign creation.");
+      }
       const storedProductMedia = await this.productMediaAssets.listByProduct(liveProduct.id);
       if (!storedProductMedia.some((asset) => asset.kind === "video" && hasCurrentVerifiedRights(asset))) {
         throw new Error("A stored, validated product video is required before autonomous social campaign creation.");
@@ -299,7 +304,7 @@ export class CampaignOrchestrator {
           return content;
         }
         const now = new Date().toISOString();
-        const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, createdAt: now, updatedAt: now });
+        const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, durationSeconds: stored.durationMs == null ? undefined : Math.ceil(stored.durationMs / 1000), widthPx: stored.width ?? undefined, heightPx: stored.height ?? undefined, hasAudio: stored.hasAudio ?? undefined, createdAt: now, updatedAt: now });
         const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
           ? [asset.id]
           : [...new Set([...(content.mediaAssetIds ?? []), asset.id])];

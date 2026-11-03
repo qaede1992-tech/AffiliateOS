@@ -8,6 +8,7 @@ import type { Product } from "@affiliateos/shared";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
+import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 const execFile = promisify(execFileCallback);
 const DEFAULT_MAX_OUTPUT_BYTES = 45 * 1024 * 1024;
@@ -85,8 +86,18 @@ export class ProductPromoVideoRenderer {
     const existingVideo = existing.find((asset) => asset.kind === "video" && asset.bucket === this.storage.bucketName);
     if (existingVideo) return { generated: false, asset: existingVideo, reason: "A validated product video already exists." };
 
-    const image = existing.find((asset) => asset.kind === "image" && asset.bucket === this.storage.bucketName);
-    if (!image) return { generated: false, reason: "No validated product image is available in private storage." };
+    const image = existing.find((asset) =>
+      asset.kind === "image" &&
+      asset.bucket === this.storage.bucketName &&
+      hasCurrentVerifiedRights(asset) &&
+      (asset.rightsBasis === "user_owned" || asset.rightsBasis === "public_domain")
+    );
+    if (!image) {
+      return {
+        generated: false,
+        reason: "No verified private product image with a derivative-permitting rights basis is available."
+      };
+    }
     if (!this.storage.download) return { generated: false, reason: "Supabase Storage download is not available in this runtime." };
 
     let tempDir: string | undefined;
@@ -147,8 +158,13 @@ export class ProductPromoVideoRenderer {
         objectKey: stored.key,
         mimeType: "video/mp4",
         byteSize: videoBytes.byteLength,
+        width: 720,
+        height: 1280,
+        durationMs: VIDEO_DURATION_SECONDS * 1000,
+        hasAudio: false,
         sha256,
         sourceUrl: "generated:ffmpeg",
+        // A derivative is a new asset and must receive its own explicit review.
         sourcePublisher: "AffiliateOS",
         rightsStatus: "unverified",
         rightsBasis: null,

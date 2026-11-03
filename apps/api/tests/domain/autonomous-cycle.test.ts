@@ -30,6 +30,7 @@ describe("autonomous cycle", () => {
     const discovery = {
       async discover(product: { id: string }) { calls.push("discover:" + product.id); return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
       async listPublishableMediaProductIds() { calls.push("list-media"); return ["selected-image", "media-rejected"]; },
+      async listMediaReadinessScores() { calls.push("media-readiness"); return { "selected-image": 85, "media-rejected": 20 }; },
       async listVideoProductIds() {
         calls.push("list-videos");
         videoLookupCount += 1;
@@ -48,6 +49,7 @@ describe("autonomous cycle", () => {
       "list-media",
       "list-videos",
       "list-publishable-videos",
+      "media-readiness",
       "media-ready-selection",
       "render:selected-image",
       "list-publishable-videos",

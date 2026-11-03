@@ -1,6 +1,7 @@
-import { and, eq, inArray } from "drizzle-orm";
-import type { ProductMediaAsset, ProductMediaAssetRepository } from "../domain/product-media-ingestion.js";
-import { productMediaAssets } from "./schema.js";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../domain/product-media-ingestion.js";
+import { productMediaAssets, productMediaRightsAudits } from "./schema.js";
 
 type DatabaseExecutor = any;
 
@@ -12,6 +13,10 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   objectKey: row.objectKey,
   mimeType: row.mimeType as ProductMediaAsset["mimeType"],
   byteSize: row.byteSize,
+  width: row.width,
+  height: row.height,
+  durationMs: row.durationMs,
+  hasAudio: row.hasAudio,
   sha256: row.sha256,
   sourceUrl: row.sourceUrl,
   sourcePublisher: row.sourcePublisher,
@@ -43,6 +48,74 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     if (uniqueProductIds.length === 0) return [];
     return (await this.db.select().from(productMediaAssets).where(inArray(productMediaAssets.productId, uniqueProductIds)))
       .map(toAsset);
+  }
+
+  async reviewRights(assetId: string, productId: string, review: ProductMediaRightsReviewCommand): Promise<ProductMediaAsset | undefined> {
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      const existingRows = await tx.select().from(productMediaAssets).where(and(
+        eq(productMediaAssets.id, assetId),
+        eq(productMediaAssets.productId, productId)
+      )).limit(1).for("update");
+      const existing = existingRows[0];
+      if (!existing) return undefined;
+
+      const reviewedAt = new Date().toISOString();
+      const rightsUpdate = review.status === "verified"
+        ? {
+            rightsStatus: "verified",
+            rightsBasis: review.rightsBasis ?? null,
+            rightsEvidenceUrl: review.rightsEvidenceUrl ?? null,
+            rightsVerifiedAt: reviewedAt,
+            sourcePublisher: review.sourcePublisher ?? null
+          }
+        : { rightsStatus: "revoked" };
+
+      const updatedRows = await tx.update(productMediaAssets).set(rightsUpdate).where(and(
+        eq(productMediaAssets.id, assetId),
+        eq(productMediaAssets.productId, productId)
+      )).returning();
+      const updated = updatedRows[0];
+      if (!updated) return undefined;
+
+      await tx.insert(productMediaRightsAudits).values({
+        id: randomUUID(),
+        assetId,
+        productId,
+        actorId: review.actorId,
+        actorRole: review.actorRole,
+        action: review.status === "verified" ? "verify" : "revoke",
+        reason: review.reason,
+        previousRightsStatus: existing.rightsStatus,
+        newRightsStatus: updated.rightsStatus,
+        rightsBasis: updated.rightsBasis,
+        rightsEvidenceUrl: updated.rightsEvidenceUrl,
+        sourcePublisher: updated.sourcePublisher,
+        createdAt: reviewedAt
+      });
+      return toAsset(updated);
+    });
+  }
+
+  async listRightsAudits(productId: string, assetId: string): Promise<ProductMediaRightsAudit[]> {
+    const rows = await this.db.select().from(productMediaRightsAudits).where(and(
+      eq(productMediaRightsAudits.productId, productId),
+      eq(productMediaRightsAudits.assetId, assetId)
+    )).orderBy(desc(productMediaRightsAudits.createdAt)).limit(50);
+    return rows.map((row: typeof productMediaRightsAudits.$inferSelect) => ({
+      id: row.id,
+      assetId: row.assetId,
+      productId: row.productId,
+      actorId: row.actorId,
+      actorRole: row.actorRole,
+      action: row.action as ProductMediaRightsAudit["action"],
+      reason: row.reason,
+      previousRightsStatus: row.previousRightsStatus,
+      newRightsStatus: row.newRightsStatus,
+      rightsBasis: row.rightsBasis as ProductMediaRightsAudit["rightsBasis"],
+      rightsEvidenceUrl: row.rightsEvidenceUrl,
+      sourcePublisher: row.sourcePublisher,
+      createdAt: row.createdAt
+    }));
   }
 
   async save(asset: ProductMediaAsset): Promise<ProductMediaAsset> {

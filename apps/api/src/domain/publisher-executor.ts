@@ -98,6 +98,8 @@ export class PublisherExecutor {
     const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
     const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
     if (requireProductMediaRights) {
+      // Apply the provenance gate to product-scoped assets while preserving
+      // legacy URL/content-scoped publisher paths during this rollout.
       await assertProductMediaRightsForPublication(resolved, linkedProductIds, this.productMediaAssets);
     }
     return resolvePublisherMediaAssets(content, resolved, this.mediaStorage, linkedProductIds);

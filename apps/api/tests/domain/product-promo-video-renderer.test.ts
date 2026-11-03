@@ -25,6 +25,11 @@ const imageAsset: ProductMediaAsset = {
   byteSize: imageBytes.byteLength,
   sha256: "a".repeat(64),
   sourceUrl: "https://cdn.example.test/product.png",
+  sourcePublisher: "Product owner",
+  rightsStatus: "verified",
+  rightsBasis: "user_owned",
+  rightsEvidenceUrl: "https://publisher.example.test/rights",
+  rightsVerifiedAt: "2026-11-02T00:00:00.000Z",
   createdAt: "2026-10-31T00:00:00.000Z"
 };
 
@@ -66,6 +71,10 @@ test("passes the configured timeout while rendering and persisting a generated 9
   assert.equal(result.asset?.kind, "video");
   assert.equal(result.asset?.mimeType, "video/mp4");
   assert.equal(result.asset?.sourceUrl, "generated:ffmpeg");
+  assert.equal(result.asset?.rightsStatus, "unverified");
+  assert.equal(result.asset?.rightsBasis, null);
+  assert.equal(result.asset?.rightsEvidenceUrl, null);
+  assert.equal(result.asset?.sourcePublisher, "AffiliateOS");
   assert.equal(assets.length, 2);
   assert.equal(uploaded.length, 1);
 });
@@ -89,7 +98,7 @@ test("does not render or download when no validated product image exists", async
   });
   const result = await renderer.render(product);
   assert.equal(result.generated, false);
-  assert.match(result.reason ?? "", /No validated product image/);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
   assert.equal(downloads, 0);
   assert.equal(renders, 0);
 });
@@ -224,6 +233,53 @@ test("removes only a duplicate losing upload when the repository returns the con
   assert.equal(result.asset?.objectKey, winner.objectKey);
   assert.equal(removed.length, 1);
   assert.notEqual(removed[0], winner.objectKey);
+});
+
+
+test("does not create derivatives from unverified source images", async () => {
+  const unverified = { ...imageAsset, rightsStatus: "unverified" as const, rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null };
+  let downloads = 0;
+  let renders = 0;
+  const storage = {
+    bucketName: "affiliate-media",
+    async download() { downloads++; return imageBytes; },
+    async upload() { throw new Error("must not upload"); },
+    async remove() {}
+  };
+  const repository = {
+    async listByProduct() { return [unverified]; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const renderer = new ProductPromoVideoRenderer(storage as never, repository, {
+    runProcess: async () => { renders++; }
+  });
+  const result = await renderer.render(product);
+  assert.equal(result.generated, false);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
+  assert.equal(downloads, 0);
+  assert.equal(renders, 0);
+});
+
+test("does not assume a generic license permits derivative video creation", async () => {
+  const licensed = { ...imageAsset, rightsBasis: "license" as const };
+  let downloads = 0;
+  const storage = {
+    bucketName: "affiliate-media",
+    async download() { downloads++; return imageBytes; },
+    async upload() { throw new Error("must not upload"); },
+    async remove() {}
+  };
+  const repository = {
+    async listByProduct() { return [licensed]; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const renderer = new ProductPromoVideoRenderer(storage as never, repository, {});
+  const result = await renderer.render(product);
+  assert.equal(result.generated, false);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
+  assert.equal(downloads, 0);
 });
 
 

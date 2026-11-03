@@ -103,6 +103,21 @@ test("publisher re-reads current product-media rights immediately before provide
 });
 
 
+test("blocks registered product source URLs without current verified rights before provider dispatch", async () => {
+  const productSourceUrl: MediaAsset = { ...media, source: "url", reference: "https://cdn.example.test/video.mp4" };
+  const unverified = await setup("unverified", productSourceUrl);
+  await assert.rejects(
+    unverified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z")),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+  assert.equal(unverified.getProviderCalls(), 0);
+
+  const verified = await setup("verified", productSourceUrl);
+  const result = await verified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  assert.equal(result.status, "published");
+  assert.equal(verified.getProviderCalls(), 1);
+});
+
 test("keeps legacy external URL media publishable without changing the TikTok dispatch path", async () => {
   const legacyUrl: MediaAsset = {
     ...media,

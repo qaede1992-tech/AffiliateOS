@@ -5,6 +5,8 @@ export type OpportunityScoringInput = {
   offers: AffiliateOffer[];
   audience?: AudienceSegment[];
   targetPriceMaxCents?: number;
+  /** 0-100 readiness from current, rights-verified, persisted product media. */
+  mediaReadinessScore?: number;
 };
 
 export type OpportunityScoreBreakdown = {
@@ -17,6 +19,7 @@ export type OpportunityScoreBreakdown = {
   socialProof: number;
   priceAppeal: number;
   availability: number;
+  mediaReadiness?: number;
   /** Percentage of the fixed scoring model supported by observed data. */
   dataConfidence: number;
   confidencePenalty: number;
@@ -33,7 +36,7 @@ const logScore = (value: number, scale: number) => {
 };
 const DISCOVERY_SIGNAL_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 const audienceCategories: Record<AudienceSegment, string[]> = { beauty: ["beauty", "makeup", "cosmetic", "skincare"], skincare: ["skincare", "skin", "serum", "moisturizer", "cosmetic"], baby: ["baby", "infant", "newborn", "diaper"], parenting: ["parent", "parenting", "baby", "family"], fashion: ["fashion", "clothing", "apparel", "shoes", "dress"], home: ["home", "decor", "furniture", "storage"], kitchen: ["kitchen", "cook", "cooking", "bake", "utensil"], electronics: ["electronic", "phone", "laptop", "gadget", "computer"], lifestyle: ["lifestyle", "wellness", "fitness", "travel"], "deal-hunters": ["deal", "discount", "sale", "promo", "bundle"] };
-const WEIGHTS = { commission: 25, demand: 20, audienceFit: 20, socialProof: 10, priceAppeal: 10, availability: 15 } as const;
+const WEIGHTS = { commission: 22.5, demand: 18, audienceFit: 18, socialProof: 9, priceAppeal: 9, availability: 13.5, mediaReadiness: 10 } as const;
 type Evidence = { score: number; confidence: number };
 function weightedAverage(parts: Array<{ score: number; weight: number; confidence?: number }>): Evidence | undefined {
   const available = parts.filter((part) => Number.isFinite(part.score) && part.weight > 0);
@@ -131,13 +134,16 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
 
   // Missing evidence is neutral (50), never a false zero. Keep the denominator fixed
   // so a product cannot receive an inflated score merely because most signals are absent.
+  const mediaReadinessKnown = input.mediaReadinessScore !== undefined && Number.isFinite(input.mediaReadinessScore);
+  const mediaReadiness = mediaReadinessKnown ? clamp(input.mediaReadinessScore!) : 50;
   const score = clamp(
     (commissionEvidence?.score ?? 50) * WEIGHTS.commission / 100 +
     (demandEvidence?.score ?? 50) * WEIGHTS.demand / 100 +
     (audienceEvidence?.score ?? 50) * WEIGHTS.audienceFit / 100 +
     (socialEvidence?.score ?? 50) * WEIGHTS.socialProof / 100 +
     (priceEvidence?.score ?? 50) * WEIGHTS.priceAppeal / 100 +
-    (availabilityKnown ? availability : 50) * WEIGHTS.availability / 100
+    (availabilityKnown ? availability : 50) * WEIGHTS.availability / 100 +
+    mediaReadiness * WEIGHTS.mediaReadiness / 100
   );
   const dataConfidence = clamp(
     (commissionEvidence ? WEIGHTS.commission * commissionEvidence.confidence : 0) +
@@ -145,7 +151,8 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
     (audienceEvidence ? WEIGHTS.audienceFit : 0) +
     (socialEvidence ? WEIGHTS.socialProof * socialEvidence.confidence : 0) +
     (priceEvidence ? WEIGHTS.priceAppeal : 0) +
-    (availabilityKnown ? WEIGHTS.availability : 0)
+    (availabilityKnown ? WEIGHTS.availability : 0) +
+    (mediaReadinessKnown ? WEIGHTS.mediaReadiness : 0)
   );
 
   const reasons: string[] = [];
@@ -161,6 +168,8 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   if (audience.matched.length) reasons.push(`Matches ${audience.matched.join(", ")} audience intent`);
   if (priceEvidence && priceEvidence.score >= 60) reasons.push("Competitive price or discount signal");
   if (socialEvidence && socialProof >= 70) reasons.push("Strong rating and review evidence");
+  if (mediaReadinessKnown && mediaReadiness >= 80) reasons.push("Product media is technically ready for the target platforms");
+  if (mediaReadinessKnown && mediaReadiness < 50) reasons.push("Product media has technical readiness gaps");
   if (!offer) reasons.push("No active affiliate offer available");
   if (offer?.availability === "limited") reasons.push("Offer availability is limited");
   const missingSignals = [
@@ -183,7 +192,9 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
       audienceFit: Math.round(audience.score * 100) / 100,
       socialProof: Math.round((socialEvidence?.score ?? 50) * 100) / 100,
       priceAppeal: Math.round((priceEvidence?.score ?? 50) * 100) / 100,
-      availability: availabilityKnown ? availability : hasRejectedMatchingOffer ? 0 : 50, dataConfidence: Math.round(dataConfidence * 100) / 100,
+      availability: availabilityKnown ? availability : hasRejectedMatchingOffer ? 0 : 50,
+      mediaReadiness: Math.round(mediaReadiness * 100) / 100,
+      dataConfidence: Math.round(dataConfidence * 100) / 100,
       confidencePenalty: 0, total: Math.round(score * 100) / 100
     }
   };

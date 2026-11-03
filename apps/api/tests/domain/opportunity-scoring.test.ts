@@ -16,6 +16,15 @@ describe("opportunity scoring", () => {
     const result = scoreOpportunity({ product: product(), offers: [offer()], audience: ["skincare"] });
     assert.ok(result.score > 70); assert.equal(result.offerId, "offer-1"); assert.ok(result.breakdown.commission > 50); assert.equal(result.breakdown.audienceFit, 100); assert.ok(result.reasons.includes("Matches skincare audience intent"));
   });
+  it("includes verified product media readiness as a weighted scoring signal", () => {
+    const weakMedia = scoreOpportunity({ product: product(), offers: [offer()], audience: ["skincare"], mediaReadinessScore: 0 });
+    const readyMedia = scoreOpportunity({ product: product(), offers: [offer()], audience: ["skincare"], mediaReadinessScore: 100 });
+    assert.equal(weakMedia.breakdown.mediaReadiness, 0);
+    assert.equal(readyMedia.breakdown.mediaReadiness, 100);
+    assert.equal(readyMedia.score - weakMedia.score, 10);
+    assert.ok(readyMedia.reasons.includes("Product media is technically ready for the target platforms"));
+    assert.ok(weakMedia.reasons.includes("Product media has technical readiness gaps"));
+  });
   it("excludes inactive products from scoring", () => {
     const result = scoreOpportunity({ product: product({ status: "inactive" }), offers: [offer()], audience: ["skincare"] });
     assert.equal(result.score, 0);
