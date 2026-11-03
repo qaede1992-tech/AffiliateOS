@@ -98,6 +98,7 @@ try {
     ) AS acl
     LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
     WHERE owner.rolname = 'supabase_implicit_creator'
+      AND has_schema_privilege(owner.oid, 'public', 'CREATE')
       AND acl.privilege_type = 'EXECUTE'
   `);
   const implicitFindings = findPublicSchemaDefaultAclGrants(effectiveFunctionAclRows.rows);
