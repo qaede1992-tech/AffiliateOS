@@ -155,11 +155,12 @@ export class ProductPromoVideoRenderer {
         byteSize: videoBytes.byteLength,
         sha256,
         sourceUrl: "generated:ffmpeg",
-        sourcePublisher: image.sourcePublisher,
-        rightsStatus: "verified",
-        rightsBasis: image.rightsBasis,
-        rightsEvidenceUrl: image.rightsEvidenceUrl,
-        rightsVerifiedAt: image.rightsVerifiedAt,
+        // A derivative is a new asset and must receive its own explicit review.
+        sourcePublisher: "AffiliateOS",
+        rightsStatus: "unverified",
+        rightsBasis: null,
+        rightsEvidenceUrl: null,
+        rightsVerifiedAt: null,
         createdAt: new Date().toISOString()
       };
       try {
