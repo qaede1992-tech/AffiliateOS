@@ -54,6 +54,11 @@ export type ProductMediaRightsReviewInput =
   | { status: "verified"; rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string }
   | { status: "revoked"; reason: string };
 
+export interface ProductMediaRightsAuditView {
+  id: string; assetId: string; productId: string; actorId: string; actorRole: string;
+  action: "verify" | "revoke"; reason: string; previousRightsStatus: string; newRightsStatus: string;
+  rightsBasis: ProductMediaRightsBasis | null; rightsEvidenceUrl: string | null; sourcePublisher: string | null; createdAt: string;
+}
 export interface AffiliateOfferVerification extends AffiliateOffer {
   affiliateId?: string;
   affiliateName?: string;
@@ -72,6 +77,7 @@ export const api = {
   offers: () => get<ListResponse<Offer>>("/api/v1/offers"), createOffer: (input: CreateOfferRequest) => post<Offer>("/api/v1/offers", input),
   conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"), createConversion: (input: CreateConversionRequest) => post<Conversion>("/api/v1/conversions", input), commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),
   productMediaAssets: (productId: string) => get<ListResponse<ProductMediaAssetView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets`),
+  productMediaRightsAudits: (productId: string, assetId: string) => get<ListResponse<ProductMediaRightsAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights-audits`),
   productMediaPreview: (productId: string, assetId: string) => get<{ url: string; expiresInSeconds: number }>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/preview`),
   reviewProductMediaRights: (productId: string, assetId: string, input: ProductMediaRightsReviewInput) => patch<ProductMediaAssetView>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights`, input),
   marketplaceProviders: () => get<ListResponse<MarketplaceProviderInfo>>("/api/v1/marketplaces/providers"), marketplaceConnections: () => get<ListResponse<MarketplaceConnectionView>>("/api/v1/marketplaces"), marketplaceSetEnabled: (connectionSlug: string, enabled: boolean) => put<MarketplaceConnectionView>(`/api/v1/marketplaces/${encodeURIComponent(connectionSlug)}/enabled`, enabled ? { enabled: true, confirmation: "CONFIRM_MARKETPLACE_CONNECTION" } : { enabled: false }), products: () => get<ListResponse<Product>>("/api/v1/products"), affiliateOffers: () => get<ListResponse<AffiliateOffer>>("/api/v1/affiliate-offers"), affiliateOfferVerification: () => get<ListResponse<AffiliateOfferVerification>>("/api/v1/affiliate-offers/verification"),
