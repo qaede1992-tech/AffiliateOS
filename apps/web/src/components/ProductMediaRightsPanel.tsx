@@ -11,6 +11,7 @@ const basisOptions: Array<{ value: ProductMediaRightsBasis; label: string }> = [
   { value: "platform_authorization", label: "Otorisasi platform" }
 ];
 const initialForm = (): ReviewForm => ({ rightsBasis: "explicit_permission", rightsEvidenceUrl: "", sourcePublisher: "", reason: "" });
+const safeEvidenceUrl = (value: string | null): string | undefined => { try { const url = new URL(value ?? ""); return url.protocol === "https:" && !url.username && !url.password ? url.toString() : undefined; } catch { return undefined; } };
 
 export function ProductMediaRightsPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -138,7 +139,7 @@ export function ProductMediaRightsPanel() {
                 </div>
                 <small>{(asset.byteSize / 1024).toFixed(1)} KiB · SHA-256 {asset.sha256.slice(0, 16)}…</small>
                 {asset.rightsStatus === "verified" && <p className="analytics-note">Dasar: {asset.rightsBasis} · Penerbit: {asset.sourcePublisher} · Diverifikasi: {asset.rightsVerifiedAt ? new Date(asset.rightsVerifiedAt).toLocaleString("id-ID") : "—"}</p>}
-                {asset.rightsEvidenceUrl && <p><a href={asset.rightsEvidenceUrl} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
+                {safeEvidenceUrl(asset.rightsEvidenceUrl) && <p><a href={safeEvidenceUrl(asset.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
                 <div className="affiliate-form">
                   <label htmlFor={`rights-basis-${asset.id}`}>Dasar hak</label>
                   <select id={`rights-basis-${asset.id}`} value={form.rightsBasis} onChange={(event) => updateForm(asset.id, "rightsBasis", event.target.value)} disabled={busyAssetId === asset.id}>
