@@ -33,6 +33,22 @@ export interface ProductMediaRightsReviewCommand {
   reason: string;
 }
 
+export interface ProductMediaRightsAudit {
+  id: string;
+  assetId: string;
+  productId: string;
+  actorId: string;
+  actorRole: string;
+  action: "verify" | "revoke";
+  reason: string;
+  previousRightsStatus: string;
+  newRightsStatus: string;
+  rightsBasis: ProductMediaAsset["rightsBasis"];
+  rightsEvidenceUrl: string | null;
+  sourcePublisher: string | null;
+  createdAt: string;
+}
+
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   listByProduct(productId: string): Promise<ProductMediaAsset[]>;
@@ -43,6 +59,7 @@ export interface ProductMediaAssetRepository {
    * Repositories without that transaction must omit this method so the HTTP route fails closed.
    */
   reviewRights?(assetId: string, productId: string, review: ProductMediaRightsReviewCommand): Promise<ProductMediaAsset | undefined>;
+  listRightsAudits?(productId: string, assetId: string): Promise<ProductMediaRightsAudit[]>;
 }
 
 export interface ProductMediaIngestionPolicy {
