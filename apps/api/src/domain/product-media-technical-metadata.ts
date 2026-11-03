@@ -108,7 +108,7 @@ const mp4Metadata = (bytes: Uint8Array): ProductMediaTechnicalMetadata => {
       const duration = version === 1
         ? Number(new DataView(bytes.buffer, bytes.byteOffset + durationOffset, 8).getBigUint64(0))
         : uint32(bytes, durationOffset);
-      if (timescale > 0 && Number.isSafeInteger(duration)) durationMs = Math.round(duration / timescale * 1000);
+      if (timescale > 0 && Number.isSafeInteger(duration) && duration > 0) durationMs = Math.round(duration / timescale * 1000);
     }
   }
   let width: number | null = null;
