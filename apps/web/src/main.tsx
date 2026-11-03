@@ -15,6 +15,7 @@ import { IntegrationSetupPanel } from "./components/IntegrationSetupPanel";
 import { ShopeeCsvImportPanel } from "./components/ShopeeCsvImportPanel";
 import { ProductMediaIntakePanel } from "./components/ProductMediaIntakePanel";
 import { AutonomousObservabilityPanel } from "./components/AutonomousObservabilityPanel";
+import { ProductMediaRightsPanel } from "./components/ProductMediaRightsPanel";
 import { PublicSite } from "./PublicSite";
 import "./styles.css";
 
@@ -212,6 +213,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
             <a className="nav-item" href="#offers">Offers</a>
             <a className="nav-item" href="#marketplaces">Marketplace Connections</a>
             <a className="nav-item" href="#shopee-csv-import">Impor CSV Shopee</a>
+            <a className="nav-item" href="#product-media-rights">Review media produk</a>
             <a className="nav-item" href="#product-media-intake">Media Produk</a>
             <a className="nav-item" href="#conversions">Conversions</a>
             <a className="nav-item" href="#commissions">Commissions</a>
@@ -270,6 +272,8 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           )}
           <p className="analytics-note">Revenue and conversion metrics use only explicit conversion-to-tracking-link attribution; legacy conversions are not implicitly assigned to campaigns.</p>
         </section>
+
+        <ProductMediaRightsPanel />
 
         <WorkflowPanel />
 
