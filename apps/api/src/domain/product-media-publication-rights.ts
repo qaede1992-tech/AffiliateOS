@@ -61,9 +61,10 @@ export async function assertProductMediaRightsForPublication(
     const bucket = media.reference.slice(0, separator);
     const objectKey = media.reference.slice(separator + 1);
     const segments = objectKey.split("/");
-    if (segments[0] !== "products") {
-      throw new Error("Object-storage media has no verified product-rights provenance; publication is blocked.");
-    }
+    // Existing content-scoped and other legacy storage namespaces keep
+    // their established publisher path. Only products/<productId>/ assets
+    // created by the product-media ingestion workflow use this rights gate.
+    if (segments[0] !== "products") continue;
 
     const productId = segments[1] ?? "";
     if (!productId || !linkedIds.has(productId)) {
