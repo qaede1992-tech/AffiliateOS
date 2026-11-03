@@ -33,10 +33,13 @@ export interface MediaAssetRepository {
 export const isPublicMediaUrl = (reference: string): boolean => {
   try {
     const url = new URL(reference);
-    const hostname = url.hostname
-      .toLowerCase()
-      .replace(/^\\[|\\]$/g, "")
-      .replace(/\\.$/, "");
+    const rawHostname = url.hostname.toLowerCase();
+    const withoutBrackets = rawHostname.startsWith("[") && rawHostname.endsWith("]")
+      ? rawHostname.slice(1, -1)
+      : rawHostname;
+    const hostname = withoutBrackets.endsWith(".")
+      ? withoutBrackets.slice(0, -1)
+      : withoutBrackets;
     const localOnlyHostname = hostname === "localhost" ||
       hostname === "home.arpa" ||
       [".localhost", ".local", ".internal", ".invalid", ".lan", ".home.arpa"]
