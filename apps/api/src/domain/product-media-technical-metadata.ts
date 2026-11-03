@@ -113,8 +113,9 @@ const mp4Metadata = (bytes: Uint8Array): ProductMediaTechnicalMetadata => {
   }
   let width: number | null = null;
   let height: number | null = null;
-  let hasAudio = false;
-  for (const trak of boxes(bytes, moov.data, moov.end).filter((box) => box.type === "trak")) {
+  const tracks = boxes(bytes, moov.data, moov.end).filter((box) => box.type === "trak");
+  let hasAudio: boolean | null = tracks.length > 0 ? false : null;
+  for (const trak of tracks) {
     const hdlr = descendants(bytes, trak, ["mdia", "hdlr"]);
     if (hdlr && hdlr.data + 12 <= hdlr.end && ascii(bytes, hdlr.data + 8, 4) === "soun") hasAudio = true;
     const tkhd = boxes(bytes, trak.data, trak.end).find((box) => box.type === "tkhd");
