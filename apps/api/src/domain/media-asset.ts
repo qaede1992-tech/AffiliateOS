@@ -36,7 +36,7 @@ export const isPublicMediaUrl = (reference: string): boolean => {
       .replace(/\\.$/, "");
     const localOnlyHostname = hostname === "localhost" ||
       hostname === "home.arpa" ||
-      [".localhost", ".local", ".internal", ".test", ".invalid", ".lan", ".home.arpa"]
+      [".localhost", ".local", ".internal", ".invalid", ".lan", ".home.arpa"]
         .some((suffix) => hostname.endsWith(suffix));
 
     return url.protocol === "https:" &&
