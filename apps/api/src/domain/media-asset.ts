@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { EntityId, IsoTimestamp } from "@affiliateos/shared";
 
 export type MediaAssetKind = "video" | "image" | "thumbnail";
@@ -25,10 +26,29 @@ export interface MediaAssetRepository {
   save(asset: MediaAsset): Promise<MediaAsset>;
 }
 
+/**
+ * Applies a syntactic guard to publisher-facing media URLs. Network fetchers
+ * must still validate and pin DNS answers before downloading remote content.
+ */
 export const isPublicMediaUrl = (reference: string): boolean => {
   try {
     const url = new URL(reference);
-    return url.protocol === "https:" && Boolean(url.hostname);
+    const hostname = url.hostname
+      .toLowerCase()
+      .replace(/^\\[|\\]$/g, "")
+      .replace(/\\.$/, "");
+    const localOnlyHostname = hostname === "localhost" ||
+      hostname === "home.arpa" ||
+      [".localhost", ".local", ".internal", ".invalid", ".lan", ".home.arpa"]
+        .some((suffix) => hostname.endsWith(suffix));
+
+    return url.protocol === "https:" &&
+      Boolean(hostname) &&
+      hostname.includes(".") &&
+      !url.username &&
+      !url.password &&
+      isIP(hostname) === 0 &&
+      !localOnlyHostname;
   } catch {
     return false;
   }
@@ -37,7 +57,7 @@ export const isPublicMediaUrl = (reference: string): boolean => {
 export const validateMediaAsset = (asset: MediaAsset): void => {
   if (!asset.reference.trim()) throw new Error("Media asset reference is required.");
   if (asset.source === "url" && !isPublicMediaUrl(asset.reference)) {
-    throw new Error("URL media assets require an HTTPS URL.");
+    throw new Error("URL media assets require a credential-free public HTTPS URL.");
   }
   if (asset.byteSize !== undefined && (!Number.isSafeInteger(asset.byteSize) || asset.byteSize < 0)) {
     throw new Error("Media asset byteSize must be a non-negative integer.");
