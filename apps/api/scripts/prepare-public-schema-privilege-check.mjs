@@ -31,7 +31,14 @@ try {
     }
   }
 
-  console.log("Created/verified isolated anon and authenticated roles for public-schema privilege checks.");
+  // The production policy under test explicitly revokes PostgreSQL's built-in
+  // PUBLIC EXECUTE default for roles that can create functions in public.
+  // Mirror that safe baseline in the disposable CI database; the separate
+  // ACL fixture proves the guard still detects an unconfigured creator role.
+  await client.query("ALTER DEFAULT PRIVILEGES FOR ROLE affiliateos REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC");
+  await client.query("ALTER DEFAULT PRIVILEGES FOR ROLE pg_database_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC");
+
+  console.log("Created isolated anon/authenticated roles and configured the CI-only safe function default ACL baseline.");
 } finally {
   await client.end();
 }
