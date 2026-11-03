@@ -36,30 +36,38 @@ export class PublisherReadinessService {
     const accounts = this.socialAccounts ? await this.socialAccounts.list() : [];
     const readiness = await Promise.all(platforms.map(async (platform) => {
       const platformAccounts = accounts.filter((account) => account.platform === platform && account.status === "active");
-      const credentialResolvable = this.credentialResolver
-        ? await this.resolveAnyCredential(platformAccounts)
-        : false;
-      return this.get(platform, accounts, credentialResolvable);
+      const credentialResolvableAccountIds = this.credentialResolver
+        ? await this.resolveCredentialAccountIds(platformAccounts)
+        : new Set<string>();
+      return this.get(platform, accounts, credentialResolvableAccountIds);
     }));
     return readiness;
   }
 
-  get(platform: ContentPlatform, accounts: Awaited<ReturnType<SocialAccountRepository["list"]>> = [], credentialResolvable = this.credentialResolver === undefined ? this.credentialResolverConfigured : false): PublisherReadiness {
+  get(
+    platform: ContentPlatform,
+    accounts: Awaited<ReturnType<SocialAccountRepository["list"]>> = [],
+    credentialResolvable: boolean | ReadonlySet<string> = this.credentialResolver === undefined ? this.credentialResolverConfigured : false
+  ): PublisherReadiness {
     const publisherConfigured = this.publishers.some((publisher) => publisher.supports(platform));
     const platformAccounts = accounts.filter((account) => account.platform === platform && account.status === "active");
     const activeAccountConfigured = platformAccounts.length > 0;
     const credentialReferenceConfigured = platformAccounts.some((account) => Boolean(account.credentialReference?.trim()));
     const requiredScope = requiredScopesByPlatform[platform];
+    const isCredentialResolvable = (account: (typeof platformAccounts)[number]) =>
+      typeof credentialResolvable === "boolean" ? credentialResolvable : credentialResolvable.has(account.id);
+    const credentialResolvableAccounts = platformAccounts.filter(isCredentialResolvable);
+    const credentialResolvableForPlatform = credentialResolvableAccounts.length > 0;
     const scopeEvidenceAvailable = platformAccounts.some((account) => Array.isArray(account.connection?.grantedScopes));
-    const requiredScopeGranted = !requiredScope || !scopeEvidenceAvailable || platformAccounts.some((account) => {
+    const requiredScopeGranted = !requiredScope || !scopeEvidenceAvailable || credentialResolvableAccounts.some((account) => {
       const grantedScopes = account.connection?.grantedScopes;
-      return Array.isArray(grantedScopes) && grantedScopes.some((scope) => scope === requiredScope);
+      return Array.isArray(grantedScopes) && grantedScopes.includes(requiredScope);
     });
     const status: PublisherReadinessStatus = !publisherConfigured
       ? "unsupported"
-      : !this.credentialResolverConfigured || !activeAccountConfigured || !credentialReferenceConfigured || !credentialResolvable
+      : !this.credentialResolverConfigured || !activeAccountConfigured || !credentialReferenceConfigured || !credentialResolvableForPlatform
         ? "unconfigured"
-        : scopeEvidenceAvailable && !requiredScopeGranted
+        : !requiredScopeGranted
           ? "unconfigured"
           : "ready";
 
@@ -71,22 +79,29 @@ export class PublisherReadinessService {
       activeAccountConfigured,
       credentialReferenceConfigured,
       ...(activeAccountConfigured && requiredScope ? { requiredScope, requiredScopeGranted } : {}),
-      ...(activeAccountConfigured ? { credentialResolvable } : {})
+      ...(activeAccountConfigured ? { credentialResolvable: credentialResolvableForPlatform } : {})
     };
   }
 
-  private async resolveAnyCredential(accounts: Awaited<ReturnType<SocialAccountRepository["list"]>>): Promise<boolean> {
-    if (!this.credentialResolver) return false;
-    for (const account of accounts) {
+  private async resolveCredentialAccountIds(
+    accounts: Awaited<ReturnType<SocialAccountRepository["list"]>>
+  ): Promise<Set<string>> {
+    const resolver = this.credentialResolver;
+    if (!resolver) return new Set();
+
+    const resolutionByReference = new Map<string, Promise<boolean>>();
+    const resolvedAccountIds = await Promise.all(accounts.map(async (account) => {
       const reference = account.credentialReference?.trim();
-      if (!reference) continue;
-      try {
-        await this.credentialResolver.resolve(reference);
-        return true;
-      } catch {
-        // Keep readiness redacted; a failed secret lookup must never expose its value or error details.
+      if (!reference) return undefined;
+
+      let resolution = resolutionByReference.get(reference);
+      if (!resolution) {
+        resolution = resolver.resolve(reference).then(() => true).catch(() => false);
+        resolutionByReference.set(reference, resolution);
       }
-    }
-    return false;
+      return await resolution ? account.id : undefined;
+    }));
+
+    return new Set(resolvedAccountIds.filter((id): id is string => typeof id === "string"));
   }
 }
