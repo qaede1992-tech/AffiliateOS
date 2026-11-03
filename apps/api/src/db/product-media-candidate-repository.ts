@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "../domain/product-media-candidate.js";
 import { productMediaCandidates } from "./schema.js";
 
@@ -39,7 +39,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
   async listPendingByProduct(productId: string, limit = 20): Promise<ProductMediaCandidateRecord[]> {
     const boundedLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
     const rows = await this.db.select().from(productMediaCandidates)
-      .where(eq(productMediaCandidates.productId, productId))
+      .where(and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, "pending")))
       .orderBy(desc(productMediaCandidates.createdAt)).limit(boundedLimit);
     return rows.map(toCandidate);
   }
