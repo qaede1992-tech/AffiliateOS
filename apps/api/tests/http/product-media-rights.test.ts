@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../../src/app.js";
 import { createInMemoryServices } from "../../src/domain/container.js";
-import type { ProductMediaAsset, ProductMediaAssetRepository } from "../../src/domain/product-media-ingestion.js";
+import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsReviewCommand } from "../../src/domain/product-media-ingestion.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
 const assetId = "44444444-4444-4444-8444-444444444444";
@@ -24,17 +24,32 @@ const initialAsset: ProductMediaAsset = {
   createdAt: "2026-11-02T00:00:00.000Z"
 };
 
-function makeApp(role: "admin" | "operator" | "viewer" = "operator") {
+function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositoryConfigured = true) {
   let asset = { ...initialAsset };
+  let lastReview: ProductMediaRightsReviewCommand | undefined;
   const repository: ProductMediaAssetRepository = {
     async findByProductAndHash() { return undefined; },
     async listByProduct(id) { return id === productId ? [asset] : []; },
     async save(value) { asset = value; return value; },
-    async updateRights(id, ownerProductId, rights) {
-      if (id !== assetId || ownerProductId !== productId) return undefined;
-      asset = { ...asset, ...rights };
-      return asset;
-    }
+    ...(auditRepositoryConfigured ? {
+      async reviewRights(id: string, ownerProductId: string, review: ProductMediaRightsReviewCommand) {
+        if (id !== assetId || ownerProductId !== productId) return undefined;
+        lastReview = review;
+        if (review.status === "verified") {
+          asset = {
+            ...asset,
+            rightsStatus: "verified",
+            rightsBasis: review.rightsBasis ?? null,
+            rightsEvidenceUrl: review.rightsEvidenceUrl ?? null,
+            rightsVerifiedAt: new Date().toISOString(),
+            sourcePublisher: review.sourcePublisher ?? null
+          };
+        } else {
+          asset = { ...asset, rightsStatus: "revoked" };
+        }
+        return asset;
+      }
+    } : {})
   };
   const services = createInMemoryServices();
   services.productMediaAssets = repository;
@@ -42,11 +57,11 @@ function makeApp(role: "admin" | "operator" | "viewer" = "operator") {
     auth: { enabled: false, operatorId: "reviewer-test", role },
     rateLimit: { enabled: false, limit: 100, windowMs: 60_000 }
   });
-  return { app, getAsset: () => asset };
+  return { app, getAsset: () => asset, getReview: () => lastReview };
 }
 
-test("operator can list product media and verify rights with HTTPS evidence", async () => {
-  const { app, getAsset } = makeApp();
+test("admin can list product media and verify rights with credential-free HTTPS evidence and a reason", async () => {
+  const { app, getAsset, getReview } = makeApp();
   try {
     const listed = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-assets` });
     assert.equal(listed.statusCode, 200);
@@ -59,7 +74,8 @@ test("operator can list product media and verify rights with HTTPS evidence", as
         status: "verified",
         rightsBasis: "explicit_permission",
         rightsEvidenceUrl: "https://publisher.example.test/permission",
-        sourcePublisher: "Publisher Example"
+        sourcePublisher: "Publisher Example",
+        reason: "Reviewed the written permission for this exact image."
       }
     });
     assert.equal(response.statusCode, 200);
@@ -68,13 +84,16 @@ test("operator can list product media and verify rights with HTTPS evidence", as
     assert.equal(response.json().sourcePublisher, "Publisher Example");
     assert.ok(Date.parse(response.json().rightsVerifiedAt) <= Date.now());
     assert.equal(getAsset().rightsStatus, "verified");
+    assert.equal(getReview()?.actorId, "reviewer-test");
+    assert.equal(getReview()?.actorRole, "admin");
+    assert.equal(getReview()?.reason, "Reviewed the written permission for this exact image.");
   } finally {
     await app.close();
   }
 });
 
-test("operator can revoke rights without deleting the evidence trail", async () => {
-  const { app } = makeApp();
+test("admin can revoke rights with a reason while preserving provenance", async () => {
+  const { app, getAsset } = makeApp();
   try {
     await app.inject({
       method: "PATCH",
@@ -83,18 +102,36 @@ test("operator can revoke rights without deleting the evidence trail", async () 
         status: "verified",
         rightsBasis: "license",
         rightsEvidenceUrl: "https://publisher.example.test/license",
-        sourcePublisher: "Publisher Example"
+        sourcePublisher: "Publisher Example",
+        reason: "Reviewed the license terms."
       }
     });
     const response = await app.inject({
       method: "PATCH",
       url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
-      payload: { status: "revoked" }
+      payload: { status: "revoked", reason: "The license was withdrawn." }
     });
     assert.equal(response.statusCode, 200);
     assert.equal(response.json().rightsStatus, "revoked");
     assert.equal(response.json().rightsEvidenceUrl, "https://publisher.example.test/license");
     assert.equal(response.json().rightsVerifiedAt !== null, true);
+    assert.equal(getAsset().rightsStatus, "revoked");
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot read the review queue or change product media rights", async () => {
+  const { app } = makeApp("operator");
+  try {
+    const listed = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-assets` });
+    assert.equal(listed.statusCode, 403);
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
+      payload: { status: "revoked", reason: "Operator attempt." }
+    });
+    assert.equal(response.statusCode, 403);
   } finally {
     await app.close();
   }
@@ -106,7 +143,7 @@ test("viewer cannot change product media rights", async () => {
     const response = await app.inject({
       method: "PATCH",
       url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
-      payload: { status: "revoked" }
+      payload: { status: "revoked", reason: "Viewer attempt." }
     });
     assert.equal(response.statusCode, 403);
   } finally {
@@ -114,28 +151,70 @@ test("viewer cannot change product media rights", async () => {
   }
 });
 
-test("rights verification rejects non-HTTPS evidence and unknown assets", async () => {
+test("rights review fails closed when atomic audit storage is unavailable", async () => {
+  const { app, getAsset } = makeApp("admin", false);
+  try {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
+      payload: { status: "revoked", reason: "Audit repository unavailable." }
+    });
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.json().error, "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE");
+    assert.equal(getAsset().rightsStatus, "unverified");
+  } finally {
+    await app.close();
+  }
+});
+
+test("rights verification rejects non-HTTPS or credential-bearing evidence, missing reasons, and unknown assets", async () => {
   const { app } = makeApp();
   try {
-    const invalid = await app.inject({
+    const invalidHttp = await app.inject({
       method: "PATCH",
       url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
       payload: {
         status: "verified",
         rightsBasis: "license",
         rightsEvidenceUrl: "http://publisher.example.test/license",
+        sourcePublisher: "Publisher Example",
+        reason: "Invalid HTTP evidence."
+      }
+    });
+    assert.equal(invalidHttp.statusCode, 400);
+
+    const credentialBearing = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
+      payload: {
+        status: "verified",
+        rightsBasis: "license",
+        rightsEvidenceUrl: "https://user:password@publisher.example.test/license",
+        sourcePublisher: "Publisher Example",
+        reason: "Credential-bearing evidence URL."
+      }
+    });
+    assert.equal(credentialBearing.statusCode, 400);
+
+    const missingReason = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
+      payload: {
+        status: "verified",
+        rightsBasis: "license",
+        rightsEvidenceUrl: "https://publisher.example.test/license",
         sourcePublisher: "Publisher Example"
       }
     });
-    assert.equal(invalid.statusCode, 400);
+    assert.equal(missingReason.statusCode, 400);
 
-    const missing = await app.inject({
+    const missingAsset = await app.inject({
       method: "PATCH",
       url: `/api/v1/products/${productId}/media-assets/55555555-5555-4555-8555-555555555555/rights`,
-      payload: { status: "revoked" }
+      payload: { status: "revoked", reason: "Unknown asset." }
     });
-    assert.equal(missing.statusCode, 404);
-    assert.equal(missing.json().error, "PRODUCT_MEDIA_ASSET_NOT_FOUND");
+    assert.equal(missingAsset.statusCode, 404);
+    assert.equal(missingAsset.json().error, "PRODUCT_MEDIA_ASSET_NOT_FOUND");
   } finally {
     await app.close();
   }
