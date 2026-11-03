@@ -97,7 +97,8 @@ try {
       || COALESCE(public_function_acl.defaclacl, '{}'::aclitem[])
     ) AS acl
     LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
-    WHERE acl.privilege_type = 'EXECUTE'
+    WHERE has_schema_privilege(owner.oid, 'public', 'CREATE')
+      AND acl.privilege_type = 'EXECUTE'
       AND (acl.grantee = 0 OR grantee.rolname IN ('anon', 'authenticated'))
     ORDER BY schema_name, creator_role, object_type, grantee, privilege_type
   `);
