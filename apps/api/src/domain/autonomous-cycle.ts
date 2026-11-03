@@ -159,7 +159,8 @@ export class AutonomousCycleService {
           failedCount: 0,
           storedImageCount: 0,
           storedVideoCount: 0,
-          skippedReasonCounts: {} as Record<string, number>
+          skippedReasonCounts: {} as Record<string, number>,
+          catalogCandidateCount: 0
         };
         for (const selected of preliminary.selected) {
           const candidate = candidateList.find((item) => item.product.id === selected.product.id);
@@ -167,6 +168,7 @@ export class AutonomousCycleService {
           try {
             const discovery = await this.productMediaDiscovery.discover(candidate.product, true);
             mediaDiscoverySummary.attemptedCount += 1;
+            mediaDiscoverySummary.catalogCandidateCount += discovery.candidatesFound ?? 0;
             for (const asset of discovery.stored) {
               if (asset.kind === "image") mediaDiscoverySummary.storedImageCount += 1;
               if (asset.kind === "video") mediaDiscoverySummary.storedVideoCount += 1;
@@ -277,6 +279,7 @@ export class AutonomousCycleService {
           preliminarySelectedCount: preliminary.selected.length,
           discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
           discoveryFailedCount: mediaDiscoverySummary.failedCount,
+          catalogCandidateCount: mediaDiscoverySummary.catalogCandidateCount,
           storedImageCount: mediaDiscoverySummary.storedImageCount,
           storedVideoCount: mediaDiscoverySummary.storedVideoCount,
           skippedReasonCounts: mediaDiscoverySummary.skippedReasonCounts,
