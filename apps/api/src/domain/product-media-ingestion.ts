@@ -14,10 +14,10 @@ export interface ProductMediaAsset {
   objectKey: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4";
   byteSize: number;
-  width: number | null;
-  height: number | null;
-  durationMs: number | null;
-  hasAudio: boolean | null;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+  hasAudio?: boolean | null;
   sha256: string;
   sourceUrl: string;
   sourcePublisher: string | null;
