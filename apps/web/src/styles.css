@@ -366,3 +366,12 @@ nav { display: grid; gap: 5px; }
   .product-media-rights-item { grid-template-columns: minmax(0, 1fr); }
   .product-media-rights-preview { min-height: 150px; }
 }
+
+.product-media-rights-history { margin: 14px 0; padding: 12px 14px; border: 1px solid #d0cabe; background: rgba(255, 253, 247, .5); }
+.product-media-rights-history summary { cursor: pointer; font-weight: 650; font-size: 12px; }
+.product-media-rights-history ol { display: grid; gap: 12px; margin: 14px 0 0; padding-left: 20px; }
+.product-media-rights-history li { padding-left: 4px; }
+.product-media-rights-history li strong, .product-media-rights-history li small { display: block; }
+.product-media-rights-history li small { margin-top: 4px; color: #777f7e; overflow-wrap: anywhere; }
+.product-media-rights-history li p { margin: 6px 0; font-size: 13px; }
+.product-media-rights-history li a { font-size: 12px; }
