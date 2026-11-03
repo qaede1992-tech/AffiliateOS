@@ -13,6 +13,8 @@ import { determineAutonomousHealthStatus } from "../domain/autonomous-health-sta
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
+import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
+import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 const adminGuard = { preHandler: requireAdmin };
@@ -175,7 +177,24 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get<{ Reply: ListResponse<Offer> }>("/api/v1/offers", async () => list(await services.offers.list())); app.post<{ Body: CreateOfferRequest; Reply: Offer }>("/api/v1/offers", writeGuard, async (request, reply) => reply.status(201).send(await services.offers.create(createOfferSchema.parse(request.body))));
   app.get<{ Reply: ListResponse<Conversion> }>("/api/v1/conversions", async () => list(await services.conversions.list())); app.post<{ Body: CreateConversionRequest; Reply: Conversion }>("/api/v1/conversions", writeGuard, async (request, reply) => reply.status(201).send(await services.conversions.create(createConversionSchema.parse(request.body))));
   app.post("/api/v1/conversions/:conversionId/attribution", writeGuard, async (request, reply) => { const params = conversionIdSchema.parse(request.params); const attribution = await services.attribution.create(params.conversionId, createConversionAttributionSchema.parse(request.body)); return reply.status(201).send(attribution); }); app.get("/api/v1/conversions/:conversionId/attribution", async (request) => { const { conversionId } = conversionIdSchema.parse(request.params); const attribution = await services.attribution.get(conversionId); return attribution ?? { conversionId, attributed: false }; });
-  app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => { const input = scoreProductSchema.parse(request.body); return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance); });
+  app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => {
+    const input = scoreProductSchema.parse(request.body);
+    const assets = services.productMediaAssets
+      ? (await services.productMediaAssets.listByProduct(input.product.id)).filter(hasCurrentVerifiedRights)
+      : [];
+    const platformScores = (["instagram", "tiktok"] as const).map((platform) => {
+      if (assets.length === 0) return 0;
+      return Math.max(...assets.map((asset) => {
+        const readiness = evaluateProductMediaAssetReadiness(platform, asset);
+        if (readiness.checks.length === 0) return 0;
+        const points = readiness.checks.reduce((sum, item) =>
+          sum + (item.status === "pass" ? 1 : item.status === "unknown" ? 0.35 : 0), 0);
+        return (points / readiness.checks.length) * 100;
+      }));
+    });
+    const mediaReadinessScore = platformScores.reduce((sum, score) => sum + score, 0) / platformScores.length;
+    return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance, mediaReadinessScore);
+  });
   app.post("/api/v1/shopee/affiliate-link-intakes", writeGuard, async (request, reply) => {
     const { affiliateUrl } = createShopeeAffiliateLinkIntakeSchema.parse(request.body);
     const intake = await services.shopeeAffiliateLinkIntakes.submit(affiliateUrl);
@@ -273,7 +292,32 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     if (!services.productMediaAssets) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights storage is not configured." });
-    return list(await services.productMediaAssets.listByProduct(productId));
+    let tiktokMaxVideoPostDurationSec: number | undefined;
+    try {
+      const tiktokAccounts = (await services.socialAccounts.list()).filter(
+        (account) => account.platform === "tiktok" && account.status === "active"
+      );
+      if (tiktokAccounts.length === 1) {
+        const account = await services.socialAccounts.getForPublisher(tiktokAccounts[0]!.id);
+        const creatorInfo = await services.tiktokCreatorInfo.getCreatorInfo(account);
+        if (typeof creatorInfo.maxVideoPostDurationSec === "number" &&
+          Number.isFinite(creatorInfo.maxVideoPostDurationSec) && creatorInfo.maxVideoPostDurationSec > 0) {
+          tiktokMaxVideoPostDurationSec = creatorInfo.maxVideoPostDurationSec;
+        }
+      }
+    } catch {
+      // Keep the technical preflight available during provider outages; duration remains unknown.
+    }
+    const assets = await services.productMediaAssets.listByProduct(productId);
+    return list(assets.map((asset) => ({
+      ...asset,
+      technicalReadiness: {
+        instagram: evaluateProductMediaAssetReadiness("instagram", asset),
+        tiktok: evaluateProductMediaAssetReadiness("tiktok", asset, {
+          ...(tiktokMaxVideoPostDurationSec === undefined ? {} : { tiktokMaxVideoPostDurationSec })
+        })
+      }
+    })));
   });
   app.get("/api/v1/products/:productId/media-assets/:assetId/preview", adminGuard, async (request, reply) => {
     const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
