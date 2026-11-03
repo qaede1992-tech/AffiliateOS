@@ -46,10 +46,12 @@ export async function assertProductMediaRightsForPublication(
 ): Promise<void> {
   const linkedIds = new Set(linkedProductIds);
   const productScoped: Array<{ bucket: string; objectKey: string; productId: string }> = [];
+  const externalUrls: string[] = [];
 
   for (const media of mediaAssets) {
     if (media.source === "url") {
-      throw new Error("Externally hosted media has no persisted rights provenance; publication is blocked.");
+      externalUrls.push(media.reference);
+      continue;
     }
     if (media.source !== "object-storage") continue;
     const separator = media.reference.indexOf("/");
@@ -73,15 +75,33 @@ export async function assertProductMediaRightsForPublication(
     productScoped.push({ bucket, objectKey, productId });
   }
 
+  const productIds = [...new Set([
+    ...productScoped.map((asset) => asset.productId),
+    ...linkedProductIds
+  ])];
+  const persisted = repository && productIds.length > 0
+    ? repository.listByProducts
+      ? await repository.listByProducts(productIds)
+      : (await Promise.all(productIds.map((id) => repository.listByProduct(id)))).flat()
+    : [];
+
+  // Legacy content URLs remain compatible unless the URL is also registered
+  // as a source for one of the linked products. Registered product-source URLs
+  // must pass the same persisted provenance check as product-scoped objects.
+  for (const reference of externalUrls) {
+    const matches = persisted.filter((asset) =>
+      linkedIds.has(asset.productId) && asset.sourceUrl === reference
+    );
+    if (matches.length === 0) continue;
+    if (matches.length !== 1 || !hasCurrentVerifiedRights(matches[0]!)) {
+      throw new Error("Product media rights are missing, ambiguous, unverified, or revoked; publication is blocked.");
+    }
+  }
+
   if (productScoped.length === 0) return;
   if (!repository) {
     throw new Error("Product media rights repository is unavailable; publication is blocked.");
   }
-
-  const productIds = [...new Set(productScoped.map((asset) => asset.productId))];
-  const persisted = repository.listByProducts
-    ? await repository.listByProducts(productIds)
-    : (await Promise.all(productIds.map((id) => repository.listByProduct(id)))).flat();
 
   for (const candidate of productScoped) {
     const matches = persisted.filter((asset) =>
