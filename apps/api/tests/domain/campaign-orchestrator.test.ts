@@ -585,7 +585,8 @@ describe("campaign orchestrator", () => {
       undefined,
       autonomousRuns,
       undefined,
-      storyService as never
+      storyService as never,
+      verifiedProductMediaAssets as never
     );
     const input = {
       opportunity,
