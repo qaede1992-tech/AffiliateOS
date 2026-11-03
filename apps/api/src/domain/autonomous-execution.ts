@@ -21,6 +21,8 @@ export type AutonomousExecutionInput = {
   publishableVideoProductIds?: string[];
   /** Product IDs with validated, persisted image or video assets. */
   publishableMediaProductIds?: string[];
+  /** Technical readiness score (0-100) derived from current verified product media. */
+  mediaReadinessScores?: Record<string, number>;
   /** When false, autonomous runs may create drafts but must not schedule publication. */
   publicationEnabled?: boolean;
   requireCommissionSignal?: boolean;
@@ -56,7 +58,7 @@ export class AutonomousExecutionService {
       performance,
       input.policiesByMarketplace,
       adaptiveExplorationRates,
-      new Set(input.publishableVideoProductIds ?? []), new Set(input.publishableMediaProductIds ?? [])
+      new Set(input.publishableVideoProductIds ?? []), new Set(input.publishableMediaProductIds ?? []), new Map(Object.entries(input.mediaReadinessScores ?? {}))
     );
     return { selected: selection.selected, rejected: selection.rejected, audit: selection.audit };
   }
@@ -139,7 +141,7 @@ export class AutonomousExecutionService {
     const adaptiveExplorationRates = this.adaptiveExploration
       ? await this.adaptiveExploration.getRates(selectionCandidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
-    const selection = this.selector.select(selectionCandidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requirePublishableVideo: input.requirePublishableVideo ?? input.policy?.requirePublishableVideo, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates, new Set(input.publishableVideoProductIds ?? []), new Set(input.publishableMediaProductIds ?? []));
+    const selection = this.selector.select(selectionCandidates, { ...input.policy, requirePublishableMedia: input.requirePublishableMedia ?? input.policy?.requirePublishableMedia, requirePublishableVideo: input.requirePublishableVideo ?? input.policy?.requirePublishableVideo, requireCommissionSignal: input.requireCommissionSignal ?? input.policy?.requireCommissionSignal }, performance, input.policiesByMarketplace, adaptiveExplorationRates, new Set(input.publishableVideoProductIds ?? []), new Set(input.publishableMediaProductIds ?? []), new Map(Object.entries(input.mediaReadinessScores ?? {})));
     const auditByProductId = new Map<string, OpportunitySelectionAudit>();
     if (this.decisionAudits) {
       const createdAt = new Date().toISOString();
