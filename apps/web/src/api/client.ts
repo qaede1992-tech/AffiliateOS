@@ -44,11 +44,25 @@ const put = <T>(path: string, body: unknown) => request<T>(path, { method: "PUT"
 const remove = (path: string) => request<void>(path, { method: "DELETE" });
 
 export type ProductMediaRightsBasis = "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization";
+export type MediaTechnicalReadinessStatus = "ready" | "review_required" | "not_ready";
+export interface MediaTechnicalReadinessCheck { key: string; status: "pass" | "fail" | "unknown"; detail: string }
+export interface MediaTechnicalReadinessView {
+  platform: "instagram" | "tiktok"; mediaAssetId: string; status: MediaTechnicalReadinessStatus;
+  checks: MediaTechnicalReadinessCheck[]; limitations: string[];
+}
+export interface ProductMediaRightsAuditView {
+  id: string; assetId: string; productId: string; actorId: string; actorRole: string;
+  action: "verify" | "revoke"; reason: string; previousRightsStatus: string; newRightsStatus: string;
+  rightsBasis: ProductMediaRightsBasis | null; rightsEvidenceUrl: string | null; sourcePublisher: string | null; createdAt: string;
+}
+
 export interface ProductMediaAssetView {
   id: string; productId: string; kind: "image" | "video"; bucket: string; objectKey: string;
-  mimeType: string; byteSize: number; sha256: string; sourceUrl: string; sourcePublisher: string | null;
+  mimeType: string; byteSize: number; width?: number | null; height?: number | null;
+  durationMs?: number | null; hasAudio?: boolean | null; sha256: string; sourceUrl: string; sourcePublisher: string | null;
   rightsStatus: "unverified" | "verified" | "revoked"; rightsBasis: ProductMediaRightsBasis | null;
   rightsEvidenceUrl: string | null; rightsVerifiedAt: string | null; createdAt: string;
+  technicalReadiness: { instagram: MediaTechnicalReadinessView; tiktok: MediaTechnicalReadinessView };
 }
 export type ProductMediaRightsReviewInput =
   | { status: "verified"; rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string }
@@ -74,6 +88,7 @@ export const api = {
   productMediaAssets: (productId: string) => get<ListResponse<ProductMediaAssetView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets`),
   productMediaPreview: (productId: string, assetId: string) => get<{ url: string; expiresInSeconds: number }>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/preview`),
   reviewProductMediaRights: (productId: string, assetId: string, input: ProductMediaRightsReviewInput) => patch<ProductMediaAssetView>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights`, input),
+  productMediaRightsAudits: (productId: string, assetId: string) => get<ListResponse<ProductMediaRightsAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights-audits`),
   marketplaceProviders: () => get<ListResponse<MarketplaceProviderInfo>>("/api/v1/marketplaces/providers"), marketplaceConnections: () => get<ListResponse<MarketplaceConnectionView>>("/api/v1/marketplaces"), marketplaceSetEnabled: (connectionSlug: string, enabled: boolean) => put<MarketplaceConnectionView>(`/api/v1/marketplaces/${encodeURIComponent(connectionSlug)}/enabled`, enabled ? { enabled: true, confirmation: "CONFIRM_MARKETPLACE_CONNECTION" } : { enabled: false }), products: () => get<ListResponse<Product>>("/api/v1/products"), updateProductMedia: (productId: string, input: { imageUrl?: string; videoUrl?: string }) => patch<Product>(`/api/v1/products/${encodeURIComponent(productId)}/media`, input), affiliateOffers: () => get<ListResponse<AffiliateOffer>>("/api/v1/affiliate-offers"), affiliateOfferVerification: () => get<ListResponse<AffiliateOfferVerification>>("/api/v1/affiliate-offers/verification"),
   campaigns: () => get<ListResponse<Campaign>>("/api/v1/campaigns"), campaign: (campaignId: string) => get<Campaign>(`/api/v1/campaigns/${campaignId}`), createCampaign: (input: CreateCampaignRequest) => post<Campaign>("/api/v1/campaigns", input), updateCampaign: (campaignId: string, input: UpdateCampaignRequest) => patch<Campaign>(`/api/v1/campaigns/${campaignId}`, input),
   campaignOffers: (campaignId: string) => get<ListResponse<CampaignOffer>>(`/api/v1/campaigns/${campaignId}/offers`), attachCampaignOffer: (campaignId: string, affiliateOfferId: string) => post<CampaignOffer>(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`, {}), detachCampaignOffer: (campaignId: string, affiliateOfferId: string) => remove(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`),
