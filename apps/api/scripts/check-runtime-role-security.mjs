@@ -77,6 +77,17 @@ try {
   );
   assert.equal(auditTrigger.rows[0]?.present, true, "The rights audit table must have its append-only trigger.");
 
+  const auditFunctionSearchPath = await client.query(
+    "SELECT COALESCE(array_to_string(p.proconfig, ','), '') AS settings " +
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace " +
+    "WHERE n.nspname = 'public' AND p.proname = 'prevent_product_media_rights_audit_mutation' AND p.pronargs = 0"
+  );
+  assert.equal(auditFunctionSearchPath.rowCount, 1, "The append-only audit trigger function must exist.");
+  assert.ok(
+    auditFunctionSearchPath.rows[0]?.settings.split(",").includes("search_path=pg_catalog"),
+    "The append-only audit trigger function must pin search_path to pg_catalog."
+  );
+
   const schemaCreate = await client.query(
     "SELECT has_schema_privilege('affiliateos_runtime', 'public', 'CREATE') AS can_create"
   );
