@@ -31,6 +31,15 @@ test("requires variant evidence before returning a strong model match", () => {
   assert.ok(result.reasons.some((reason) => reason.includes("varian")));
 });
 
+test("keeps name-only matches for human review when structured brand and model are unavailable", () => {
+  const result = evaluateProductMediaIdentity(
+    { name: "Wireless Headphones WH-1000XM5" },
+    "Wireless Headphones WH-1000XM5 Black"
+  );
+  assert.equal(result.status, "review_required");
+  assert.ok(result.score >= 65);
+});
+
 test("rejects a different model even when brand and product category are similar", () => {
   const mismatch = evaluateProductMediaIdentity(identity, "Sony WH-1000XM4 Wireless Headphones Black");
   assert.equal(mismatch.status, "rejected");

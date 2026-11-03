@@ -115,14 +115,18 @@ export const evaluateProductMediaIdentity = (
   if (primaryIdentifier && identifierMatches && brandMatches && variant && !variantMatches) {
     return { score, status: "review_required", reasons: [...reasons, "Model cocok, tetapi varian belum terbukti cocok; perlu pemeriksaan manual."] };
   }
-  if (!primaryIdentifier && brandMatches && titleScore >= 0.65 && score >= 65) {
-    return { score, status: "review_required", reasons: [...reasons, "Perlu verifikasi manusia untuk memastikan model, varian, dan sumber media."] };
+  if (!primaryIdentifier && brandMatches && titleScore >= 0.65) {
+    return {
+      score: Math.max(score, Math.round(titleScore * 100)),
+      status: "review_required",
+      reasons: [...reasons, "Kecocokan judul saja tidak membuktikan model atau varian; wajib diperiksa manusia."]
+    };
   }
   return { score, status: "rejected", reasons: [...reasons, "Kecocokan identitas belum cukup kuat."] };
 };
 
 const safeHttps = (value: unknown): string | null => {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || value.length > 2048) return null;
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.username || url.password || !url.hostname) return null;
@@ -187,7 +191,7 @@ export async function searchOpenverseProductMedia(
     if (!Array.isArray(payload.results)) return [];
 
     return payload.results.slice(0, maxResults).flatMap((item) => {
-      const title = typeof item.title === "string" ? item.title.trim() : "";
+      const title = typeof item.title === "string" ? item.title.trim().slice(0, 1000) : "";
       const imageUrl = safeHttps(item.url);
       const landingPageUrl = safeHttps(item.foreign_landing_url);
       const license = typeof item.license === "string" ? item.license.toLowerCase() : null;
@@ -200,12 +204,12 @@ export async function searchOpenverseProductMedia(
         title,
         imageUrl,
         landingPageUrl,
-        creator: typeof item.creator === "string" ? item.creator : null,
+        creator: typeof item.creator === "string" ? item.creator.slice(0, 500) : null,
         creatorUrl: safeHttps(item.creator_url),
         license,
-        licenseVersion: typeof item.license_version === "string" ? item.license_version : null,
+        licenseVersion: typeof item.license_version === "string" ? item.license_version.slice(0, 40) : null,
         licenseUrl: safeHttps(item.license_url),
-        sourcePublisher: typeof item.source === "string" ? item.source : null,
+        sourcePublisher: typeof item.source === "string" ? item.source.slice(0, 255) : null,
         identityScore: identityMatch.score,
         identityStatus: identityMatch.status,
         identityReasons: identityMatch.reasons,
