@@ -8,6 +8,9 @@ import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from "./product-promo-video-renderer.js";
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
+import { createHash, randomUUID } from "node:crypto";
+import { buildProductMediaSearchQuery, searchOpenverseProductMedia } from "./product-media-catalog-search.js";
+import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
   maxProductPageBytes?: number;
@@ -18,6 +21,7 @@ export interface ProductMediaDiscoveryResult extends ProductMediaIngestionResult
   productId: string;
   pageFetched: boolean;
   hasVideo: boolean;
+  candidatesFound?: number;
 }
 
 const isShopeeHost = (hostname: string): boolean => {
@@ -41,7 +45,8 @@ export class ProductMediaDiscoveryRunner {
     storage: SupabaseStorageClient,
     private readonly assets: ProductMediaAssetRepository,
     private readonly policy: ProductMediaDiscoveryPolicy,
-    private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps
+    private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps,
+    private readonly catalogCandidates?: ProductMediaCandidateRepository
   ) {
     this.bucketName = storage.bucketName;
     this.ingestion = new ProductMediaIngestionService(storage, assets, policy, fetcher);
@@ -158,6 +163,44 @@ export class ProductMediaDiscoveryRunner {
     // Shopee affiliate terms prohibit automated extraction of platform creative
     // materials. Never fetch or parse Shopee product HTML for media candidates.
     if (isShopeeHost(pageUrl.hostname)) {
+      let candidatesFound = 0;
+      if (this.catalogCandidates) {
+        try {
+          const identity = { name: product.name };
+          const query = buildProductMediaSearchQuery(identity);
+          const discovered = await searchOpenverseProductMedia(identity, { maxResults: 10 });
+          const now = new Date().toISOString();
+          const records = discovered.map((candidate) => ({
+            id: randomUUID(),
+            productId: product.id,
+            provider: candidate.provider,
+            candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
+            query,
+            title: candidate.title,
+            imageUrl: candidate.imageUrl,
+            landingPageUrl: candidate.landingPageUrl,
+            creator: candidate.creator,
+            creatorUrl: candidate.creatorUrl,
+            license: candidate.license,
+            licenseVersion: candidate.licenseVersion,
+            licenseUrl: candidate.licenseUrl,
+            sourcePublisher: candidate.sourcePublisher,
+            identityScore: candidate.identityScore,
+            identityStatus: candidate.identityStatus,
+            identityReasons: candidate.identityReasons,
+            reviewStatus: "pending" as const,
+            rightsStatus: "unverified" as const,
+            createdAt: now,
+            updatedAt: now
+          }));
+          const saved = await this.catalogCandidates.saveMany(records);
+          candidatesFound = saved.length;
+        } catch (error) {
+          skipped.push({ url: "https://api.openverse.org/v1/images/", reason: error instanceof Error ? "Openverse candidate search failed: " + error.message : "Openverse candidate search failed." });
+        }
+      } else {
+        skipped.push({ url: product.productUrl, reason: "Product media candidate repository is unavailable; catalog search was not persisted." });
+      }
       const catalogCandidates: ProductMediaCandidate[] = [];
       for (const candidate of [
         { kind: "video" as const, url: product.videoUrl },
@@ -186,11 +229,12 @@ export class ProductMediaDiscoveryRunner {
           pageFetched: false,
           hasVideo: stored.some((asset) => asset.kind === "video"),
           stored,
-          skipped: [...skipped, ...ingested.skipped]
+          skipped: [...skipped, ...ingested.skipped],
+          candidatesFound
         };
       }
       skipped.push({ url: product.productUrl, reason: "Shopee product-page media extraction is disabled; only explicitly supplied catalog media can be ingested." });
-      return { productId: product.id, pageFetched: false, hasVideo: false, stored: existing, skipped };
+      return { productId: product.id, pageFetched: false, hasVideo: false, stored: existing, skipped, candidatesFound };
     }
 
     try {
