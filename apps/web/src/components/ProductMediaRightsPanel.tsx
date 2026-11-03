@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api, type ProductMediaAssetView, type ProductMediaRightsAuditView, type ProductMediaRightsBasis } from "../api/client";
 
@@ -26,6 +26,7 @@ export function ProductMediaRightsPanel() {
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const requestSequence = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -44,11 +45,16 @@ export function ProductMediaRightsPanel() {
   }, []);
 
   const loadAssets = async (selectedProductId: string) => {
-    if (!selectedProductId) { setAssets([]); setPreviews({}); setAudits({}); return; }
+    const requestId = ++requestSequence.current;
+    setAssets([]);
+    setPreviews({});
+    setAudits({});
+    if (!selectedProductId) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
       const response = await api.productMediaAssets(selectedProductId);
+      if (requestId !== requestSequence.current) return;
       setAssets(response.data);
       const [signed, history] = await Promise.all([
         Promise.all(response.data.map(async (asset) => {
@@ -60,13 +66,24 @@ export function ProductMediaRightsPanel() {
           catch { return [asset.id, []] as const; }
         }))
       ]);
+      if (requestId !== requestSequence.current) return;
       setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
       setAudits(Object.fromEntries(history));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
+      if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
+  };
+
+  const selectProduct = (selectedProductId: string) => {
+    requestSequence.current += 1;
+    setAssets([]);
+    setPreviews({});
+    setAudits({});
+    setError(null);
+    setNotice(null);
+    setProductId(selectedProductId);
   };
 
   useEffect(() => { if (isAdmin && productId) void loadAssets(productId); }, [isAdmin, productId]);
@@ -120,7 +137,7 @@ export function ProductMediaRightsPanel() {
       <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
       <div className="affiliate-form">
         <label htmlFor="product-media-rights-product">Produk</label>
-        <select id="product-media-rights-product" value={productId} onChange={(event) => setProductId(event.target.value)}>
+        <select id="product-media-rights-product" value={productId} onChange={(event) => selectProduct(event.target.value)}>
           <option value="">Pilih produk</option>
           {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
         </select>
