@@ -463,3 +463,9 @@ nav { display: grid; gap: 5px; }
 .product-media-rights-history li small { margin-top: 4px; color: #777f7e; overflow-wrap: anywhere; }
 .product-media-rights-history li p { margin: 6px 0; font-size: 13px; }
 .product-media-rights-history li a { font-size: 12px; }
+
+
+.media-rights-confirmation { display: flex; align-items: flex-start; gap: 9px; color: #596669; font-size: 12px; line-height: 1.5; }
+.media-rights-confirmation input[type="checkbox"] { width: auto; min-width: 16px; margin: 2px 0 0; }
+.secondary-button { justify-self: start; padding: 8px 12px; border: 1px solid #c7c1b5; border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+.secondary-button:disabled { opacity: .6; cursor: not-allowed; }
