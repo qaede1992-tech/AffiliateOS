@@ -46,7 +46,7 @@ const productMedia = (rightsStatus: ProductMediaAsset["rightsStatus"]): ProductM
   rightsVerifiedAt: "2026-11-02T00:00:00.000Z", createdAt: "2026-11-02T00:00:00.000Z"
 });
 
-async function setup(rightsStatus: ProductMediaAsset["rightsStatus"]) {
+async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], mediaOverride: MediaAsset = media) {
   const contents = new InMemoryRepository<Content>();
   await contents.save(content);
   const products = new InMemoryProductCatalogRepository();
@@ -55,7 +55,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"]) {
   const socialAccounts = new InMemorySocialAccountRepository();
   await socialAccounts.save(account);
   const mediaAssets = new InMemoryMediaAssetRepository();
-  await mediaAssets.save(media);
+  await mediaAssets.save(mediaOverride);
   const contentProducts = {
     async listByContent() { return [{ contentId, productId, position: 0, role: "primary" as const, createdAt: content.createdAt }]; },
     async replaceForContent() { return []; }
@@ -87,6 +87,18 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"]) {
   );
   return { executor, contentService, getProviderCalls: () => providerCalls };
 }
+
+test("preserves the existing TikTok URL-media path while product-media rights remain unverified", async () => {
+  const legacyUrlMedia: MediaAsset = {
+    ...media,
+    source: "url",
+    reference: "https://cdn.example.test/legacy-tiktok-video.mp4"
+  };
+  const legacy = await setup("unverified", legacyUrlMedia);
+  const result = await legacy.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  assert.equal(result.status, "published");
+  assert.equal(legacy.getProviderCalls(), 1);
+});
 
 test("publisher re-reads current product-media rights immediately before provider dispatch", async () => {
   const unverified = await setup("unverified");
