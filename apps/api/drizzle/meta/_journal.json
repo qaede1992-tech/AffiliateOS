@@ -491,6 +491,13 @@
       "when": 1794050405016,
       "tag": "0073_product_media_technical_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1794050405017,
+      "tag": "0074_content_media_technical_metadata",
+      "breakpoints": true
     }
   ]
 }
