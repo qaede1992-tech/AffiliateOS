@@ -7,7 +7,7 @@ import { captureRawBody, getRawBody } from "./raw-body.js";
 import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
-import { requireOperator } from "./auth.js";
+import { requireAdmin, requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
@@ -15,6 +15,7 @@ import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
+const adminGuard = { preHandler: requireAdmin };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
   app.register(async (mediaApp) => {
@@ -269,21 +270,24 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
   });
   app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => { const { productId } = productMediaParamsSchema.parse(request.params); return services.marketplace.updateProductMedia(productId, updateProductMediaSchema.parse(request.body)); });
-  app.get("/api/v1/products/:productId/media-assets", writeGuard, async (request, reply) => {
+  app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     if (!services.productMediaAssets) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights storage is not configured." });
     return list(await services.productMediaAssets.listByProduct(productId));
   });
-  app.patch("/api/v1/products/:productId/media-assets/:assetId/rights", writeGuard, async (request, reply) => {
+  app.patch("/api/v1/products/:productId/media-assets/:assetId/rights", adminGuard, async (request, reply) => {
     const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
     const input = updateProductMediaRightsSchema.parse(request.body);
-    if (!services.productMediaAssets?.updateRights) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights review is not configured." });
-    const existing = (await services.productMediaAssets.listByProduct(productId)).find((asset) => asset.id === assetId);
-    if (!existing) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
-    const rights = input.status === "verified"
-      ? { rightsStatus: "verified" as const, rightsBasis: input.rightsBasis, rightsEvidenceUrl: input.rightsEvidenceUrl, rightsVerifiedAt: new Date().toISOString(), sourcePublisher: input.sourcePublisher }
-      : { rightsStatus: "revoked" as const, rightsBasis: existing.rightsBasis, rightsEvidenceUrl: existing.rightsEvidenceUrl, rightsVerifiedAt: existing.rightsVerifiedAt, sourcePublisher: existing.sourcePublisher };
-    const updated = await services.productMediaAssets.updateRights(assetId, productId, rights);
+    const repository = services.productMediaAssets;
+    const reviewRights = repository?.reviewRights;
+    if (!repository || !reviewRights) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Atomic product media rights review and audit storage are not configured." });
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    const updated = await reviewRights.call(repository, assetId, productId, {
+      ...input,
+      actorId,
+      actorRole: "admin"
+    });
     if (!updated) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
     auditSecurityEvent(request.log, request, "product_media_rights_updated", { productId, assetId, status: updated.rightsStatus, rightsBasis: updated.rightsBasis ?? undefined });
     return updated;
