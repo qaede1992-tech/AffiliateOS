@@ -114,10 +114,15 @@ const mp4Metadata = (bytes: Uint8Array): ProductMediaTechnicalMetadata => {
   let width: number | null = null;
   let height: number | null = null;
   const tracks = boxes(bytes, moov.data, moov.end).filter((box) => box.type === "trak");
-  let hasAudio: boolean | null = tracks.length > 0 ? false : null;
+  let hasAudioTrack = false;
+  let allTrackHandlersKnown = tracks.length > 0;
   for (const trak of tracks) {
     const hdlr = descendants(bytes, trak, ["mdia", "hdlr"]);
-    if (hdlr && hdlr.data + 12 <= hdlr.end && ascii(bytes, hdlr.data + 8, 4) === "soun") hasAudio = true;
+    if (!hdlr || hdlr.data + 12 > hdlr.end) {
+      allTrackHandlersKnown = false;
+    } else if (ascii(bytes, hdlr.data + 8, 4) === "soun") {
+      hasAudioTrack = true;
+    }
     const tkhd = boxes(bytes, trak.data, trak.end).find((box) => box.type === "tkhd");
     if (!tkhd || tkhd.end - tkhd.data < 8) continue;
     const candidateWidth = uint32(bytes, tkhd.end - 8) / 65536;
@@ -127,7 +132,7 @@ const mp4Metadata = (bytes: Uint8Array): ProductMediaTechnicalMetadata => {
       height = Math.round(candidateHeight);
     }
   }
-  return { width, height, durationMs, hasAudio };
+  return { width, height, durationMs, hasAudio: hasAudioTrack ? true : allTrackHandlersKnown ? false : null };
 };
 
 export const extractProductMediaTechnicalMetadata = (
