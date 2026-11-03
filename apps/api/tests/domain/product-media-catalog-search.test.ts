@@ -24,6 +24,13 @@ test("requires exact model/SKU evidence for a strong match", () => {
   assert.ok(match.score >= 90);
 });
 
+
+test("requires variant evidence before returning a strong model match", () => {
+  const result = evaluateProductMediaIdentity(identity, "Sony WH-1000XM5 Wireless Headphones");
+  assert.equal(result.status, "review_required");
+  assert.ok(result.reasons.some((reason) => reason.includes("varian")));
+});
+
 test("rejects a different model even when brand and product category are similar", () => {
   const mismatch = evaluateProductMediaIdentity(identity, "Sony WH-1000XM4 Wireless Headphones Black");
   assert.equal(mismatch.status, "rejected");
