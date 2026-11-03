@@ -72,7 +72,35 @@ try {
     CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
     LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
     WHERE d.defaclnamespace = 0 OR n.nspname = 'public'
-    ORDER BY schema_name, creator_role, object_type, grantee, acl.privilege_type
+
+    UNION ALL
+
+    -- pg_default_acl stores only overrides. PostgreSQL's built-in function
+    -- default (EXECUTE TO PUBLIC) must be evaluated for creators with no
+    -- global function override, then combined with schema-specific additions.
+    SELECT 'public' AS schema_name,
+           owner.rolname AS creator_role,
+           'f' AS object_type,
+           COALESCE(grantee.rolname, 'PUBLIC') AS grantee,
+           acl.privilege_type
+    FROM pg_roles owner
+    LEFT JOIN pg_default_acl global_function_acl
+      ON global_function_acl.defaclrole = owner.oid
+     AND global_function_acl.defaclnamespace = 0
+     AND global_function_acl.defaclobjtype = 'f'
+    LEFT JOIN pg_default_acl public_function_acl
+      ON public_function_acl.defaclrole = owner.oid
+     AND public_function_acl.defaclnamespace = 'public'::regnamespace
+     AND public_function_acl.defaclobjtype = 'f'
+    CROSS JOIN LATERAL aclexplode(
+      COALESCE(global_function_acl.defaclacl, acldefault('f', owner.oid))
+      || COALESCE(public_function_acl.defaclacl, '{}'::aclitem[])
+    ) AS acl
+    LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+    WHERE has_schema_privilege(owner.oid, 'public', 'CREATE')
+      AND acl.privilege_type = 'EXECUTE'
+      AND (acl.grantee = 0 OR grantee.rolname IN ('anon', 'authenticated'))
+    ORDER BY schema_name, creator_role, object_type, grantee, privilege_type
   `);
   const broadDefaultAclRows = findPublicSchemaDefaultAclGrants(defaultAclRows);
 
