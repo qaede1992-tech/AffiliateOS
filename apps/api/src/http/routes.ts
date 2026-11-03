@@ -18,6 +18,19 @@ import { hasCurrentVerifiedRights } from "../domain/product-media-publication-ri
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 const adminGuard = { preHandler: requireAdmin };
+const isMissingProductMediaCandidatesTable = (error: unknown): boolean => {
+  let current: unknown = error;
+  const visited = new Set<object>();
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+    if (visited.has(current)) break;
+    visited.add(current);
+    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown };
+    if (candidate.code === "42P01" && typeof candidate.message === "string" &&
+      /product_media_candidates/i.test(candidate.message)) return true;
+    current = candidate.cause;
+  }
+  return false;
+};
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
   app.register(async (mediaApp) => {
@@ -293,7 +306,17 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const { productId } = productMediaParamsSchema.parse(request.params);
     const repository = services.productMediaCandidates;
     if (!repository) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATES_UNAVAILABLE", message: "Product media candidate storage is not configured." });
-    return list(await repository.listPendingByProduct(productId, 50));
+    try {
+      return list(await repository.listPendingByProduct(productId, 50));
+    } catch (error) {
+      if (isMissingProductMediaCandidatesTable(error)) {
+        return reply.status(503).send({
+          error: "PRODUCT_MEDIA_CANDIDATES_SCHEMA_NOT_READY",
+          message: "Product media candidates are unavailable until migration 0076 is applied."
+        });
+      }
+      throw error;
+    }
   });
   app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
