@@ -143,6 +143,15 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
       .returning({ id: shopeeAffiliateLinkIntakes.id });
     return rows.length === 1;
   }
+  async updateResolving(entity: ShopeeAffiliateLinkIntake, expectedUpdatedAt: string) {
+    const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
+    const rows = await this.db.update(shopeeAffiliateLinkIntakes).set(values).where(and(
+      eq(shopeeAffiliateLinkIntakes.id, entity.id),
+      eq(shopeeAffiliateLinkIntakes.status, "resolving"),
+      eq(shopeeAffiliateLinkIntakes.updatedAt, expectedUpdatedAt)
+    )).returning({ id: shopeeAffiliateLinkIntakes.id });
+    return rows.length === 1;
+  }
 }
 
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
