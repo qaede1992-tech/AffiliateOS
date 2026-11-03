@@ -121,3 +121,31 @@ test("stale resolving claim is compare-and-set so only one worker can recover it
   ]);
   assert.equal(claims.filter(Boolean).length, 1);
 });
+
+
+test("an expired worker cannot overwrite a newer worker's claimed intake", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const staleAt = new Date(Date.now() - 5 * 60_000).toISOString();
+  const intake = {
+    id: "00000000-0000-4000-8000-000000000070",
+    marketplaceSlug: "shopee-affiliate-feed" as const,
+    affiliateUrl: "https://s.shopee.co.id/lease-guard",
+    normalizedUrlHash: "c".repeat(64),
+    status: "resolving" as const,
+    sourceMetadata: {},
+    createdAt: staleAt,
+    updatedAt: staleAt
+  };
+  await repository.saveIfAbsent(intake);
+  const claimedAt = new Date().toISOString();
+  assert.equal(await repository.claimStaleResolving(intake.id, staleAt, new Date(Date.now() - 60_000).toISOString(), claimedAt), true);
+  const staleCompletion = await repository.updateResolving({
+    ...intake,
+    status: "unresolved",
+    reason: "late worker",
+    updatedAt: new Date().toISOString()
+  }, staleAt);
+  assert.equal(staleCompletion, false);
+  assert.equal((await repository.findById(intake.id))?.status, "resolving");
+  assert.equal((await repository.findById(intake.id))?.updatedAt, claimedAt);
+});
