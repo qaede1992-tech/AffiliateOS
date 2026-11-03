@@ -96,7 +96,7 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     const rows = await this.db.select().from(productMediaRightsAudits).where(and(
       eq(productMediaRightsAudits.productId, productId),
       eq(productMediaRightsAudits.assetId, assetId)
-    )).orderBy(desc(productMediaRightsAudits.createdAt));
+    )).orderBy(desc(productMediaRightsAudits.createdAt)).limit(50);
     return rows.map((row: typeof productMediaRightsAudits.$inferSelect) => ({
       id: row.id,
       assetId: row.assetId,
