@@ -93,6 +93,8 @@ export function ProductMediaRightsPanel() {
   };
 
   const verify = async (asset: ProductMediaAssetView) => {
+    const selectedProductId = productId;
+    const selectionRequestId = requestSequence.current;
     const form = forms[asset.id] ?? initialForm();
     if (!form.rightsEvidenceUrl.trim() || !form.sourcePublisher.trim() || !form.reason.trim()) {
       setError("Lengkapi URL bukti HTTPS, pemilik/penerbit media, dan alasan pemeriksaan.");
@@ -100,29 +102,33 @@ export function ProductMediaRightsPanel() {
     }
     setBusyAssetId(asset.id); setError(null); setNotice(null);
     try {
-      await api.reviewProductMediaRights(productId, asset.id, {
+      await api.reviewProductMediaRights(selectedProductId, asset.id, {
         status: "verified", rightsBasis: form.rightsBasis, rightsEvidenceUrl: form.rightsEvidenceUrl.trim(),
         sourcePublisher: form.sourcePublisher.trim(), reason: form.reason.trim()
       });
+      if (selectionRequestId !== requestSequence.current) return;
       setNotice("Hak media berhasil diverifikasi dan dicatat dalam audit.");
-      await loadAssets(productId);
+      await loadAssets(selectedProductId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
-    } finally { setBusyAssetId(null); }
+    } finally { if (selectionRequestId === requestSequence.current) setBusyAssetId(null); }
   };
 
   const revoke = async (asset: ProductMediaAssetView) => {
+    const selectedProductId = productId;
+    const selectionRequestId = requestSequence.current;
     const reason = (forms[asset.id] ?? initialForm()).reason.trim();
     if (!reason) { setError("Isi alasan pencabutan hak media terlebih dahulu."); return; }
     if (!window.confirm("Cabut status hak media ini? Media tidak akan lolos gerbang publikasi produk.")) return;
     setBusyAssetId(asset.id); setError(null); setNotice(null);
     try {
-      await api.reviewProductMediaRights(productId, asset.id, { status: "revoked", reason });
+      await api.reviewProductMediaRights(selectedProductId, asset.id, { status: "revoked", reason });
+      if (selectionRequestId !== requestSequence.current) return;
       setNotice("Status hak media dicabut dan dicatat dalam audit.");
-      await loadAssets(productId);
+      await loadAssets(selectedProductId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Pencabutan hak media gagal.");
-    } finally { setBusyAssetId(null); }
+    } finally { if (selectionRequestId === requestSequence.current) setBusyAssetId(null); }
   };
 
   if (checkingRole) return <section className="analytics-section"><p className="empty">Memeriksa akses admin…</p></section>;
