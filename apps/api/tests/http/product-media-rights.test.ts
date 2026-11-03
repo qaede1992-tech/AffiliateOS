@@ -53,6 +53,7 @@ function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositor
   };
   const services = createInMemoryServices();
   services.productMediaAssets = repository;
+  services.productMediaPreviewUrl = async (ownerProductId, id) => ownerProductId === productId && id === assetId ? "https://storage.example.test/signed/product.jpg" : undefined;
   const app = createApp(services, {
     auth: { enabled: false, operatorId: "reviewer-test", role },
     rateLimit: { enabled: false, limit: 100, windowMs: 60_000 }
@@ -215,6 +216,35 @@ test("rights verification rejects non-HTTPS or credential-bearing evidence, miss
     });
     assert.equal(missingAsset.statusCode, 404);
     assert.equal(missingAsset.json().error, "PRODUCT_MEDIA_ASSET_NOT_FOUND");
+  } finally {
+    await app.close();
+  }
+});
+
+
+test("admin can request a short-lived signed preview for the exact persisted product media asset", async () => {
+  const { app } = makeApp("admin");
+  try {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/preview`
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().url, "https://storage.example.test/signed/product.jpg");
+    assert.equal(response.json().expiresInSeconds, 300);
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot request private product media previews", async () => {
+  const { app } = makeApp("operator");
+  try {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/products/${productId}/media-assets/${assetId}/preview`
+    });
+    assert.equal(response.statusCode, 403);
   } finally {
     await app.close();
   }
