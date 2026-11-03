@@ -98,7 +98,7 @@ test("does not render or download when no validated product image exists", async
   });
   const result = await renderer.render(product);
   assert.equal(result.generated, false);
-  assert.match(result.reason ?? "", /No validated product image/);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
   assert.equal(downloads, 0);
   assert.equal(renders, 0);
 });
@@ -256,7 +256,7 @@ test("does not create derivatives from unverified source images", async () => {
   });
   const result = await renderer.render(product);
   assert.equal(result.generated, false);
-  assert.match(result.reason ?? "", /verified rights that permit derivative creation/);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
   assert.equal(downloads, 0);
   assert.equal(renders, 0);
 });
