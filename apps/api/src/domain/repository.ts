@@ -20,6 +20,12 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
     this.rows.set(id, { ...current, updatedAt: claimedAt });
     return true;
   }
+  async updateResolving(intake: ShopeeAffiliateLinkIntake, expectedUpdatedAt: string) {
+    const current = this.rows.get(intake.id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return false;
+    this.rows.set(intake.id, intake);
+    return true;
+  }
 }
 export interface Repository<T extends { id: EntityId }> { list(): Promise<T[]>; findById(id: EntityId): Promise<T | undefined>; save(entity: T): Promise<T>; }
 export class InMemoryRepository<T extends { id: EntityId }> {
