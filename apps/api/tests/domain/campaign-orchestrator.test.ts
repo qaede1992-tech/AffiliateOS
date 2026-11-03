@@ -53,6 +53,19 @@ class StubMediaAssets {
   async findById(id: string) { return this.assets.find((asset) => asset.id === id); }
   async save(asset: any) { this.assets.push(asset); return asset; }
 }
+const verifiedProductMediaAssets = {
+  async listByProduct() {
+    return [{
+      id: "verified-video-fixture", productId: product.id, kind: "video", bucket: "affiliate-media",
+      objectKey: `products/${product.id}/verified.mp4`, mimeType: "video/mp4", byteSize: 1234,
+      sha256: "verified-fixture", sourceUrl: "https://cdn.example.test/verified.mp4",
+      sourcePublisher: "Example", rightsStatus: "verified", rightsBasis: "user_owned",
+      rightsEvidenceUrl: "https://example.test/rights", rightsVerifiedAt: "2026-10-01T00:00:00.000Z",
+      createdAt: "2026-10-01T00:00:00.000Z"
+    }];
+  }
+};
+
 class StubDistribution {
   scheduled: Content[] = [];
   listPublishers() { return [{ provider: "test", supports: () => true }]; }
@@ -236,7 +249,7 @@ describe("campaign orchestrator", () => {
   it("uses a deterministic tracking code for an orchestration key", async () => {
     const tracking = new StubTracking();
     const content = new StubContent();
-    await new CampaignOrchestrator(new StubCampaigns() as never, tracking as never, content as never).execute({
+    await new CampaignOrchestrator(new StubCampaigns() as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never).execute({
       opportunity, offer, product, idempotencyKey: "stable-run", platforms: ["tiktok"]
     });
     assert.equal(tracking.codes.length, 1);
@@ -247,7 +260,7 @@ describe("campaign orchestrator", () => {
     const campaigns = new StubCampaigns();
     const tracking = new StubTracking();
     const content = new StubContent();
-    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never);
+    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never);
     const input = { opportunity, offer, product, idempotencyKey: "run-1", platforms: ["tiktok", "instagram"] as const };
     const first = await orchestrator.execute(input);
     const second = await orchestrator.execute(input);
@@ -263,7 +276,7 @@ describe("campaign orchestrator", () => {
     const tracking = new StubTracking();
     tracking.list = async () => [{ ...link, status: "inactive" }];
     const content = new StubContent();
-    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never).execute({
       opportunity, offer, product, idempotencyKey: "inactive-link-run", platforms: ["tiktok"]
     });
     assert.equal(tracking.created, 1);
@@ -276,7 +289,7 @@ describe("campaign orchestrator", () => {
     const baseCode = `auto-${createHash("sha256").update("occupied-code-run:offer-1:0").digest("hex").slice(0, 32)}`;
     tracking.list = async () => [{ ...link, status: "inactive", code: baseCode }];
     const content = new StubContent();
-    await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+    await new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never).execute({
       opportunity, offer, product, idempotencyKey: "occupied-code-run", platforms: ["tiktok"]
     });
     assert.equal(tracking.created, 1);
@@ -311,7 +324,7 @@ describe("campaign orchestrator", () => {
     const campaigns = new StubCampaigns();
     const tracking = new StubTracking();
     const content = new StubContent();
-    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, autonomousRuns);
+    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, autonomousRuns, undefined, undefined, verifiedProductMediaAssets as never);
     await orchestrator.execute({ opportunity, offer, product, idempotencyKey: "run-1", platforms: ["tiktok"] });
     const run = await runs.findByIdempotencyKey("run-1");
     assert.ok(run);
@@ -353,7 +366,10 @@ describe("campaign orchestrator", () => {
       new StubContent() as never,
       undefined,
       undefined,
-      autonomousRuns
+      autonomousRuns,
+      undefined,
+      undefined,
+      verifiedProductMediaAssets as never
     );
 
     await assert.rejects(
