@@ -71,6 +71,10 @@ test("passes the configured timeout while rendering and persisting a generated 9
   assert.equal(result.asset?.kind, "video");
   assert.equal(result.asset?.mimeType, "video/mp4");
   assert.equal(result.asset?.sourceUrl, "generated:ffmpeg");
+  // The source's rights are not silently copied to a newly generated derivative.
+  assert.equal(result.asset?.rightsStatus, "unverified");
+  assert.equal(result.asset?.rightsBasis, null);
+  assert.equal(result.asset?.rightsEvidenceUrl, null);
   assert.equal(assets.length, 2);
   assert.equal(uploaded.length, 1);
 });
@@ -94,7 +98,32 @@ test("does not render or download when no validated product image exists", async
   });
   const result = await renderer.render(product);
   assert.equal(result.generated, false);
-  assert.match(result.reason ?? "", /No validated product image/);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
+  assert.equal(downloads, 0);
+  assert.equal(renders, 0);
+});
+
+test("does not create derivatives from a generic license without derivative permission", async () => {
+  const licensedImage = { ...imageAsset, rightsBasis: "license" as const };
+  let downloads = 0;
+  let renders = 0;
+  const storage = {
+    bucketName: "affiliate-media",
+    async download() { downloads++; return imageBytes; },
+    async upload() { throw new Error("must not upload"); },
+    async remove() {}
+  };
+  const repository = {
+    async listByProduct() { return [licensedImage]; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const renderer = new ProductPromoVideoRenderer(storage as never, repository, {
+    runProcess: async () => { renders++; }
+  });
+  const result = await renderer.render(product);
+  assert.equal(result.generated, false);
+  assert.match(result.reason ?? "", /derivative-permitting rights basis/);
   assert.equal(downloads, 0);
   assert.equal(renders, 0);
 });
@@ -126,7 +155,7 @@ test("does not render from a product image whose usage rights are unverified", a
   });
   const result = await renderer.render(product);
   assert.equal(result.generated, false);
-  assert.match(result.reason ?? "", /No validated product image/);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
   assert.equal(downloads, 0);
   assert.equal(renders, 0);
 });
