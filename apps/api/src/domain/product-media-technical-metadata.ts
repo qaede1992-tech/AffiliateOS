@@ -117,9 +117,15 @@ const mp4Metadata = (bytes: Uint8Array): ProductMediaTechnicalMetadata => {
   let hasAudio: boolean | null = tracks.length > 0 ? false : null;
   for (const trak of tracks) {
     const hdlr = descendants(bytes, trak, ["mdia", "hdlr"]);
-    if (hdlr && hdlr.data + 12 <= hdlr.end && ascii(bytes, hdlr.data + 8, 4) === "soun") hasAudio = true;
+    const handlerType = hdlr && hdlr.data + 12 <= hdlr.end
+      ? ascii(bytes, hdlr.data + 8, 4)
+      : undefined;
+    // Missing/unreadable track handlers cannot safely be interpreted as
+    // proof that the file has no audio track.
+    if (!handlerType && hasAudio !== true) hasAudio = null;
+    if (handlerType === "soun") hasAudio = true;
     const tkhd = boxes(bytes, trak.data, trak.end).find((box) => box.type === "tkhd");
-    if (!tkhd || tkhd.end - tkhd.data < 8) continue;
+    if (handlerType !== "vide" || !tkhd || tkhd.end - tkhd.data < 8) continue;
     const candidateWidth = uint32(bytes, tkhd.end - 8) / 65536;
     const candidateHeight = uint32(bytes, tkhd.end - 4) / 65536;
     if (candidateWidth > 0 && candidateHeight > 0 && width === null) {
