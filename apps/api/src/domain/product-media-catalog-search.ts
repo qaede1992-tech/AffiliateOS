@@ -115,8 +115,12 @@ export const evaluateProductMediaIdentity = (
   if (primaryIdentifier && identifierMatches && brandMatches && variant && !variantMatches) {
     return { score, status: "review_required", reasons: [...reasons, "Model cocok, tetapi varian belum terbukti cocok; perlu pemeriksaan manual."] };
   }
-  if (!primaryIdentifier && brandMatches && titleScore >= 0.65 && score >= 65) {
-    return { score, status: "review_required", reasons: [...reasons, "Perlu verifikasi manusia untuk memastikan model, varian, dan sumber media."] };
+  if (!primaryIdentifier && brandMatches && titleScore >= 0.65) {
+    return {
+      score: Math.max(score, Math.round(titleScore * 100)),
+      status: "review_required",
+      reasons: [...reasons, "Kecocokan judul saja tidak membuktikan model atau varian; wajib diperiksa manusia."]
+    };
   }
   return { score, status: "rejected", reasons: [...reasons, "Kecocokan identitas belum cukup kuat."] };
 };
