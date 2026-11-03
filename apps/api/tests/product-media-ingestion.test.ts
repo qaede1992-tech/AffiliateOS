@@ -152,7 +152,7 @@ const reviewAsset = (overrides: Record<string, unknown> = {}) => ({
   ...overrides
 });
 
-const makeRightsReviewRepository = (initial: ReturnType<typeof reviewAsset> | undefined, failAuditInsert = false) => {
+const makeRightsReviewRepository = (initial: ReturnType<typeof reviewAsset> | undefined, failAuditInsert = false, productMatches = true) => {
   let asset = initial ? structuredClone(initial) : undefined;
   const audits: Array<Record<string, unknown>> = [];
   const tx = {
@@ -160,7 +160,7 @@ const makeRightsReviewRepository = (initial: ReturnType<typeof reviewAsset> | un
       from: () => ({
         where: () => ({
           limit: () => ({
-            for: async () => asset ? [structuredClone(asset)] : []
+            for: async () => asset && productMatches ? [structuredClone(asset)] : []
           })
         })
       })
@@ -278,8 +278,9 @@ test("revoking rights preserves the original evidence and publisher in asset and
 });
 
 test("a product mismatch leaves the media asset and rights audit untouched", async () => {
-  const fixture = makeRightsReviewRepository(undefined);
-  const reviewed = await fixture.repository.reviewRights(reviewAsset().id, productId, {
+  const original = reviewAsset();
+  const fixture = makeRightsReviewRepository(original, false, false);
+  const reviewed = await fixture.repository.reviewRights(original.id, productId, {
     status: "verified",
     rightsBasis: "user_owned",
     actorId: "admin-42",
@@ -287,5 +288,5 @@ test("a product mismatch leaves the media asset and rights audit untouched", asy
     reason: "Mismatch probe"
   });
   assert.equal(reviewed, undefined);
-  assert.deepEqual(fixture.snapshot(), { asset: undefined, audits: [] });
+  assert.deepEqual(fixture.snapshot(), { asset: original, audits: [] });
 });
