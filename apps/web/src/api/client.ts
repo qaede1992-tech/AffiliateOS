@@ -44,11 +44,19 @@ const put = <T>(path: string, body: unknown) => request<T>(path, { method: "PUT"
 const remove = (path: string) => request<void>(path, { method: "DELETE" });
 
 export type ProductMediaRightsBasis = "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization";
+export type MediaTechnicalReadinessStatus = "ready" | "review_required" | "not_ready";
+export interface MediaTechnicalReadinessCheck { key: string; status: "pass" | "fail" | "unknown"; detail: string }
+export interface MediaTechnicalReadinessView {
+  platform: "instagram" | "tiktok"; mediaAssetId: string; status: MediaTechnicalReadinessStatus;
+  checks: MediaTechnicalReadinessCheck[]; limitations: string[];
+}
 export interface ProductMediaAssetView {
   id: string; productId: string; kind: "image" | "video"; bucket: string; objectKey: string;
-  mimeType: string; byteSize: number; sha256: string; sourceUrl: string; sourcePublisher: string | null;
+  mimeType: string; byteSize: number; width?: number | null; height?: number | null;
+  durationMs?: number | null; hasAudio?: boolean | null; sha256: string; sourceUrl: string; sourcePublisher: string | null;
   rightsStatus: "unverified" | "verified" | "revoked"; rightsBasis: ProductMediaRightsBasis | null;
   rightsEvidenceUrl: string | null; rightsVerifiedAt: string | null; createdAt: string;
+  technicalReadiness: { instagram: MediaTechnicalReadinessView; tiktok: MediaTechnicalReadinessView };
 }
 export type ProductMediaRightsReviewInput =
   | { status: "verified"; rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string }
