@@ -49,3 +49,11 @@ export async function requireOperator(request: FastifyRequest, reply: FastifyRep
   }
   return true;
 }
+
+export async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<true | FastifyReply> {
+  if (request.auth?.role !== "admin") {
+    auditSecurityEvent(request.log, request, "authorization_denied", { requiredRole: "admin" });
+    return reply.status(403).send({ error: "FORBIDDEN", message: "An authorized administrator is required." });
+  }
+  return true;
+}
