@@ -32,8 +32,12 @@ export const isPublicMediaUrl = (reference: string): boolean => {
     const url = new URL(reference);
     const hostname = url.hostname
       .toLowerCase()
-      .replace(/^\[|\]$/g, "")
-      .replace(/\.$/, "");
+      .replace(/^\\[|\\]$/g, "")
+      .replace(/\\.$/, "");
+    const localOnlyHostname = hostname === "localhost" ||
+      hostname === "home.arpa" ||
+      [".localhost", ".local", ".internal", ".test", ".invalid", ".lan", ".home.arpa"]
+        .some((suffix) => hostname.endsWith(suffix));
 
     return url.protocol === "https:" &&
       Boolean(hostname) &&
@@ -41,10 +45,7 @@ export const isPublicMediaUrl = (reference: string): boolean => {
       !url.username &&
       !url.password &&
       isIP(hostname) === 0 &&
-      hostname !== "localhost" &&
-      !hostname.endsWith(".localhost") &&
-      !hostname.endsWith(".local") &&
-      !hostname.endsWith(".internal");
+      !localOnlyHostname;
   } catch {
     return false;
   }
