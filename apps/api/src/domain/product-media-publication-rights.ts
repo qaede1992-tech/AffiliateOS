@@ -34,10 +34,10 @@ export const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
 };
 
 /**
- * Re-checks product-scoped object-storage media immediately before provider
- * dispatch. Only product-scoped objects with a persisted, currently verified
- * provenance row are accepted. Content-scoped and legacy object paths remain
- * blocked until their own auditable rights workflow exists.
+ * Re-checks product-scoped object-storage media and registered product source
+ * URLs immediately before provider dispatch. Product assets require a persisted,
+ * currently verified provenance row. Unregistered legacy URLs and content-scoped
+ * storage paths retain their established publisher behavior.
  */
 export async function assertProductMediaRightsForPublication(
   mediaAssets: MediaAsset[],
