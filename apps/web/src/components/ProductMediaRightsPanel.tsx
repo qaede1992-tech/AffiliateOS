@@ -27,6 +27,7 @@ export function ProductMediaRightsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const requestSequence = useRef(0);
+  const productSelectionSequence = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -77,6 +78,7 @@ export function ProductMediaRightsPanel() {
   };
 
   const selectProduct = (selectedProductId: string) => {
+    productSelectionSequence.current += 1;
     requestSequence.current += 1;
     setAssets([]);
     setPreviews({});
@@ -95,7 +97,7 @@ export function ProductMediaRightsPanel() {
 
   const verify = async (asset: ProductMediaAssetView) => {
     const selectedProductId = productId;
-    const selectionRequestId = requestSequence.current;
+    const selectionRequestId = productSelectionSequence.current;
     const form = forms[asset.id] ?? initialForm();
     if (!form.rightsEvidenceUrl.trim() || !form.sourcePublisher.trim() || !form.reason.trim()) {
       setError("Lengkapi URL bukti HTTPS, pemilik/penerbit media, dan alasan pemeriksaan.");
@@ -107,12 +109,12 @@ export function ProductMediaRightsPanel() {
         status: "verified", rightsBasis: form.rightsBasis, rightsEvidenceUrl: form.rightsEvidenceUrl.trim(),
         sourcePublisher: form.sourcePublisher.trim(), reason: form.reason.trim()
       });
-      if (selectionRequestId !== requestSequence.current) return;
+      if (selectionRequestId !== productSelectionSequence.current) return;
       setNotice("Hak media berhasil diverifikasi dan dicatat dalam audit.");
       await loadAssets(selectedProductId);
     } catch (requestError) {
-      if (selectionRequestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
-    } finally { if (selectionRequestId === requestSequence.current) setBusyAssetId(null); }
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Verifikasi hak media gagal.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
   const revoke = async (asset: ProductMediaAssetView) => {
