@@ -88,6 +88,25 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], mediaOverr
   return { executor, contentService, getProviderCalls: () => providerCalls };
 }
 
+test("blocks an external URL when it is registered as unverified product media", async () => {
+  const productSourceUrlMedia: MediaAsset = {
+    ...media,
+    source: "url",
+    reference: "https://cdn.example.test/video.mp4"
+  };
+  const unverified = await setup("unverified", productSourceUrlMedia);
+  await assert.rejects(
+    unverified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z")),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+  assert.equal(unverified.getProviderCalls(), 0);
+
+  const verified = await setup("verified", productSourceUrlMedia);
+  const result = await verified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  assert.equal(result.status, "published");
+  assert.equal(verified.getProviderCalls(), 1);
+});
+
 test("preserves the existing TikTok URL-media path while product-media rights remain unverified", async () => {
   const legacyUrlMedia: MediaAsset = {
     ...media,
