@@ -3,6 +3,7 @@ import type { ProductMediaCandidate } from "./product-media-discovery.js";
 import { fetchPublicHttps } from "./public-https-fetch.js";
 import type { SafePublicHttpsFetchOptions } from "./public-https-fetch.js";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
+import { extractProductMediaTechnicalMetadata, type ProductMediaTechnicalMetadata } from "./product-media-technical-metadata.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 
 export interface ProductMediaAsset {
@@ -13,6 +14,10 @@ export interface ProductMediaAsset {
   objectKey: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4";
   byteSize: number;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+  hasAudio?: boolean | null;
   sha256: string;
   sourceUrl: string;
   sourcePublisher: string | null;
@@ -146,6 +151,7 @@ export class ProductMediaIngestionService {
         }
         if (response.bytes.byteLength > limit) throw new Error("Downloaded media exceeds configured size limit.");
 
+        const technicalMetadata: ProductMediaTechnicalMetadata = extractProductMediaTechnicalMetadata(mimeType, response.bytes);
         const sha256 = createHash("sha256").update(response.bytes).digest("hex");
         const prior = await this.assets.findByProductAndHash(input.productId, sha256);
         if (prior) {
@@ -159,7 +165,7 @@ export class ProductMediaIngestionService {
         const asset: ProductMediaAsset = {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
           objectKey: savedObject.key, mimeType, byteSize: response.bytes.byteLength,
-          sha256, sourceUrl: candidate.url, sourcePublisher: null, rightsStatus: "unverified",
+          ...technicalMetadata, sha256, sourceUrl: candidate.url, sourcePublisher: null, rightsStatus: "unverified",
           rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null, createdAt: new Date().toISOString()
         };
         try {
