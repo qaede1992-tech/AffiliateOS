@@ -96,6 +96,45 @@ test("searches the official Openverse API and keeps rights unverified", async ()
   assert.match(requested, /license=cc0%2Cpdm%2Cby%2Cby-sa/);
 });
 
+
+test("uses Openverse client credentials and sends a cached bearer token", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url.endsWith("/auth_tokens/token/")) {
+      return new Response(JSON.stringify({ access_token: "test-access-token", expires_in: 3600 }), {
+        status: 200, headers: { "content-type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({ results: [{
+      title: "Sony WH-1000XM5 Wireless Headphones Black",
+      url: "https://images.example.test/sony-auth.jpg",
+      foreign_landing_url: "https://source.example.test/photo/auth",
+      license: "by",
+      source: "example"
+    }] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const options = { fetchImpl, clientId: "openverse-test-client", clientSecret: "openverse-test-secret", timeoutMs: 1000 };
+  const first = await searchOpenverseProductMedia(identity, options);
+  const second = await searchOpenverseProductMedia(identity, options);
+  assert.equal(first.length, 1);
+  assert.equal(second.length, 1);
+  const tokenCalls = calls.filter((call) => call.url.endsWith("/auth_tokens/token/"));
+  const searchCalls = calls.filter((call) => call.url.includes("/v1/images/"));
+  assert.equal(tokenCalls.length, 1);
+  assert.equal(searchCalls.length, 2);
+  assert.equal(new Headers(searchCalls[0]?.init?.headers).get("authorization"), "Bearer test-access-token");
+  assert.match(String(tokenCalls[0]?.init?.body), /grant_type=client_credentials/);
+});
+
+test("rejects partial Openverse credentials instead of silently falling back to anonymous access", async () => {
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, { clientId: "configured-without-secret" }),
+    /must be configured together/
+  );
+});
+
 test("fails closed for non-official endpoints and invalid result URLs", async () => {
   await assert.rejects(
     () => searchOpenverseProductMedia(identity, { endpoint: "https://attacker.example/api" }),
