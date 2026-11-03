@@ -14,6 +14,7 @@ import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-cli
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
+import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 const adminGuard = { preHandler: requireAdmin };
@@ -176,7 +177,24 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get<{ Reply: ListResponse<Offer> }>("/api/v1/offers", async () => list(await services.offers.list())); app.post<{ Body: CreateOfferRequest; Reply: Offer }>("/api/v1/offers", writeGuard, async (request, reply) => reply.status(201).send(await services.offers.create(createOfferSchema.parse(request.body))));
   app.get<{ Reply: ListResponse<Conversion> }>("/api/v1/conversions", async () => list(await services.conversions.list())); app.post<{ Body: CreateConversionRequest; Reply: Conversion }>("/api/v1/conversions", writeGuard, async (request, reply) => reply.status(201).send(await services.conversions.create(createConversionSchema.parse(request.body))));
   app.post("/api/v1/conversions/:conversionId/attribution", writeGuard, async (request, reply) => { const params = conversionIdSchema.parse(request.params); const attribution = await services.attribution.create(params.conversionId, createConversionAttributionSchema.parse(request.body)); return reply.status(201).send(attribution); }); app.get("/api/v1/conversions/:conversionId/attribution", async (request) => { const { conversionId } = conversionIdSchema.parse(request.params); const attribution = await services.attribution.get(conversionId); return attribution ?? { conversionId, attributed: false }; });
-  app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => { const input = scoreProductSchema.parse(request.body); return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance); });
+  app.get<{ Reply: ListResponse<Commission> }>("/api/v1/commissions", async () => list(await services.commissions.list())); app.post("/api/v1/product-opportunities/score", writeGuard, async (request) => {
+    const input = scoreProductSchema.parse(request.body);
+    const assets = services.productMediaAssets
+      ? (await services.productMediaAssets.listByProduct(input.product.id)).filter(hasCurrentVerifiedRights)
+      : [];
+    const platformScores = (["instagram", "tiktok"] as const).map((platform) => {
+      if (assets.length === 0) return 0;
+      return Math.max(...assets.map((asset) => {
+        const readiness = evaluateProductMediaAssetReadiness(platform, asset);
+        if (readiness.checks.length === 0) return 0;
+        const points = readiness.checks.reduce((sum, item) =>
+          sum + (item.status === "pass" ? 1 : item.status === "unknown" ? 0.35 : 0), 0);
+        return (points / readiness.checks.length) * 100;
+      }));
+    });
+    const mediaReadinessScore = platformScores.reduce((sum, score) => sum + score, 0) / platformScores.length;
+    return new ProductOpportunityService().score(input.product, input.commissionRateBps, input.audienceRelevance, mediaReadinessScore);
+  });
   app.post("/api/v1/shopee/affiliate-link-intakes", writeGuard, async (request, reply) => {
     const { affiliateUrl } = createShopeeAffiliateLinkIntakeSchema.parse(request.body);
     const intake = await services.shopeeAffiliateLinkIntakes.submit(affiliateUrl);
