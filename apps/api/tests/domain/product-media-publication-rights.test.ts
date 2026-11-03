@@ -84,6 +84,15 @@ test("blocks missing, duplicate, and unlinked product media records", async () =
   );
 });
 
+test("blocks an external URL when it is registered as unverified product media", async () => {
+  const external = { ...media, source: "url" as const, reference: verified.sourceUrl };
+  const unverified = { ...verified, rightsStatus: "unverified" as const };
+  await assert.rejects(
+    assertProductMediaRightsForPublication([external], [productId], repository(unverified)),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+});
+
 test("preserves existing externally hosted media while applying rights checks only to product-scoped objects", async () => {
   const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/legacy-video.mp4" };
   await assert.doesNotReject(assertProductMediaRightsForPublication([external], [productId], repository()));
