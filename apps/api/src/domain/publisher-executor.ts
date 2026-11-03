@@ -101,14 +101,7 @@ export class PublisherExecutor {
       // Apply the new provenance gate only to product-scoped objects created by
       // the product-media workflow. Preserve legacy URL/content-scoped media so
       // existing TikTok publication paths are not silently broken by this rollout.
-      const productScopedMedia = resolved.filter((asset) => {
-        if (asset.source !== "object-storage") return false;
-        const segments = asset.reference.split("/");
-        return segments.length >= 4 && segments[1] === "products";
-      });
-      if (productScopedMedia.length > 0) {
-        await assertProductMediaRightsForPublication(productScopedMedia, linkedProductIds, this.productMediaAssets);
-      }
+      await assertProductMediaRightsForPublication(resolved, linkedProductIds, this.productMediaAssets);
     }
     return resolvePublisherMediaAssets(content, resolved, this.mediaStorage, linkedProductIds);
   }
