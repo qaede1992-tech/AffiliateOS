@@ -477,6 +477,13 @@
       "when": 1794050405014,
       "tag": "0071_product_media_rights_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1794050405015,
+      "tag": "0072_product_media_rights_audit",
+      "breakpoints": true
     }
   ]
 }
