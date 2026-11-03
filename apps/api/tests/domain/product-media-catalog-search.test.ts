@@ -62,10 +62,10 @@ test("searches the official Openverse API and keeps rights unverified", async ()
       results: [
         {
           title: "Sony WH-1000XM5 Wireless Headphones Black",
-          url: "https://images.example.test/sony.jpg",
-          foreign_landing_url: "https://source.example.test/photo/1",
+          url: "https://images.example.com/sony.jpg",
+          foreign_landing_url: "https://source.example.com/photo/1",
           creator: "Photographer",
-          creator_url: "https://source.example.test/creator",
+          creator_url: "https://source.example.com/creator",
           license: "by",
           license_version: "4.0",
           license_url: "https://creativecommons.org/licenses/by/4.0/",
@@ -73,15 +73,15 @@ test("searches the official Openverse API and keeps rights unverified", async ()
         },
         {
           title: "Sony WH-1000XM4 Wireless Headphones",
-          url: "https://images.example.test/wrong.jpg",
-          foreign_landing_url: "https://source.example.test/photo/2",
+          url: "https://images.example.com/wrong.jpg",
+          foreign_landing_url: "https://source.example.com/photo/2",
           license: "by",
           source: "example"
         },
         {
           title: "Sony WH-1000XM5 Wireless Headphones",
-          url: "https://images.example.test/nc.jpg",
-          foreign_landing_url: "https://source.example.test/photo/3",
+          url: "https://images.example.com/nc.jpg",
+          foreign_landing_url: "https://source.example.com/photo/3",
           license: "by-nc",
           source: "example"
         }
@@ -104,10 +104,29 @@ test("fails closed for non-official endpoints and invalid result URLs", async ()
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     results: [{
       title: "Sony WH-1000XM5 Wireless Headphones",
-      url: "http://images.example.test/image.jpg",
-      foreign_landing_url: "https://source.example.test/photo",
+      url: "http://images.example.com/image.jpg",
+      foreign_landing_url: "https://source.example.com/photo",
       license: "cc0"
     }]
+  }), { status: 200 });
+  assert.deepEqual(await searchOpenverseProductMedia(identity, { fetchImpl }), []);
+});
+
+test("rejects IP literals, local names, and reserved hostnames in catalog media URLs", async () => {
+  const invalidUrls = [
+    "https://127.0.0.1/image.jpg",
+    "https://[::1]/image.jpg",
+    "https://localhost/image.jpg",
+    "https://metadata.google.internal/image.jpg",
+    "https://images.example.test/image.jpg"
+  ];
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    results: invalidUrls.map((url) => ({
+      title: "Sony WH-1000XM5 Wireless Headphones Black",
+      url,
+      foreign_landing_url: "https://source.example.com/photo",
+      license: "cc0"
+    }))
   }), { status: 200 });
   assert.deepEqual(await searchOpenverseProductMedia(identity, { fetchImpl }), []);
 });
