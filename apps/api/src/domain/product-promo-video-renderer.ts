@@ -8,6 +8,7 @@ import type { Product } from "@affiliateos/shared";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
+import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 const execFile = promisify(execFileCallback);
 const DEFAULT_MAX_OUTPUT_BYTES = 45 * 1024 * 1024;
@@ -87,6 +88,11 @@ export class ProductPromoVideoRenderer {
 
     const image = existing.find((asset) => asset.kind === "image" && asset.bucket === this.storage.bucketName);
     if (!image) return { generated: false, reason: "No validated product image is available in private storage." };
+    // Derivative creation is limited to assets whose verified basis itself permits reuse.
+    // A generic license or permission record is not assumed to include derivative rights.
+    if (!hasCurrentVerifiedRights(image) || (image.rightsBasis !== "user_owned" && image.rightsBasis !== "public_domain")) {
+      return { generated: false, reason: "Source image lacks verified rights that permit derivative creation." };
+    }
     if (!this.storage.download) return { generated: false, reason: "Supabase Storage download is not available in this runtime." };
 
     let tempDir: string | undefined;
@@ -149,11 +155,11 @@ export class ProductPromoVideoRenderer {
         byteSize: videoBytes.byteLength,
         sha256,
         sourceUrl: "generated:ffmpeg",
-        sourcePublisher: "AffiliateOS",
-        rightsStatus: "unverified",
-        rightsBasis: null,
-        rightsEvidenceUrl: null,
-        rightsVerifiedAt: null,
+        sourcePublisher: image.sourcePublisher,
+        rightsStatus: "verified",
+        rightsBasis: image.rightsBasis,
+        rightsEvidenceUrl: image.rightsEvidenceUrl,
+        rightsVerifiedAt: image.rightsVerifiedAt,
         createdAt: new Date().toISOString()
       };
       try {
