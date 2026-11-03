@@ -411,7 +411,10 @@ describe("campaign orchestrator", () => {
       content as never,
       undefined,
       undefined,
-      autonomousRuns
+      autonomousRuns,
+      undefined,
+      undefined,
+      verifiedProductMediaAssets as never
     );
     const result = await orchestrator.execute({
       opportunity,
@@ -583,7 +586,8 @@ describe("campaign orchestrator", () => {
       undefined,
       autonomousRuns,
       undefined,
-      storyService as never
+      storyService as never,
+      verifiedProductMediaAssets as never
     );
     const input = {
       opportunity,
