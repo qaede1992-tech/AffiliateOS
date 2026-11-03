@@ -325,14 +325,14 @@ describe("autonomous cycle", () => {
       async listCandidates() { return [{ product: product as never, offers: [] }]; }
     };
     const previews: Array<{
-      policy?: { minimumScore?: number };
-      policiesByMarketplace?: Record<string, { minimumScore?: number }>;
+      policy?: { minimumScore?: number; minimumDataConfidence?: number };
+      policiesByMarketplace?: Record<string, { minimumScore?: number; minimumDataConfidence?: number }>;
       mediaReadinessScores?: Record<string, number>;
       requirePublishableMedia?: boolean;
     }> = [];
     let finalInput: {
-      policy?: { minimumScore?: number };
-      policiesByMarketplace?: Record<string, { minimumScore?: number }>;
+      policy?: { minimumScore?: number; minimumDataConfidence?: number };
+      policiesByMarketplace?: Record<string, { minimumScore?: number; minimumDataConfidence?: number }>;
       mediaReadinessScores?: Record<string, number>;
     } | undefined;
     const execution = {
@@ -365,19 +365,25 @@ describe("autonomous cycle", () => {
 
     await service.runOnce({
       publicationEnabled: false,
-      policy: { minimumScore: 60, maximumResults: 10 },
-      policiesByMarketplace: { "market-1": { minimumScore: 62 } }
+      policy: { minimumScore: 60, minimumDataConfidence: 35, maximumResults: 10 },
+      policiesByMarketplace: { "market-1": { minimumScore: 62, minimumDataConfidence: 45 } }
     });
 
     assert.equal(discoveryCount, 1);
     assert.equal(previews.length, 2);
     assert.equal(previews[0]?.policy?.minimumScore, 55);
+    assert.equal(previews[0]?.policy?.minimumDataConfidence, 25);
     assert.equal(previews[0]?.policiesByMarketplace?.["market-1"]?.minimumScore, 57);
+    assert.equal(previews[0]?.policiesByMarketplace?.["market-1"]?.minimumDataConfidence, 35);
     assert.equal(previews[1]?.policy?.minimumScore, 60);
+    assert.equal(previews[1]?.policy?.minimumDataConfidence, 35);
     assert.equal(previews[1]?.policiesByMarketplace?.["market-1"]?.minimumScore, 62);
+    assert.equal(previews[1]?.policiesByMarketplace?.["market-1"]?.minimumDataConfidence, 45);
     assert.deepEqual(previews[1]?.mediaReadinessScores, { [product.id]: 100 });
     assert.equal(finalInput?.policy?.minimumScore, 60);
+    assert.equal(finalInput?.policy?.minimumDataConfidence, 35);
     assert.equal(finalInput?.policiesByMarketplace?.["market-1"]?.minimumScore, 62);
+    assert.equal(finalInput?.policiesByMarketplace?.["market-1"]?.minimumDataConfidence, 45);
     assert.deepEqual(finalInput?.mediaReadinessScores, { [product.id]: 100 });
   });
 
