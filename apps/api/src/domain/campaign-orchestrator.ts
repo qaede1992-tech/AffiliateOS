@@ -299,7 +299,7 @@ export class CampaignOrchestrator {
           return content;
         }
         const now = new Date().toISOString();
-        const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, createdAt: now, updatedAt: now });
+        const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, durationSeconds: stored.durationMs == null ? undefined : Math.ceil(stored.durationMs / 1000), widthPx: stored.width ?? undefined, heightPx: stored.height ?? undefined, hasAudio: stored.hasAudio ?? undefined, createdAt: now, updatedAt: now });
         const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
           ? [asset.id]
           : [...new Set([...(content.mediaAssetIds ?? []), asset.id])];
