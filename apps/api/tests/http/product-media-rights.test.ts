@@ -76,7 +76,7 @@ test("admin can list product media and verify rights with credential-free HTTPS 
     assert.ok(listedAsset.technicalReadiness.instagram.checks.some((item: { key: string; status: string }) => item.key === "platform_rules" && item.status === "unknown"));
     assert.equal(listedAsset.technicalReadiness.tiktok.platform, "tiktok");
     assert.equal(listedAsset.technicalReadiness.tiktok.status, "review_required");
-    assert.ok(listedAsset.technicalReadiness.tiktok.checks.some((item: { key: string; status: string }) => item.key === "photo_dimensions" && item.status === "unknown"));
+    assert.ok(listedAsset.technicalReadiness.tiktok.checks.some((item: { key: string; status: string }) => item.key === "dimensions" && item.status === "unknown"));
     // Technical readiness is advisory and must not change the independent rights decision.
     assert.equal(listedAsset.rightsStatus, "unverified");
 
