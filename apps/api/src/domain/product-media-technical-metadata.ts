@@ -118,11 +118,16 @@ const mp4Metadata = (bytes: Uint8Array): ProductMediaTechnicalMetadata => {
   let allTrackHandlersKnown = tracks.length > 0;
   for (const trak of tracks) {
     const hdlr = descendants(bytes, trak, ["mdia", "hdlr"]);
-    if (!hdlr || hdlr.data + 12 > hdlr.end) {
+    const handlerType = hdlr && hdlr.data + 12 <= hdlr.end
+      ? ascii(bytes, hdlr.data + 8, 4)
+      : undefined;
+    if (!handlerType) {
       allTrackHandlersKnown = false;
-    } else if (ascii(bytes, hdlr.data + 8, 4) === "soun") {
+    } else if (handlerType === "soun") {
       hasAudioTrack = true;
     }
+    // Track-header dimensions are meaningful for video tracks only.
+    if (handlerType !== "vide") continue;
     const tkhd = boxes(bytes, trak.data, trak.end).find((box) => box.type === "tkhd");
     if (!tkhd || tkhd.end - tkhd.data < 8) continue;
     const candidateWidth = uint32(bytes, tkhd.end - 8) / 65536;
