@@ -85,6 +85,19 @@ describe("campaign orchestrator", () => {
     assert.equal(content.created.length, 0);
   });
 
+  it("fails closed before creating artifacts when autonomous social media rights storage is missing", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        campaigns as never, new StubTracking() as never, content as never
+      ).execute({ opportunity, offer, product, idempotencyKey: "missing-media-repository-run", platforms: ["instagram"] }),
+      /Product media rights repository is required before autonomous social campaign creation/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
   it("blocks an autonomous Instagram campaign until a validated product video is stored", async () => {
     const campaigns = new StubCampaigns();
     const content = new StubContent();
