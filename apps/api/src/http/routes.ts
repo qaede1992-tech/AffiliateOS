@@ -261,6 +261,14 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     if (!services.productMediaAssets) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights storage is not configured." });
     return list(await services.productMediaAssets.listByProduct(productId));
   });
+  app.get("/api/v1/products/:productId/media-assets/:assetId/preview", adminGuard, async (request, reply) => {
+    const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
+    const createPreviewUrl = services.productMediaPreviewUrl;
+    if (!createPreviewUrl) return reply.status(503).send({ error: "PRODUCT_MEDIA_PREVIEW_UNAVAILABLE", message: "Private product media preview is not configured." });
+    const previewUrl = await createPreviewUrl(productId, assetId);
+    if (!previewUrl) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    return { url: previewUrl, expiresInSeconds: 300 };
+  });
   app.patch("/api/v1/products/:productId/media-assets/:assetId/rights", adminGuard, async (request, reply) => {
     const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
     const input = updateProductMediaRightsSchema.parse(request.body);
