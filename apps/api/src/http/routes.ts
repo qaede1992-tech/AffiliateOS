@@ -13,6 +13,7 @@ import { determineAutonomousHealthStatus } from "../domain/autonomous-health-sta
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
+import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 const adminGuard = { preHandler: requireAdmin };
@@ -259,7 +260,13 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     if (!services.productMediaAssets) return reply.status(503).send({ error: "PRODUCT_MEDIA_RIGHTS_UNAVAILABLE", message: "Product media rights storage is not configured." });
-    return list(await services.productMediaAssets.listByProduct(productId));
+    return list((await services.productMediaAssets.listByProduct(productId)).map((asset) => ({
+      ...asset,
+      technicalReadiness: {
+        instagram: evaluateProductMediaAssetReadiness("instagram", asset),
+        tiktok: evaluateProductMediaAssetReadiness("tiktok", asset)
+      }
+    })));
   });
   app.get("/api/v1/products/:productId/media-assets/:assetId/preview", adminGuard, async (request, reply) => {
     const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
