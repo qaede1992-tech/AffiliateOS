@@ -70,6 +70,15 @@ test("admin can list product media and verify rights with credential-free HTTPS 
     const listed = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-assets` });
     assert.equal(listed.statusCode, 200);
     assert.equal(listed.json().data[0].rightsStatus, "unverified");
+    const listedAsset = listed.json().data[0];
+    assert.equal(listedAsset.technicalReadiness.instagram.platform, "instagram");
+    assert.equal(listedAsset.technicalReadiness.instagram.status, "review_required");
+    assert.ok(listedAsset.technicalReadiness.instagram.checks.some((item: { key: string; status: string }) => item.key === "platform_rules" && item.status === "unknown"));
+    assert.equal(listedAsset.technicalReadiness.tiktok.platform, "tiktok");
+    assert.equal(listedAsset.technicalReadiness.tiktok.status, "review_required");
+    assert.ok(listedAsset.technicalReadiness.tiktok.checks.some((item: { key: string; status: string }) => item.key === "photo_dimensions" && item.status === "unknown"));
+    // Technical readiness is advisory and must not change the independent rights decision.
+    assert.equal(listedAsset.rightsStatus, "unverified");
 
     const response = await app.inject({
       method: "PATCH",
