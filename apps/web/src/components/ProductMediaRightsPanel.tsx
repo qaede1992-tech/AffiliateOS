@@ -172,6 +172,25 @@ export function ProductMediaRightsPanel() {
                   <span className={`badge ${asset.rightsStatus === "verified" ? "active" : "inactive"}`}>{asset.rightsStatus}</span>
                 </div>
                 <small>{(asset.byteSize / 1024).toFixed(1)} KiB · SHA-256 {asset.sha256.slice(0, 16)}…</small>
+                <p className="analytics-note">
+                  Metadata teknis: {asset.width && asset.height ? `${asset.width} × ${asset.height} px` : "dimensi belum diketahui"}
+                  {asset.durationMs != null ? ` · ${(asset.durationMs / 1000).toFixed(2)} detik` : ""}
+                  {asset.kind === "video" ? ` · audio: ${asset.hasAudio == null ? "belum diketahui" : asset.hasAudio ? "ada" : "tidak terdeteksi"}` : ""}
+                </p>
+                <div className="product-media-readiness">
+                  {(["instagram", "tiktok"] as const).map((platform) => {
+                    const readiness = asset.technicalReadiness[platform];
+                    const label = readiness.status === "ready" ? "Sesuai metadata" : readiness.status === "not_ready" ? "Tidak sesuai" : "Perlu pemeriksaan";
+                    return <details key={platform}>
+                      <summary>{platform === "instagram" ? "Instagram" : "TikTok"}: {label}</summary>
+                      <ul>{readiness.checks.map((item) => <li key={item.key}>
+                        <strong>{item.status === "pass" ? "Lulus" : item.status === "fail" ? "Gagal" : "Belum diketahui"}:</strong> {item.detail}
+                      </li>)}</ul>
+                      {readiness.limitations.map((item) => <small key={item}>{item}</small>)}
+                    </details>;
+                  })}
+                </div>
+                <small className="analytics-note">Penilaian ini hanya preflight teknis berdasarkan metadata tersimpan. Ini bukan persetujuan hak media atau izin publikasi; codec, frame rate, dan batas akun tertentu mungkin masih perlu diperiksa.</small>
                 {asset.rightsStatus === "verified" && <p className="analytics-note">Dasar: {asset.rightsBasis} · Penerbit: {asset.sourcePublisher} · Diverifikasi: {asset.rightsVerifiedAt ? new Date(asset.rightsVerifiedAt).toLocaleString("id-ID") : "—"}</p>}
                 {safeEvidenceUrl(asset.rightsEvidenceUrl) && <p><a href={safeEvidenceUrl(asset.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
                 <details className="product-media-rights-history">
