@@ -278,7 +278,7 @@ test("does not assume a generic license permits derivative video creation", asyn
   const renderer = new ProductPromoVideoRenderer(storage as never, repository, {});
   const result = await renderer.render(product);
   assert.equal(result.generated, false);
-  assert.match(result.reason ?? "", /verified rights that permit derivative creation/);
+  assert.match(result.reason ?? "", /No verified private product image with a derivative-permitting rights basis/);
   assert.equal(downloads, 0);
 });
 
