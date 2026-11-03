@@ -75,7 +75,8 @@ export class AutonomousOpportunitySelector {
     policiesByMarketplace: OpportunitySelectionPoliciesByMarketplace = {},
     adaptiveExplorationRates: Map<string, number> = new Map(),
     publishableVideoProductIds: Set<string> = new Set(),
-    publishableMediaProductIds: Set<string> = new Set()
+    publishableMediaProductIds: Set<string> = new Set(),
+    mediaReadinessScores: Map<string, number> = new Map()
   ): OpportunitySelectionResult {
     const performance = performanceOrPolicies instanceof Map ? performanceOrPolicies : new Map<string, OpportunityPerformanceSignal>();
     const effectivePoliciesByMarketplace = performanceOrPolicies instanceof Map ? policiesByMarketplace : performanceOrPolicies;
@@ -104,7 +105,8 @@ export class AutonomousOpportunitySelector {
         product: candidate.product,
         offers: candidate.offers,
         audience: unique(candidatePolicy.requiredAudience ?? []),
-        targetPriceMaxCents: candidatePolicy.targetPriceMaxCents
+        targetPriceMaxCents: candidatePolicy.targetPriceMaxCents,
+        mediaReadinessScore: mediaReadinessScores.get(candidate.product.id)
       };
     });
 
