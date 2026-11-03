@@ -61,6 +61,22 @@ const operation = {
   updatedAt: "2026-09-26T00:00:00.000Z"
 };
 
+const createByteStream = (totalBytes: number): ReadableStream<Uint8Array> => {
+  let remaining = totalBytes;
+  const chunk = new Uint8Array(1024 * 1024).fill(7);
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (remaining === 0) {
+        controller.close();
+        return;
+      }
+      const length = Math.min(chunk.byteLength, remaining);
+      controller.enqueue(chunk.subarray(0, length));
+      remaining -= length;
+    }
+  });
+};
+
 test("TikTok client uses FILE_UPLOAD by default and uploads the media sequentially", async () => {
   const calls: Array<{ url: string; method: string; headers: Headers; body?: Uint8Array }> = [];
   const video = new Uint8Array(asset.byteSize).fill(7);
@@ -93,6 +109,109 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
   assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-1" });
   assert.deepEqual(calls.map((call) => call.method), ["POST", "POST", "GET", "PUT"]);
   assert.equal(calls[3]?.body?.byteLength, video.byteLength);
+});
+
+test("TikTok FILE_UPLOAD keeps the final chunk within the declared video size when chunk size rounds up", async () => {
+  const videoSize = 65 * 1024 * 1024 + 1;
+  const expectedChunkSize = Math.ceil(videoSize / 2);
+  const uploadedChunks: Array<{ contentRange: string | null; byteLength: number }> = [];
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        const body = JSON.parse(String(init?.body));
+        assert.equal(body.source_info.video_size, videoSize);
+        assert.equal(body.source_info.chunk_size, expectedChunkSize);
+        assert.equal(body.source_info.total_chunk_count, 2);
+        return new Response(JSON.stringify({ data: { publish_id: "publish-chunk-boundary", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(createByteStream(videoSize), { status: 200, headers: { "content-type": "video/mp4" } });
+      }
+      const headers = new Headers(init?.headers);
+      const body = init?.body as Uint8Array;
+      uploadedChunks.push({ contentRange: headers.get("content-range"), byteLength: body.byteLength });
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  const result = await client.publish({
+    content,
+    account,
+    mediaAssets: [{ ...asset, byteSize: videoSize }],
+    tiktokApproval: approval,
+    idempotencyKey: "idem-chunk-boundary"
+  });
+
+  assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-chunk-boundary" });
+  assert.deepEqual(uploadedChunks, [
+    { contentRange: `bytes 0-${expectedChunkSize - 1}/${videoSize}`, byteLength: expectedChunkSize },
+    { contentRange: `bytes ${expectedChunkSize}-${videoSize - 1}/${videoSize}`, byteLength: videoSize - expectedChunkSize }
+  ]);
+});
+
+test("TikTok FILE_UPLOAD rejects source bytes beyond the declared size without uploading the excess", async () => {
+  const uploadedChunks: Array<{ contentRange: string | null; byteLength: number }> = [];
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        return new Response(JSON.stringify({ data: { publish_id: "publish-overrun", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(createByteStream(asset.byteSize + 1), { status: 200, headers: { "content-type": "video/mp4" } });
+      }
+      const headers = new Headers(init?.headers);
+      const body = init?.body as Uint8Array;
+      uploadedChunks.push({ contentRange: headers.get("content-range"), byteLength: body.byteLength });
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-overrun" }),
+    /media source size changed during download/
+  );
+  assert.deepEqual(uploadedChunks, [
+    { contentRange: `bytes 0-${asset.byteSize - 1}/${asset.byteSize}`, byteLength: asset.byteSize }
+  ]);
+});
+
+test("TikTok FILE_UPLOAD rejects an incomplete final chunk before uploading it", async () => {
+  const uploadedChunks: Array<{ contentRange: string | null; byteLength: number }> = [];
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        return new Response(JSON.stringify({ data: { publish_id: "publish-underrun", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(createByteStream(asset.byteSize - 1), { status: 200, headers: { "content-type": "video/mp4" } });
+      }
+      const headers = new Headers(init?.headers);
+      const body = init?.body as Uint8Array;
+      uploadedChunks.push({ contentRange: headers.get("content-range"), byteLength: body.byteLength });
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-underrun" }),
+    /media source size changed during download/
+  );
+  assert.deepEqual(uploadedChunks, []);
 });
 
 test("TikTok client retains PULL_FROM_URL as an explicit compatibility mode", async () => {
