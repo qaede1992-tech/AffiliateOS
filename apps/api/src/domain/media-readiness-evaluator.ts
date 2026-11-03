@@ -1,5 +1,6 @@
 import type { ContentPlatform } from "@affiliateos/shared";
 import type { MediaAsset } from "./media-asset.js";
+import type { ProductMediaAsset } from "./product-media-ingestion.js";
 
 export type MediaReadinessCheckStatus = "pass" | "fail" | "unknown";
 export type MediaReadinessStatus = "ready" | "review_required" | "not_ready";
@@ -103,4 +104,27 @@ export function evaluateMediaReadiness(
       : check("audio_track", "pass", asset.hasAudio ? "Track audio terdeteksi." : "Track audio tidak terdeteksi; tidak otomatis dianggap gagal."));
   }
   return { platform, mediaAssetId: asset.id, status: classify(checks), checks, limitations };
+}
+
+
+/**
+ * Adapts persisted product-scoped media metadata to the advisory evaluator.
+ * Duration is converted from the repository's milliseconds to seconds.
+ * Rights provenance is intentionally not interpreted as technical readiness.
+ */
+export function evaluateProductMediaAssetReadiness(
+  platform: ContentPlatform,
+  asset: ProductMediaAsset,
+  options: MediaReadinessOptions = {}
+): MediaReadinessResult {
+  return evaluateMediaReadiness(platform, {
+    id: asset.id,
+    kind: asset.kind,
+    mimeType: asset.mimeType,
+    byteSize: asset.byteSize,
+    widthPx: asset.width ?? undefined,
+    heightPx: asset.height ?? undefined,
+    durationSeconds: asset.durationMs == null ? undefined : asset.durationMs / 1000,
+    hasAudio: asset.hasAudio ?? undefined
+  }, options);
 }
