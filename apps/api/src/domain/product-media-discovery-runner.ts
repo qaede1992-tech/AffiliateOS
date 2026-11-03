@@ -165,41 +165,54 @@ export class ProductMediaDiscoveryRunner {
     if (isShopeeHost(pageUrl.hostname)) {
       let candidatesFound = 0;
       if (this.catalogCandidates) {
+        const identity = { name: product.name };
+        const query = buildProductMediaSearchQuery(identity);
+        let discovered: Awaited<ReturnType<typeof searchOpenverseProductMedia>> = [];
         try {
-          const identity = { name: product.name };
-          const query = buildProductMediaSearchQuery(identity);
-          const discovered = await searchOpenverseProductMedia(identity, { maxResults: 10 });
-          const now = new Date().toISOString();
-          const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
-            identityStatus: "strong_match" | "review_required"
-          } => candidate.identityStatus !== "rejected");
-          const records = accepted.map((candidate) => ({
-            id: randomUUID(),
-            productId: product.id,
-            provider: candidate.provider,
-            candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
-            query,
-            title: candidate.title,
-            imageUrl: candidate.imageUrl,
-            landingPageUrl: candidate.landingPageUrl,
-            creator: candidate.creator,
-            creatorUrl: candidate.creatorUrl,
-            license: candidate.license,
-            licenseVersion: candidate.licenseVersion,
-            licenseUrl: candidate.licenseUrl,
-            sourcePublisher: candidate.sourcePublisher,
-            identityScore: candidate.identityScore,
-            identityStatus: candidate.identityStatus,
-            identityReasons: candidate.identityReasons,
-            reviewStatus: "pending" as const,
-            rightsStatus: "unverified" as const,
-            createdAt: now,
-            updatedAt: now
-          }));
-          const saved = await this.catalogCandidates.saveMany(records);
-          candidatesFound = saved.length;
+          discovered = await searchOpenverseProductMedia(identity, { maxResults: 10 });
         } catch (error) {
-          skipped.push({ url: "https://api.openverse.org/v1/images/", reason: error instanceof Error ? "Openverse candidate search failed: " + error.message : "Openverse candidate search failed." });
+          skipped.push({
+            url: "https://api.openverse.org/v1/images/",
+            reason: error instanceof Error ? "Openverse candidate search failed: " + error.message : "Openverse candidate search failed."
+          });
+        }
+        const now = new Date().toISOString();
+        const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
+          identityStatus: "strong_match" | "review_required"
+        } => candidate.identityStatus !== "rejected");
+        const records = accepted.map((candidate) => ({
+          id: randomUUID(),
+          productId: product.id,
+          provider: candidate.provider,
+          candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
+          query,
+          title: candidate.title,
+          imageUrl: candidate.imageUrl,
+          landingPageUrl: candidate.landingPageUrl,
+          creator: candidate.creator,
+          creatorUrl: candidate.creatorUrl,
+          license: candidate.license,
+          licenseVersion: candidate.licenseVersion,
+          licenseUrl: candidate.licenseUrl,
+          sourcePublisher: candidate.sourcePublisher,
+          identityScore: candidate.identityScore,
+          identityStatus: candidate.identityStatus,
+          identityReasons: candidate.identityReasons,
+          reviewStatus: "pending" as const,
+          rightsStatus: "unverified" as const,
+          createdAt: now,
+          updatedAt: now
+        }));
+        if (records.length > 0) {
+          try {
+            const saved = await this.catalogCandidates.saveMany(records);
+            candidatesFound = saved.length;
+          } catch (error) {
+            skipped.push({
+              url: "https://api.openverse.org/v1/images/",
+              reason: error instanceof Error ? "Openverse candidate persistence failed: " + error.message : "Openverse candidate persistence failed."
+            });
+          }
         }
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
