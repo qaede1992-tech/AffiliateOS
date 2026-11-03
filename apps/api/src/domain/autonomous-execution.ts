@@ -90,7 +90,7 @@ export class AutonomousExecutionService {
       performance,
       input.policiesByMarketplace,
       recoveryAdaptiveExplorationRates,
-      new Set(input.publishableVideoProductIds ?? []), new Set(input.publishableMediaProductIds ?? [])
+      new Set(input.publishableVideoProductIds ?? []), new Set(input.publishableMediaProductIds ?? []), new Map(Object.entries(input.mediaReadinessScores ?? {}))
     ).selected;
     if (this.autonomousRuns) {
       const recoverable = await this.autonomousRuns.listRecoverable();
