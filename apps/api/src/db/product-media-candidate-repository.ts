@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "../domain/product-media-candidate.js";
 import { productMediaCandidates } from "./schema.js";
@@ -33,16 +32,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       identityReasons: candidate.identityReasons ?? [],
       reviewStatus: "pending",
       rightsStatus: "unverified"
-    }))).onConflictDoUpdate({
-      target: [productMediaCandidates.productId, productMediaCandidates.provider, productMediaCandidates.candidateHash],
-      set: {
-        query: candidates[0]!.query,
-        title: candidates[0]!.title,
-        imageUrl: candidates[0]!.imageUrl,
-        landingPageUrl: candidates[0]!.landingPageUrl,
-        updatedAt: new Date().toISOString()
-      }
-    }).returning();
+    }))).onConflictDoNothing().returning();
     return rows.map(toCandidate);
   }
 
