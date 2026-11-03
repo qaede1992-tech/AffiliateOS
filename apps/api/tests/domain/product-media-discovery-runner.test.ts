@@ -381,3 +381,54 @@ test("scores only current rights-verified persisted media for target platform re
   const revokedScores = await revokedRunner.listMediaReadinessScores([product.id], ["tiktok"]);
   assert.equal(revokedScores[product.id], 0);
 });
+
+test("reports Openverse candidate persistence failures separately from catalog search failures", async () => {
+  const originalFetch = globalThis.fetch;
+  let saveCalls = 0;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    results: [{
+      title: "Demo product",
+      url: "https://media.openverse-demo.net/demo.jpg",
+      foreign_landing_url: "https://catalog.openverse-demo.net/demo",
+      license: "cc0",
+      source: "Openverse"
+    }]
+  }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+
+  try {
+    const assets: ProductMediaAsset[] = [];
+    const assetRepository = {
+      async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+    };
+    const candidateRepository = {
+      async saveMany() {
+        saveCalls += 1;
+        throw new Error('relation "product_media_candidates" does not exist');
+      },
+      async listPendingByProduct() { return []; }
+    };
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      assetRepository,
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      candidateRepository
+    );
+
+    const result = await runner.discover({
+      ...product,
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+
+    assert.equal(saveCalls, 1);
+    assert.match(result.skipped.find((item) => item.reason.includes("candidate persistence"))?.reason ?? "", /Openverse candidate persistence failed/);
+    assert.match(result.skipped.find((item) => item.reason.includes("candidate persistence"))?.reason ?? "", /product_media_candidates/);
+    assert.equal(result.pageFetched, false);
+    assert.equal(result.hasVideo, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
