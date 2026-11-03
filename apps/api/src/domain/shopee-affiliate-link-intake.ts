@@ -30,6 +30,34 @@ function normalizeAffiliateUrl(raw: string): string {
 }
 export class ShopeeAffiliateLinkIntakeService {
   constructor(private readonly repository: ShopeeAffiliateLinkIntakeRepository, private readonly resolver: typeof resolveShopeeAffiliateLink = resolveShopeeAffiliateLink) {}
+
+  /**
+   * Preserve the URL-level intake as a terminal deduplication record without
+   * copying the unique product identity onto it. The canonical row owns that
+   * identity; this avoids both orphaned "resolving" rows and the DB unique index.
+   */
+  private async completeDuplicate(
+    intake: ShopeeAffiliateLinkIntake,
+    canonical: ShopeeAffiliateLinkIntake,
+    productUrl?: string
+  ): Promise<ShopeeAffiliateLinkIntake> {
+    if (intake.id !== canonical.id && intake.status === "resolving") {
+      await this.repository.update({
+        ...intake,
+        status: "resolved",
+        ...(productUrl ? { canonicalProductUrl: productUrl } : {}),
+        reason: "Duplicate product identity; linked to canonical intake.",
+        sourceMetadata: {
+          ...intake.sourceMetadata,
+          resolution: "resolved",
+          duplicateOfIntakeId: canonical.id
+        },
+        updatedAt: new Date().toISOString()
+      });
+    }
+    return canonical;
+  }
+
   async submit(rawUrl: string): Promise<ShopeeAffiliateLinkIntake> {
     const normalized = normalizeAffiliateUrl(rawUrl);
     const hash = createHash("sha256").update(normalized).digest("hex");
@@ -41,7 +69,7 @@ export class ShopeeAffiliateLinkIntakeService {
     const result = await this.resolver(normalized);
     if (result.status === "resolved" && result.shopId && result.itemId) {
       const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
-      if (sameProduct) return sameProduct;
+      if (sameProduct) return this.completeDuplicate(intake, sameProduct, result.productUrl);
     }
     const updated: ShopeeAffiliateLinkIntake = {
       ...intake, status: result.status === "resolved" ? "awaiting_offer_data" : "unresolved",
@@ -54,7 +82,7 @@ export class ShopeeAffiliateLinkIntakeService {
     catch (error) {
       if (result.status === "resolved" && result.shopId && result.itemId) {
         const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
-        if (sameProduct) return sameProduct;
+        if (sameProduct) return this.completeDuplicate(intake, sameProduct, result.productUrl);
       }
       throw error;
     }

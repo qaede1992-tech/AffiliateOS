@@ -45,3 +45,29 @@ test("verified feed offer reconciles a matching intake without inventing offer v
   assert.equal(reconciled?.status, "imported");
   assert.equal(reconciled?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
 });
+
+
+test("duplicate product URL finalizes the second intake instead of leaving an orphan resolving row", async () => {
+  class TrackingRepository extends InMemoryShopeeAffiliateLinkIntakeRepository {
+    createdIds: string[] = [];
+    override async saveIfAbsent(intake: import("../src/domain/shopee-affiliate-link-intake.js").ShopeeAffiliateLinkIntake) {
+      const saved = await super.saveIfAbsent(intake);
+      this.createdIds.push(saved.id);
+      return saved;
+    }
+  }
+  const repository = new TrackingRepository();
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => ({
+    status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
+  }));
+
+  const first = await service.submit("https://s.shopee.co.id/first");
+  const second = await service.submit("https://s.shopee.co.id/second");
+  const duplicateRecordId = repository.createdIds[1];
+  assert.ok(duplicateRecordId);
+  assert.equal(second.id, first.id, "the canonical intake remains the returned result");
+  const duplicateRecord = await service.get(duplicateRecordId);
+  assert.equal(duplicateRecord?.status, "resolved");
+  assert.equal(duplicateRecord?.sourceMetadata.duplicateOfIntakeId, first.id);
+  assert.notEqual(duplicateRecord?.status, "resolving");
+});
