@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateMediaReadiness } from "../src/domain/media-readiness-evaluator.js";
+import { evaluateMediaReadiness, evaluateProductMediaAssetReadiness } from "../src/domain/media-readiness-evaluator.js";
 
 test("TikTok photo passes when known format, size, and dimensions pass", () => {
   const result = evaluateMediaReadiness("tiktok", { id: "p1", kind: "image", mimeType: "image/jpeg", byteSize: 2_000_000, widthPx: 1080, heightPx: 1920 });
@@ -40,4 +40,33 @@ test("missing metadata is review-required, never assumed compatible", () => {
 test("Instagram Reels known duration and size violations fail", () => {
   const result = evaluateMediaReadiness("instagram", { id: "v4", kind: "video", mimeType: "video/mp4", byteSize: 2 * 1024 * 1024 * 1024, widthPx: 1080, heightPx: 1920, durationSeconds: 901, hasAudio: true });
   assert.equal(result.status, "not_ready");
+});
+
+
+test("persisted product media metadata is adapted with duration converted from milliseconds", () => {
+  const result = evaluateProductMediaAssetReadiness("tiktok", {
+    id: "asset-1",
+    productId: "product-1",
+    kind: "video",
+    bucket: "affiliate-media",
+    objectKey: "products/product-1/video.mp4",
+    mimeType: "video/mp4",
+    byteSize: 12_000_000,
+    width: 720,
+    height: 1280,
+    durationMs: 12_501,
+    hasAudio: false,
+    sha256: "a".repeat(64),
+    sourceUrl: "https://media.example/video.mp4",
+    sourcePublisher: null,
+    rightsStatus: "unverified",
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    createdAt: "2026-11-03T00:00:00.000Z"
+  }, { tiktokMaxVideoPostDurationSec: 180 });
+
+  assert.equal(result.status, "review_required");
+  assert.equal(result.mediaAssetId, "asset-1");
+  assert.ok(result.checks.some((item) => item.key === "creator_duration_limit" && item.status === "pass" && item.detail.includes("180")));
 });
