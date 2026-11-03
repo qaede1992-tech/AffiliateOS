@@ -318,4 +318,67 @@ describe("autonomous cycle", () => {
     assert.ok(second);
     assert.equal(second.candidateCount, 0);
   });
+
+  it("discovers candidates within the media score lift band without lowering final selection thresholds", async () => {
+    const product = { id: "near-threshold", marketplaceId: "market-1" };
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+    };
+    const previews: Array<{
+      policy?: { minimumScore?: number };
+      policiesByMarketplace?: Record<string, { minimumScore?: number }>;
+      mediaReadinessScores?: Record<string, number>;
+      requirePublishableMedia?: boolean;
+    }> = [];
+    let finalInput: {
+      policy?: { minimumScore?: number };
+      policiesByMarketplace?: Record<string, { minimumScore?: number }>;
+      mediaReadinessScores?: Record<string, number>;
+    } | undefined;
+    const execution = {
+      async previewSelection(input: (typeof previews)[number]) {
+        previews.push(input);
+        return {
+          selected: [{ product: product as never, offerId: "offer-1", score: input.requirePublishableMedia ? 63 : 58 }],
+          rejected: [],
+          audit: []
+        };
+      },
+      async runOnce(input: NonNullable<typeof finalInput>) {
+        finalInput = input;
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    let discoveryCount = 0;
+    const discovery = {
+      async discover() {
+        discoveryCount += 1;
+        return { productId: product.id, pageFetched: false, hasVideo: true, stored: [], skipped: [] };
+      },
+      async listPublishableMediaProductIds() { return [product.id]; },
+      async listVideoProductIds() { return [product.id]; },
+      async listPublishableVideoProductIds() { return [product.id]; },
+      async listMediaReadinessScores() { return { [product.id]: 100 }; },
+      async generatePromoVideo() { throw new Error("A stored publishable video must not be rendered again."); }
+    };
+    const service = new AutonomousCycleService(candidates, execution, undefined, undefined, undefined, undefined, discovery as never);
+
+    await service.runOnce({
+      publicationEnabled: false,
+      policy: { minimumScore: 60, maximumResults: 10 },
+      policiesByMarketplace: { "market-1": { minimumScore: 62 } }
+    });
+
+    assert.equal(discoveryCount, 1);
+    assert.equal(previews.length, 2);
+    assert.equal(previews[0]?.policy?.minimumScore, 55);
+    assert.equal(previews[0]?.policiesByMarketplace?.["market-1"]?.minimumScore, 57);
+    assert.equal(previews[1]?.policy?.minimumScore, 60);
+    assert.equal(previews[1]?.policiesByMarketplace?.["market-1"]?.minimumScore, 62);
+    assert.deepEqual(previews[1]?.mediaReadinessScores, { [product.id]: 100 });
+    assert.equal(finalInput?.policy?.minimumScore, 60);
+    assert.equal(finalInput?.policiesByMarketplace?.["market-1"]?.minimumScore, 62);
+    assert.deepEqual(finalInput?.mediaReadinessScores, { [product.id]: 100 });
+  });
+
 });
