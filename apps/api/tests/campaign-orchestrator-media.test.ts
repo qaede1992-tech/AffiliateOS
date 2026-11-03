@@ -206,4 +206,7 @@ test("copies stored product video duration into content media metadata for TikTo
   assert.equal(attached.length, 1);
   assert.equal(attached[0].kind, "video");
   assert.equal(attached[0].durationSeconds, 13);
+  assert.equal(attached[0].widthPx, 720);
+  assert.equal(attached[0].heightPx, 1280);
+  assert.equal(attached[0].hasAudio, false);
 });
