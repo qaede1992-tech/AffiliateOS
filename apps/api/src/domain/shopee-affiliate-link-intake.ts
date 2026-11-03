@@ -14,6 +14,7 @@ export interface ShopeeAffiliateLinkIntakeRepository {
   saveIfAbsent(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   update(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   claimStaleResolving(id: string, expectedUpdatedAt: string, staleBefore: string, claimedAt: string): Promise<boolean>;
+  updateResolving(intake: ShopeeAffiliateLinkIntake, expectedUpdatedAt: string): Promise<boolean>;
 }
 export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
   private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
@@ -26,6 +27,12 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
     const current = this.rows.get(id);
     if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt || current.updatedAt >= staleBefore) return false;
     this.rows.set(id, { ...current, updatedAt: claimedAt });
+    return true;
+  }
+  async updateResolving(intake: ShopeeAffiliateLinkIntake, expectedUpdatedAt: string) {
+    const current = this.rows.get(intake.id);
+    if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return false;
+    this.rows.set(intake.id, intake);
     return true;
   }
 }
@@ -49,7 +56,7 @@ export class ShopeeAffiliateLinkIntakeService {
     productUrl?: string
   ): Promise<ShopeeAffiliateLinkIntake> {
     if (intake.id !== canonical.id && intake.status === "resolving") {
-      await this.repository.update({
+      await this.repository.updateResolving({
         ...intake,
         status: "resolved",
         ...(productUrl ? { canonicalProductUrl: productUrl } : {}),
@@ -60,7 +67,7 @@ export class ShopeeAffiliateLinkIntakeService {
           duplicateOfIntakeId: canonical.id
         },
         updatedAt: new Date().toISOString()
-      });
+      }, intake.updatedAt);
     }
     return canonical;
   }
@@ -93,7 +100,10 @@ export class ShopeeAffiliateLinkIntakeService {
       ...(result.reason ? { reason: result.reason.slice(0, 1000) } : {}),
       sourceMetadata: { resolution: result.status }, updatedAt: new Date().toISOString()
     };
-    try { return await this.repository.update(updated); }
+    try {
+      const saved = await this.repository.updateResolving(updated, intake.updatedAt);
+      return saved ? updated : (await this.repository.findById(intake.id)) ?? intake;
+    }
     catch (error) {
       if (result.status === "resolved" && result.shopId && result.itemId) {
         const sameProduct = await this.repository.findByProductIdentity(result.shopId, result.itemId);
