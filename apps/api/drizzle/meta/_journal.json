@@ -533,6 +533,13 @@
       "when": 1794050405022,
       "tag": "0079_product_media_candidate_asset_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794050405023,
+      "tag": "0080_product_media_asset_candidate_foreign_key",
+      "breakpoints": true
     }
   ]
 }
