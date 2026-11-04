@@ -43,6 +43,10 @@ try {
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS width_px");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS height_px");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS has_audio");
+    // Migration 0080 adds this FK without IF NOT EXISTS. The drift simulation
+    // removes later ledger rows and replays those migrations, so it must also
+    // roll back this later schema effect in the ephemeral database first.
+    await client.query("ALTER TABLE public.product_media_assets DROP CONSTRAINT IF EXISTS product_media_assets_source_candidate_fk");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at > $1',
       [1794050405007]
