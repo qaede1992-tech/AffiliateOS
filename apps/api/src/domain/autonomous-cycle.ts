@@ -192,6 +192,9 @@ export class AutonomousCycleService {
               evidenceCount: evidence.length,
               reason: error instanceof Error ? error.message : "Pre-media eligibility evidence could not be persisted."
             }));
+            // The evidence is the audit record that authorizes the later admin-reviewed
+            // media-import workflow. Do not continue selection/discovery without it.
+            throw new Error("Pre-media eligibility evidence could not be persisted; autonomous cycle aborted.");
           }
         }
         const mediaDiscoverySummary = {
