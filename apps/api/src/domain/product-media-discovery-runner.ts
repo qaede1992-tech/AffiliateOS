@@ -9,7 +9,8 @@ import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from ".
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
 import { createHash, randomUUID } from "node:crypto";
-import { buildProductMediaSearchQuery, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";\nimport { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
+import { buildProductMediaSearchQuery, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
+import { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
