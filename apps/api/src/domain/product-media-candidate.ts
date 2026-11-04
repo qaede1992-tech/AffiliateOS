@@ -26,7 +26,7 @@ export interface ProductMediaCandidateRecord {
 }
 
 export interface ProductMediaCandidateRepository {
-  findById(candidateId: string): Promise<ProductMediaCandidateRecord | undefined>;
+  findById?(candidateId: string): Promise<ProductMediaCandidateRecord | undefined>;
   saveMany(candidates: ProductMediaCandidateRecord[]): Promise<ProductMediaCandidateRecord[]>;
   listPendingByProduct(productId: string, limit?: number): Promise<ProductMediaCandidateRecord[]>;
   review(candidateId: string, productId: string, command: ProductMediaCandidateReviewCommand): Promise<ProductMediaCandidateRecord | undefined>;
