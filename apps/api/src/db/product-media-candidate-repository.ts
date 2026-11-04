@@ -52,6 +52,18 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
     return rows.map(toCandidate);
   }
 
+  async listByProductAndReviewStatus(
+    productId: string,
+    status: ProductMediaCandidateRecord["reviewStatus"],
+    limit = 50
+  ): Promise<ProductMediaCandidateRecord[]> {
+    const boundedLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+    const rows = await this.db.select().from(productMediaCandidates)
+      .where(and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, status)))
+      .orderBy(desc(productMediaCandidates.createdAt)).limit(boundedLimit);
+    return rows.map(toCandidate);
+  }
+
   async review(candidateId: string, productId: string, command: ProductMediaCandidateReviewCommand): Promise<ProductMediaCandidateRecord | undefined> {
     return this.db.transaction(async (tx: DatabaseExecutor) => {
       const rows = await tx.select().from(productMediaCandidates).where(and(
