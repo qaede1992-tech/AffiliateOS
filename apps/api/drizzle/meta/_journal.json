@@ -547,6 +547,13 @@
       "when": 1794050405024,
       "tag": "0081_pre_media_eligibility_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1794050405025,
+      "tag": "0082_product_media_candidate_review_audit_append_only",
+      "breakpoints": true
     }
   ]
 }
