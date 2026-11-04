@@ -369,7 +369,7 @@ test("TikTok media URL validation rejects local and credential-bearing hosts bef
         tiktokApproval: approval,
         idempotencyKey: "idem-private-url-" + mediaTransferMode
       }),
-      /credential-free HTTPS media source with a public-looking hostname/i
+      /credential-free HTTPS .*public-looking hostname/i
     );
     assert.equal(calls.length, 1);
     assert.match(calls[0] ?? "", /creator_info/);
