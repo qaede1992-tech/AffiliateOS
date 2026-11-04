@@ -554,6 +554,13 @@
       "when": 1794050405025,
       "tag": "0082_product_media_candidate_review_audit_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1794050405026,
+      "tag": "0083_pre_media_fk_and_duplicate_click_indexes",
+      "breakpoints": true
     }
   ]
 }
