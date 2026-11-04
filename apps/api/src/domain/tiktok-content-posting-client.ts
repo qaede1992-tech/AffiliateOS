@@ -1,5 +1,5 @@
 import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
-import type { MediaAsset } from "./media-asset.js";
+import { isPublicMediaUrl, type MediaAsset } from "./media-asset.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { PublicationCheckResult, PublishOutcome } from "./distribution-engine.js";
 import type { TikTokContentPublisherClient, TikTokCreatorInfo } from "./tiktok-content-publisher.js";
@@ -88,18 +88,18 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
     if (asset.kind === "image") {
       if (asset.source !== "url") throw new Error("TikTok photo publishing requires a media URL.");
-      if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok photo URL must use HTTPS.");
+      if (!isPublicMediaUrl(asset.reference)) throw new Error("TikTok photo URL must be a credential-free HTTPS URL with a public-looking hostname.");
       return this.initializePhotoDirectPost(input, accessToken, privacyLevel, asset.reference, disableComment, approval);
     }
 
     if (this.mediaTransferMode === "PULL_FROM_URL") {
       if (asset.source !== "url") throw new Error("TikTok PULL_FROM_URL publishing requires a media URL.");
-      if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok media URL must use HTTPS.");
+      if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok media URL must be a credential-free HTTPS URL with a public-looking hostname.");
       return this.initializePullFromUrl(input, accessToken, privacyLevel, asset.reference, disableComment, disableDuet, disableStitch, approval);
     }
 
     if (!this.isHttpsUrl(asset.reference)) {
-      throw new Error("TikTok FILE_UPLOAD publishing requires an HTTPS media source that AffiliateOS can download.");
+      throw new Error("TikTok FILE_UPLOAD publishing requires a credential-free HTTPS media source with a public-looking hostname that AffiliateOS can download.");
     }
 
     const videoSize = await this.resolveVideoSize(asset);
@@ -342,7 +342,4 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     return payload;
   }
 
-  private isHttpsUrl(value: string): boolean {
-    try { return new URL(value).protocol === "https:"; } catch { return false; }
-  }
 }
