@@ -22,7 +22,7 @@ test("searches Wikimedia Commons and preserves attribution and license evidence"
             extmetadata: {
               LicenseShortName: { value: "CC BY 4.0" },
               LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0/" },
-              Artist: { value: "<a href=\"https://commons.wikimedia.org/wiki/User:Example\">Example Photographer</a>" }
+              Artist: { value: "<a href=\"//commons.wikimedia.org/wiki/User:Example\">Example Photographer</a>" }
             }
           }]
         }]
