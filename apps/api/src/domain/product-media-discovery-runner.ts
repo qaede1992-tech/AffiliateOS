@@ -9,7 +9,7 @@ import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from ".
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
 import { createHash, randomUUID } from "node:crypto";
-import { buildProductMediaSearchQuery, searchOpenverseProductMedia, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
+import { buildProductMediaSearchQuery, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";\nimport { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
@@ -169,7 +169,23 @@ export class ProductMediaDiscoveryRunner {
         try {
           const identity = { name: product.name };
           const query = buildProductMediaSearchQuery(identity);
-          const discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
+          let discovered: ProductMediaCatalogCandidate[];
+          let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
+          let openverseFailure: string | undefined;
+          try {
+            discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
+          } catch (error) {
+            openverseFailure = error instanceof Error ? error.message : "Openverse candidate search failed.";
+            discoveryProvider = "wikimedia_commons";
+            console.warn(JSON.stringify({
+              event: "product_media_catalog_provider_fallback",
+              primaryProvider: "openverse",
+              fallbackProvider: "wikimedia_commons",
+              productId: product.id,
+              reason: openverseFailure
+            }));
+            discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+          }
           const now = new Date().toISOString();
           const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
             identityStatus: "strong_match" | "review_required"
