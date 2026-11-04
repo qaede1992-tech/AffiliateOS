@@ -5,7 +5,9 @@ import { assertMediaSchemaReady } from "../../src/db/schema-readiness.js";
 
 const completeSchema = {
   hasPreMediaEligibilityEvidence: true,
+  hasPreMediaEligibilityColumns: true,
   hasProductMediaCandidateReviewAudits: true,
+  hasProductMediaCandidateReviewAuditColumns: true,
   hasProductMediaProvenanceColumns: true,
   hasProductMediaCandidateReviewColumns: true
 };
@@ -26,7 +28,9 @@ test("accepts a database with the complete product media schema", async () => {
   await assertMediaSchemaReady(db);
 
   assert.match(statement, /pre_media_eligibility_evidence/);
+  assert.match(statement, /cycle_id/);
   assert.match(statement, /product_media_candidate_review_audits/);
+  assert.match(statement, /actor_role/);
   assert.match(statement, /source_provider/);
   assert.match(statement, /reviewed_by/);
   assert.match(statement, /reviewed_at/);
