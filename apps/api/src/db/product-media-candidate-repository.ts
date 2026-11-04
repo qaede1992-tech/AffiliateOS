@@ -21,6 +21,11 @@ const toCandidate = (row: CandidateRow): ProductMediaCandidateRecord => ({
 export class DrizzleProductMediaCandidateRepository implements ProductMediaCandidateRepository {
   constructor(private readonly db: DatabaseExecutor) {}
 
+  async findById(candidateId: string): Promise<ProductMediaCandidateRecord | undefined> {
+    const rows = await this.db.select().from(productMediaCandidates).where(eq(productMediaCandidates.id, candidateId)).limit(1);
+    return rows[0] ? toCandidate(rows[0]) : undefined;
+  }
+
   async saveMany(candidates: ProductMediaCandidateRecord[]): Promise<ProductMediaCandidateRecord[]> {
     if (candidates.length === 0) return [];
     const rows = await this.db.insert(productMediaCandidates).values(candidates.map((candidate) => ({
