@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { environment } from "./config.js";
 import { createServices } from "./domain/container.js";
 import { createDatabasePersistence } from "./db/client.js";
+import { assertMediaSchemaReady } from "./db/schema-readiness.js";
 import { PostgresAutonomousCycleLock } from "./db/autonomous-cycle-lock.js";
 import { DrizzleAnalyticsReader } from "./db/analytics.js";
 import { DrizzleConversionAttributionRepository } from "./db/attribution.js";
@@ -119,6 +120,7 @@ const app = createApp(services, {
   providerEvents: persistence.providerEvents,
   readinessCheck: async () => {
     await persistence.db.execute(sql`SELECT 1`);
+    await assertMediaSchemaReady(persistence.db);
   }
 });
 
