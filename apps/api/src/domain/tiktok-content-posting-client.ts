@@ -259,15 +259,19 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
         const incoming = Buffer.from(next.value);
         carry = carry.length ? Buffer.concat([carry, incoming]) : incoming;
 
-        while (carry.length >= chunkSize) {
+        const receivedSize = offset + carry.length;
+        if (receivedSize > videoSize) {
+          throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received at least " + receivedSize + ").");
+        }
+
+        // Keep one complete chunk buffered. TikTok may treat the final chunk as
+        // completion of the upload, so do not send it until EOF confirms that
+        // the source contains exactly the declared number of bytes.
+        while (carry.length > chunkSize) {
           const remaining = videoSize - offset;
-          if (remaining <= 0) {
-            throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received at least " + (offset + carry.length) + ").");
-          }
-          const nextChunkSize = Math.min(chunkSize, remaining);
-          if (carry.length < nextChunkSize) break;
-          const chunk = carry.subarray(0, nextChunkSize);
-          carry = carry.subarray(nextChunkSize);
+          if (remaining <= chunkSize) break;
+          const chunk = carry.subarray(0, chunkSize);
+          carry = carry.subarray(chunkSize);
           await this.putUploadChunk(uploadUrl, chunk, offset, videoSize, asset.mimeType ?? "video/mp4");
           offset += chunk.length;
         }
@@ -276,10 +280,15 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       reader.releaseLock();
     }
 
+    const receivedSize = offset + carry.length;
+    if (receivedSize !== videoSize) {
+      throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received " + receivedSize + ").");
+    }
+
     if (carry.length > 0) {
       const remaining = videoSize - offset;
       if (carry.length !== remaining) {
-        throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received " + (offset + carry.length) + ").");
+        throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received " + receivedSize + ").");
       }
       await this.putUploadChunk(uploadUrl, carry, offset, videoSize, asset.mimeType ?? "video/mp4");
       offset += carry.length;
