@@ -180,8 +180,45 @@ test("TikTok FILE_UPLOAD rejects source bytes beyond the declared size without u
     () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-overrun" }),
     /media source size changed during download/
   );
+  assert.deepEqual(uploadedChunks, []);
+});
+
+test("TikTok FILE_UPLOAD withholds the final chunk until a large source size is verified", async () => {
+  const videoSize = 65 * 1024 * 1024 + 1;
+  const expectedChunkSize = Math.ceil(videoSize / 2);
+  const uploadedChunks: Array<{ contentRange: string | null; byteLength: number }> = [];
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        return new Response(JSON.stringify({ data: { publish_id: "publish-large-overrun", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(createByteStream(videoSize + 1), { status: 200, headers: { "content-type": "video/mp4" } });
+      }
+      const headers = new Headers(init?.headers);
+      const body = init?.body as Uint8Array;
+      uploadedChunks.push({ contentRange: headers.get("content-range"), byteLength: body.byteLength });
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish({
+      content,
+      account,
+      mediaAssets: [{ ...asset, byteSize: videoSize }],
+      tiktokApproval: approval,
+      idempotencyKey: "idem-large-overrun"
+    }),
+    /media source size changed during download/
+  );
   assert.deepEqual(uploadedChunks, [
-    { contentRange: `bytes 0-${asset.byteSize - 1}/${asset.byteSize}`, byteLength: asset.byteSize }
+    { contentRange: `bytes 0-${expectedChunkSize - 1}/${videoSize}`, byteLength: expectedChunkSize }
   ]);
 });
 
