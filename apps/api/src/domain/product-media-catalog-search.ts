@@ -14,7 +14,7 @@ export interface ProductMediaSearchIdentity {
 }
 
 export interface ProductMediaCatalogCandidate {
-  provider: "openverse";
+  provider: "openverse" | "wikimedia_commons";
   title: string;
   imageUrl: string;
   landingPageUrl: string;
