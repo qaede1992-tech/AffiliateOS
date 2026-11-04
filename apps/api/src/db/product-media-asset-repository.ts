@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../domain/product-media-ingestion.js";
 import { productMediaAssets, productMediaRightsAudits } from "./schema.js";
 
@@ -51,6 +51,35 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
   async findBySourceCandidateId(candidateId: string): Promise<ProductMediaAsset | undefined> {
     const rows = await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.sourceCandidateId, candidateId)).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
+  }
+
+  async attachCandidateProvenance(
+    productId: string,
+    sha256: string,
+    sourceUrl: string,
+    provenance: NonNullable<Parameters<NonNullable<ProductMediaAssetRepository["attachCandidateProvenance"]>>[3]>
+  ): Promise<ProductMediaAsset | undefined> {
+    const rows = await this.db.update(productMediaAssets).set({
+      sourceUrl,
+      sourceProvider: provenance.provider,
+      sourceCandidateId: provenance.candidateId,
+      sourceLandingPageUrl: provenance.landingPageUrl,
+      sourceTitle: provenance.title,
+      sourceQuery: provenance.query,
+      sourceCreator: provenance.creator,
+      sourceCreatorUrl: provenance.creatorUrl,
+      sourceLicense: provenance.license,
+      sourceLicenseVersion: provenance.licenseVersion,
+      sourceLicenseUrl: provenance.licenseUrl,
+      sourcePublisher: provenance.sourcePublisher
+    }).where(and(
+      eq(productMediaAssets.productId, productId),
+      eq(productMediaAssets.sha256, sha256),
+      eq(productMediaAssets.rightsStatus, "unverified"),
+      isNull(productMediaAssets.sourceCandidateId)
+    )).returning();
+    if (rows[0]) return toAsset(rows[0]);
+    return this.findBySourceCandidateId(provenance.candidateId);
   }
 
   async listByProduct(productId: string): Promise<ProductMediaAsset[]> {
