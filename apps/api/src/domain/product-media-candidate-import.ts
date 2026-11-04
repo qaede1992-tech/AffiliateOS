@@ -74,6 +74,9 @@ export class ProductMediaCandidateImportService {
     if (candidate.rightsStatus === "revoked") {
       throw new ProductMediaCandidateImportError("CANDIDATE_NOT_APPROVED", "A candidate with revoked rights cannot be imported.", 409);
     }
+    if (!candidate.reviewedBy || !candidate.reviewedAt || !candidate.reviewReason?.trim()) {
+      throw new ProductMediaCandidateImportError("CANDIDATE_NOT_APPROVED", "The candidate is missing its administrator review record.", 409);
+    }
 
     const existing = await assets.findBySourceCandidateId?.(candidate.id);
     if (existing) return { asset: existing, alreadyImported: true };
