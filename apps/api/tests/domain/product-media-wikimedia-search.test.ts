@@ -226,3 +226,98 @@ test("filters category search noise using file titles and descriptions", async (
   assert.equal(results[0]?.identityStatus, "review_required");
   assert.equal(results[0]?.rightsStatus, "unverified");
 });
+
+
+test("rejects contextual Wikimedia results that mention a category but do not depict the product", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [
+        {
+          title: "File:Crispy golden potato wedges on a baking tray ready for serving at home.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-potatoes.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Potato_wedges.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC BY 4.0" },
+              LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0/" }
+            }
+          }]
+        },
+        {
+          title: "File:Air fryer crisper tray product.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-crisper.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Crisper_tray.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+            }
+          }]
+        }
+      ]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "GSM Crisper Tray Cooper Carbon Steel Ceramic"
+  }, { fetchImpl });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "Air fryer crisper tray product.jpg");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
+
+test("rejects cat-food donation and wet-food context from dry cat-food product searches", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [
+        {
+          title: "File:Cat food donation box in Sainsbury's.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-donation.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_food_donation_box.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+            }
+          }]
+        },
+        {
+          title: "File:Cat eating wet food.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-wet-food.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_eating_wet_food.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+            }
+          }]
+        },
+        {
+          title: "File:Dry cat food kibble product.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-kibble.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Dry_cat_food_kibble.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+            }
+          }]
+        }
+      ]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "MR.VET Makanan kucing kering 1kg"
+  }, { fetchImpl });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "Dry cat food kibble product.jpg");
+});
