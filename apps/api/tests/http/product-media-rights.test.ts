@@ -4,6 +4,7 @@ import { createApp } from "../../src/app.js";
 import { createInMemoryServices } from "../../src/domain/container.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../../src/domain/product-media-ingestion.js";
 import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "../../src/domain/product-media-candidate.js";
+import { ProductMediaCandidateImportError } from "../../src/domain/product-media-candidate-import.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
 const assetId = "44444444-4444-4444-8444-444444444444";
@@ -34,7 +35,11 @@ const candidate: ProductMediaCandidateRecord = {
   reviewStatus: "pending", rightsStatus: "unverified", createdAt: "2026-11-03T00:00:00.000Z", updatedAt: "2026-11-03T00:00:00.000Z"
 };
 
-function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositoryConfigured = true) {
+function makeApp(
+  role: "admin" | "operator" | "viewer" = "admin",
+  auditRepositoryConfigured = true,
+  importer?: { importApprovedCandidate(productId: string, candidateId: string): Promise<{ asset: ProductMediaAsset; alreadyImported: boolean }> }
+) {
   let asset = { ...initialAsset };
   let lastReview: ProductMediaRightsReviewCommand | undefined;
   const auditRows: ProductMediaRightsAudit[] = [];
@@ -81,6 +86,7 @@ function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositor
     async listReviewAudits(ownerProductId, id) { return ownerProductId === productId && id === candidate.id ? [...candidateReviewAudits] : []; }
   };
   services.productMediaCandidates = candidateRepository;
+  if (importer) services.productMediaCandidateImport = importer as never;
   services.productMediaPreviewUrl = async (ownerProductId, id) => ownerProductId === productId && id === assetId ? "https://storage.example.test/signed/product.jpg" : undefined;
   const app = createApp(services, {
     auth: { enabled: false, operatorId: "reviewer-test", role },
@@ -556,6 +562,76 @@ test("product media preflight does not guess a TikTok duration limit when multip
     assert.ok(readiness.checks.some((item: { key: string; status: string }) =>
       item.key === "creator_duration_limit" && item.status === "unknown"
     ));
+  } finally {
+    await app.close();
+  }
+});
+
+
+test("admin can import an approved product media candidate and the response keeps rights unverified", async () => {
+  let importCalls = 0;
+  const importer = {
+    async importApprovedCandidate(ownerProductId: string, candidateId: string) {
+      importCalls += 1;
+      assert.equal(ownerProductId, productId);
+      assert.equal(candidateId, candidate.id);
+      return { asset: { ...initialAsset, sourceCandidateId: candidate.id }, alreadyImported: false } as { asset: ProductMediaAsset; alreadyImported: boolean };
+    }
+  };
+  const { app } = makeApp("admin", true, importer);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/import`
+    });
+    assert.equal(response.statusCode, 201);
+    assert.equal(response.json().alreadyImported, false);
+    assert.equal(response.json().asset.rightsStatus, "unverified");
+    assert.equal(importCalls, 1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot import product media candidates and importer is never invoked", async () => {
+  let importCalls = 0;
+  const importer = {
+    async importApprovedCandidate() {
+      importCalls += 1;
+      return { asset: initialAsset, alreadyImported: false };
+    }
+  };
+  const { app } = makeApp("operator", true, importer);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/import`
+    });
+    assert.equal(response.statusCode, 403);
+    assert.equal(importCalls, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("candidate import maps revoked existing asset rights to HTTP 409", async () => {
+  const importer = {
+    async importApprovedCandidate() {
+      throw new ProductMediaCandidateImportError(
+        "MEDIA_ASSET_RIGHTS_REVOKED",
+        "The existing media asset has revoked publication rights.",
+        409
+      );
+    }
+  };
+  const { app } = makeApp("admin", true, importer);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/import`
+    });
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json().error, "MEDIA_ASSET_RIGHTS_REVOKED");
   } finally {
     await app.close();
   }
