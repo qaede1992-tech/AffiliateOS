@@ -316,3 +316,51 @@ test("persists image dimensions extracted from downloaded PNG bytes", async () =
   assert.equal(result.stored[0]?.hasAudio, null);
   assert.equal(stored.length, 1);
 });
+
+
+test("preserves reviewed catalog provenance without verifying publication rights", async () => {
+  const bytes = Uint8Array.from([
+    0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0,
+    0, 0, 0, 9, 0x6d, 0x64, 0x61, 0x74, 1
+  ]);
+  let saved: Record<string, unknown> | undefined;
+  const storage = {
+    upload: async ({ key }: { key: string }) => ({ bucket: "affiliate-media", key }),
+    remove: async () => {}
+  } as never;
+  const repository = {
+    findByProductAndHash: async () => undefined,
+    save: async (asset: Record<string, unknown>) => { saved = asset; return asset; }
+  } as never;
+  const fetcher = (async () => ({ status: 200, headers: {}, url: "https://upload.wikimedia.org/file.mp4", bytes })) as never;
+  const service = new ProductMediaIngestionService(storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher);
+  const result = await service.ingest({
+    productId, nonMediaEligibilityPassed: true,
+    candidates: [{
+      kind: "video", url: "https://upload.wikimedia.org/file.mp4", source: "catalog",
+      provenance: {
+        provider: "wikimedia_commons", candidateId: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001",
+        landingPageUrl: "https://commons.wikimedia.org/wiki/File:Example.mp4",
+        title: "Example product media", query: "example product",
+        creator: "Creator Name", creatorUrl: "https://commons.wikimedia.org/wiki/User:Creator",
+        license: "CC-BY-SA", licenseVersion: "4.0",
+        licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+        sourcePublisher: "Wikimedia Commons"
+      }
+    }]
+  });
+  assert.equal(result.stored.length, 1);
+  assert.equal(saved?.sourceProvider, "wikimedia_commons");
+  assert.equal(saved?.sourceLandingPageUrl, "https://commons.wikimedia.org/wiki/File:Example.mp4");
+  assert.equal(saved?.sourceTitle, "Example product media");
+  assert.equal(saved?.sourceQuery, "example product");
+  assert.equal(saved?.sourceCreator, "Creator Name");
+  assert.equal(saved?.sourceCreatorUrl, "https://commons.wikimedia.org/wiki/User:Creator");
+  assert.equal(saved?.sourceLicense, "CC-BY-SA");
+  assert.equal(saved?.sourceLicenseVersion, "4.0");
+  assert.equal(saved?.sourceLicenseUrl, "https://creativecommons.org/licenses/by-sa/4.0/");
+  assert.equal(saved?.sourcePublisher, "Wikimedia Commons");
+  assert.equal(saved?.rightsStatus, "unverified");
+  assert.equal(saved?.rightsBasis, null);
+  assert.equal(saved?.rightsEvidenceUrl, null);
+});
