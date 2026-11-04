@@ -48,6 +48,8 @@ export function ProductMediaCandidateReviewPanel() {
     }
     setLoading(true);
     setError(null);
+    setCandidates([]);
+    setAudits({});
     try {
       const [candidateResponse, assetResponse] = await Promise.all([
         api.productMediaCandidates(selectedProductId, selectedStatus),
