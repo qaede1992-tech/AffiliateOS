@@ -287,10 +287,10 @@ test("rejects cat-food donation and wet-food context from dry cat-food product s
           }]
         },
         {
-          title: "File:Cat eating wet food.jpg",
+          title: "File:Cat eating wet cat food.jpg",
           imageinfo: [{
             thumburl: "https://upload.wikimedia.org/thumb-wet-food.jpg",
-            descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_eating_wet_food.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_eating_wet_cat_food.jpg",
             mime: "image/jpeg",
             extmetadata: {
               LicenseShortName: { value: "CC0" },
