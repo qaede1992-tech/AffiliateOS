@@ -139,7 +139,11 @@ export async function searchWikimediaCommonsProductMedia(
       if (!title || !info) return [];
       const imageUrl = safeHttps(info.thumburl) ?? safeHttps(info.url);
       const landingPageUrl = safeHttps(info.descriptionurl);
-      if (!imageUrl || !landingPageUrl) return [];
+      const mime = typeof info.mime === "string" ? info.mime.toLowerCase() : "";
+      if (!imageUrl || !landingPageUrl || !mime.startsWith("image/")) return [];
+      const imageHost = new URL(imageUrl).hostname;
+      if (imageHost !== "upload.wikimedia.org" && imageHost !== "thumb.wikimedia.org") return [];
+      if (new URL(landingPageUrl).hostname !== "commons.wikimedia.org") return [];
 
       const metadata = info.extmetadata;
       const licenseName = metadataText(metadata, "LicenseShortName");
@@ -150,15 +154,18 @@ export async function searchWikimediaCommonsProductMedia(
       const identityMatch = evaluateProductMediaIdentity(identity, title);
       if (identityMatch.status === "rejected") return [];
 
+      const creatorHref = metadata?.Artist?.value && typeof metadata.Artist.value === "string"
+        ? metadata.Artist.value.match(/href=["']([^"']+)["']/i)?.[1]
+        : null;
+      const normalizedCreatorHref = creatorHref?.startsWith("//") ? `https:${creatorHref}` : creatorHref;
+
       return [{
         provider: "wikimedia_commons" as const,
         title,
         imageUrl,
         landingPageUrl,
         creator: metadataText(metadata, "Artist"),
-        creatorUrl: safeHttps(metadata?.Artist?.value && typeof metadata.Artist.value === "string"
-          ? metadata.Artist.value.match(/href=["']([^"']+)["']/i)?.[1]
-          : null),
+        creatorUrl: safeHttps(normalizedCreatorHref),
         license: acceptedLicense.license,
         licenseVersion: licenseName?.match(/\d+(?:\.\d+)?/)?.[0] ?? null,
         licenseUrl: acceptedLicense.licenseUrl,
