@@ -66,9 +66,19 @@ function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositor
   };
   const services = createInMemoryServices();
   services.productMediaAssets = repository;
+  let reviewedCandidate = { ...candidate };
+  const candidateReviewAudits: Array<{ id: string; candidateId: string; productId: string; actorId: string; actorRole: "admin"; action: "approve" | "reject"; reason: string; previousStatus: "pending"; newStatus: "approved" | "rejected"; createdAt: string }> = [];
   const candidateRepository: ProductMediaCandidateRepository = {
     async saveMany(rows) { return rows; },
-    async listPendingByProduct(id) { return id === productId ? [candidate] : []; }
+    async listPendingByProduct(id) { return id === productId && reviewedCandidate.reviewStatus === "pending" ? [reviewedCandidate] : []; },
+    async review(id, ownerProductId, command) {
+      if (id !== candidate.id || ownerProductId !== productId || reviewedCandidate.reviewStatus !== "pending") return undefined;
+      const reviewedAt = new Date().toISOString();
+      reviewedCandidate = { ...reviewedCandidate, reviewStatus: command.status, reviewedBy: command.actorId, reviewedAt, reviewReason: command.reason, updatedAt: reviewedAt };
+      candidateReviewAudits.unshift({ id: "77777777-7777-4777-8777-777777777777", candidateId: candidate.id, productId, actorId: command.actorId, actorRole: "admin", action: command.status === "approved" ? "approve" : "reject", reason: command.reason, previousStatus: "pending", newStatus: command.status, createdAt: reviewedAt });
+      return reviewedCandidate;
+    },
+    async listReviewAudits(ownerProductId, id) { return ownerProductId === productId && id === candidate.id ? [...candidateReviewAudits] : []; }
   };
   services.productMediaCandidates = candidateRepository;
   services.productMediaPreviewUrl = async (ownerProductId, id) => ownerProductId === productId && id === assetId ? "https://storage.example.test/signed/product.jpg" : undefined;
@@ -88,6 +98,39 @@ test("admin can list pending product media candidates with provenance and unveri
     assert.equal(response.json().data[0].identityStatus, "review_required");
     assert.equal(response.json().data[0].rightsStatus, "unverified");
     assert.equal(response.json().data[0].landingPageUrl, candidate.landingPageUrl);
+  } finally {
+    await app.close();
+  }
+});
+
+test("admin review records an auditable identity decision without verifying publication rights", async () => {
+  const { app } = makeApp();
+  try {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`,
+      payload: { status: "approved", reason: "Visual identity and source page manually checked." }
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().reviewStatus, "approved");
+    assert.equal(response.json().reviewedBy, "reviewer-test");
+    assert.equal(response.json().rightsStatus, "unverified");
+    const audits = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review-audits` });
+    assert.equal(audits.statusCode, 200);
+    assert.equal(audits.json().data[0].action, "approve");
+    assert.equal(audits.json().data[0].reason, "Visual identity and source page manually checked.");
+  } finally {
+    await app.close();
+  }
+});
+
+test("candidate review rejects a second decision after the pending state is consumed", async () => {
+  const { app } = makeApp();
+  try {
+    const first = await app.inject({ method: "PATCH", url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`, payload: { status: "rejected", reason: "Incorrect product identity." } });
+    const second = await app.inject({ method: "PATCH", url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`, payload: { status: "approved", reason: "Trying to override prior decision." } });
+    assert.equal(first.statusCode, 200);
+    assert.equal(second.statusCode, 409);
   } finally {
     await app.close();
   }
