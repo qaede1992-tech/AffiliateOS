@@ -167,12 +167,13 @@ export class ProductMediaDiscoveryRunner {
     if (isShopeeHost(pageUrl.hostname)) {
       let candidatesFound = 0;
       if (this.catalogCandidates) {
+        const identity = { name: product.name };
+        const query = buildProductMediaSearchQuery(identity);
+        let discovered: ProductMediaCatalogCandidate[] = [];
+        let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
+        let openverseFailure: string | undefined;
+        let discoveryFailed = false;
         try {
-          const identity = { name: product.name };
-          const query = buildProductMediaSearchQuery(identity);
-          let discovered: ProductMediaCatalogCandidate[];
-          let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
-          let openverseFailure: string | undefined;
           try {
             discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
           } catch (error) {
@@ -187,6 +188,21 @@ export class ProductMediaDiscoveryRunner {
             }));
             discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
           }
+        } catch (error) {
+          discoveryFailed = true;
+          const message = error instanceof Error ? error.message : "Catalog candidate search failed.";
+          console.warn(JSON.stringify({
+            event: "product_media_catalog_search_failed",
+            provider: discoveryProvider,
+            productId: product.id,
+            reason: message
+          }));
+          skipped.push({
+            url: discoveryProvider === "openverse" ? "https://api.openverse.org/v1/images/" : "https://commons.wikimedia.org/w/api.php",
+            reason: "Product media catalog discovery failed: " + message
+          });
+        }
+        if (!discoveryFailed) {
           const now = new Date().toISOString();
           const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
             identityStatus: "strong_match" | "review_required"
@@ -217,29 +233,35 @@ export class ProductMediaDiscoveryRunner {
             createdAt: now,
             updatedAt: now
           }));
-          const saved = await this.catalogCandidates.saveMany(records);
-          candidatesFound = accepted.length;
-          const insertedCount = saved.length;
-          const alreadyPresentCount = Math.max(0, accepted.length - insertedCount);
-          console.info(JSON.stringify({
-            event: "product_media_catalog_search_completed",
-            provider: discoveryProvider,
-            fallbackReason: openverseFailure,
-            productId: product.id,
-            resultCount: discovered.length,
-            acceptedCount: accepted.length,
-            savedCount: insertedCount,
-            alreadyPresentCount
-          }));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Openverse candidate search failed.";
-          console.warn(JSON.stringify({
-            event: "product_media_catalog_search_failed",
-            provider: "wikimedia_commons",
-            productId: product.id,
-            reason: message
-          }));
-          skipped.push({ url: "https://commons.wikimedia.org/w/api.php", reason: "Openverse and Wikimedia Commons candidate discovery failed: " + message });
+          try {
+            const saved = await this.catalogCandidates.saveMany(records);
+            candidatesFound = accepted.length;
+            const insertedCount = saved.length;
+            const alreadyPresentCount = Math.max(0, accepted.length - insertedCount);
+            console.info(JSON.stringify({
+              event: "product_media_catalog_search_completed",
+              provider: discoveryProvider,
+              fallbackReason: openverseFailure,
+              productId: product.id,
+              resultCount: discovered.length,
+              acceptedCount: accepted.length,
+              savedCount: insertedCount,
+              alreadyPresentCount
+            }));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Product media candidate persistence failed.";
+            console.warn(JSON.stringify({
+              event: "product_media_catalog_persistence_failed",
+              provider: discoveryProvider,
+              productId: product.id,
+              acceptedCount: accepted.length,
+              reason: message
+            }));
+            skipped.push({
+              url: discoveryProvider === "openverse" ? "https://api.openverse.org/v1/images/" : "https://commons.wikimedia.org/w/api.php",
+              reason: "Product media candidate persistence failed: " + message
+            });
+          }
         }
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
