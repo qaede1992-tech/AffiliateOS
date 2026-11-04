@@ -48,6 +48,11 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
 
+  async findBySourceCandidateId(candidateId: string): Promise<ProductMediaAsset | undefined> {
+    const rows = await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.sourceCandidateId, candidateId)).limit(1);
+    return rows[0] ? toAsset(rows[0]) : undefined;
+  }
+
   async listByProduct(productId: string): Promise<ProductMediaAsset[]> {
     return (await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.productId, productId)))
       .map(toAsset);
@@ -134,7 +139,8 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       createdAt: asset.createdAt
     }).onConflictDoNothing().returning();
     if (rows[0]) return toAsset(rows[0]);
-    const existing = await this.findByProductAndHash(asset.productId, asset.sha256);
+    const existing = await this.findByProductAndHash(asset.productId, asset.sha256)
+      ?? (asset.sourceCandidateId ? await this.findBySourceCandidateId(asset.sourceCandidateId) : undefined);
     if (existing) return existing;
     throw new Error("Product media metadata conflicted with an existing storage key.");
   }
