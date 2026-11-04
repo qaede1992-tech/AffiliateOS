@@ -21,6 +21,16 @@ export interface ProductMediaAsset {
   sha256: string;
   sourceUrl: string;
   sourcePublisher: string | null;
+  sourceProvider?: string | null;
+  sourceCandidateId?: string | null;
+  sourceLandingPageUrl?: string | null;
+  sourceTitle?: string | null;
+  sourceQuery?: string | null;
+  sourceCreator?: string | null;
+  sourceCreatorUrl?: string | null;
+  sourceLicense?: string | null;
+  sourceLicenseVersion?: string | null;
+  sourceLicenseUrl?: string | null;
   rightsStatus: "unverified" | "verified" | "revoked";
   rightsBasis: "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization" | null;
   rightsEvidenceUrl: string | null;
@@ -56,6 +66,17 @@ export interface ProductMediaRightsAudit {
 
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
+  findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
+  attachCandidateProvenance?(
+    productId: string,
+    sha256: string,
+    sourceUrl: string,
+    provenance: {
+      provider: string; candidateId: string; landingPageUrl: string; title: string; query: string;
+      creator: string | null; creatorUrl: string | null; license: string | null;
+      licenseVersion: string | null; licenseUrl: string | null; sourcePublisher: string | null;
+    }
+  ): Promise<ProductMediaAsset | undefined>;
   listByProduct(productId: string): Promise<ProductMediaAsset[]>;
   listByProducts?(productIds: string[]): Promise<ProductMediaAsset[]>;
   save(asset: ProductMediaAsset): Promise<ProductMediaAsset>;
@@ -119,7 +140,13 @@ export class ProductMediaIngestionService {
   async ingest(input: {
     productId: string;
     nonMediaEligibilityPassed: boolean;
-    candidates: ProductMediaCandidate[];
+    candidates: Array<ProductMediaCandidate & {
+      provenance?: {
+        provider: string; candidateId: string; landingPageUrl: string; title: string; query: string;
+        creator: string | null; creatorUrl: string | null; license: string | null;
+        licenseVersion: string | null; licenseUrl: string | null; sourcePublisher: string | null;
+      };
+    }>;
     transport?: Pick<SafePublicHttpsFetchOptions, "fetchImpl" | "resolveHost">;
   }): Promise<ProductMediaIngestionResult> {
     validateProductId(input.productId);
@@ -155,6 +182,19 @@ export class ProductMediaIngestionService {
         const sha256 = createHash("sha256").update(response.bytes).digest("hex");
         const prior = await this.assets.findByProductAndHash(input.productId, sha256);
         if (prior) {
+          if (candidate.provenance && !prior.sourceCandidateId && prior.rightsStatus === "unverified" && this.assets.attachCandidateProvenance) {
+            const linked = await this.assets.attachCandidateProvenance(input.productId, sha256, candidate.url, candidate.provenance);
+            if (linked) {
+              stored.push(linked);
+              continue;
+            }
+            skipped.push({ url: candidate.url, reason: "existing_asset_provenance_could_not_be_safely_linked" });
+            continue;
+          }
+          if (candidate.provenance && prior.sourceCandidateId !== candidate.provenance.candidateId) {
+            skipped.push({ url: candidate.url, reason: "existing_asset_has_conflicting_candidate_provenance_or_verified_rights" });
+            continue;
+          }
           stored.push(prior);
           continue;
         }
@@ -165,7 +205,19 @@ export class ProductMediaIngestionService {
         const asset: ProductMediaAsset = {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
           objectKey: savedObject.key, mimeType, byteSize: response.bytes.byteLength,
-          ...technicalMetadata, sha256, sourceUrl: candidate.url, sourcePublisher: null, rightsStatus: "unverified",
+          ...technicalMetadata, sha256, sourceUrl: candidate.url,
+          sourcePublisher: candidate.provenance?.sourcePublisher ?? null,
+          sourceProvider: candidate.provenance?.provider ?? null,
+          sourceCandidateId: candidate.provenance?.candidateId ?? null,
+          sourceLandingPageUrl: candidate.provenance?.landingPageUrl ?? null,
+          sourceTitle: candidate.provenance?.title ?? null,
+          sourceQuery: candidate.provenance?.query ?? null,
+          sourceCreator: candidate.provenance?.creator ?? null,
+          sourceCreatorUrl: candidate.provenance?.creatorUrl ?? null,
+          sourceLicense: candidate.provenance?.license ?? null,
+          sourceLicenseVersion: candidate.provenance?.licenseVersion ?? null,
+          sourceLicenseUrl: candidate.provenance?.licenseUrl ?? null,
+          rightsStatus: "unverified",
           rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null, createdAt: new Date().toISOString()
         };
         try {

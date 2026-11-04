@@ -4,9 +4,10 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
+import { ProductMediaCandidateImportError } from "../domain/product-media-candidate-import.js";
 import { requireAdmin, requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
@@ -291,9 +292,51 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => { const { productId } = productMediaParamsSchema.parse(request.params); return services.marketplace.updateProductMedia(productId, updateProductMediaSchema.parse(request.body)); });
   app.get("/api/v1/products/:productId/media-candidates", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
+    const query = productMediaCandidateListQuerySchema.parse(request.query);
     const repository = services.productMediaCandidates;
     if (!repository) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATES_UNAVAILABLE", message: "Product media candidate storage is not configured." });
-    return list(await repository.listPendingByProduct(productId, 50));
+    if (!query.status || query.status === "pending") return list(await repository.listPendingByProduct(productId, 50));
+    if (!repository.listByProductAndReviewStatus) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATE_STATUS_QUERY_UNAVAILABLE", message: "Reviewed candidate listing is not configured." });
+    return list(await repository.listByProductAndReviewStatus(productId, query.status, 50));
+  });
+  app.patch("/api/v1/products/:productId/media-candidates/:candidateId/review", adminGuard, async (request, reply) => {
+    const { productId, candidateId } = productMediaCandidateReviewParamsSchema.parse(request.params);
+    const input = reviewProductMediaCandidateSchema.parse(request.body);
+    const repository = services.productMediaCandidates;
+    if (!repository?.review) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATE_REVIEW_UNAVAILABLE", message: "Atomic candidate review and audit storage are not configured." });
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    const updated = await repository.review(candidateId, productId, { ...input, actorId, actorRole: "admin" });
+    if (!updated) return reply.status(409).send({ error: "PRODUCT_MEDIA_CANDIDATE_NOT_PENDING", message: "The candidate does not exist for this product or has already been reviewed." });
+    auditSecurityEvent(request.log, request, "product_media_candidate_reviewed", { productId, candidateId, status: updated.reviewStatus });
+    return updated;
+  });
+  app.post("/api/v1/products/:productId/media-candidates/:candidateId/import", adminGuard, async (request, reply) => {
+    const { productId, candidateId } = productMediaCandidateReviewParamsSchema.parse(request.params);
+    const importer = services.productMediaCandidateImport;
+    if (!importer) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATE_IMPORT_UNAVAILABLE", message: "Candidate import requires configured media storage, repositories, and autonomous selection audit." });
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    try {
+      const result = await importer.importApprovedCandidate(productId, candidateId);
+      auditSecurityEvent(request.log, request, "product_media_candidate_imported", {
+        productId, candidateId, assetId: result.asset.id, alreadyImported: result.alreadyImported,
+        rightsStatus: result.asset.rightsStatus
+      });
+      return reply.status(result.alreadyImported ? 200 : 201).send(result);
+    } catch (error) {
+      if (error instanceof ProductMediaCandidateImportError) {
+        return reply.status(error.statusCode).send({ error: error.code, message: error.message });
+      }
+      request.log.error({ errorName: error instanceof Error ? error.name : "UnknownError" }, "product media candidate import failed");
+      return reply.status(502).send({ error: "PRODUCT_MEDIA_CANDIDATE_IMPORT_FAILED", message: "The approved media candidate could not be imported." });
+    }
+  });
+  app.get("/api/v1/products/:productId/media-candidates/:candidateId/review-audits", adminGuard, async (request, reply) => {
+    const { productId, candidateId } = productMediaCandidateReviewParamsSchema.parse(request.params);
+    const repository = services.productMediaCandidates;
+    if (!repository?.listReviewAudits) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATE_AUDIT_UNAVAILABLE", message: "Candidate review audit storage is not configured." });
+    return list(await repository.listReviewAudits(productId, candidateId));
   });
   app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);

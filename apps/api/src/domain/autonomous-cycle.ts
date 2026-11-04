@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AudienceSegment, ContentPlatform } from "@affiliateos/shared";
 import type { AutonomousExecutionCandidate, AutonomousExecutionInput, AutonomousExecutionResult, AutonomousExecutionService } from "./autonomous-execution.js";
 export type { AutonomousExecutionCandidate } from "./autonomous-execution.js";
@@ -6,6 +7,7 @@ import type { AutonomousOptimizationRunResult, AutonomousOptimizationRunner } fr
 import type { AutonomousExplorationEvaluationRunner, ExplorationEvaluationRunResult } from "./autonomous-exploration-evaluation-runner.js";
 import { InMemoryAutonomousCycleLock, type AutonomousCycleLock } from "./autonomous-cycle-lock.js";
 import type { ProductMediaDiscoveryRunner } from "./product-media-discovery-runner.js";
+import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
 import { MEDIA_READINESS_MAX_CONFIDENCE_LIFT, MEDIA_READINESS_MAX_SCORE_LIFT } from "./opportunity-scoring.js";
 
 export interface AutonomousCandidateProvider {
@@ -56,7 +58,8 @@ export class AutonomousCycleService {
     private readonly lockKey = "affiliateos:autonomous-cycle",
     private readonly optimization?: AutonomousOptimizationRunner,
     private readonly explorationEvaluation?: AutonomousExplorationEvaluationRunner,
-    private readonly productMediaDiscovery?: ProductMediaDiscoveryRunner
+    private readonly productMediaDiscovery?: ProductMediaDiscoveryRunner,
+    private readonly preMediaEligibility?: PreMediaEligibilityRepository
   ) {
     this.lock = lock ?? new InMemoryAutonomousCycleLock();
   }
@@ -154,6 +157,43 @@ export class AutonomousCycleService {
           requirePublishableVideo: false,
           requireCommissionSignal: true
         });
+        if (this.preMediaEligibility && preliminary.audit.length) {
+          const evidenceCreatedAt = new Date().toISOString();
+          const evidenceCycleId = randomUUID();
+          const selectedByProduct = new Map(preliminary.selected.map((selected) => [selected.product.id, selected]));
+          const evidence = preliminary.audit.map((decision) => {
+            const selected = selectedByProduct.get(decision.productId);
+            return {
+              id: randomUUID(),
+              cycleId: evidenceCycleId,
+              productId: decision.productId,
+              marketplaceId: decision.marketplaceId,
+              offerId: selected?.offerId,
+              eligible: decision.selected,
+              score: decision.score,
+              policy: {
+                ...(input.policy ?? {}),
+                ...decision.policy,
+                minimumScore: decision.policy.minimumScore ?? preliminaryMinimumScore,
+                minimumDataConfidence: decision.policy.minimumDataConfidence ?? preliminaryMinimumDataConfidence,
+                requirePublishableMedia: false,
+                requirePublishableVideo: false,
+                requireCommissionSignal: true
+              },
+              reasons: decision.reasons ?? [],
+              createdAt: evidenceCreatedAt
+            };
+          });
+          try {
+            await this.preMediaEligibility.saveMany(evidence);
+          } catch (error) {
+            console.warn(JSON.stringify({
+              event: "autonomous_pre_media_eligibility_persist_failed",
+              evidenceCount: evidence.length,
+              reason: error instanceof Error ? error.message : "Pre-media eligibility evidence could not be persisted."
+            }));
+          }
+        }
         const mediaDiscoverySummary = {
           attemptedCount: 0,
           failedCount: 0,

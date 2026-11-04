@@ -11,7 +11,9 @@ export type AuditEvent =
   | "publication_job_confirmed"
   | "content_scheduled_for_distribution"
   | "shopee_affiliate_link_intake_submitted"
-  | "product_media_rights_updated";
+  | "product_media_rights_updated"
+  | "product_media_candidate_reviewed"
+  | "product_media_candidate_imported";
 
 export function auditSecurityEvent(
   log: FastifyBaseLogger,

@@ -25,6 +25,9 @@ export const importShopeeAffiliateCsvSchema = z.object({ affiliateId: entityId, 
 const productMediaUrl = z.string().trim().url().max(2048).refine((value) => { try { return new URL(value).protocol === "https:"; } catch { return false; } }, "Product media URLs must use HTTPS.");
 export const productMediaParamsSchema = z.object({ productId: entityId });
 export const productMediaRightsParamsSchema = z.object({ productId: entityId, assetId: entityId });
+export const productMediaCandidateListQuerySchema = z.object({ status: z.enum(["pending", "approved", "rejected"]).optional() });
+export const productMediaCandidateReviewParamsSchema = z.object({ productId: entityId, candidateId: entityId });
+export const reviewProductMediaCandidateSchema = z.object({ status: z.enum(["approved", "rejected"]), reason: nonEmptyText.max(1000) });
 const productMediaRightsEvidenceUrl = z.string().trim().url().max(2048).refine((value) => {
   try {
     const url = new URL(value);

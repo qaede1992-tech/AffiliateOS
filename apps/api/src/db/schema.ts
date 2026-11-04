@@ -35,6 +35,8 @@ export const autonomousFeedbackSnapshots = pgTable("autonomous_feedback_snapshot
 
 export const autonomousDecisionAudits = pgTable("autonomous_decision_audits", { id: uuid("id").primaryKey(), cycleId: varchar("cycle_id", { length: 200 }).notNull(), productId: uuid("product_id").notNull().references(() => products.id), marketplaceId: uuid("marketplace_id").notNull().references(() => marketplaces.id), selected: boolean("selected").notNull(), selectionMode: varchar("selection_mode", { length: 20 }), score: real("score").notNull(), policy: jsonb("policy").$type<Record<string, unknown>>().notNull(), reasons: jsonb("reasons").$type<string[]>().notNull(), category: varchar("category", { length: 255 }), audienceSegments: jsonb("audience_segments").$type<string[]>(), outcomeOfferId: uuid("outcome_offer_id").references(() => affiliateOffers.id), outcomeStatus: varchar("outcome_status", { length: 20 }), outcomeCampaignId: uuid("outcome_campaign_id").references(() => campaigns.id), outcomeError: varchar("outcome_error", { length: 2000 }), outcomeObservedAt: timestamp("outcome_observed_at", { withTimezone: true, mode: "string" }), recovery: jsonb("recovery").$type<Record<string, unknown>>(), explorationEvaluation: jsonb("exploration_evaluation").$type<Record<string, unknown>>(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [index("autonomous_decision_audits_cycle_idx").on(table.cycleId), index("autonomous_decision_audits_marketplace_created_idx").on(table.marketplaceId, table.createdAt), index("autonomous_decision_audits_product_created_idx").on(table.productId, table.createdAt)]);
 
+export const preMediaEligibilityEvidence = pgTable("pre_media_eligibility_evidence", { id: uuid("id").primaryKey(), cycleId: varchar("cycle_id", { length: 240 }).notNull(), productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }), marketplaceId: uuid("marketplace_id").notNull().references(() => marketplaces.id, { onDelete: "cascade" }), offerId: uuid("offer_id").references(() => affiliateOffers.id, { onDelete: "set null" }), eligible: boolean("eligible").notNull(), score: real("score").notNull(), policy: jsonb("policy").$type<Record<string, unknown>>().notNull().default({}), reasons: jsonb("reasons").$type<string[]>().notNull().default([]), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [index("pre_media_eligibility_product_created_idx").on(table.productId, table.createdAt.desc()), index("pre_media_eligibility_cycle_idx").on(table.cycleId)]);
+
 export const autonomousExplorationStates = pgTable("autonomous_exploration_states", { id: uuid("id").primaryKey(), marketplaceId: uuid("marketplace_id").notNull().references(() => marketplaces.id), dimension: varchar("dimension", { length: 20 }).notNull(), dimensionKey: varchar("dimension_key", { length: 500 }).notNull(), sampleCount: integer("sample_count").notNull().default(0), promotedCount: integer("promoted_count").notNull().default(0), deprioritizedCount: integer("deprioritized_count").notNull().default(0), optimizationPositiveCount: integer("optimization_positive_count").notNull().default(0), optimizationNegativeCount: integer("optimization_negative_count").notNull().default(0), regimeRisingCount: integer("regime_rising_count").notNull().default(0), regimeStableCount: integer("regime_stable_count").notNull().default(0), regimeDecliningCount: integer("regime_declining_count").notNull().default(0), regimeVolatileCount: integer("regime_volatile_count").notNull().default(0), observedAt: timestamp("observed_at", { withTimezone: true, mode: "string" }).notNull(), ...timestamps }, (table) => [uniqueIndex("autonomous_exploration_states_scope_unique").on(table.marketplaceId, table.dimension, table.dimensionKey), index("autonomous_exploration_states_marketplace_dimension_idx").on(table.marketplaceId, table.dimension)]);
 export const autonomousExplorationStateEvents = pgTable("autonomous_exploration_state_events", { id: uuid("id").primaryKey(), stateId: uuid("state_id").notNull().references(() => autonomousExplorationStates.id), auditId: uuid("audit_id").notNull().references(() => autonomousDecisionAudits.id), status: varchar("status", { length: 40 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("autonomous_exploration_state_events_state_audit_unique").on(table.stateId, table.auditId), index("autonomous_exploration_state_events_audit_idx").on(table.auditId)]);
 export const autonomousExplorationOptimizationEvents = pgTable("autonomous_exploration_optimization_events", { id: uuid("id").primaryKey(), stateId: uuid("state_id").notNull().references(() => autonomousExplorationStates.id), actionOutcomeId: uuid("action_outcome_id").notNull().references(() => autonomousActionOutcomes.id), signal: varchar("signal", { length: 20 }).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull() }, (table) => [uniqueIndex("autonomous_exploration_optimization_events_state_outcome_unique").on(table.stateId, table.actionOutcomeId), index("autonomous_exploration_optimization_events_outcome_idx").on(table.actionOutcomeId)]);
@@ -56,6 +58,16 @@ export const productMediaAssets = pgTable("product_media_assets", {
   sha256: varchar("sha256", { length: 64 }).notNull(),
   sourceUrl: varchar("source_url", { length: 2048 }).notNull(),
   sourcePublisher: varchar("source_publisher", { length: 255 }),
+  sourceProvider: varchar("source_provider", { length: 40 }),
+  sourceCandidateId: uuid("source_candidate_id"),
+  sourceLandingPageUrl: varchar("source_landing_page_url", { length: 2048 }),
+  sourceTitle: varchar("source_title", { length: 1000 }),
+  sourceQuery: varchar("source_query", { length: 500 }),
+  sourceCreator: varchar("source_creator", { length: 500 }),
+  sourceCreatorUrl: varchar("source_creator_url", { length: 2048 }),
+  sourceLicense: varchar("source_license", { length: 40 }),
+  sourceLicenseVersion: varchar("source_license_version", { length: 40 }),
+  sourceLicenseUrl: varchar("source_license_url", { length: 2048 }),
   rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
   rightsBasis: varchar("rights_basis", { length: 40 }),
   rightsEvidenceUrl: varchar("rights_evidence_url", { length: 2048 }),
@@ -63,6 +75,7 @@ export const productMediaAssets = pgTable("product_media_assets", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
+  uniqueIndex("product_media_assets_source_candidate_unique").on(table.sourceCandidateId).where(sql`${table.sourceCandidateId} IS NOT NULL`),
   uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
   index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc())
 ]);
@@ -108,9 +121,28 @@ export const productMediaCandidates = pgTable("product_media_candidates", {
   identityReasons: jsonb("identity_reasons").$type<string[]>().notNull().default([]),
   reviewStatus: varchar("review_status", { length: 20 }).notNull().default("pending"),
   rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
+  reviewedBy: varchar("reviewed_by", { length: 255 }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
+  reviewReason: varchar("review_reason", { length: 1000 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_candidates_product_provider_hash_unique").on(table.productId, table.provider, table.candidateHash),
   index("product_media_candidates_product_review_idx").on(table.productId, table.reviewStatus, table.createdAt.desc())
+]);
+
+export const productMediaCandidateReviewAudits = pgTable("product_media_candidate_review_audits", {
+  id: uuid("id").primaryKey(),
+  candidateId: uuid("candidate_id").notNull().references(() => productMediaCandidates.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  previousStatus: varchar("previous_status", { length: 20 }).notNull(),
+  newStatus: varchar("new_status", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("product_media_candidate_review_audits_candidate_created_idx").on(table.candidateId, table.createdAt.desc()),
+  index("product_media_candidate_review_audits_product_created_idx").on(table.productId, table.createdAt.desc())
 ]);

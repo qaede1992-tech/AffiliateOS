@@ -112,7 +112,8 @@ const services = createServices(
   {
     clientId: environment.OPENVERSE_CLIENT_ID,
     clientSecret: environment.OPENVERSE_CLIENT_SECRET
-  }
+  },
+  persistence.preMediaEligibility
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
