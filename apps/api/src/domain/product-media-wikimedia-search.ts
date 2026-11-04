@@ -57,17 +57,17 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
     .slice(0, 1000) || null;
 };
 
-const categoryQueries: Array<{ pattern: RegExp; query: string }> = [
-  { pattern: /\b(backpack|rucksack|ransel|tas sekolah|tas kuliah)\b/i, query: "backpack" },
-  { pattern: /\b(botol minum|tumbler|termos|water bottle)\b/i, query: "water bottle" },
-  { pattern: /\b(charger|pengisi daya|fast charging)\b/i, query: "charger" },
-  { pattern: /\b(brown sugar|gula merah|gula aren|gula tebu)\b/i, query: "brown sugar" },
-  { pattern: /\b(cat food|makanan kucing|pakan kucing)\b/i, query: "cat food" },
-  { pattern: /\b(baby cream|krim bayi|baby lotion|perlengkapan bayi)\b/i, query: "baby cream" },
-  { pattern: /\b(hand soap|hand wash|sabun cuci tangan)\b/i, query: "hand soap" },
-  { pattern: /\b(honey|madu)\b/i, query: "honey" },
-  { pattern: /\b(hair clip|hair clips|jepit rambut|perhiasan rambut)\b/i, query: "hair clips" },
-  { pattern: /\b(crisper tray|air fryer|baking tray)\b/i, query: "crisper tray" }
+const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp }> = [
+  { pattern: /\b(backpack|rucksack|ransel|tas sekolah|tas kuliah)\b/i, query: "backpack", relevant: /\b(backpack|rucksack|knapsack|school bag)\b/i },
+  { pattern: /\b(botol minum|tumbler|termos|water bottle)\b/i, query: "water bottle", relevant: /\b(water bottle|bottle|thermos|flask|canteen)\b/i },
+  { pattern: /\b(charger|pengisi daya|fast charging)\b/i, query: "charger", relevant: /\b(charger|charging adapter|power adapter)\b/i },
+  { pattern: /\b(brown sugar|gula merah|gula aren|gula tebu)\b/i, query: "brown sugar", relevant: /\b(brown sugar|palm sugar|molasses|jaggery)\b/i },
+  { pattern: /\b(cat food|makanan kucing|pakan kucing)\b/i, query: "cat food", relevant: /\b(cat food|pet food|kibble|cat kibble)\b/i },
+  { pattern: /\b(baby cream|krim bayi|baby lotion|perlengkapan bayi)\b/i, query: "baby cream", relevant: /\b(baby cream|barrier cream|skin cream|lotion|moisturizer|ointment|skincare)\b/i },
+  { pattern: /\b(hand soap|hand wash|sabun cuci tangan)\b/i, query: "hand soap", relevant: /\b(hand soap|hand wash|liquid soap|soap dispenser|handwashing)\b/i },
+  { pattern: /\b(honey|madu)\b/i, query: "honey", relevant: /\b(honey|honeycomb|honey jar|bee honey)\b/i },
+  { pattern: /\b(hair clip|hair clips|jepit rambut|perhiasan rambut)\b/i, query: "hair clips", relevant: /\b(hair clip|hair clips|hair clasp|barrette|hairpin)\b/i },
+  { pattern: /\b(crisper tray|air fryer|baking tray)\b/i, query: "crisper tray", relevant: /\b(crisper tray|air fryer|baking tray|oven tray)\b/i }
 ];
 
 /**
@@ -177,6 +177,11 @@ export async function searchWikimediaCommonsProductMedia(
         if (!acceptedLicense) continue;
 
         const identityMatch = evaluateProductMediaIdentity(identity, title);
+        const category = categoryQueries.find((item) => item.query === query);
+        const descriptiveText = [title, metadataText(info.extmetadata, "Description"), metadataText(info.extmetadata, "ImageDescription")]
+          .filter((value): value is string => Boolean(value))
+          .join(" ");
+        if (category && !category.relevant.test(descriptiveText)) continue;
         const primaryIdentifier = identity.model?.trim() || identity.sku?.trim();
         if (identityMatch.status === "rejected" && primaryIdentifier) continue;
         const broadCategoryMatch = identityMatch.status === "rejected";
