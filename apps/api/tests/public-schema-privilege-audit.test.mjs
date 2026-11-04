@@ -28,6 +28,26 @@ test("detects global defaults and explicit PUBLIC grants", () => {
   ]);
 });
 
+test("detects implicit PostgreSQL function defaults granted to PUBLIC", () => {
+  assert.deepEqual(findPublicSchemaDefaultAclGrants([
+    {
+      schema_name: "<global>",
+      creator_role: "affiliateos_implicit_function_creator",
+      object_type: "f",
+      grantee: "PUBLIC",
+      privilege_type: "EXECUTE"
+    }
+  ]), [
+    {
+      schemaName: "<global>",
+      creatorRole: "affiliateos_implicit_function_creator",
+      objectType: "f",
+      grantee: "PUBLIC",
+      privilegeType: "EXECUTE"
+    }
+  ]);
+});
+
 test("treats null schema and grantee as global schema and PUBLIC", () => {
   assert.deepEqual(findPublicSchemaDefaultAclGrants([
     { schema_name: null, creator_role: "postgres", object_type: "f", grantee: null, privilege_type: "EXECUTE" }

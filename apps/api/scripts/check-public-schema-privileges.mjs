@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { Client } from "pg";
-import { findPublicSchemaDefaultAclGrants } from "./public-schema-privilege-audit.mjs";
+import {
+  findPublicSchemaDefaultAclGrants,
+  PUBLIC_SCHEMA_DEFAULT_ACL_QUERY
+} from "./public-schema-privilege-audit.mjs";
 
 if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
   throw new Error("Refusing to run the public-schema privilege guard outside a GitHub Actions CI runner.");
@@ -60,20 +63,7 @@ try {
       AND has_function_privilege(r.rolname::name, p.oid, 'EXECUTE')
     ORDER BY p.proname, r.rolname
   `);
-  const { rows: defaultAclRows } = await client.query(`
-    SELECT COALESCE(n.nspname, '<global>') AS schema_name,
-           owner.rolname AS creator_role,
-           d.defaclobjtype AS object_type,
-           COALESCE(grantee.rolname, 'PUBLIC') AS grantee,
-           acl.privilege_type
-    FROM pg_default_acl d
-    JOIN pg_roles owner ON owner.oid = d.defaclrole
-    LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
-    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
-    LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
-    WHERE d.defaclnamespace = 0 OR n.nspname = 'public'
-    ORDER BY schema_name, creator_role, object_type, grantee, acl.privilege_type
-  `);
+  const { rows: defaultAclRows } = await client.query(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY);
   const broadDefaultAclRows = findPublicSchemaDefaultAclGrants(defaultAclRows);
 
   assert.deepEqual(tableRows, [], "anon/authenticated must not have effective privileges on public tables or views.");
@@ -85,7 +75,7 @@ try {
     "No creator role or global default may grant public-schema privileges to anon, authenticated, or PUBLIC."
   );
 
-  console.log("Public-schema privilege guard passed: no effective table, sequence, routine, or broad public-schema default ACL privileges.");
+  console.log("Public-schema privilege guard passed: no effective object privileges or broad explicit/implicit defaults.");
 } finally {
   await client.end();
 }
