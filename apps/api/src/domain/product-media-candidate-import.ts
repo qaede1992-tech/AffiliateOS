@@ -1,5 +1,6 @@
 import type { AffiliateOffer, Product } from "@affiliateos/shared";
 import type { AutonomousDecisionAuditReader } from "./autonomous-decision-audit.js";
+import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
 import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "./product-media-candidate.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaIngestionService } from "./product-media-ingestion.js";
 
@@ -24,6 +25,7 @@ export interface ProductMediaCandidateImportDependencies {
   assets: ProductMediaAssetRepository;
   ingestion: ProductMediaIngestionService;
   audits: AutonomousDecisionAuditReader;
+  preMediaEligibility?: Pick<PreMediaEligibilityRepository, "listLatestByProduct">;
   listProducts(): Promise<Product[]>;
   listAffiliateOffers(): Promise<AffiliateOffer[]>;
   now?: () => Date;
@@ -85,18 +87,30 @@ export class ProductMediaCandidateImportService {
       throw new ProductMediaCandidateImportError("PRODUCT_NOT_ELIGIBLE", "The product is no longer active.", 409);
     }
 
-    const latestDecision = (await audits.list({ productId, limit: 1 }))[0];
-    const decisionAge = latestDecision ? now.getTime() - Date.parse(latestDecision.createdAt) : Number.POSITIVE_INFINITY;
-    const successfulOutcome = latestDecision?.outcome;
-    if (!latestDecision || !latestDecision.selected || successfulOutcome?.status !== "completed"
-      || !successfulOutcome.offerId || !successfulOutcome.campaignId
-      || !Number.isFinite(decisionAge) || decisionAge < 0 || decisionAge > this.selectionMaxAgeMs) {
-      throw new ProductMediaCandidateImportError("PRODUCT_NOT_RECENTLY_SELECTED", "The product does not have a recent successfully executed autonomous selection.", 409);
+    let eligibleOfferId: string | undefined;
+    if (this.dependencies.preMediaEligibility) {
+      const latestEvidence = (await this.dependencies.preMediaEligibility.listLatestByProduct(productId, 1))[0];
+      const evidenceAge = latestEvidence ? now.getTime() - Date.parse(latestEvidence.createdAt) : Number.POSITIVE_INFINITY;
+      if (!latestEvidence || latestEvidence.eligible !== true || latestEvidence.productId !== productId || latestEvidence.marketplaceId !== product.marketplaceId
+        || !latestEvidence.offerId || !Number.isFinite(evidenceAge) || evidenceAge < 0 || evidenceAge > this.selectionMaxAgeMs) {
+        throw new ProductMediaCandidateImportError("PRODUCT_NOT_RECENTLY_SELECTED", "The product does not have recent preliminary non-media eligibility evidence.", 409);
+      }
+      eligibleOfferId = latestEvidence.offerId;
+    } else {
+      const latestDecision = (await audits.list({ productId, limit: 1 }))[0];
+      const decisionAge = latestDecision ? now.getTime() - Date.parse(latestDecision.createdAt) : Number.POSITIVE_INFINITY;
+      const successfulOutcome = latestDecision?.outcome;
+      if (!latestDecision || !latestDecision.selected || successfulOutcome?.status !== "completed"
+        || !successfulOutcome.offerId || !successfulOutcome.campaignId
+        || !Number.isFinite(decisionAge) || decisionAge < 0 || decisionAge > this.selectionMaxAgeMs) {
+        throw new ProductMediaCandidateImportError("PRODUCT_NOT_RECENTLY_SELECTED", "The product does not have a recent successfully executed autonomous selection.", 409);
+      }
+      eligibleOfferId = successfulOutcome.offerId;
     }
 
     const offers = await this.dependencies.listAffiliateOffers();
-    if (!offers.some((offer) => offer.id === successfulOutcome.offerId && isUsableAffiliateOffer(offer, productId, now))) {
-      throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The successfully selected affiliate offer no longer has an active, usable link.", 409);
+    if (!eligibleOfferId || !offers.some((offer) => offer.id === eligibleOfferId && isUsableAffiliateOffer(offer, productId, now))) {
+      throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The affiliate offer recorded by the latest eligibility evidence no longer has an active, usable link.", 409);
     }
 
     // Idempotency must not bypass current product/selection/offer eligibility.

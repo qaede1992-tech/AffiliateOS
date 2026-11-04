@@ -387,4 +387,58 @@ describe("autonomous cycle", () => {
     assert.deepEqual(finalInput?.mediaReadinessScores, { [product.id]: 100 });
   });
 
+
+  it("persists preliminary eligibility separately from final media-gated selection", async () => {
+    const product = { id: "pre-media-product", marketplaceId: "market-1" };
+    const rejectedProduct = { id: "rejected-pre-media-product", marketplaceId: "market-1" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [] }, { product: rejectedProduct as never, offers: [] }]; }
+    };
+    const saved: Array<Record<string, unknown>> = [];
+    const execution = {
+      async previewSelection(input: { requirePublishableMedia?: boolean }) {
+        return input.requirePublishableMedia
+          ? { selected: [], rejected: [], audit: [] }
+          : {
+              selected: [{ product: product as never, offerId: "offer-1", score: 76, reasons: ["Eligible before media"] }],
+              rejected: [{ productId: rejectedProduct.id, score: 42, reasons: ["Below preliminary score"] }],
+              audit: [
+                { auditId: "audit-1", productId: product.id, marketplaceId: product.marketplaceId, selected: true, score: 76, policy: { minimumScore: 55, minimumDataConfidence: 25 }, reasons: ["Selected"] },
+                { auditId: "audit-2", productId: rejectedProduct.id, marketplaceId: rejectedProduct.marketplaceId, selected: false, score: 42, policy: { minimumScore: 55, minimumDataConfidence: 25 }, reasons: ["Below preliminary score"] }
+              ]
+            };
+      },
+      async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
+      async listPublishableMediaProductIds() { return []; },
+      async listPublishableVideoProductIds() { return []; },
+      async listMediaReadinessScores() { return { [product.id]: 0 }; },
+      async listVideoProductIds() { return []; }
+    };
+    const evidenceRepository = {
+      async saveMany(records: Array<Record<string, unknown>>) { saved.push(...records); },
+      async listLatestByProduct() { return []; }
+    };
+    const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never, evidenceRepository as never);
+    await service.runOnce({ publicationEnabled: false, idempotencyNamespace: "media-evidence-test" });
+
+    assert.equal(saved.length, 2);
+    assert.equal(saved[0]?.productId, product.id);
+    assert.equal(saved[0]?.marketplaceId, product.marketplaceId);
+    assert.equal(saved[0]?.offerId, "offer-1");
+    assert.equal(saved[0]?.score, 76);
+    assert.equal((saved[0]?.policy as Record<string, unknown>).requirePublishableMedia, false);
+    assert.equal((saved[0]?.policy as Record<string, unknown>).requirePublishableVideo, false);
+    assert.equal(saved[0]?.eligible, true);
+    assert.equal((saved[0]?.policy as Record<string, unknown>).minimumScore, 55);
+    assert.equal((saved[0]?.policy as Record<string, unknown>).minimumDataConfidence, 25);
+    assert.ok(typeof saved[0]?.cycleId === "string");
+    assert.ok(typeof saved[0]?.createdAt === "string");
+    const rejectedEvidence = saved.find((record) => record.productId === rejectedProduct.id);
+    assert.equal(rejectedEvidence?.eligible, false);
+    assert.equal(rejectedEvidence?.offerId, undefined);
+  });
+
 });

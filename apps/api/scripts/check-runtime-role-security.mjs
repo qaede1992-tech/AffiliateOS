@@ -50,7 +50,7 @@ try {
     "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') ORDER BY c.relname"
   ].join("\n"));
   assert.ok(tableResult.rows.length > 0, "Expected application tables in public schema.");
-  const appendOnlyTables = new Set(["product_media_rights_audits"]);
+  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "pre_media_eligibility_evidence"]);
   assert.ok(
     tableResult.rows.some((table) => appendOnlyTables.has(table.relname)),
     "The append-only product media rights audit table must exist."
