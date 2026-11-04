@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository, ProductMediaCandidateReviewAudit, ProductMediaCandidateReviewCommand } from "../domain/product-media-candidate.js";
 import { productMediaCandidates, productMediaCandidateReviewAudits } from "./schema.js";
 
@@ -40,7 +40,18 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       reviewStatus: "pending",
       rightsStatus: "unverified",
       reviewedBy: null, reviewedAt: null, reviewReason: null
-    }))).onConflictDoNothing().returning();
+    }))).onConflictDoUpdate({
+      target: [productMediaCandidates.productId, productMediaCandidates.provider, productMediaCandidates.candidateHash],
+      setWhere: and(eq(productMediaCandidates.reviewStatus, "pending"), eq(productMediaCandidates.rightsStatus, "unverified")),
+      set: {
+        query: sql`excluded.query`, title: sql`excluded.title`, imageUrl: sql`excluded.image_url`,
+        landingPageUrl: sql`excluded.landing_page_url`, creator: sql`excluded.creator`, creatorUrl: sql`excluded.creator_url`,
+        license: sql`excluded.license`, licenseVersion: sql`excluded.license_version`, licenseUrl: sql`excluded.license_url`,
+        sourcePublisher: sql`excluded.source_publisher`, identityScore: sql`excluded.identity_score`,
+        identityStatus: sql`excluded.identity_status`, identityReasons: sql`excluded.identity_reasons`,
+        updatedAt: sql`excluded.updated_at`
+      }
+    }).returning();
     return rows.map(toCandidate);
   }
 
