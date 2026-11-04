@@ -108,6 +108,63 @@ describe("autonomous cycle", () => {
     assert.equal(logs.some((line) => line.includes("private-product-path")), false);
   });
 
+  it("aborts before media discovery and execution when preliminary eligibility evidence cannot be persisted", async () => {
+    const product = { id: "pre-media-evidence-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+    };
+    let discoveryCalls = 0;
+    let executionCalls = 0;
+    const execution = {
+      async previewSelection() {
+        return {
+          selected: [{ product: product as never, offerId: "offer-1", score: 90 }],
+          rejected: [],
+          audit: [{
+            productId: product.id,
+            marketplaceId: "marketplace-1",
+            selected: true,
+            score: 90,
+            policy: {},
+            reasons: ["eligible"]
+          }]
+        };
+      },
+      async runOnce() {
+        executionCalls += 1;
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() {
+        discoveryCalls += 1;
+        return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] };
+      }
+    };
+    const evidenceRepository = {
+      async saveMany() { throw new Error("evidence table unavailable"); },
+      async listLatestByProduct() { return []; }
+    };
+
+    const service = new AutonomousCycleService(
+      provider,
+      execution,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      discovery as never,
+      evidenceRepository
+    );
+
+    await assert.rejects(
+      () => service.runOnce({ publicationEnabled: false }),
+      /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
+    );
+    assert.equal(discoveryCalls, 0);
+    assert.equal(executionCalls, 0);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
