@@ -39,8 +39,12 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
         productMediaCandidates.provider,
         productMediaCandidates.candidateHash
       ],
-      // Refresh discovery evidence when the same source lead is found again.
-      // Human review and rights decisions are intentionally immutable here.
+      // Refresh evidence only while the candidate is still awaiting human review.
+      // Once identity or rights decisions have been made, preserve their evidence.
+      setWhere: and(
+        eq(productMediaCandidates.reviewStatus, "pending"),
+        eq(productMediaCandidates.rightsStatus, "unverified")
+      ),
       set: {
         query: sql`excluded.query`,
         title: sql`excluded.title`,
