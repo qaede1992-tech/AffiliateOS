@@ -67,6 +67,16 @@ export interface ProductMediaRightsAudit {
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
+  attachCandidateProvenance?(
+    productId: string,
+    sha256: string,
+    sourceUrl: string,
+    provenance: {
+      provider: string; candidateId: string; landingPageUrl: string; title: string; query: string;
+      creator: string | null; creatorUrl: string | null; license: string | null;
+      licenseVersion: string | null; licenseUrl: string | null; sourcePublisher: string | null;
+    }
+  ): Promise<ProductMediaAsset | undefined>;
   listByProduct(productId: string): Promise<ProductMediaAsset[]>;
   listByProducts?(productIds: string[]): Promise<ProductMediaAsset[]>;
   save(asset: ProductMediaAsset): Promise<ProductMediaAsset>;
@@ -172,6 +182,19 @@ export class ProductMediaIngestionService {
         const sha256 = createHash("sha256").update(response.bytes).digest("hex");
         const prior = await this.assets.findByProductAndHash(input.productId, sha256);
         if (prior) {
+          if (candidate.provenance && !prior.sourceCandidateId && prior.rightsStatus === "unverified" && this.assets.attachCandidateProvenance) {
+            const linked = await this.assets.attachCandidateProvenance(input.productId, sha256, candidate.url, candidate.provenance);
+            if (linked) {
+              stored.push(linked);
+              continue;
+            }
+            skipped.push({ url: candidate.url, reason: "existing_asset_provenance_could_not_be_safely_linked" });
+            continue;
+          }
+          if (candidate.provenance && prior.sourceCandidateId !== candidate.provenance.candidateId) {
+            skipped.push({ url: candidate.url, reason: "existing_asset_has_conflicting_candidate_provenance_or_verified_rights" });
+            continue;
+          }
           stored.push(prior);
           continue;
         }
