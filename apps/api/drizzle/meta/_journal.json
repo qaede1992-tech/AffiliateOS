@@ -512,6 +512,34 @@
       "when": 1794050405019,
       "tag": "0076_product_media_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1794050405020,
+      "tag": "0077_product_media_source_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1794050405021,
+      "tag": "0078_product_media_candidate_review_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1794050405022,
+      "tag": "0079_product_media_candidate_asset_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794050405023,
+      "tag": "0080_product_media_asset_candidate_foreign_key",
+      "breakpoints": true
     }
   ]
 }

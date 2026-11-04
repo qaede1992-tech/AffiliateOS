@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { ProductMediaIngestionService } from "../src/domain/product-media-ingestion.js";
 import { DrizzleProductMediaAssetRepository } from "../src/db/product-media-asset-repository.js";
 
@@ -315,4 +316,98 @@ test("persists image dimensions extracted from downloaded PNG bytes", async () =
   assert.equal(result.stored[0]?.durationMs, null);
   assert.equal(result.stored[0]?.hasAudio, null);
   assert.equal(stored.length, 1);
+});
+
+
+test("preserves reviewed catalog provenance without verifying publication rights", async () => {
+  const bytes = Uint8Array.from([
+    0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0,
+    0, 0, 0, 9, 0x6d, 0x64, 0x61, 0x74, 1
+  ]);
+  const saved: Array<Record<string, unknown>> = [];
+  const storage = {
+    upload: async ({ key }: { key: string }) => ({ bucket: "affiliate-media", key }),
+    remove: async () => {}
+  } as never;
+  const repository = {
+    findByProductAndHash: async () => undefined,
+    save: async (asset: Record<string, unknown>) => { saved.push(asset); return asset; }
+  } as never;
+  const fetcher = (async () => ({ status: 200, headers: {}, url: "https://upload.wikimedia.org/file.mp4", bytes })) as never;
+  const service = new ProductMediaIngestionService(storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher);
+  const result = await service.ingest({
+    productId, nonMediaEligibilityPassed: true,
+    candidates: [{
+      kind: "video", url: "https://upload.wikimedia.org/file.mp4", source: "catalog",
+      provenance: {
+        provider: "wikimedia_commons", candidateId: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001",
+        landingPageUrl: "https://commons.wikimedia.org/wiki/File:Example.mp4",
+        title: "Example product media", query: "example product",
+        creator: "Creator Name", creatorUrl: "https://commons.wikimedia.org/wiki/User:Creator",
+        license: "CC-BY-SA", licenseVersion: "4.0",
+        licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+        sourcePublisher: "Wikimedia Commons"
+      }
+    }]
+  });
+  assert.equal(result.stored.length, 1);
+  assert.equal(saved[0]?.sourceProvider, "wikimedia_commons");
+  assert.equal(saved[0]?.sourceLandingPageUrl, "https://commons.wikimedia.org/wiki/File:Example.mp4");
+  assert.equal(saved[0]?.sourceTitle, "Example product media");
+  assert.equal(saved[0]?.sourceQuery, "example product");
+  assert.equal(saved[0]?.sourceCreator, "Creator Name");
+  assert.equal(saved[0]?.sourceCreatorUrl, "https://commons.wikimedia.org/wiki/User:Creator");
+  assert.equal(saved[0]?.sourceLicense, "CC-BY-SA");
+  assert.equal(saved[0]?.sourceLicenseVersion, "4.0");
+  assert.equal(saved[0]?.sourceLicenseUrl, "https://creativecommons.org/licenses/by-sa/4.0/");
+  assert.equal(saved[0]?.sourcePublisher, "Wikimedia Commons");
+  assert.equal(saved[0]?.rightsStatus, "unverified");
+  assert.equal(saved[0]?.rightsBasis, null);
+  assert.equal(saved[0]?.rightsEvidenceUrl, null);
+});
+
+test("links candidate provenance to a matching existing unverified asset without duplicating storage", async () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  const sha256 = createHash("sha256").update(png).digest("hex");
+  const prior = {
+    id: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001", productId, kind: "image" as const,
+    bucket: "affiliate-media", objectKey: `products/${productId}/existing.png`, mimeType: "image/png" as const,
+    byteSize: png.byteLength, sha256, sourceUrl: "https://cdn.example.com/old-source.png", sourcePublisher: null,
+    rightsStatus: "unverified" as const, rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null,
+    createdAt: "2026-11-03T00:00:00.000Z"
+  };
+  let attached: Record<string, unknown> | undefined;
+  const repository = {
+    listByProduct: async () => [],
+    findByProductAndHash: async () => prior,
+    attachCandidateProvenance: async (_productId: string, _hash: string, sourceUrl: string, provenance: Record<string, unknown>) => {
+      attached = { ...prior, sourceUrl, ...provenance, sourceProvider: provenance.provider, sourceCandidateId: provenance.candidateId,
+        sourceLandingPageUrl: provenance.landingPageUrl, sourceTitle: provenance.title, sourceQuery: provenance.query,
+        sourceCreator: provenance.creator, sourceCreatorUrl: provenance.creatorUrl, sourceLicense: provenance.license,
+        sourceLicenseVersion: provenance.licenseVersion, sourceLicenseUrl: provenance.licenseUrl };
+      return attached;
+    },
+    save: async () => { throw new Error("existing asset should not be saved again"); }
+  } as never;
+  const storage = { upload: async () => { throw new Error("existing asset should not be uploaded again"); } } as never;
+  const fetcher = (async () => ({ status: 200, headers: {}, url: "https://cdn.example.com/candidate.png", bytes: png })) as never;
+  const service = new ProductMediaIngestionService(storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher);
+  const result = await service.ingest({
+    productId, nonMediaEligibilityPassed: true,
+    candidates: [{
+      kind: "image", url: "https://cdn.example.com/candidate.png", source: "catalog",
+      provenance: {
+        provider: "wikimedia_commons", candidateId: "22222222-2222-4222-8222-222222222222",
+        landingPageUrl: "https://commons.wikimedia.org/wiki/File:sample.png", title: "Sample",
+        query: "sample product", creator: "Creator", creatorUrl: null, license: "CC-BY-SA",
+        licenseVersion: "4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+        sourcePublisher: "Wikimedia Commons"
+      }
+    }]
+  });
+  assert.equal(result.stored.length, 1);
+  assert.equal(result.stored[0]?.id, prior.id);
+  assert.equal(result.stored[0]?.sourceCandidateId, "22222222-2222-4222-8222-222222222222");
+  assert.equal(result.stored[0]?.rightsStatus, "unverified");
+  assert.equal(attached?.sourceUrl, "https://cdn.example.com/candidate.png");
 });

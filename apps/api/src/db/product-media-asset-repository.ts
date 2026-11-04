@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../domain/product-media-ingestion.js";
 import { productMediaAssets, productMediaRightsAudits } from "./schema.js";
 
@@ -20,6 +20,16 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   sha256: row.sha256,
   sourceUrl: row.sourceUrl,
   sourcePublisher: row.sourcePublisher,
+  sourceProvider: row.sourceProvider,
+  sourceCandidateId: row.sourceCandidateId,
+  sourceLandingPageUrl: row.sourceLandingPageUrl,
+  sourceTitle: row.sourceTitle,
+  sourceQuery: row.sourceQuery,
+  sourceCreator: row.sourceCreator,
+  sourceCreatorUrl: row.sourceCreatorUrl,
+  sourceLicense: row.sourceLicense,
+  sourceLicenseVersion: row.sourceLicenseVersion,
+  sourceLicenseUrl: row.sourceLicenseUrl,
   rightsStatus: row.rightsStatus as ProductMediaAsset["rightsStatus"],
   rightsBasis: row.rightsBasis as ProductMediaAsset["rightsBasis"],
   rightsEvidenceUrl: row.rightsEvidenceUrl,
@@ -36,6 +46,40 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       eq(productMediaAssets.sha256, sha256)
     )).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
+  }
+
+  async findBySourceCandidateId(candidateId: string): Promise<ProductMediaAsset | undefined> {
+    const rows = await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.sourceCandidateId, candidateId)).limit(1);
+    return rows[0] ? toAsset(rows[0]) : undefined;
+  }
+
+  async attachCandidateProvenance(
+    productId: string,
+    sha256: string,
+    sourceUrl: string,
+    provenance: NonNullable<Parameters<NonNullable<ProductMediaAssetRepository["attachCandidateProvenance"]>>[3]>
+  ): Promise<ProductMediaAsset | undefined> {
+    const rows = await this.db.update(productMediaAssets).set({
+      sourceUrl,
+      sourceProvider: provenance.provider,
+      sourceCandidateId: provenance.candidateId,
+      sourceLandingPageUrl: provenance.landingPageUrl,
+      sourceTitle: provenance.title,
+      sourceQuery: provenance.query,
+      sourceCreator: provenance.creator,
+      sourceCreatorUrl: provenance.creatorUrl,
+      sourceLicense: provenance.license,
+      sourceLicenseVersion: provenance.licenseVersion,
+      sourceLicenseUrl: provenance.licenseUrl,
+      sourcePublisher: provenance.sourcePublisher
+    }).where(and(
+      eq(productMediaAssets.productId, productId),
+      eq(productMediaAssets.sha256, sha256),
+      eq(productMediaAssets.rightsStatus, "unverified"),
+      isNull(productMediaAssets.sourceCandidateId)
+    )).returning();
+    if (rows[0]) return toAsset(rows[0]);
+    return this.findBySourceCandidateId(provenance.candidateId);
   }
 
   async listByProduct(productId: string): Promise<ProductMediaAsset[]> {
@@ -124,7 +168,8 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       createdAt: asset.createdAt
     }).onConflictDoNothing().returning();
     if (rows[0]) return toAsset(rows[0]);
-    const existing = await this.findByProductAndHash(asset.productId, asset.sha256);
+    const existing = await this.findByProductAndHash(asset.productId, asset.sha256)
+      ?? (asset.sourceCandidateId ? await this.findBySourceCandidateId(asset.sourceCandidateId) : undefined);
     if (existing) return existing;
     throw new Error("Product media metadata conflicted with an existing storage key.");
   }

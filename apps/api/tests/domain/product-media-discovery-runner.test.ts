@@ -381,3 +381,54 @@ test("scores only current rights-verified persisted media for target platform re
   const revokedScores = await revokedRunner.listMediaReadinessScores([product.id], ["tiktok"]);
   assert.equal(revokedScores[product.id], 0);
 });
+
+
+test("counts duplicate catalog candidates as discovered without reporting them as newly saved", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalInfo = console.info;
+  const messages: string[] = [];
+  const catalogFetch = async () => new Response("{}", { status: 403 });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Cat food bag.jpg",
+        imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/c/c1/cat-food.jpg",
+          thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/cat-food.jpg/800px-cat-food.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_food_bag.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC0" },
+            LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+            Artist: { value: "Example creator" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  console.info = (message?: unknown) => { messages.push(String(message)); };
+  try {
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      { async saveMany() { return []; } },
+      { fetchImpl: catalogFetch as typeof fetch }
+    );
+    const result = await runner.discover({
+      ...product,
+      name: "cat food",
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+    assert.equal(result.candidatesFound, 1);
+    const completed = messages.map((message) => JSON.parse(message) as Record<string, unknown>)
+      .find((message) => message.event === "product_media_catalog_search_completed");
+    assert.equal(completed?.acceptedCount, 1);
+    assert.equal(completed?.savedCount, 0);
+    assert.equal(completed?.alreadyPresentCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.info = originalInfo;
+  }
+});

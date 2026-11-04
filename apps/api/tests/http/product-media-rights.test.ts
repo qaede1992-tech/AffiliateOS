@@ -4,6 +4,7 @@ import { createApp } from "../../src/app.js";
 import { createInMemoryServices } from "../../src/domain/container.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../../src/domain/product-media-ingestion.js";
 import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "../../src/domain/product-media-candidate.js";
+import { ProductMediaCandidateImportError } from "../../src/domain/product-media-candidate-import.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
 const assetId = "44444444-4444-4444-8444-444444444444";
@@ -34,7 +35,11 @@ const candidate: ProductMediaCandidateRecord = {
   reviewStatus: "pending", rightsStatus: "unverified", createdAt: "2026-11-03T00:00:00.000Z", updatedAt: "2026-11-03T00:00:00.000Z"
 };
 
-function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositoryConfigured = true) {
+function makeApp(
+  role: "admin" | "operator" | "viewer" = "admin",
+  auditRepositoryConfigured = true,
+  importer?: { importApprovedCandidate(productId: string, candidateId: string): Promise<{ asset: ProductMediaAsset; alreadyImported: boolean }> }
+) {
   let asset = { ...initialAsset };
   let lastReview: ProductMediaRightsReviewCommand | undefined;
   const auditRows: ProductMediaRightsAudit[] = [];
@@ -66,11 +71,22 @@ function makeApp(role: "admin" | "operator" | "viewer" = "admin", auditRepositor
   };
   const services = createInMemoryServices();
   services.productMediaAssets = repository;
+  let reviewedCandidate = { ...candidate };
+  const candidateReviewAudits: Array<{ id: string; candidateId: string; productId: string; actorId: string; actorRole: "admin"; action: "approve" | "reject"; reason: string; previousStatus: "pending"; newStatus: "approved" | "rejected"; createdAt: string }> = [];
   const candidateRepository: ProductMediaCandidateRepository = {
     async saveMany(rows) { return rows; },
-    async listPendingByProduct(id) { return id === productId ? [candidate] : []; }
+    async listPendingByProduct(id) { return id === productId && reviewedCandidate.reviewStatus === "pending" ? [reviewedCandidate] : []; },
+    async review(id, ownerProductId, command) {
+      if (id !== candidate.id || ownerProductId !== productId || reviewedCandidate.reviewStatus !== "pending") return undefined;
+      const reviewedAt = new Date().toISOString();
+      reviewedCandidate = { ...reviewedCandidate, reviewStatus: command.status, reviewedBy: command.actorId, reviewedAt, reviewReason: command.reason, updatedAt: reviewedAt };
+      candidateReviewAudits.unshift({ id: "77777777-7777-4777-8777-777777777777", candidateId: candidate.id, productId, actorId: command.actorId, actorRole: "admin", action: command.status === "approved" ? "approve" : "reject", reason: command.reason, previousStatus: "pending", newStatus: command.status, createdAt: reviewedAt });
+      return reviewedCandidate;
+    },
+    async listReviewAudits(ownerProductId, id) { return ownerProductId === productId && id === candidate.id ? [...candidateReviewAudits] : []; }
   };
   services.productMediaCandidates = candidateRepository;
+  if (importer) services.productMediaCandidateImport = importer as never;
   services.productMediaPreviewUrl = async (ownerProductId, id) => ownerProductId === productId && id === assetId ? "https://storage.example.test/signed/product.jpg" : undefined;
   const app = createApp(services, {
     auth: { enabled: false, operatorId: "reviewer-test", role },
@@ -88,6 +104,67 @@ test("admin can list pending product media candidates with provenance and unveri
     assert.equal(response.json().data[0].identityStatus, "review_required");
     assert.equal(response.json().data[0].rightsStatus, "unverified");
     assert.equal(response.json().data[0].landingPageUrl, candidate.landingPageUrl);
+  } finally {
+    await app.close();
+  }
+});
+
+test("admin review records an auditable identity decision without verifying publication rights", async () => {
+  const { app } = makeApp();
+  try {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`,
+      payload: { status: "approved", reason: "Visual identity and source page manually checked." }
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().reviewStatus, "approved");
+    assert.equal(response.json().reviewedBy, "reviewer-test");
+    assert.equal(response.json().rightsStatus, "unverified");
+    const audits = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review-audits` });
+    assert.equal(audits.statusCode, 200);
+    assert.equal(audits.json().data[0].action, "approve");
+    assert.equal(audits.json().data[0].reason, "Visual identity and source page manually checked.");
+  } finally {
+    await app.close();
+  }
+});
+
+test("candidate review rejects a second decision after the pending state is consumed", async () => {
+  const { app } = makeApp();
+  try {
+    const first = await app.inject({ method: "PATCH", url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`, payload: { status: "rejected", reason: "Incorrect product identity." } });
+    const second = await app.inject({ method: "PATCH", url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`, payload: { status: "approved", reason: "Trying to override prior decision." } });
+    assert.equal(first.statusCode, 200);
+    assert.equal(second.statusCode, 409);
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot approve or reject product media candidates", async () => {
+  const { app } = makeApp("operator");
+  try {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`,
+      payload: { status: "approved", reason: "Operator must not make identity decisions." }
+    });
+    assert.equal(response.statusCode, 403);
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot approve or reject product media candidates", async () => {
+  const { app } = makeApp("operator");
+  try {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`,
+      payload: { status: "approved", reason: "Operator must not approve candidate identity." }
+    });
+    assert.equal(response.statusCode, 403);
   } finally {
     await app.close();
   }
@@ -485,6 +562,76 @@ test("product media preflight does not guess a TikTok duration limit when multip
     assert.ok(readiness.checks.some((item: { key: string; status: string }) =>
       item.key === "creator_duration_limit" && item.status === "unknown"
     ));
+  } finally {
+    await app.close();
+  }
+});
+
+
+test("admin can import an approved product media candidate and the response keeps rights unverified", async () => {
+  let importCalls = 0;
+  const importer = {
+    async importApprovedCandidate(ownerProductId: string, candidateId: string) {
+      importCalls += 1;
+      assert.equal(ownerProductId, productId);
+      assert.equal(candidateId, candidate.id);
+      return { asset: { ...initialAsset, sourceCandidateId: candidate.id }, alreadyImported: false } as { asset: ProductMediaAsset; alreadyImported: boolean };
+    }
+  };
+  const { app } = makeApp("admin", true, importer);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/import`
+    });
+    assert.equal(response.statusCode, 201);
+    assert.equal(response.json().alreadyImported, false);
+    assert.equal(response.json().asset.rightsStatus, "unverified");
+    assert.equal(importCalls, 1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("operator cannot import product media candidates and importer is never invoked", async () => {
+  let importCalls = 0;
+  const importer = {
+    async importApprovedCandidate() {
+      importCalls += 1;
+      return { asset: initialAsset, alreadyImported: false };
+    }
+  };
+  const { app } = makeApp("operator", true, importer);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/import`
+    });
+    assert.equal(response.statusCode, 403);
+    assert.equal(importCalls, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test("candidate import maps revoked existing asset rights to HTTP 409", async () => {
+  const importer = {
+    async importApprovedCandidate() {
+      throw new ProductMediaCandidateImportError(
+        "MEDIA_ASSET_RIGHTS_REVOKED",
+        "The existing media asset has revoked publication rights.",
+        409
+      );
+    }
+  };
+  const { app } = makeApp("admin", true, importer);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/import`
+    });
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json().error, "MEDIA_ASSET_RIGHTS_REVOKED");
   } finally {
     await app.close();
   }

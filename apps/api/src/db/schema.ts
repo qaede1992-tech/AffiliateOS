@@ -56,6 +56,16 @@ export const productMediaAssets = pgTable("product_media_assets", {
   sha256: varchar("sha256", { length: 64 }).notNull(),
   sourceUrl: varchar("source_url", { length: 2048 }).notNull(),
   sourcePublisher: varchar("source_publisher", { length: 255 }),
+  sourceProvider: varchar("source_provider", { length: 40 }),
+  sourceCandidateId: uuid("source_candidate_id"),
+  sourceLandingPageUrl: varchar("source_landing_page_url", { length: 2048 }),
+  sourceTitle: varchar("source_title", { length: 1000 }),
+  sourceQuery: varchar("source_query", { length: 500 }),
+  sourceCreator: varchar("source_creator", { length: 500 }),
+  sourceCreatorUrl: varchar("source_creator_url", { length: 2048 }),
+  sourceLicense: varchar("source_license", { length: 40 }),
+  sourceLicenseVersion: varchar("source_license_version", { length: 40 }),
+  sourceLicenseUrl: varchar("source_license_url", { length: 2048 }),
   rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
   rightsBasis: varchar("rights_basis", { length: 40 }),
   rightsEvidenceUrl: varchar("rights_evidence_url", { length: 2048 }),
@@ -63,6 +73,7 @@ export const productMediaAssets = pgTable("product_media_assets", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
+  uniqueIndex("product_media_assets_source_candidate_unique").on(table.sourceCandidateId).where(sql`${table.sourceCandidateId} IS NOT NULL`),
   uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
   index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc())
 ]);
@@ -108,9 +119,28 @@ export const productMediaCandidates = pgTable("product_media_candidates", {
   identityReasons: jsonb("identity_reasons").$type<string[]>().notNull().default([]),
   reviewStatus: varchar("review_status", { length: 20 }).notNull().default("pending"),
   rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
+  reviewedBy: varchar("reviewed_by", { length: 255 }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
+  reviewReason: varchar("review_reason", { length: 1000 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_candidates_product_provider_hash_unique").on(table.productId, table.provider, table.candidateHash),
   index("product_media_candidates_product_review_idx").on(table.productId, table.reviewStatus, table.createdAt.desc())
+]);
+
+export const productMediaCandidateReviewAudits = pgTable("product_media_candidate_review_audits", {
+  id: uuid("id").primaryKey(),
+  candidateId: uuid("candidate_id").notNull().references(() => productMediaCandidates.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  previousStatus: varchar("previous_status", { length: 20 }).notNull(),
+  newStatus: varchar("new_status", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("product_media_candidate_review_audits_candidate_created_idx").on(table.candidateId, table.createdAt.desc()),
+  index("product_media_candidate_review_audits_product_created_idx").on(table.productId, table.createdAt.desc())
 ]);

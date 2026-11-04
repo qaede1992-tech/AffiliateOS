@@ -54,6 +54,8 @@ export interface ProductMediaAssetView {
   id: string; productId: string; kind: "image" | "video"; bucket: string; objectKey: string;
   mimeType: string; byteSize: number; width?: number | null; height?: number | null;
   durationMs?: number | null; hasAudio?: boolean | null; sha256: string; sourceUrl: string; sourcePublisher: string | null;
+  sourceProvider?: string | null; sourceCandidateId?: string | null; sourceLandingPageUrl?: string | null; sourceTitle?: string | null;
+  sourceCreator?: string | null; sourceCreatorUrl?: string | null; sourceLicense?: string | null; sourceLicenseVersion?: string | null; sourceLicenseUrl?: string | null;
   rightsStatus: "unverified" | "verified" | "revoked"; rightsBasis: ProductMediaRightsBasis | null;
   rightsEvidenceUrl: string | null; rightsVerifiedAt: string | null; createdAt: string;
   technicalReadiness: { instagram: MediaTechnicalReadinessView; tiktok: MediaTechnicalReadinessView };
@@ -62,6 +64,19 @@ export type ProductMediaRightsReviewInput =
   | { status: "verified"; rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string }
   | { status: "revoked"; reason: string };
 
+export interface ProductMediaCandidateView {
+  id: string; productId: string; provider: string; candidateHash: string; query: string; title: string;
+  imageUrl: string; landingPageUrl: string; creator: string | null; creatorUrl: string | null;
+  license: string | null; licenseVersion: string | null; licenseUrl: string | null; sourcePublisher: string | null;
+  identityScore: number; identityStatus: "strong_match" | "review_required"; identityReasons: string[];
+  reviewStatus: "pending" | "approved" | "rejected"; rightsStatus: "unverified" | "verified" | "revoked";
+  reviewedBy: string | null; reviewedAt: string | null; reviewReason: string | null; createdAt: string; updatedAt: string;
+}
+export interface ProductMediaCandidateReviewAuditView {
+  id: string; candidateId: string; productId: string; actorId: string; actorRole: "admin";
+  action: "approve" | "reject"; reason: string; previousStatus: "pending";
+  newStatus: "approved" | "rejected"; createdAt: string;
+}
 export interface ProductMediaRightsAuditView {
   id: string; assetId: string; productId: string; actorId: string; actorRole: string;
   action: "verify" | "revoke"; reason: string; previousRightsStatus: string; newRightsStatus: string;
@@ -85,6 +100,10 @@ export const api = {
   offers: () => get<ListResponse<Offer>>("/api/v1/offers"), createOffer: (input: CreateOfferRequest) => post<Offer>("/api/v1/offers", input),
   conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"), createConversion: (input: CreateConversionRequest) => post<Conversion>("/api/v1/conversions", input), commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),
   productMediaAssets: (productId: string) => get<ListResponse<ProductMediaAssetView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets`),
+  productMediaCandidates: (productId: string, status: "pending" | "approved" | "rejected" = "pending") => get<ListResponse<ProductMediaCandidateView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates?status=${encodeURIComponent(status)}`),
+  reviewProductMediaCandidate: (productId: string, candidateId: string, input: { status: "approved" | "rejected"; reason: string }) => patch<ProductMediaCandidateView>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/review`, input),
+  productMediaCandidateReviewAudits: (productId: string, candidateId: string) => get<ListResponse<ProductMediaCandidateReviewAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/review-audits`),
+  importProductMediaCandidate: (productId: string, candidateId: string) => post<{ asset: Omit<ProductMediaAssetView, "technicalReadiness">; alreadyImported: boolean }>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/import`, {}),
   productMediaRightsAudits: (productId: string, assetId: string) => get<ListResponse<ProductMediaRightsAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights-audits`),
   productMediaPreview: (productId: string, assetId: string) => get<{ url: string; expiresInSeconds: number }>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/preview`),
   reviewProductMediaRights: (productId: string, assetId: string, input: ProductMediaRightsReviewInput) => patch<ProductMediaAssetView>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights`, input),
