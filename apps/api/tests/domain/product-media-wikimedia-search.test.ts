@@ -22,7 +22,7 @@ test("searches Wikimedia Commons and preserves attribution and license evidence"
             extmetadata: {
               LicenseShortName: { value: "CC BY 4.0" },
               LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0/" },
-              Artist: { value: "<a href=\"https://commons.wikimedia.org/wiki/User:Example\">Example Photographer</a>" }
+              Artist: { value: "<a href=\"//commons.wikimedia.org/wiki/User:Example\">Example Photographer</a>" }
             }
           }]
         }]
@@ -52,6 +52,7 @@ test("rejects files without an explicitly supported reuse license", async () => 
         imageinfo: [{
           thumburl: "https://upload.wikimedia.org/thumb.jpg",
           descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5.jpg",
+          mime: "image/jpeg",
           extmetadata: {
             LicenseShortName: { value: "CC BY-NC 4.0" },
             LicenseUrl: { value: "https://creativecommons.org/licenses/by-nc/4.0/" }
@@ -71,6 +72,7 @@ test("rejects mismatched model identifiers and non-HTTPS media URLs", async () =
         imageinfo: [{
           thumburl: "http://upload.wikimedia.org/thumb.jpg",
           descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM4.jpg",
+          mime: "image/jpeg",
           extmetadata: {
             LicenseShortName: { value: "CC0" },
             LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
@@ -95,4 +97,25 @@ test("rejects invalid result limits and reports upstream HTTP failures", async (
     () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
     /HTTP 503/
   );
+});
+
+
+test("rejects non-image files returned from the Commons file namespace", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Sony WH-1000XM5 demonstration.webm",
+        imageinfo: [{
+          thumburl: "https://thumb.wikimedia.org/video-poster.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_demonstration.webm",
+          mime: "video/webm",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY 4.0" },
+            LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200 });
+  assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
 });
