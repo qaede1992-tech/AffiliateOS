@@ -21,6 +21,16 @@ export interface ProductMediaAsset {
   sha256: string;
   sourceUrl: string;
   sourcePublisher: string | null;
+  sourceProvider?: string | null;
+  sourceCandidateId?: string | null;
+  sourceLandingPageUrl?: string | null;
+  sourceTitle?: string | null;
+  sourceQuery?: string | null;
+  sourceCreator?: string | null;
+  sourceCreatorUrl?: string | null;
+  sourceLicense?: string | null;
+  sourceLicenseVersion?: string | null;
+  sourceLicenseUrl?: string | null;
   rightsStatus: "unverified" | "verified" | "revoked";
   rightsBasis: "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization" | null;
   rightsEvidenceUrl: string | null;
@@ -119,7 +129,13 @@ export class ProductMediaIngestionService {
   async ingest(input: {
     productId: string;
     nonMediaEligibilityPassed: boolean;
-    candidates: ProductMediaCandidate[];
+    candidates: Array<ProductMediaCandidate & {
+      provenance?: {
+        provider: string; candidateId: string; landingPageUrl: string; title: string; query: string;
+        creator: string | null; creatorUrl: string | null; license: string | null;
+        licenseVersion: string | null; licenseUrl: string | null; sourcePublisher: string | null;
+      };
+    }>;
     transport?: Pick<SafePublicHttpsFetchOptions, "fetchImpl" | "resolveHost">;
   }): Promise<ProductMediaIngestionResult> {
     validateProductId(input.productId);
@@ -165,7 +181,19 @@ export class ProductMediaIngestionService {
         const asset: ProductMediaAsset = {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
           objectKey: savedObject.key, mimeType, byteSize: response.bytes.byteLength,
-          ...technicalMetadata, sha256, sourceUrl: candidate.url, sourcePublisher: null, rightsStatus: "unverified",
+          ...technicalMetadata, sha256, sourceUrl: candidate.url,
+          sourcePublisher: candidate.provenance?.sourcePublisher ?? null,
+          sourceProvider: candidate.provenance?.provider ?? null,
+          sourceCandidateId: candidate.provenance?.candidateId ?? null,
+          sourceLandingPageUrl: candidate.provenance?.landingPageUrl ?? null,
+          sourceTitle: candidate.provenance?.title ?? null,
+          sourceQuery: candidate.provenance?.query ?? null,
+          sourceCreator: candidate.provenance?.creator ?? null,
+          sourceCreatorUrl: candidate.provenance?.creatorUrl ?? null,
+          sourceLicense: candidate.provenance?.license ?? null,
+          sourceLicenseVersion: candidate.provenance?.licenseVersion ?? null,
+          sourceLicenseUrl: candidate.provenance?.licenseUrl ?? null,
+          rightsStatus: "unverified",
           rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null, createdAt: new Date().toISOString()
         };
         try {
