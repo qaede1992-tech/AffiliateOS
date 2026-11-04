@@ -30,7 +30,7 @@ const asset = {
   contentId: "content-1",
   kind: "video" as const,
   source: "url" as const,
-  reference: "https://media.example.test/video.mp4",
+  reference: "https://media.example.com/video.mp4",
   mimeType: "video/mp4",
   byteSize: 4 * 1024 * 1024,
   createdAt: "2026-09-26T00:00:00.000Z",
@@ -144,7 +144,7 @@ test("TikTok client publishes an image through the photo Direct Post API", async
     ...asset,
     id: "asset-image-1",
     kind: "image" as const,
-    reference: "https://media.example.test/product.jpg",
+    reference: "https://media.example.com/product.jpg",
     mimeType: "image/jpeg",
     byteSize: undefined
   };
@@ -346,4 +346,53 @@ test("TikTok provider HTTP errors retain status and code for safe route mapping"
     assert.match(error.message, /access token is invalid/);
     return true;
   });
+});
+
+
+test("TikTok media URL validation rejects local and credential-bearing hosts before publication", async () => {
+  for (const mediaTransferMode of ["FILE_UPLOAD", "PULL_FROM_URL"] as const) {
+    const calls: string[] = [];
+    const client = new TikTokContentPostingClient({
+      mediaTransferMode,
+      accessTokenResolver: async () => "secret-token",
+      fetchImpl: async (input) => {
+        calls.push(String(input));
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+    });
+
+    await assert.rejects(
+      () => client.publish({
+        content,
+        account,
+        mediaAssets: [{ ...asset, reference: "https://127.0.0.1/video.mp4" }],
+        tiktokApproval: approval,
+        idempotencyKey: "idem-private-url-" + mediaTransferMode
+      }),
+      /credential-free HTTPS media source with a public-looking hostname/i
+    );
+    assert.equal(calls.length, 1);
+    assert.match(calls[0] ?? "", /creator_info/);
+  }
+
+  const photoCalls: string[] = [];
+  const photoClient = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input) => {
+      photoCalls.push(String(input));
+      return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+    }
+  });
+  await assert.rejects(
+    () => photoClient.publish({
+      content,
+      account,
+      mediaAssets: [{ ...asset, kind: "image", reference: "https://user:secret@media.example.com/product.jpg" }],
+      tiktokApproval: approval,
+      idempotencyKey: "idem-private-photo-url"
+    }),
+    /credential-free HTTPS media URL with a public-looking hostname/i
+  );
+  assert.equal(photoCalls.length, 1);
+  assert.match(photoCalls[0] ?? "", /creator_info/);
 });
