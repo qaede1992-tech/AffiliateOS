@@ -136,6 +136,20 @@ test("candidate review rejects a second decision after the pending state is cons
   }
 });
 
+test("operator cannot approve or reject product media candidates", async () => {
+  const { app } = makeApp("operator");
+  try {
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review`,
+      payload: { status: "approved", reason: "Operator must not make identity decisions." }
+    });
+    assert.equal(response.statusCode, 403);
+  } finally {
+    await app.close();
+  }
+});
+
 test("operator cannot read pending product media candidates", async () => {
   const { app } = makeApp("operator");
   try {
