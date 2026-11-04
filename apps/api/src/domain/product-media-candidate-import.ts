@@ -90,13 +90,16 @@ export class ProductMediaCandidateImportService {
 
     const latestDecision = (await audits.list({ productId, limit: 1 }))[0];
     const decisionAge = latestDecision ? now.getTime() - Date.parse(latestDecision.createdAt) : Number.POSITIVE_INFINITY;
-    if (!latestDecision || !latestDecision.selected || !Number.isFinite(decisionAge) || decisionAge < 0 || decisionAge > this.selectionMaxAgeMs) {
-      throw new ProductMediaCandidateImportError("PRODUCT_NOT_RECENTLY_SELECTED", "The product does not have a recent successful autonomous selection.", 409);
+    const successfulOutcome = latestDecision?.outcome;
+    if (!latestDecision || !latestDecision.selected || successfulOutcome?.status !== "completed"
+      || !successfulOutcome.offerId || !successfulOutcome.campaignId
+      || !Number.isFinite(decisionAge) || decisionAge < 0 || decisionAge > this.selectionMaxAgeMs) {
+      throw new ProductMediaCandidateImportError("PRODUCT_NOT_RECENTLY_SELECTED", "The product does not have a recent successfully executed autonomous selection.", 409);
     }
 
     const offers = await this.dependencies.listAffiliateOffers();
-    if (!offers.some((offer) => isUsableAffiliateOffer(offer, productId, now))) {
-      throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The product no longer has an active, usable affiliate offer and link.", 409);
+    if (!offers.some((offer) => offer.id === successfulOutcome.offerId && isUsableAffiliateOffer(offer, productId, now))) {
+      throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The successfully selected affiliate offer no longer has an active, usable link.", 409);
     }
 
     const result = await ingestion.ingest({
