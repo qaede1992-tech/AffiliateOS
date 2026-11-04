@@ -1,6 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "../domain/product-media-candidate.js";
-import { productMediaCandidates } from "./schema.js";
+import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository, ProductMediaCandidateReviewAudit, ProductMediaCandidateReviewCommand } from "../domain/product-media-candidate.js";
+import { productMediaCandidates, productMediaCandidateReviewAudits } from "./schema.js";
 
 type DatabaseExecutor = any;
 type CandidateRow = typeof productMediaCandidates.$inferSelect;
@@ -13,6 +14,7 @@ const toCandidate = (row: CandidateRow): ProductMediaCandidateRecord => ({
   identityScore: row.identityScore, identityStatus: row.identityStatus as ProductMediaCandidateRecord["identityStatus"],
   identityReasons: row.identityReasons, reviewStatus: row.reviewStatus as ProductMediaCandidateRecord["reviewStatus"],
   rightsStatus: row.rightsStatus as ProductMediaCandidateRecord["rightsStatus"],
+  reviewedBy: row.reviewedBy, reviewedAt: row.reviewedAt, reviewReason: row.reviewReason,
   createdAt: row.createdAt, updatedAt: row.updatedAt
 });
 
@@ -31,7 +33,8 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       sourcePublisher: candidate.sourcePublisher ?? null,
       identityReasons: candidate.identityReasons ?? [],
       reviewStatus: "pending",
-      rightsStatus: "unverified"
+      rightsStatus: "unverified",
+      reviewedBy: null, reviewedAt: null, reviewReason: null
     }))).onConflictDoNothing().returning();
     return rows.map(toCandidate);
   }
@@ -42,5 +45,58 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       .where(and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, "pending")))
       .orderBy(desc(productMediaCandidates.createdAt)).limit(boundedLimit);
     return rows.map(toCandidate);
+  }
+
+  async review(candidateId: string, productId: string, command: ProductMediaCandidateReviewCommand): Promise<ProductMediaCandidateRecord | undefined> {
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      const rows = await tx.select().from(productMediaCandidates).where(and(
+        eq(productMediaCandidates.id, candidateId),
+        eq(productMediaCandidates.productId, productId),
+        eq(productMediaCandidates.reviewStatus, "pending")
+      )).limit(1).for("update");
+      const existing = rows[0];
+      if (!existing) return undefined;
+      const reviewedAt = new Date().toISOString();
+      const nextStatus = command.status;
+      const updatedRows = await tx.update(productMediaCandidates).set({
+        reviewStatus: nextStatus,
+        reviewedBy: command.actorId,
+        reviewedAt,
+        reviewReason: command.reason,
+        updatedAt: reviewedAt
+      }).where(and(
+        eq(productMediaCandidates.id, candidateId),
+        eq(productMediaCandidates.productId, productId),
+        eq(productMediaCandidates.reviewStatus, "pending")
+      )).returning();
+      const updated = updatedRows[0];
+      if (!updated) return undefined;
+      await tx.insert(productMediaCandidateReviewAudits).values({
+        id: randomUUID(),
+        candidateId,
+        productId,
+        actorId: command.actorId,
+        actorRole: command.actorRole,
+        action: nextStatus === "approved" ? "approve" : "reject",
+        reason: command.reason,
+        previousStatus: "pending",
+        newStatus: nextStatus,
+        createdAt: reviewedAt
+      });
+      return toCandidate(updated);
+    });
+  }
+
+  async listReviewAudits(productId: string, candidateId: string): Promise<ProductMediaCandidateReviewAudit[]> {
+    const rows = await this.db.select().from(productMediaCandidateReviewAudits).where(and(
+      eq(productMediaCandidateReviewAudits.productId, productId),
+      eq(productMediaCandidateReviewAudits.candidateId, candidateId)
+    )).orderBy(desc(productMediaCandidateReviewAudits.createdAt)).limit(50);
+    return rows.map((row: typeof productMediaCandidateReviewAudits.$inferSelect) => ({
+      id: row.id, candidateId: row.candidateId, productId: row.productId, actorId: row.actorId,
+      actorRole: "admin", action: row.action as ProductMediaCandidateReviewAudit["action"],
+      reason: row.reason, previousStatus: "pending", newStatus: row.newStatus as ProductMediaCandidateReviewAudit["newStatus"],
+      createdAt: row.createdAt
+    }));
   }
 }
