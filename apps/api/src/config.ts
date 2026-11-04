@@ -60,6 +60,8 @@ const environmentSchema = z.object({
   TIKTOK_CLIENT_SECRET: z.string().optional(),
   INSTAGRAM_CLIENT_ID: z.string().trim().optional(),
   INSTAGRAM_CLIENT_SECRET: z.string().optional(),
+  OPENVERSE_CLIENT_ID: z.string().trim().min(1).optional(),
+  OPENVERSE_CLIENT_SECRET: z.string().min(1).optional(),
   SOCIAL_CREDENTIALS_JSON: z.string().optional(),
   SOCIAL_CREDENTIAL_STORE_PATH: z.string().trim().default("/var/lib/affiliateos/secrets/social-credentials.enc"),
   SOCIAL_CREDENTIAL_STORE_KEY: z.string().trim().min(32).optional(),
@@ -67,6 +69,13 @@ const environmentSchema = z.object({
   SUPABASE_STORAGE_SERVICE_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   SUPABASE_MEDIA_BUCKET: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("affiliate-media"))
 }).superRefine((value, context) => {
+  if (Boolean(value.OPENVERSE_CLIENT_ID) !== Boolean(value.OPENVERSE_CLIENT_SECRET)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["OPENVERSE_CLIENT_SECRET"],
+      message: "OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET must be configured together."
+    });
+  }
   const storageConfigured = Boolean(value.SUPABASE_URL || value.SUPABASE_STORAGE_SERVICE_KEY);
   if (storageConfigured && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
     context.addIssue({
