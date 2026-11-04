@@ -211,6 +211,9 @@ export class ProductMediaDiscoveryRunner {
             identityReasons: candidate.identityReasons,
             reviewStatus: "pending" as const,
             rightsStatus: "unverified" as const,
+            reviewedBy: null,
+            reviewedAt: null,
+            reviewReason: null,
             createdAt: now,
             updatedAt: now
           }));
