@@ -187,6 +187,7 @@ test("classifies token endpoint 403 HTML Cloudflare challenges without reading t
       const details = (error as { details?: Record<string, unknown> }).details;
       assert.equal(details?.endpoint, "token");
       assert.equal(details?.cloudflareRayPresent, true);
+      assert.equal(details?.cloudflareRayId, "test-ray");
       assert.equal(details?.responseKind, "cloudflare_html_challenge");
       return true;
     }
