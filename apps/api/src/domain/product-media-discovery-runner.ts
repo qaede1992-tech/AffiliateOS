@@ -9,7 +9,7 @@ import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from ".
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
 import { createHash, randomUUID } from "node:crypto";
-import { buildProductMediaSearchQuery, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
+import { buildProductMediaSearchQuery, getOpenverseHttpFailureDetails, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
 import { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 
@@ -178,12 +178,14 @@ export class ProductMediaDiscoveryRunner {
           } catch (error) {
             openverseFailure = error instanceof Error ? error.message : "Openverse candidate search failed.";
             discoveryProvider = "wikimedia_commons";
+            const openverseFailureDetails = getOpenverseHttpFailureDetails(error);
             console.warn(JSON.stringify({
               event: "product_media_catalog_provider_fallback",
               primaryProvider: "openverse",
               fallbackProvider: "wikimedia_commons",
               productId: product.id,
-              reason: openverseFailure
+              reason: openverseFailure,
+              ...(openverseFailureDetails ? { openverseFailure: openverseFailureDetails } : {})
             }));
             discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
           }
