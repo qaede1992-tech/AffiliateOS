@@ -53,7 +53,7 @@ const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp;
   { pattern: /\b(botol minum|tumbler|termos|water bottle)\b/i, query: "water bottle", relevant: /\b(water bottle|bottle|thermos|flask|canteen)\b/i },
   { pattern: /\b(charger|pengisi daya|fast charging)\b/i, query: "charger", relevant: /\b(charger|charging adapter|power adapter)\b/i },
   { pattern: /\b(brown sugar|gula merah|gula aren|gula tebu)\b/i, query: "brown sugar", relevant: /\b(brown sugar|palm sugar|jaggery)\b/i, exclude: /\b(making of|production of|factory|harvest|field)\b/i },
-  { pattern: /\b(cat food|makanan kucing|pakan kucing)\b/i, query: "cat food", relevant: /\b(cat food|kibble|cat kibble|dry cat food)\b/i, exclude: /\b(donation|donation box|donation booth|shelter|charity|feeding program|wet food)\b/i },
+  { pattern: /\b(cat food|makanan kucing|pakan kucing)\b/i, query: "cat food", relevant: /\b(cat food|kibble|cat kibble|dry cat food)\b/i, exclude: /\b(donation|donation box|donation booth|shelter|charity|feeding program|wet (?:cat )?food)\b/i },
   { pattern: /\b(baby cream|krim bayi|baby lotion|perlengkapan bayi)\b/i, query: "baby cream", relevant: /\b(baby cream|barrier cream|skin cream|lotion|moisturizer|ointment|skincare)\b/i },
   { pattern: /\b(hand soap|hand wash|sabun cuci tangan)\b/i, query: "hand soap", relevant: /\b(hand soap|hand wash|liquid soap|soap dispenser|handwashing)\b/i },
   { pattern: /\b(honey|madu)\b/i, query: "honey", relevant: /\b(honey|honeycomb|honey jar|bee honey)\b/i },
