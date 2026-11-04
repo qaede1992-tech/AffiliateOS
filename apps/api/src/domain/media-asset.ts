@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import type { EntityId, IsoTimestamp } from "@affiliateos/shared";
 
 export type MediaAssetKind = "video" | "image" | "thumbnail";
@@ -25,10 +26,33 @@ export interface MediaAssetRepository {
   save(asset: MediaAsset): Promise<MediaAsset>;
 }
 
+const LOCAL_OR_SPECIAL_HOST_SUFFIXES = [
+  ".localhost",
+  ".local",
+  ".internal",
+  ".home.arpa",
+  ".test",
+  ".example",
+  ".invalid",
+  ".onion"
+] as const;
+
+/**
+ * Performs conservative URL-shape validation for externally hosted media.
+ * This does not validate DNS answers or redirects; network fetchers must still
+ * pin validated public addresses and revalidate every redirect before connecting.
+ */
 export const isPublicMediaUrl = (reference: string): boolean => {
   try {
     const url = new URL(reference);
-    return url.protocol === "https:" && Boolean(url.hostname);
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password) return false;
+
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    if (!hostname || !hostname.includes(".") || isIP(hostname) !== 0) return false;
+    if (hostname === "localhost" || LOCAL_OR_SPECIAL_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))) {
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -37,7 +61,7 @@ export const isPublicMediaUrl = (reference: string): boolean => {
 export const validateMediaAsset = (asset: MediaAsset): void => {
   if (!asset.reference.trim()) throw new Error("Media asset reference is required.");
   if (asset.source === "url" && !isPublicMediaUrl(asset.reference)) {
-    throw new Error("URL media assets require an HTTPS URL.");
+    throw new Error("URL media assets require a credential-free public HTTPS hostname.");
   }
   if (asset.byteSize !== undefined && (!Number.isSafeInteger(asset.byteSize) || asset.byteSize < 0)) {
     throw new Error("Media asset byteSize must be a non-negative integer.");
