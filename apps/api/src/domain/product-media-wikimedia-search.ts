@@ -48,7 +48,7 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
     .slice(0, 1000) || null;
 };
 
-const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp }> = [
+const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp; exclude?: RegExp }> = [
   { pattern: /\b(backpack|rucksack|ransel|tas sekolah|tas kuliah)\b/i, query: "backpack", relevant: /\b(backpack|rucksack|knapsack|school bag)\b/i },
   { pattern: /\b(botol minum|tumbler|termos|water bottle)\b/i, query: "water bottle", relevant: /\b(water bottle|bottle|thermos|flask|canteen)\b/i },
   { pattern: /\b(charger|pengisi daya|fast charging)\b/i, query: "charger", relevant: /\b(charger|charging adapter|power adapter)\b/i },
@@ -172,7 +172,7 @@ export async function searchWikimediaCommonsProductMedia(
         const descriptiveText = [title, metadataText(info.extmetadata, "Description"), metadataText(info.extmetadata, "ImageDescription")]
           .filter((value): value is string => Boolean(value))
           .join(" ");
-        if (category && !category.relevant.test(descriptiveText)) continue;
+        if (category && (!category.relevant.test(descriptiveText) || category.exclude?.test(descriptiveText))) continue;
         const primaryIdentifier = identity.model?.trim() || identity.sku?.trim();
         if (identityMatch.status === "rejected" && primaryIdentifier) continue;
         const broadCategoryMatch = identityMatch.status === "rejected";
