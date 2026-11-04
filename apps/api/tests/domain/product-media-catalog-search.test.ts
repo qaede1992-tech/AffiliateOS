@@ -217,3 +217,23 @@ test("distinguishes image search 403 from token endpoint failures", async () => 
     }
   );
 });
+
+
+test("classifies token endpoint 403 JSON separately from Cloudflare HTML challenges", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({ error: "access_denied" }), {
+    status: 403, headers: { "content-type": "application/json" }
+  });
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, {
+      fetchImpl, clientId: "openverse-403-json-client", clientSecret: "test-secret", timeoutMs: 1000
+    }),
+    (error: unknown) => {
+      const details = (error as { details?: Record<string, unknown> }).details;
+      assert.equal(details?.endpoint, "token");
+      assert.equal(details?.status, 403);
+      assert.equal(details?.responseKind, "json_error");
+      assert.equal(details?.cloudflareRayPresent, false);
+      return true;
+    }
+  );
+});
