@@ -30,18 +30,19 @@ export interface ProductMediaCandidateImportDependencies {
   selectionMaxAgeMs?: number;
 }
 
-const isUsableAffiliateOffer = (offer: AffiliateOffer, now: Date): boolean => {
-  if (offer.status !== "active" || offer.affiliateLinkStatus !== "active") return false;
-  if (offer.availability !== "in_stock" && offer.availability !== "limited") return false;
-  if (!offer.affiliateUrl) return false;
+const isUsableAffiliateOffer = (offer: AffiliateOffer, productId: string, now: Date): boolean => {
+  const metadata = offer.availabilityMetadata ?? {};
+  const explicitlyIneligible = ["affiliateEligible", "commissionEligible", "isEligible"].some((key) => metadata[key] === false);
+  if (explicitlyIneligible || offer.productId !== productId || offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return false;
   try {
     const url = new URL(offer.affiliateUrl);
-    if (url.protocol !== "https:" || url.username || url.password) return false;
+    if (url.protocol !== "https:" && url.protocol !== "http:") return false;
   } catch {
     return false;
   }
-  if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= now.getTime()) return false;
-  return true;
+  if (!offer.affiliateLinkExpiresAt) return true;
+  const expiry = Date.parse(offer.affiliateLinkExpiresAt);
+  return Number.isFinite(expiry) && expiry > now.getTime();
 };
 
 /**
@@ -88,7 +89,7 @@ export class ProductMediaCandidateImportService {
     }
 
     const offers = await this.dependencies.listAffiliateOffers();
-    if (!offers.some((offer) => offer.productId === productId && isUsableAffiliateOffer(offer, now))) {
+    if (!offers.some((offer) => isUsableAffiliateOffer(offer, productId, now))) {
       throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The product no longer has an active, usable affiliate offer and link.", 409);
     }
 
