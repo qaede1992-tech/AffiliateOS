@@ -60,6 +60,9 @@ try {
     await client.query("DROP INDEX IF EXISTS public.autonomous_runs_test_created_idx");
     await client.query("ALTER TABLE public.campaigns DROP COLUMN IF EXISTS is_test");
     await client.query("ALTER TABLE public.autonomous_runs DROP COLUMN IF EXISTS is_test");
+    // Migration 0080 adds this FK without IF NOT EXISTS. Because this scenario
+    // replays every migration after 0060, remove that later schema effect too.
+    await client.query("ALTER TABLE public.product_media_assets DROP CONSTRAINT IF EXISTS product_media_assets_source_candidate_fk");
     await client.query(
       'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at >= $1',
       [migration0060]
