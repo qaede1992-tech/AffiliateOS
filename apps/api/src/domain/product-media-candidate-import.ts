@@ -5,7 +5,7 @@ import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaIngest
 
 export class ProductMediaCandidateImportError extends Error {
   constructor(
-    readonly code: "CANDIDATE_NOT_FOUND" | "CANDIDATE_NOT_APPROVED" | "PRODUCT_NOT_ELIGIBLE" | "PRODUCT_NOT_RECENTLY_SELECTED" | "AFFILIATE_OFFER_UNAVAILABLE" | "MEDIA_IMPORT_FAILED",
+    readonly code: "CANDIDATE_NOT_FOUND" | "CANDIDATE_NOT_APPROVED" | "PRODUCT_NOT_ELIGIBLE" | "PRODUCT_NOT_RECENTLY_SELECTED" | "AFFILIATE_OFFER_UNAVAILABLE" | "MEDIA_ASSET_RIGHTS_REVOKED" | "MEDIA_IMPORT_FAILED",
     message: string,
     readonly statusCode: number
   ) {
@@ -78,9 +78,6 @@ export class ProductMediaCandidateImportService {
       throw new ProductMediaCandidateImportError("CANDIDATE_NOT_APPROVED", "The candidate is missing its administrator review record.", 409);
     }
 
-    const existing = await assets.findBySourceCandidateId?.(candidate.id);
-    if (existing) return { asset: existing, alreadyImported: true };
-
     const now = this.now();
     const products = await this.dependencies.listProducts();
     const product = products.find((item) => item.id === productId);
@@ -100,6 +97,15 @@ export class ProductMediaCandidateImportService {
     const offers = await this.dependencies.listAffiliateOffers();
     if (!offers.some((offer) => offer.id === successfulOutcome.offerId && isUsableAffiliateOffer(offer, productId, now))) {
       throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The successfully selected affiliate offer no longer has an active, usable link.", 409);
+    }
+
+    // Idempotency must not bypass current product/selection/offer eligibility.
+    const existing = await assets.findBySourceCandidateId?.(candidate.id);
+    if (existing) {
+      if (existing.rightsStatus === "revoked") {
+        throw new ProductMediaCandidateImportError("MEDIA_ASSET_RIGHTS_REVOKED", "This candidate was already imported, but the asset rights have been revoked. Review the asset rights before using it.", 409);
+      }
+      return { asset: existing, alreadyImported: true };
     }
 
     const result = await ingestion.ingest({
