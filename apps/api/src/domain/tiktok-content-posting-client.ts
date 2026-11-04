@@ -94,11 +94,11 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
     if (this.mediaTransferMode === "PULL_FROM_URL") {
       if (asset.source !== "url") throw new Error("TikTok PULL_FROM_URL publishing requires a media URL.");
-      if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok media URL must be a credential-free HTTPS URL with a public-looking hostname.");
+      if (!isPublicMediaUrl(asset.reference)) throw new Error("TikTok media URL must be a credential-free HTTPS URL with a public-looking hostname.");
       return this.initializePullFromUrl(input, accessToken, privacyLevel, asset.reference, disableComment, disableDuet, disableStitch, approval);
     }
 
-    if (!this.isHttpsUrl(asset.reference)) {
+    if (!isPublicMediaUrl(asset.reference)) {
       throw new Error("TikTok FILE_UPLOAD publishing requires a credential-free HTTPS media source with a public-looking hostname that AffiliateOS can download.");
     }
 
