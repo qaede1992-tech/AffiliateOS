@@ -60,6 +60,9 @@ export class ProductMediaCandidateImportService {
 
   async importApprovedCandidate(productId: string, candidateId: string): Promise<ProductMediaCandidateImportResult> {
     const { candidates, assets, ingestion, audits } = this.dependencies;
+    if (!candidates.findById) {
+      throw new ProductMediaCandidateImportError("MEDIA_IMPORT_FAILED", "Candidate lookup is not configured.", 503);
+    }
     const candidate = await candidates.findById(candidateId);
     if (!candidate || candidate.productId !== productId) {
       throw new ProductMediaCandidateImportError("CANDIDATE_NOT_FOUND", "The media candidate was not found for this product.", 404);
