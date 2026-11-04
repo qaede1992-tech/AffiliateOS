@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
+import { buildWikimediaCommonsQueries, searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
 
 const identity = { name: "Sony WH-1000XM5 Wireless Headphones" };
 
@@ -118,4 +118,54 @@ test("rejects non-image files returned from the Commons file namespace", async (
     }
   }), { status: 200 });
   assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
+});
+
+
+test("maps Indonesian marketplace listing titles to concise Commons category queries", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "CELAH LANGIT GUMMY BACKPACK | Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
+  }), ["backpack"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "MODOFO Tumbler Stainless 710ml Botol Minum Anak Perempuan"
+  }), ["water bottle"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Aromanis Brown Sugar 1kg - Gula merah tebu molasses"
+  }), ["brown sugar"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "MADU PUTIH MENTAH PREMIUM"
+  }), ["honey"]);
+});
+
+test("keeps broad category results as low-confidence manual-review candidates", async () => {
+  let requestedUrl = "";
+  const fetchImpl: typeof fetch = async (input) => {
+    requestedUrl = String(input);
+    return new Response(JSON.stringify({
+      query: {
+        pages: [{
+          title: "File:Military backpack 01.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/backpack.jpg",
+            url: "https://upload.wikimedia.org/wikipedia/commons/backpack.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Military_backpack_01.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "http://creativecommons.org/publicdomain/zero/1.0/deed.en" }
+            }
+          }]
+        }]
+      }
+    }), { status: 200 });
+  };
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
+  }, { fetchImpl });
+  assert.match(requestedUrl, /gsrsearch=backpack/);
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+  assert.equal(results[0]?.license, "cc0");
+  assert.ok(results[0]?.identityReasons.some((reason) => reason.includes("pencarian kategori")));
 });
