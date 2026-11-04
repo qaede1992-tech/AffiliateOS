@@ -124,3 +124,25 @@ test("returns an existing source-linked asset without downloading it again", asy
   assert.equal(result.asset.id, asset.id);
   assert.equal(ingestionCalls(), 0);
 });
+
+test("rejects candidates whose rights were revoked", async () => {
+  const { service, ingestionCalls } = makeService({ candidate: { ...candidate, rightsStatus: "revoked" } });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "CANDIDATE_NOT_APPROVED");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("rejects a product that is no longer active", async () => {
+  const { service, ingestionCalls } = makeService({ product: { ...product, status: "inactive" } });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_ELIGIBLE");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("rejects an expired autonomous selection decision", async () => {
+  const stale = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString();
+  const { service, ingestionCalls } = makeService({ decision: { selected: true, createdAt: stale } });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
+  assert.equal(ingestionCalls(), 0);
+});
