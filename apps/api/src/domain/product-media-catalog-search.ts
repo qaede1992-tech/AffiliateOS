@@ -190,7 +190,7 @@ const classifyOpenverseHttpFailure = (
   const contentType = response.headers.get("content-type");
   const server = response.headers.get("server");
   const cloudflareRayPresent = response.headers.has("cf-ray");
-  const isHtml = Boolean(contentType && /text\\/html|application\\/xhtml\\+xml/i.test(contentType));
+  const isHtml = Boolean(contentType && /text\/html|application\/xhtml\+xml/i.test(contentType));
   const responseKind: OpenverseFailureResponseKind = isHtml && (
     cloudflareRayPresent || (server ?? "").toLowerCase().includes("cloudflare")
   )
