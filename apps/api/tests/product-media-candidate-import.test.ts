@@ -177,3 +177,32 @@ test("requires the currently usable offer to match the completed autonomous outc
     (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "AFFILIATE_OFFER_UNAVAILABLE");
   assert.equal(ingestionCalls(), 0);
 });
+
+test("does not let an existing import bypass current product eligibility", async () => {
+  const { service, ingestionCalls } = makeService({
+    existingAsset: asset,
+    product: { ...product, status: "inactive" }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_ELIGIBLE");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("does not let an existing import bypass the recent successful selection requirement", async () => {
+  const stale = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString();
+  const { service, ingestionCalls } = makeService({
+    existingAsset: asset,
+    decision: { selected: true, createdAt: stale }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("does not return an existing asset as reusable when its rights have been revoked", async () => {
+  const revokedAsset = { ...asset, rightsStatus: "revoked" as const };
+  const { service, ingestionCalls } = makeService({ existingAsset: revokedAsset });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "MEDIA_ASSET_RIGHTS_REVOKED" && error.statusCode === 409);
+  assert.equal(ingestionCalls(), 0);
+});
