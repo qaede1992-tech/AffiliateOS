@@ -218,7 +218,8 @@ export class ProductMediaDiscoveryRunner {
           candidatesFound = saved.length;
           console.info(JSON.stringify({
             event: "product_media_catalog_search_completed",
-            provider: "openverse",
+            provider: discoveryProvider,
+            fallbackReason: openverseFailure,
             productId: product.id,
             resultCount: discovered.length,
             acceptedCount: accepted.length,
@@ -228,11 +229,11 @@ export class ProductMediaDiscoveryRunner {
           const message = error instanceof Error ? error.message : "Openverse candidate search failed.";
           console.warn(JSON.stringify({
             event: "product_media_catalog_search_failed",
-            provider: "openverse",
+            provider: "wikimedia_commons",
             productId: product.id,
             reason: message
           }));
-          skipped.push({ url: "https://api.openverse.org/v1/images/", reason: "Openverse candidate search failed: " + message });
+          skipped.push({ url: "https://commons.wikimedia.org/w/api.php", reason: "Openverse and Wikimedia Commons candidate discovery failed: " + message });
         }
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
