@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { ProductMediaIngestionService } from "../src/domain/product-media-ingestion.js";
 import { DrizzleProductMediaAssetRepository } from "../src/db/product-media-asset-repository.js";
 
@@ -363,4 +364,50 @@ test("preserves reviewed catalog provenance without verifying publication rights
   assert.equal(saved[0]?.rightsStatus, "unverified");
   assert.equal(saved[0]?.rightsBasis, null);
   assert.equal(saved[0]?.rightsEvidenceUrl, null);
+});
+
+test("links candidate provenance to a matching existing unverified asset without duplicating storage", async () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  const sha256 = createHash("sha256").update(png).digest("hex");
+  const prior = {
+    id: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001", productId, kind: "image" as const,
+    bucket: "affiliate-media", objectKey: `products/${productId}/existing.png`, mimeType: "image/png" as const,
+    byteSize: png.byteLength, sha256, sourceUrl: "https://cdn.example.com/old-source.png", sourcePublisher: null,
+    rightsStatus: "unverified" as const, rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null,
+    createdAt: "2026-11-03T00:00:00.000Z"
+  };
+  let attached: Record<string, unknown> | undefined;
+  const repository = {
+    listByProduct: async () => [],
+    findByProductAndHash: async () => prior,
+    attachCandidateProvenance: async (_productId: string, _hash: string, sourceUrl: string, provenance: Record<string, unknown>) => {
+      attached = { ...prior, sourceUrl, ...provenance, sourceProvider: provenance.provider, sourceCandidateId: provenance.candidateId,
+        sourceLandingPageUrl: provenance.landingPageUrl, sourceTitle: provenance.title, sourceQuery: provenance.query,
+        sourceCreator: provenance.creator, sourceCreatorUrl: provenance.creatorUrl, sourceLicense: provenance.license,
+        sourceLicenseVersion: provenance.licenseVersion, sourceLicenseUrl: provenance.licenseUrl };
+      return attached;
+    },
+    save: async () => { throw new Error("existing asset should not be saved again"); }
+  } as never;
+  const storage = { upload: async () => { throw new Error("existing asset should not be uploaded again"); } } as never;
+  const fetcher = (async () => ({ status: 200, headers: {}, url: "https://cdn.example.com/candidate.png", bytes: png })) as never;
+  const service = new ProductMediaIngestionService(storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher);
+  const result = await service.ingest({
+    productId, nonMediaEligibilityPassed: true,
+    candidates: [{
+      kind: "image", url: "https://cdn.example.com/candidate.png", source: "catalog",
+      provenance: {
+        provider: "wikimedia_commons", candidateId: "22222222-2222-4222-8222-222222222222",
+        landingPageUrl: "https://commons.wikimedia.org/wiki/File:sample.png", title: "Sample",
+        query: "sample product", creator: "Creator", creatorUrl: null, license: "CC-BY-SA",
+        licenseVersion: "4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+        sourcePublisher: "Wikimedia Commons"
+      }
+    }]
+  });
+  assert.equal(result.stored.length, 1);
+  assert.equal(result.stored[0]?.id, prior.id);
+  assert.equal(result.stored[0]?.sourceCandidateId, "22222222-2222-4222-8222-222222222222");
+  assert.equal(result.stored[0]?.rightsStatus, "unverified");
+  assert.equal(attached?.sourceUrl, "https://cdn.example.com/candidate.png");
 });
