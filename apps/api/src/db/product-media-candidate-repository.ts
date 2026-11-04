@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "../domain/product-media-candidate.js";
 import { productMediaCandidates } from "./schema.js";
 
@@ -42,20 +42,20 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       // Refresh discovery evidence when the same source lead is found again.
       // Human review and rights decisions are intentionally immutable here.
       set: {
-        query: productMediaCandidates.query,
-        title: productMediaCandidates.title,
-        imageUrl: productMediaCandidates.imageUrl,
-        landingPageUrl: productMediaCandidates.landingPageUrl,
-        creator: productMediaCandidates.creator,
-        creatorUrl: productMediaCandidates.creatorUrl,
-        license: productMediaCandidates.license,
-        licenseVersion: productMediaCandidates.licenseVersion,
-        licenseUrl: productMediaCandidates.licenseUrl,
-        sourcePublisher: productMediaCandidates.sourcePublisher,
-        identityScore: productMediaCandidates.identityScore,
-        identityStatus: productMediaCandidates.identityStatus,
-        identityReasons: productMediaCandidates.identityReasons,
-        updatedAt: productMediaCandidates.updatedAt
+        query: sql`excluded.query`,
+        title: sql`excluded.title`,
+        imageUrl: sql`excluded.image_url`,
+        landingPageUrl: sql`excluded.landing_page_url`,
+        creator: sql`excluded.creator`,
+        creatorUrl: sql`excluded.creator_url`,
+        license: sql`excluded.license`,
+        licenseVersion: sql`excluded.license_version`,
+        licenseUrl: sql`excluded.license_url`,
+        sourcePublisher: sql`excluded.source_publisher`,
+        identityScore: sql`excluded.identity_score`,
+        identityStatus: sql`excluded.identity_status`,
+        identityReasons: sql`excluded.identity_reasons`,
+        updatedAt: sql`excluded.updated_at`
       }
     }).returning();
 
