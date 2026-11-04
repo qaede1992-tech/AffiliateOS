@@ -173,6 +173,7 @@ export interface OpenverseHttpFailureDetails {
   contentType: string | null;
   server: string | null;
   cloudflareRayPresent: boolean;
+  cloudflareRayId: string | null;
   responseKind: OpenverseFailureResponseKind;
 }
 
@@ -189,7 +190,8 @@ const classifyOpenverseHttpFailure = (
 ): OpenverseHttpFailureDetails => {
   const contentType = response.headers.get("content-type");
   const server = response.headers.get("server");
-  const cloudflareRayPresent = response.headers.has("cf-ray");
+  const cloudflareRayId = response.headers.get("cf-ray")?.slice(0, 100) ?? null;
+  const cloudflareRayPresent = cloudflareRayId !== null;
   const isHtml = Boolean(contentType && /text\/html|application\/xhtml\+xml/i.test(contentType));
   const responseKind: OpenverseFailureResponseKind = isHtml && (
     cloudflareRayPresent || (server ?? "").toLowerCase().includes("cloudflare")
@@ -206,6 +208,7 @@ const classifyOpenverseHttpFailure = (
     contentType: contentType?.slice(0, 120) ?? null,
     server: server?.slice(0, 80) ?? null,
     cloudflareRayPresent,
+    cloudflareRayId,
     responseKind
   };
 };
