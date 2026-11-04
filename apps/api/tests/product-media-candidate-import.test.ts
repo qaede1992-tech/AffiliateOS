@@ -50,7 +50,7 @@ const asset: ProductMediaAsset = {
 
 function makeService(overrides: {
   candidate?: ProductMediaCandidateRecord;
-  decision?: { selected: boolean; createdAt: string };
+  decision?: { selected: boolean; createdAt: string; outcome?: { offerId?: string; status: "completed" | "failed"; campaignId?: string } };
   affiliateOffer?: AffiliateOffer;
   existingAsset?: ProductMediaAsset;
   product?: Product;
@@ -77,7 +77,11 @@ function makeService(overrides: {
         auditId: "77777777-7777-4777-8777-777777777777",
         cycleId: "cycle-1", productId, marketplaceId: product.marketplaceId,
         selected: overrides.decision?.selected ?? true, score: 80, policy: {}, reasons: [],
-        createdAt: overrides.decision?.createdAt ?? now.toISOString()
+        createdAt: overrides.decision?.createdAt ?? now.toISOString(),
+        outcome: overrides.decision?.outcome ?? {
+          offerId: offer.id, status: "completed", campaignId: "88888888-8888-4888-8888-888888888888",
+          observedAt: now.toISOString()
+        }
       }]
     },
     listProducts: async () => [overrides.product ?? product],
@@ -144,5 +148,32 @@ test("rejects an expired autonomous selection decision", async () => {
   const { service, ingestionCalls } = makeService({ decision: { selected: true, createdAt: stale } });
   await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
     (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("rejects a selected decision whose execution outcome failed", async () => {
+  const { service, ingestionCalls } = makeService({
+    decision: { selected: true, createdAt: now.toISOString(), outcome: { offerId: offer.id, status: "failed" } }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("rejects a selected decision without a completed campaign outcome", async () => {
+  const { service, ingestionCalls } = makeService({
+    decision: { selected: true, createdAt: now.toISOString(), outcome: { offerId: offer.id, status: "completed" } }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("requires the currently usable offer to match the completed autonomous outcome", async () => {
+  const { service, ingestionCalls } = makeService({
+    decision: { selected: true, createdAt: now.toISOString(), outcome: { offerId: "99999999-9999-4999-8999-999999999999", status: "completed", campaignId: "88888888-8888-4888-8888-888888888888" } }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "AFFILIATE_OFFER_UNAVAILABLE");
   assert.equal(ingestionCalls(), 0);
 });
