@@ -101,8 +101,9 @@ const normalizedLicense = (licenseUrl: string | null, licenseName: string | null
 };
 
 /**
- * Returns discovery leads only. Category-level matches are explicitly marked
- * review_required; all rights remain unverified and no media is downloaded.
+ * Returns product-identity matches only. Category-level relevance is not enough
+ * to identify a product; rejected identity matches are discarded. Rights remain
+ * unverified and no media is downloaded.
  */
 export async function searchWikimediaCommonsProductMedia(
   identity: ProductMediaSearchIdentity,
@@ -173,9 +174,7 @@ export async function searchWikimediaCommonsProductMedia(
           .filter((value): value is string => Boolean(value))
           .join(" ");
         if (category && (!category.relevant.test(descriptiveText) || category.exclude?.test(descriptiveText))) continue;
-        const primaryIdentifier = identity.model?.trim() || identity.sku?.trim();
-        if (identityMatch.status === "rejected" && primaryIdentifier) continue;
-        const broadCategoryMatch = identityMatch.status === "rejected";
+        if (identityMatch.status === "rejected") continue;
         const creatorHref = metadata?.Artist?.value && typeof metadata.Artist.value === "string"
           ? metadata.Artist.value.match(/href=["']([^"']+)["']/i)?.[1]
           : null;
@@ -192,11 +191,9 @@ export async function searchWikimediaCommonsProductMedia(
           licenseVersion: licenseName?.match(/\d+(?:\.\d+)?/)?.[0] ?? null,
           licenseUrl: acceptedLicense.licenseUrl,
           sourcePublisher: "Wikimedia Commons",
-          identityScore: broadCategoryMatch ? Math.max(identityMatch.score, 20) : identityMatch.score,
-          identityStatus: broadCategoryMatch ? "review_required" : identityMatch.status,
-          identityReasons: broadCategoryMatch
-            ? [...identityMatch.reasons, `Hasil berasal dari pencarian kategori "${query}", bukan pencocokan produk atau model; wajib diperiksa manusia.`]
-            : [...identityMatch.reasons, "Kandidat ditemukan melalui Wikimedia Commons API."],
+          identityScore: identityMatch.score,
+          identityStatus: identityMatch.status,
+          identityReasons: [...identityMatch.reasons, "Kecocokan identitas produk memadai; hasil tetap wajib diperiksa manusia."],
           rightsStatus: "unverified"
         };
         candidates.set(landingPageUrl, candidate);

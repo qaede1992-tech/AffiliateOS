@@ -136,7 +136,7 @@ test("maps Indonesian marketplace listing titles to concise Commons category que
   }), ["honey"]);
 });
 
-test("keeps broad category results as low-confidence manual-review candidates", async () => {
+test("rejects broad category results that do not match product identity", async () => {
   let requestedUrl = "";
   const fetchImpl: typeof fetch = async (input) => {
     requestedUrl = String(input);
@@ -163,11 +163,7 @@ test("keeps broad category results as low-confidence manual-review candidates", 
     name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
   }, { fetchImpl });
   assert.match(requestedUrl, /gsrsearch=backpack/);
-  assert.equal(results.length, 1);
-  assert.equal(results[0]?.identityStatus, "review_required");
-  assert.equal(results[0]?.rightsStatus, "unverified");
-  assert.equal(results[0]?.license, "cc0");
-  assert.ok(results[0]?.identityReasons.some((reason) => reason.includes("pencarian kategori")));
+  assert.deepEqual(results, []);
 });
 
 
@@ -202,7 +198,7 @@ test("filters category search noise using file titles and descriptions", async (
           }]
         },
         {
-          title: "File:Barrier cream product.jpg",
+          title: "File:GENTLY Baby Calming Baby Cream 50 g product.jpg",
           imageinfo: [{
             thumburl: "https://upload.wikimedia.org/thumb-cream.jpg",
             descriptionurl: "https://commons.wikimedia.org/wiki/File:Barrier_cream_product.jpg",
@@ -210,7 +206,7 @@ test("filters category search noise using file titles and descriptions", async (
             extmetadata: {
               LicenseShortName: { value: "CC0" },
               LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
-              Description: { value: "A topical skin barrier cream product." }
+              Description: { value: "GENTLY Baby Calming Baby Cream 50 g product." }
             }
           }]
         }
@@ -222,7 +218,7 @@ test("filters category search noise using file titles and descriptions", async (
     name: "GENTLY Baby Calming Baby Cream 50 g | Perlengkapan Bayi"
   }, { fetchImpl });
   assert.equal(results.length, 1);
-  assert.equal(results[0]?.title, "Barrier cream product.jpg");
+  assert.equal(results[0]?.title, "GENTLY Baby Calming Baby Cream 50 g product.jpg");
   assert.equal(results[0]?.identityStatus, "review_required");
   assert.equal(results[0]?.rightsStatus, "unverified");
 });
@@ -245,7 +241,7 @@ test("rejects contextual Wikimedia results that mention a category but do not de
           }]
         },
         {
-          title: "File:Air fryer crisper tray product.jpg",
+          title: "File:GSM Crisper Tray Cooper Carbon Steel Ceramic product.jpg",
           imageinfo: [{
             thumburl: "https://upload.wikimedia.org/thumb-crisper.jpg",
             descriptionurl: "https://commons.wikimedia.org/wiki/File:Crisper_tray.jpg",
@@ -265,7 +261,7 @@ test("rejects contextual Wikimedia results that mention a category but do not de
   }, { fetchImpl });
 
   assert.equal(results.length, 1);
-  assert.equal(results[0]?.title, "Air fryer crisper tray product.jpg");
+  assert.equal(results[0]?.title, "GSM Crisper Tray Cooper Carbon Steel Ceramic product.jpg");
   assert.equal(results[0]?.identityStatus, "review_required");
   assert.equal(results[0]?.rightsStatus, "unverified");
 });
@@ -299,7 +295,7 @@ test("rejects cat-food donation and wet-food context from dry cat-food product s
           }]
         },
         {
-          title: "File:Dry cat food kibble product.jpg",
+          title: "File:MR.VET Makanan kucing kering 1kg Dry cat food kibble.jpg",
           imageinfo: [{
             thumburl: "https://upload.wikimedia.org/thumb-kibble.jpg",
             descriptionurl: "https://commons.wikimedia.org/wiki/File:Dry_cat_food_kibble.jpg",
@@ -319,5 +315,28 @@ test("rejects cat-food donation and wet-food context from dry cat-food product s
   }, { fetchImpl });
 
   assert.equal(results.length, 1);
-  assert.equal(results[0]?.title, "Dry cat food kibble product.jpg");
+  assert.equal(results[0]?.title, "MR.VET Makanan kucing kering 1kg Dry cat food kibble.jpg");
+});
+
+test("rejects a honey-category wildlife image that does not identify the honey product", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: [{
+      title: "File:Oriental honey buzzard Mudumalai Mar21 DSC01405.jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/thumb-honey-buzzard.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Oriental_honey_buzzard.jpg",
+        mime: "image/jpeg",
+        extmetadata: {
+          LicenseShortName: { value: "CC0" },
+          LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+        }
+      }]
+    }] }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "MADU PUTIH MENTAH PREMIUM 1kg Raw White Honey"
+  }, { fetchImpl });
+
+  assert.deepEqual(results, []);
 });
