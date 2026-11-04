@@ -28,18 +28,28 @@ try {
 
   await client.query("BEGIN");
   try {
-    // Recreate the audited production condition only inside the ephemeral CI DB:
-    // historical 0056/0057 and candidate 0058/0059 ledger rows are absent,
-    // and their schema objects are absent. If a later migration has already
-    // been applied, remove its ledger row too so Drizzle can replay the
-    // forward repair migration in timestamp order. All unrelated history remains.
+    // Recreate the audited production schema drift only inside the ephemeral CI DB.
+    // Keep older historical ledger entries intact because their journal timestamps
+    // are non-monotonic. Remove the forward-repair migration and any later migration
+    // rows in this ephemeral test database, so Drizzle can reapply 0067 in timestamp
+    // order before reapplying 0068. Also roll back schema effects of later migrations
+    // whose ledger rows are removed, so their DDL can be exercised again safely.
+    // Never run this simulation against production.
     await client.query("DROP TABLE IF EXISTS public.content_products");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
     await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS duration_seconds");
+    await client.query("ALTER TABLE public.media_assets DROP CONSTRAINT IF EXISTS media_assets_dimensions_positive_check");
+    await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS width_px");
+    await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS height_px");
+    await client.query("ALTER TABLE public.media_assets DROP COLUMN IF EXISTS has_audio");
+    // Migration 0080 adds this FK without IF NOT EXISTS. The drift simulation
+    // removes later ledger rows and replays those migrations, so it must also
+    // roll back this later schema effect in the ephemeral database first.
+    await client.query("ALTER TABLE public.product_media_assets DROP CONSTRAINT IF EXISTS product_media_assets_source_candidate_fk");
     await client.query(
-      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at = ANY($1::bigint[])',
-      [[1791676800000, 1791763200000, 1794050404000, 1794050405000, 1794050405001, 1794050405002, 1794050405003]]
+      'DELETE FROM "drizzle"."__drizzle_migrations" WHERE created_at > $1',
+      [1794050405007]
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -52,12 +62,20 @@ try {
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='publication_jobs' AND column_name='confirmed_at') AS has_confirmed_at,
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='publication_jobs' AND column_name='tiktok_approval') AS has_tiktok_approval,
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='media_assets' AND column_name='duration_seconds') AS has_duration_seconds,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='media_assets' AND column_name='width_px') AS has_width_px,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='media_assets' AND column_name='height_px') AS has_height_px,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='media_assets' AND column_name='has_audio') AS has_has_audio,
+      EXISTS (SELECT 1 FROM pg_constraint WHERE conname='media_assets_dimensions_positive_check') AS has_dimensions_check,
       to_regclass('public.content_products') IS NOT NULL AS has_content_products
   `);
   assert.deepEqual(check.rows[0], {
     has_confirmed_at: false,
     has_tiktok_approval: false,
     has_duration_seconds: false,
+    has_width_px: false,
+    has_height_px: false,
+    has_has_audio: false,
+    has_dimensions_check: false,
     has_content_products: false
   });
   console.log("Simulated production migration drift in ephemeral CI database; historical ledger entries were not fabricated.");

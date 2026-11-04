@@ -16,6 +16,10 @@ export class PublicationOperationService {
     return this.operations.list();
   }
 
+  async listByJobId(jobId: EntityId): Promise<PublicationOperation[]> {
+    return this.operations.listByJobId(jobId);
+  }
+
   async listReconciliationCandidates(updatedBefore: Date, limit: number): Promise<PublicationOperation[]> {
     if (this.operations.listReconciliationCandidates) {
       return this.operations.listReconciliationCandidates(updatedBefore, limit);
@@ -30,6 +34,15 @@ export class PublicationOperationService {
   }
 
   async create(input: { contentId: EntityId; jobId: EntityId; provider: string; providerOperationId: string; status?: PublicationOperationStatus }, now = new Date()): Promise<PublicationOperation> {
+    // Instagram creates a media container before the operation is persisted. If a retry
+    // races after that external call, reuse the job's existing non-failed operation so a
+    // second container cannot be reconciled into a second public post. Keep other providers
+    // unchanged until their own duplicate-publication behavior is evidenced.
+    if (input.provider === "instagram-graph") {
+      const existingForJob = (await this.operations.listByJobId(input.jobId))
+        .find((operation) => operation.provider === input.provider && operation.status !== "failed");
+      if (existingForJob) return existingForJob;
+    }
     const existing = await this.operations.findByProviderOperation(input.provider, input.providerOperationId);
     if (existing) return existing;
     const timestamp = now.toISOString();

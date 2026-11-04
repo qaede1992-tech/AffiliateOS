@@ -45,6 +45,15 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 
+  async hasCompletedOpportunity(productId: string, offerId: string): Promise<boolean> {
+    const rows = await this.db.select({ id: autonomousRuns.id }).from(autonomousRuns).where(and(
+      eq(autonomousRuns.status, "completed"),
+      eq(autonomousRuns.opportunityProductId, productId),
+      eq(autonomousRuns.offerId, offerId)
+    )).limit(1);
+    return rows.length > 0;
+  }
+
   async findById(id: string): Promise<AutonomousRun | undefined> {
     const rows = await this.db.select().from(autonomousRuns).where(eq(autonomousRuns.id, id)).limit(1);
     return rows[0] ? toDomain(rows[0]) : undefined;

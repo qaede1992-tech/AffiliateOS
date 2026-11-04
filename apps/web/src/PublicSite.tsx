@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
-type PublicPage = "home" | "terms" | "privacy";
+type PublicPage = "home" | "shop" | "terms" | "privacy";
 
 const pageFromPath = (pathname: string): PublicPage => {
+  if (pathname === "/shop" || pathname === "/shop/") return "shop";
   if (pathname === "/terms" || pathname === "/terms/") return "terms";
   if (pathname === "/privacy" || pathname === "/privacy/") return "privacy";
   return "home";
@@ -20,6 +21,7 @@ function PublicHeader({ page }: { page: PublicPage }) {
         AffiliateOS
       </a>
       <nav className="public-nav" aria-label="Primary navigation">
+        <a href="/shop" className={page === "shop" ? "current" : ""} onClick={(event) => { event.preventDefault(); navTo("/shop"); }}>Produk</a>
         <a href="/#how-it-works">How it works</a>
         <a href="/terms" className={page === "terms" ? "current" : ""} onClick={(event) => { event.preventDefault(); navTo("/terms"); }}>Terms</a>
         <a href="/privacy" className={page === "privacy" ? "current" : ""} onClick={(event) => { event.preventDefault(); navTo("/privacy"); }}>Privacy</a>
@@ -37,6 +39,7 @@ function PublicFooter() {
         <p>Affiliate operations infrastructure for product discovery, campaign execution, attribution, and optimization.</p>
       </div>
       <nav aria-label="Legal navigation">
+        <a href="/shop" onClick={(event) => { event.preventDefault(); navTo("/shop"); }}>Produk pilihan</a>
         <a href="/terms" onClick={(event) => { event.preventDefault(); navTo("/terms"); }}>Terms of Service</a>
         <a href="/privacy" onClick={(event) => { event.preventDefault(); navTo("/privacy"); }}>Privacy Policy</a>
       </nav>
@@ -121,6 +124,98 @@ function Home() {
   );
 }
 
+type PublicShopItem = {
+  id: string;
+  referenceNumber: number;
+  name: string;
+  category?: string | null;
+  priceCents?: number | null;
+  currency?: string | null;
+  ratingMilli?: number | null;
+  reviewCount?: number | null;
+  trackingCode: string;
+};
+
+const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
+
+function ShopPage() {
+  const [items, setItems] = useState<PublicShopItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!apiOrigin) {
+      setError("Tautan katalog belum dikonfigurasi.");
+      setLoading(false);
+      return;
+    }
+    fetch(`${apiOrigin}/api/v1/public/shop`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Katalog produk belum dapat dimuat.");
+        return response.json() as Promise<{ data: PublicShopItem[] }>;
+      })
+      .then((payload) => { if (!cancelled) setItems(payload.data ?? []); })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Terjadi kesalahan saat memuat katalog.");
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("id-ID");
+  const isNumberQuery = /^\d+$/.test(normalizedQuery);
+  const filteredItems = items.filter((item) => isNumberQuery
+    ? item.referenceNumber === Number(normalizedQuery)
+    : item.name.toLocaleLowerCase("id-ID").includes(normalizedQuery)
+  );
+
+  const money = (item: PublicShopItem) => {
+    if (typeof item.priceCents !== "number") return "Lihat harga di marketplace";
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: item.currency || "IDR",
+      maximumFractionDigits: 0
+    }).format(item.priceCents / 100);
+  };
+
+  return (
+    <section className="public-section public-shop">
+      <div className="public-section-heading">
+        <p className="public-eyebrow">Pilihan produk</p>
+        <h1>Temukan produk yang sedang kami rekomendasikan.</h1>
+        <p className="public-lead">Masukkan nomor produk atau nama yang tercantum di postingan untuk menemukan produk yang tepat. Pilih produk untuk membuka marketplace melalui tautan afiliasi yang terlacak.</p>
+      </div>
+      {loading ? <p role="status">Memuat produk…</p> : null}
+      {error ? <p className="public-shop-message" role="alert">{error}</p> : null}
+      {!loading && !error && items.length === 0 ? (
+        <p className="public-shop-message">Belum ada produk dengan tautan afiliasi aktif. Silakan kembali lagi nanti.</p>
+      ) : null}
+      <label className="public-shop-search-label" htmlFor="public-shop-search">Cari nomor atau nama produk</label>
+      <input id="public-shop-search" className="public-shop-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Contoh: 1" autoComplete="off" />
+      {!loading && !error && normalizedQuery && filteredItems.length === 0 ? <p className="public-shop-message" role="status">Tidak ada produk yang cocok dengan nomor atau nama tersebut.</p> : null}
+      <div className="public-shop-grid">
+        {filteredItems.map((item) => (
+          <article className="public-shop-card" key={item.id}>
+            <p className="public-eyebrow">{item.category || "Rekomendasi produk"}</p>
+            <h2>{item.name}</h2>
+            <p className="public-shop-code">Nomor produk: <strong>{item.referenceNumber}</strong></p>
+            <p className="public-shop-price">{money(item)}</p>
+            {typeof item.ratingMilli === "number" && item.ratingMilli > 0 ? (
+              <p className="public-shop-rating">Rating {(item.ratingMilli / 1000).toFixed(1)}{typeof item.reviewCount === "number" ? ` · ${item.reviewCount.toLocaleString("id-ID")} ulasan` : ""}</p>
+            ) : null}
+            <a className="public-primary-button" href={`${apiOrigin}/r/${encodeURIComponent(item.trackingCode)}`} target="_blank" rel="noopener noreferrer">
+              Lihat produk di marketplace
+            </a>
+          </article>
+        ))}
+      </div>
+      <p className="public-shop-disclosure">Sebagian tautan merupakan tautan afiliasi. Jika Anda membeli melalui tautan tersebut, kami mungkin menerima komisi tanpa biaya tambahan bagi Anda.</p>
+    </section>
+  );
+}
+
 function LegalPage({ type }: { type: "terms" | "privacy" }) {
   const isTerms = type === "terms";
   return (
@@ -187,7 +282,7 @@ export function PublicSite() {
     <div className="public-site">
       <PublicHeader page={page} />
       <main>
-        {page === "home" ? <Home /> : <LegalPage type={page} />}
+        {page === "home" ? <Home /> : page === "shop" ? <ShopPage /> : <LegalPage type={page} />}
       </main>
       <PublicFooter />
     </div>

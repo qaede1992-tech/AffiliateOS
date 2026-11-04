@@ -16,6 +16,7 @@ import { ShopeeCsvImportPanel } from "./components/ShopeeCsvImportPanel";
 import { ProductMediaIntakePanel } from "./components/ProductMediaIntakePanel";
 import { AutonomousObservabilityPanel } from "./components/AutonomousObservabilityPanel";
 import { ProductMediaRightsPanel } from "./components/ProductMediaRightsPanel";
+import { ProductMediaCandidateReviewPanel } from "./components/ProductMediaCandidateReviewPanel";
 import { PublicSite } from "./PublicSite";
 import "./styles.css";
 
@@ -272,6 +273,8 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           )}
           <p className="analytics-note">Revenue and conversion metrics use only explicit conversion-to-tracking-link attribution; legacy conversions are not implicitly assigned to campaigns.</p>
         </section>
+
+        <ProductMediaCandidateReviewPanel />
 
         <ProductMediaRightsPanel />
 

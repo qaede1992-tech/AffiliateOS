@@ -36,6 +36,7 @@ const environmentSchema = z.object({
   API_AUTH_OPERATOR_ID: z.string().trim().min(1).default("development-operator"),
   API_AUTH_OPERATOR_ROLE: z.enum(["admin", "operator", "viewer"]).default("admin"),
   AUTONOMOUS_CYCLE_ENABLED: booleanEnvironment,
+  AUTONOMOUS_PUBLICATION_ENABLED: booleanEnvironment,
   AUTONOMOUS_CYCLE_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000),
   AUTONOMOUS_MINIMUM_SCORE: z.coerce.number().min(0).max(100).default(60),
   AUTONOMOUS_MAXIMUM_RESULTS: z.coerce.number().int().min(1).max(1000).default(10),
@@ -45,6 +46,10 @@ const environmentSchema = z.object({
   AUTONOMOUS_OPTIMIZATION_MIN_COMMISSION_PER_CLICK_CENTS: z.coerce.number().min(0).default(0),
   AUTONOMOUS_MARKETPLACE_POLICIES_JSON: marketplacePoliciesEnvironment.default({}),
   PROVIDER_EVENT_WORKER_INTERVAL_MS: z.coerce.number().int().min(10_000).default(60_000),
+  SHOPEE_INTAKE_RECOVERY_INTERVAL_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
+  SHOPEE_INTAKE_RECOVERY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(25),
+  SHOPEE_INTAKE_RECOVERY_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(3),
+  SHOPEE_INTAKE_RECOVERY_RESOLVER_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
   SHOPEE_CONVERSION_SYNC_ENABLED: booleanEnvironment,
   SHOPEE_CONVERSION_SYNC_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000),
   SHOPEE_CONVERSION_SYNC_LOOKBACK_HOURS: z.coerce.number().positive().max(31 * 24).default(8 * 24),
@@ -55,6 +60,8 @@ const environmentSchema = z.object({
   TIKTOK_CLIENT_SECRET: z.string().optional(),
   INSTAGRAM_CLIENT_ID: z.string().trim().optional(),
   INSTAGRAM_CLIENT_SECRET: z.string().optional(),
+  OPENVERSE_CLIENT_ID: z.string().trim().min(1).optional(),
+  OPENVERSE_CLIENT_SECRET: z.string().min(1).optional(),
   SOCIAL_CREDENTIALS_JSON: z.string().optional(),
   SOCIAL_CREDENTIAL_STORE_PATH: z.string().trim().default("/var/lib/affiliateos/secrets/social-credentials.enc"),
   SOCIAL_CREDENTIAL_STORE_KEY: z.string().trim().min(32).optional(),
@@ -62,6 +69,13 @@ const environmentSchema = z.object({
   SUPABASE_STORAGE_SERVICE_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   SUPABASE_MEDIA_BUCKET: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("affiliate-media"))
 }).superRefine((value, context) => {
+  if (Boolean(value.OPENVERSE_CLIENT_ID) !== Boolean(value.OPENVERSE_CLIENT_SECRET)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["OPENVERSE_CLIENT_SECRET"],
+      message: "OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET must be configured together."
+    });
+  }
   const storageConfigured = Boolean(value.SUPABASE_URL || value.SUPABASE_STORAGE_SERVICE_KEY);
   if (storageConfigured && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
     context.addIssue({

@@ -13,6 +13,8 @@ import { DrizzleAutonomousFeedbackMemoryRepository } from "./db/autonomous-feedb
 import { ProviderEventWorker } from "./domain/provider-event-worker.js";
 import { ProviderEventScheduler } from "./domain/provider-event-scheduler.js";
 import { ProviderEventProcessor } from "./domain/provider-event-processor.js";
+import { ShopeeIntakeRecoveryWorker } from "./domain/shopee-intake-recovery-worker.js";
+import { ShopeeIntakeRecoveryScheduler } from "./domain/shopee-intake-recovery-scheduler.js";
 import { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./domain/provider-event-conversion-processor.js";
 import { GenericProviderConversionNormalizer } from "./domain/provider-conversion.js";
 import { MarketplaceProviderRegistry, ShopeeAffiliateFeedProvider } from "./domain/foundations.js";
@@ -48,6 +50,12 @@ const socialCredentialResolver = fileSocialCredentialStore
   ?? (environment.SOCIAL_CREDENTIALS_JSON
     ? JsonSocialCredentialResolver.fromJson(environment.SOCIAL_CREDENTIALS_JSON)
     : undefined);
+const mediaStorage = createSupabaseStorageClientFromEnv({
+  SUPABASE_URL: environment.SUPABASE_URL,
+  SUPABASE_STORAGE_SERVICE_KEY: environment.SUPABASE_STORAGE_SERVICE_KEY,
+  SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
+});
+const mediaBucket = environment.SUPABASE_MEDIA_BUCKET || "affiliate-media";
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
@@ -56,7 +64,22 @@ const services = createServices(
   new DrizzleOAuthStateRepository(persistence.db),
   new DrizzleAnalyticsReader(persistence.db),
   new DrizzleConversionAttributionRepository(persistence.db),
-  createOfficialSocialPublishers({ credentialResolver: socialCredentialResolver }),
+  createOfficialSocialPublishers({
+    credentialResolver: socialCredentialResolver,
+    instagram: {
+      mediaUrlResolver: async (asset) => {
+        if (asset.source === "url") return asset.reference;
+        if (!mediaStorage) throw new Error("Supabase Storage is not configured for Instagram media.");
+        const separator = asset.reference.indexOf("/");
+        if (separator <= 0 || asset.reference.slice(0, separator) !== mediaBucket) {
+          throw new Error("Instagram media asset references an unexpected Storage bucket.");
+        }
+        const key = asset.reference.slice(separator + 1);
+        if (!key) throw new Error("Instagram media asset has an invalid Storage object key.");
+        return mediaStorage.createSignedUrl(key, 1800);
+      }
+    }
+  }),
   socialCredentialResolver,
   fileSocialCredentialStore,
   new DrizzlePublicationOperationRepository(persistence.db),
@@ -83,11 +106,14 @@ const services = createServices(
   {},
   persistence.autonomousExplorationStates,
   createOfficialTikTokContentPostingClient({ credentialResolver: socialCredentialResolver }),
-  createSupabaseStorageClientFromEnv({
-    SUPABASE_URL: environment.SUPABASE_URL,
-    SUPABASE_STORAGE_SERVICE_KEY: environment.SUPABASE_STORAGE_SERVICE_KEY,
-    SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
-  })
+  mediaStorage,
+  undefined,
+  environment.AUTONOMOUS_PUBLICATION_ENABLED,
+  {
+    clientId: environment.OPENVERSE_CLIENT_ID,
+    clientSecret: environment.OPENVERSE_CLIENT_SECRET
+  },
+  persistence.preMediaEligibility
 );
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
@@ -107,10 +133,22 @@ const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   onError: (error) => app.log.error(error, "Provider event worker cycle failed")
 });
 
+const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
+  batchSize: environment.SHOPEE_INTAKE_RECOVERY_BATCH_SIZE,
+  concurrency: environment.SHOPEE_INTAKE_RECOVERY_CONCURRENCY,
+  resolverTimeoutMs: environment.SHOPEE_INTAKE_RECOVERY_RESOLVER_TIMEOUT_MS
+});
+const shopeeIntakeRecoveryScheduler = new ShopeeIntakeRecoveryScheduler(shopeeIntakeRecoveryWorker, {
+  intervalMs: environment.SHOPEE_INTAKE_RECOVERY_INTERVAL_MS,
+  onResult: (result) => app.log.info({ ...result }, "Shopee stale intake recovery cycle completed"),
+  onError: (error) => app.log.error(error, "Shopee stale intake recovery cycle failed")
+});
+
 try {
   await app.listen({ host: environment.API_HOST, port: environment.API_PORT });
   services.publicationScheduler.start();
   providerEventScheduler.start();
+  shopeeIntakeRecoveryScheduler.start();
   if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
@@ -119,6 +157,7 @@ try {
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
   await providerEventScheduler.stop();
+  await shopeeIntakeRecoveryScheduler.stop();
   await persistence.close();
   process.exit(1);
 }
@@ -128,6 +167,7 @@ const shutdown = async () => {
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
   await providerEventScheduler.stop();
+  await shopeeIntakeRecoveryScheduler.stop();
   await app.close();
   await persistence.close();
 };

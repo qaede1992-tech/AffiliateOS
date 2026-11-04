@@ -8,6 +8,17 @@ const FIVE_MB = 5 * 1024 * 1024;
 const SIXTY_FOUR_MB = 64 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 4 * 1024 * 1024 * 1024;
 
+export class TikTokProviderRequestError extends Error {
+  constructor(
+    public readonly upstreamStatus: number,
+    public readonly providerCode: string | undefined,
+    message: string
+  ) {
+    super(message);
+    this.name = "TikTokProviderRequestError";
+  }
+}
+
 export type TikTokCreatorInfoResponse = {
   creator_nickname?: string;
   privacy_level_options?: string[];
@@ -315,10 +326,18 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     });
     const raw = await response.text();
     let payload: T;
-    try { payload = JSON.parse(raw) as T; } catch { throw new Error("TikTok returned invalid JSON (HTTP " + response.status + ")."); }
+    try {
+      payload = JSON.parse(raw) as T;
+    } catch {
+      throw new TikTokProviderRequestError(response.status, "invalid_json", "TikTok returned invalid JSON (HTTP " + response.status + ").");
+    }
     if (!response.ok) {
-      const error = (payload as { error?: { message?: string } }).error?.message;
-      throw new Error(error ?? "TikTok request failed (HTTP " + response.status + ").");
+      const providerError = (payload as { error?: { code?: string; message?: string } }).error;
+      throw new TikTokProviderRequestError(
+        response.status,
+        providerError?.code,
+        providerError?.message ?? "TikTok request failed (HTTP " + response.status + ")."
+      );
     }
     return payload;
   }

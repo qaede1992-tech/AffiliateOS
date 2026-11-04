@@ -48,9 +48,18 @@ describe("SupabaseStorageClient", () => {
     );
   });
 
-  it("accepts only signed URLs returned for the configured Supabase origin", async () => {
-    const valid = makeClient(async () => new Response(JSON.stringify({ signedURL: "/storage/v1/object/sign/affiliate-media/photo.jpg?token=abc" }), { status: 200 }));
-    assert.match(await valid.createSignedUrl("photo.jpg", 300), /^https:\/\/project\.supabase\.co\//);
+  it("normalizes Supabase signed URL paths and validates origin and object scope", async () => {
+    const valid = makeClient(async () => new Response(JSON.stringify({ signedURL: "/object/sign/affiliate-media/photo.jpg?token=abc" }), { status: 200 }));
+    const signedUrl = new URL(await valid.createSignedUrl("photo.jpg", 300));
+    assert.equal(signedUrl.origin, "https://project.supabase.co");
+    assert.equal(signedUrl.pathname, "/storage/v1/object/sign/affiliate-media/photo.jpg");
+    assert.equal(signedUrl.search, "?token=abc");
+
+    const alreadyPrefixed = makeClient(async () => new Response(JSON.stringify({ signedURL: "/storage/v1/object/sign/affiliate-media/photo.jpg?token=abc" }), { status: 200 }));
+    assert.equal(new URL(await alreadyPrefixed.createSignedUrl("photo.jpg", 300)).pathname, "/storage/v1/object/sign/affiliate-media/photo.jpg");
+
+    const wrongObject = makeClient(async () => new Response(JSON.stringify({ signedURL: "/object/sign/affiliate-media/other.jpg?token=abc" }), { status: 200 }));
+    await assert.rejects(wrongObject.createSignedUrl("photo.jpg", 300), /unexpected signed URL path/);
 
     const invalid = makeClient(async () => new Response(JSON.stringify({ signedURL: "https://attacker.example/steal" }), { status: 200 }));
     await assert.rejects(invalid.createSignedUrl("photo.jpg", 300), /unexpected origin/);
@@ -94,6 +103,42 @@ describe("SupabaseStorageClient", () => {
     assert.ok(requestInit?.body instanceof ReadableStream, "Storage receives a stream, not a buffered byte array");
     controller.abort(new Error("client disconnected"));
     assert.equal(upstreamSignal.aborted, true);
+  });
+
+  it("aborts a stalled buffered media upload at the configured Storage timeout", async () => {
+    const client = new SupabaseStorageClient({
+      supabaseUrl: "https://project.supabase.co",
+      serviceKey: "server-secret",
+      bucket: "affiliate-media",
+      uploadTimeoutMs: 10,
+      fetchImpl: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      })
+    });
+    await assert.rejects(
+      client.upload({ key: "products/product-1/video.mp4", bytes: new Uint8Array([1]), contentType: "video/mp4" }),
+      (error: unknown) => error instanceof Error && error.name === "TimeoutError"
+    );
+  });
+
+  it("aborts a stalled signed URL request at the configured Storage timeout", async () => {
+    const client = new SupabaseStorageClient({
+      supabaseUrl: "https://project.supabase.co",
+      serviceKey: "server-secret",
+      bucket: "affiliate-media",
+      uploadTimeoutMs: 10,
+      fetchImpl: async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal;
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      })
+    });
+    await assert.rejects(
+      client.createSignedUrl("products/product-1/video.mp4", 300),
+      (error: unknown) => error instanceof Error && error.name === "TimeoutError"
+    );
   });
 
   it("aborts a stalled Storage request when the configured upload timeout expires", async () => {

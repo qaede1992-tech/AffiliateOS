@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AffiliateOffer, Campaign, Content, Product, TrackingLink } from "@affiliateos/shared";
-import { CampaignOrchestrator } from "../../src/domain/campaign-orchestrator.js";
+import { CampaignOrchestrator, DeterministicCampaignContentGenerator } from "../../src/domain/campaign-orchestrator.js";
 import { AutonomousRunService } from "../../src/domain/autonomous-run-service.js";
 import { InMemoryAutonomousRunRepository } from "../../src/domain/autonomous-run.js";
 import type { ScoredOpportunity } from "../../src/domain/opportunity-scoring.js";
@@ -53,6 +53,19 @@ class StubMediaAssets {
   async findById(id: string) { return this.assets.find((asset) => asset.id === id); }
   async save(asset: any) { this.assets.push(asset); return asset; }
 }
+const verifiedProductMediaAssets = {
+  async listByProduct() {
+    return [{
+      id: "verified-video-fixture", productId: product.id, kind: "video", bucket: "affiliate-media",
+      objectKey: `products/${product.id}/verified.mp4`, mimeType: "video/mp4", byteSize: 1234,
+      sha256: "verified-fixture", sourceUrl: "https://cdn.example.test/verified.mp4",
+      sourcePublisher: "Example", rightsStatus: "verified", rightsBasis: "user_owned",
+      rightsEvidenceUrl: "https://example.test/rights", rightsVerifiedAt: "2026-10-01T00:00:00.000Z",
+      createdAt: "2026-10-01T00:00:00.000Z"
+    }];
+  }
+};
+
 class StubDistribution {
   scheduled: Content[] = [];
   listPublishers() { return [{ provider: "test", supports: () => true }]; }
@@ -83,6 +96,101 @@ describe("campaign orchestrator", () => {
     );
     assert.equal(campaigns.created, 0);
     assert.equal(content.created.length, 0);
+  });
+
+  it("fails closed before creating artifacts when autonomous social media rights storage is missing", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    await assert.rejects(
+      () => new CampaignOrchestrator(campaigns as never, new StubTracking() as never, content as never)
+        .execute({ opportunity, offer, product, idempotencyKey: "missing-media-repository-run", platforms: ["instagram"] }),
+      /Product media rights repository is required before autonomous social campaign creation/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
+  it("blocks an autonomous Instagram campaign until a validated product video is stored", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const productMediaAssets = { async listByProduct() { return []; } };
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        campaigns as never, new StubTracking() as never, content as never,
+        undefined, undefined, undefined, undefined, undefined, productMediaAssets as never
+      ).execute({ opportunity, offer, product, idempotencyKey: "instagram-video-required-run", platforms: ["instagram"] }),
+      /stored, validated product video is required before autonomous social campaign creation/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+  it("blocks autonomous campaign creation when the only stored video has unverified rights", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const unverifiedVideo = {
+      id: "video-unverified-only", productId: product.id, kind: "video", bucket: "affiliate-media",
+      objectKey: `products/${product.id}/unverified.mp4`, mimeType: "video/mp4", byteSize: 1234,
+      sha256: "unverified", sourceUrl: "https://cdn.example.test/video.mp4",
+      sourcePublisher: null, rightsStatus: "unverified", rightsBasis: null,
+      rightsEvidenceUrl: null, rightsVerifiedAt: null, createdAt: "2026-10-01T00:00:00.000Z"
+    };
+    const productMediaAssets = { async listByProduct() { return [unverifiedVideo]; } };
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        campaigns as never, new StubTracking() as never, content as never,
+        undefined, undefined, undefined, undefined, undefined, productMediaAssets as never
+      ).execute({ opportunity, offer, product, idempotencyKey: "unverified-video-run", platforms: ["tiktok"] }),
+      /stored, validated product video is required before autonomous social campaign creation/
+    );
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
+  it("still requires a stored product video for autonomous TikTok campaigns", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const productMediaAssets = { async listByProduct() { return []; } };
+    await assert.rejects(
+      () => new CampaignOrchestrator(
+        campaigns as never,
+        new StubTracking() as never,
+        content as never,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        productMediaAssets as never
+      ).execute({
+        opportunity,
+        offer,
+        product,
+        idempotencyKey: "tiktok-video-required-run",
+        platforms: ["tiktok"]
+      }),
+      /stored, validated product video is required before autonomous social campaign creation/
+    );
+
+    assert.equal(campaigns.created, 0);
+    assert.equal(content.created.length, 0);
+  });
+
+  it("attaches the validated stored video as the sole Instagram campaign media asset", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const mediaAssets = new StubMediaAssets();
+    const videoAsset = { id: "video-asset-1", productId: product.id, kind: "video", bucket: "affiliate-media", objectKey: `products/${product.id}/verified-hash.mp4`, mimeType: "video/mp4", byteSize: 1234, sha256: "abc", sourceUrl: "https://cdn.example.test/video.mp4", sourcePublisher: "Example", rightsStatus: "verified", rightsBasis: "user_owned", rightsEvidenceUrl: "https://example.test/rights", rightsVerifiedAt: "2026-10-01T00:00:00.000Z", createdAt: "2026-10-01T00:00:00.000Z" };
+    const unverifiedVideoAsset = { ...videoAsset, id: "video-unverified-first", objectKey: `products/${product.id}/unverified-first.mp4`, rightsStatus: "unverified", rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null, sourcePublisher: null };
+    const productMediaAssets = { async listByProduct() { return [unverifiedVideoAsset, videoAsset]; } };
+    const result = await new CampaignOrchestrator(
+      campaigns as never, new StubTracking() as never, content as never, undefined, undefined, undefined,
+      mediaAssets as never, undefined, productMediaAssets as never
+    ).execute({ opportunity, offer, product, idempotencyKey: "instagram-video-run", platforms: ["instagram"] });
+    assert.equal(result.content.length, 1);
+    assert.deepEqual(result.content[0]?.mediaAssetIds, [mediaAssets.assets[0]?.id]);
+    assert.equal(mediaAssets.assets[0]?.kind, "video");
+    assert.equal(mediaAssets.assets[0]?.source, "object-storage");
+    assert.equal(mediaAssets.assets[0]?.reference, `affiliate-media/products/${product.id}/verified-hash.mp4`);
   });
 
   it("connects a selected opportunity to campaign, tracking, and platform-specific content", async () => {
@@ -140,7 +248,7 @@ describe("campaign orchestrator", () => {
   it("uses a deterministic tracking code for an orchestration key", async () => {
     const tracking = new StubTracking();
     const content = new StubContent();
-    await new CampaignOrchestrator(new StubCampaigns() as never, tracking as never, content as never).execute({
+    await new CampaignOrchestrator(new StubCampaigns() as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never).execute({
       opportunity, offer, product, idempotencyKey: "stable-run", platforms: ["tiktok"]
     });
     assert.equal(tracking.codes.length, 1);
@@ -151,7 +259,7 @@ describe("campaign orchestrator", () => {
     const campaigns = new StubCampaigns();
     const tracking = new StubTracking();
     const content = new StubContent();
-    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never);
+    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never);
     const input = { opportunity, offer, product, idempotencyKey: "run-1", platforms: ["tiktok", "instagram"] as const };
     const first = await orchestrator.execute(input);
     const second = await orchestrator.execute(input);
@@ -167,7 +275,7 @@ describe("campaign orchestrator", () => {
     const tracking = new StubTracking();
     tracking.list = async () => [{ ...link, status: "inactive" }];
     const content = new StubContent();
-    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never).execute({
       opportunity, offer, product, idempotencyKey: "inactive-link-run", platforms: ["tiktok"]
     });
     assert.equal(tracking.created, 1);
@@ -180,7 +288,7 @@ describe("campaign orchestrator", () => {
     const baseCode = `auto-${createHash("sha256").update("occupied-code-run:offer-1:0").digest("hex").slice(0, 32)}`;
     tracking.list = async () => [{ ...link, status: "inactive", code: baseCode }];
     const content = new StubContent();
-    await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+    await new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never).execute({
       opportunity, offer, product, idempotencyKey: "occupied-code-run", platforms: ["tiktok"]
     });
     assert.equal(tracking.created, 1);
@@ -201,7 +309,7 @@ describe("campaign orchestrator", () => {
       status: "failed",
       publishedAt: undefined
     });
-    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never).execute({
+    const result = await new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, undefined, undefined, undefined, verifiedProductMediaAssets as never).execute({
       opportunity, offer, product, platforms: ["tiktok"]
     });
     assert.equal(content.created.length, 1);
@@ -215,7 +323,7 @@ describe("campaign orchestrator", () => {
     const campaigns = new StubCampaigns();
     const tracking = new StubTracking();
     const content = new StubContent();
-    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, autonomousRuns);
+    const orchestrator = new CampaignOrchestrator(campaigns as never, tracking as never, content as never, undefined, undefined, autonomousRuns, undefined, undefined, verifiedProductMediaAssets as never);
     await orchestrator.execute({ opportunity, offer, product, idempotencyKey: "run-1", platforms: ["tiktok"] });
     const run = await runs.findByIdempotencyKey("run-1");
     assert.ok(run);
@@ -257,7 +365,10 @@ describe("campaign orchestrator", () => {
       new StubContent() as never,
       undefined,
       undefined,
-      autonomousRuns
+      autonomousRuns,
+      undefined,
+      undefined,
+      verifiedProductMediaAssets as never
     );
 
     await assert.rejects(
@@ -299,7 +410,10 @@ describe("campaign orchestrator", () => {
       content as never,
       undefined,
       undefined,
-      autonomousRuns
+      autonomousRuns,
+      undefined,
+      undefined,
+      verifiedProductMediaAssets as never
     );
     const result = await orchestrator.execute({
       opportunity,
@@ -471,7 +585,8 @@ describe("campaign orchestrator", () => {
       undefined,
       autonomousRuns,
       undefined,
-      storyService as never
+      storyService as never,
+      verifiedProductMediaAssets as never
     );
     const input = {
       opportunity,
@@ -497,6 +612,34 @@ describe("campaign orchestrator", () => {
     assert.equal(content.created.length, firstContentCount);
     assert.equal(stories.length, firstStoryCount);
     assert.equal(stories[0]?.map((item) => item.productId).join(","), [product.id, secondProduct.id].join(","));
+  });
+
+  it("generates Indonesian campaign copy without exposing internal scoring reasons", () => {
+    const productIdr: Product = {
+      ...product,
+      name: "Kursi Lipat Lesehan Sofa Lantai Minimalis Floor Chair",
+      currency: "IDR",
+      priceCents: 5_500_000
+    };
+    const offerIdr: AffiliateOffer = {
+      ...offer,
+      productId: productIdr.id,
+      currency: "IDR",
+      priceCents: 5_500_000
+    };
+    const generated = new DeterministicCampaignContentGenerator().generate({
+      product: productIdr,
+      offer: offerIdr,
+      opportunity: { ...opportunity, product: productIdr, offerId: offerIdr.id, reasons: ["Strong commission potential"] },
+      platform: "instagram"
+    });
+
+    assert.equal(generated.title, productIdr.name);
+    assert.match(generated.caption, /Harga pada katalog saat ini/);
+    assert.match(generated.caption, /Rp\s?55\.000/);
+    assert.match(generated.script, /Sedang mencari/);
+    assert.equal(generated.cta, "Lihat detail produk");
+    assert.doesNotMatch(generated.caption, /Strong commission potential/);
   });
 
 });

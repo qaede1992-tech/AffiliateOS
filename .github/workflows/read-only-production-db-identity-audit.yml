@@ -149,6 +149,36 @@ jobs:
             console.log("All public schema default ACLs by creator role (metadata only):");
             console.log(JSON.stringify(defaults.rows, null, 2));
 
+            // Flag broad default grants for API-facing roles without changing any
+            // database permissions. Supabase-managed creator roles can have defaults
+            // that differ from current_user, so inspect every creator role.
+            const publicApiDefaultGrants = await client.query(`
+              SELECT pg_get_userbyid(d.defaclrole) AS creator_role,
+                     CASE WHEN d.defaclnamespace = 0 THEN 'global (all schemas)'
+                          ELSE n.nspname END AS scope,
+                     d.defaclobjtype AS object_type,
+                     CASE WHEN acl.grantee = 0 THEN 'PUBLIC'
+                          ELSE grantee.rolname END AS grantee,
+                     array_agg(DISTINCT acl.privilege_type ORDER BY acl.privilege_type) AS privileges
+              FROM pg_default_acl d
+              LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace
+              CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
+              LEFT JOIN pg_roles grantee ON grantee.oid = acl.grantee
+              WHERE (d.defaclnamespace = 0 OR n.nspname = 'public')
+                AND (acl.grantee = 0 OR grantee.rolname IN ('anon', 'authenticated'))
+              GROUP BY d.defaclrole, d.defaclnamespace, n.nspname,
+                       d.defaclobjtype, acl.grantee, grantee.rolname
+              ORDER BY creator_role, scope, object_type, grantee
+            `);
+            if (publicApiDefaultGrants.rows.length > 0) {
+              console.warn(
+                "SECURITY REVIEW REQUIRED: default privileges on future public-schema objects may grant privileges to PUBLIC, anon, or authenticated. Global defaults also apply to public-schema objects. No permissions were changed."
+              );
+              console.warn(JSON.stringify(publicApiDefaultGrants.rows, null, 2));
+            } else {
+              console.log("No global or public-schema default ACL grants found for PUBLIC, anon, or authenticated across creator roles.");
+            }
+
             // Global default ACLs (defaclnamespace = 0) also affect objects created
             // by the listed creator roles, independently of schema-specific defaults.
             const globalDefaults = await client.query(`

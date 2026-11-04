@@ -17,6 +17,7 @@ export interface PublicationOperation {
 
 export interface PublicationOperationRepository {
   list(): Promise<PublicationOperation[]>;
+  listByJobId(jobId: EntityId): Promise<PublicationOperation[]>;
   listReconciliationCandidates?(updatedBefore: Date, limit: number): Promise<PublicationOperation[]>;
   findById(id: EntityId): Promise<PublicationOperation | undefined>;
   findByProviderOperation(provider: string, providerOperationId: string): Promise<PublicationOperation | undefined>;
@@ -29,6 +30,11 @@ export class InMemoryPublicationOperationRepository implements PublicationOperat
   private readonly operations = new Map<EntityId, PublicationOperation>();
 
   async list() { return [...this.operations.values()]; }
+  async listByJobId(jobId: EntityId) {
+    return [...this.operations.values()]
+      .filter((operation) => operation.jobId === jobId)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
   async listReconciliationCandidates(updatedBefore: Date, limit: number) {
     return [...this.operations.values()]
       .filter((operation) =>

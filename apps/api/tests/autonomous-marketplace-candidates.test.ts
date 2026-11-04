@@ -72,16 +72,17 @@ test("skips active marketplace connections without a bound active affiliate acco
 
 
 test("uses persisted products and affiliate offers for affiliate-feed connections", async () => {
-  const feedProduct = {
-    ...product("feed-product", "active"),
+  const feedProducts = ["feed-product-1", "feed-product-2"].map((id) => ({
+    ...product(id, "active"),
     marketplaceId: "feed-marketplace"
-  };
-  const feedOffer = {
+  }));
+  const feedOffers = feedProducts.map((feedProduct) => ({
     ...offer(feedProduct.id),
     affiliateAccountId: "feed-account"
-  };
+  }));
   let discoverCalled = false;
   let getOffersCalled = false;
+  let listAffiliateOffersCalls = 0;
   const marketplace = {
     listConnections: async () => [{
       id: "feed-marketplace",
@@ -103,8 +104,11 @@ test("uses persisted products and affiliate offers for affiliate-feed connection
       getOffersCalled = true;
       return [];
     },
-    listProducts: async () => [feedProduct],
-    listAffiliateOffers: async () => [feedOffer]
+    listProducts: async () => feedProducts,
+    listAffiliateOffers: async () => {
+      listAffiliateOffersCalls += 1;
+      return feedOffers;
+    }
   };
 
   const provider = new AutonomousMarketplaceCandidateProvider(marketplace as any);
@@ -112,8 +116,12 @@ test("uses persisted products and affiliate offers for affiliate-feed connection
 
   assert.equal(discoverCalled, false);
   assert.equal(getOffersCalled, false);
-  assert.deepEqual(candidates.map((candidate) => candidate.product.id), ["feed-product"]);
-  assert.deepEqual(candidates[0]?.offers.map((item) => item.id), ["offer-feed-product"]);
+  assert.equal(listAffiliateOffersCalls, 1);
+  assert.deepEqual(candidates.map((candidate) => candidate.product.id), ["feed-product-1", "feed-product-2"]);
+  assert.deepEqual(candidates.map((candidate) => candidate.offers.map((item) => item.id)), [
+    ["offer-feed-product-1"],
+    ["offer-feed-product-2"]
+  ]);
 });
 
 

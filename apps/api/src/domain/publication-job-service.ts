@@ -1,5 +1,5 @@
 import type { Content, EntityId, TikTokPublicationApproval } from "@affiliateos/shared";
-import { publicationRetryEligibleAt, type PublicationJob, type PublicationJobRepository } from "./publication-job.js";
+import { MAX_PUBLICATION_JOB_ATTEMPTS, publicationRetryEligibleAt, type PublicationJob, type PublicationJobRepository } from "./publication-job.js";
 import { createPublicationJob } from "./publication-job.js";
 
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -27,6 +27,7 @@ export class PublicationJobService {
     if (this.jobs.claimDue) return this.jobs.claimDue(id, now, LOCK_TIMEOUT_MS);
     const job = await this.jobs.findById(id);
     if (!job) return undefined;
+    if (job.status === "failed" && job.attemptCount >= MAX_PUBLICATION_JOB_ATTEMPTS) return undefined;
     const scheduledAt = new Date(job.scheduledAt).getTime();
     if (!Number.isFinite(scheduledAt) || scheduledAt > now.getTime()) return undefined;
     if (job.status === "failed" && publicationRetryEligibleAt(job) > now.getTime()) return undefined;

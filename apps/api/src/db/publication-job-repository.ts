@@ -1,5 +1,5 @@
-import { and, asc, eq, lte, or, sql } from "drizzle-orm";
-import type { PublicationJob } from "../domain/publication-job.js";
+import { and, asc, eq, lt, lte, or, sql } from "drizzle-orm";
+import { MAX_PUBLICATION_JOB_ATTEMPTS, type PublicationJob } from "../domain/publication-job.js";
 import type { PublicationJobRepository } from "../domain/repository.js";
 import { publicationJobs } from "./schema.js";
 
@@ -43,6 +43,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
           eq(publicationJobs.status, "pending"),
           and(
             eq(publicationJobs.status, "failed"),
+            lt(publicationJobs.attemptCount, MAX_PUBLICATION_JOB_ATTEMPTS),
             lte(publicationJobs.updatedAt, sql`${nowIso}::timestamptz - (${retryDelaySql(publicationJobs.attemptCount)} * INTERVAL '1 millisecond')`)
           ),
           and(eq(publicationJobs.status, "processing"), lte(publicationJobs.lockedAt, staleCutoff))
@@ -143,6 +144,7 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
           eq(publicationJobs.status, "pending"),
           and(
             eq(publicationJobs.status, "failed"),
+            lt(publicationJobs.attemptCount, MAX_PUBLICATION_JOB_ATTEMPTS),
             lte(
               publicationJobs.updatedAt,
               sql`${nowIso}::timestamptz - (${retryDelaySql(publicationJobs.attemptCount)} * INTERVAL '1 millisecond')`

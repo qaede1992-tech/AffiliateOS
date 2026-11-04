@@ -69,7 +69,22 @@ test("autonomous orchestration is idempotent across retries", async () => {
     }
   };
 
-  const orchestrator = new CampaignOrchestrator(campaignService, trackingService, contentService);
+  const productMediaAssets = {
+    async listByProduct() {
+      return [{
+        id: "verified-video", productId: product.id, kind: "video", bucket: "affiliate-media",
+        objectKey: `products/${product.id}/verified.mp4`, mimeType: "video/mp4", byteSize: 1234,
+        sha256: "verified-hash", sourceUrl: "https://cdn.example.test/verified.mp4",
+        sourcePublisher: "Example", rightsStatus: "verified", rightsBasis: "user_owned",
+        rightsEvidenceUrl: "https://example.test/rights", rightsVerifiedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      }];
+    }
+  };
+  const orchestrator = new CampaignOrchestrator(
+    campaignService, trackingService, contentService,
+    undefined, undefined, undefined, undefined, undefined, productMediaAssets as any
+  );
   const input = {
     opportunity,
     offer,

@@ -4,7 +4,7 @@ import type { Content, Product, SocialAccount } from "@affiliateos/shared";
 import { ContentService } from "../../src/domain/content.js";
 import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
 import { PublicationJobService } from "../../src/domain/publication-job-service.js";
-import { InMemoryPublicationJobRepository } from "../../src/domain/publication-job.js";
+import { InMemoryPublicationJobRepository, MAX_PUBLICATION_JOB_ATTEMPTS } from "../../src/domain/publication-job.js";
 import { PublicationWorker, publicationRetryDelayMs } from "../../src/domain/publication-worker.js";
 import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
 import { InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
@@ -206,6 +206,55 @@ describe("PublicationWorker", () => {
     assert.equal((await contentService.get(content.id)).status, "published");
   });
 
+
+  it("does not submit a second publication when retrying a job with an accepted operation", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const instagramAccount = {
+      ...account,
+      id: "instagram-account",
+      platform: "instagram" as const,
+      accountReference: "instagram-ref"
+    };
+    await socialAccounts.save(instagramAccount);
+    const instagramContent = await contentService.update(content.id, {
+      platform: "instagram",
+      socialAccountId: instagramAccount.id
+    });
+    const job = await jobService.enqueue(instagramContent);
+    await jobs.save({
+      ...job,
+      status: "failed",
+      attemptCount: 1,
+      updatedAt: "2026-09-20T11:58:00.000Z"
+    });
+    const operations = new InMemoryPublicationOperationRepository();
+    await operations.save({
+      id: "accepted-before-retry",
+      contentId: instagramContent.id,
+      jobId: job.id,
+      provider: "instagram-graph",
+      providerOperationId: "existing-container",
+      status: "accepted",
+      createdAt: "2026-09-20T11:59:30.000Z",
+      updatedAt: "2026-09-20T11:59:30.000Z"
+    });
+    let publishCalls = 0;
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async () => {
+        publishCalls += 1;
+        return { status: "accepted", providerOperationId: "duplicate-container" };
+      }
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations);
+    const results = await worker.runOnce(new Date("2026-09-20T12:00:00.000Z"));
+    assert.equal(results[0]?.status, "awaiting_confirmation");
+    assert.equal((await jobs.findById(job.id))?.status, "awaiting_confirmation");
+    assert.equal(publishCalls, 0);
+    assert.equal((await operations.listByJobId(job.id)).length, 1);
+  });
+
   it("reconciles an accepted operation after the worker instance is recreated", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const operations = new InMemoryPublicationOperationRepository();
@@ -276,6 +325,45 @@ describe("PublicationWorker", () => {
     assert.equal((await operations.findById(operation.id))?.status, "published");
     assert.equal((await jobs.findById(job.id))?.status, "succeeded");
     assert.equal((await contentService.get(content.id)).status, "published");
+  });
+
+  it("does not retry failed jobs after content is moved back to draft", async () => {
+    const { contentService, socialAccounts, jobs, jobService } = await setup();
+    const instagramContent = await contentService.create({
+      productId: product.id,
+      platform: "instagram",
+      contentType: "affiliate-promotion",
+      status: "scheduled",
+      scheduledAt: "2026-09-20T10:00:00.000Z"
+    });
+    const job = await jobService.enqueue(instagramContent);
+    await contentService.update(instagramContent.id, { status: "draft" });
+
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService);
+    const first = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(first[0]?.status, "failed");
+    assert.match(first[0]?.error ?? "", /Only scheduled content can be published/);
+    assert.equal((await jobs.findById(job.id))?.attemptCount, 1);
+
+    const retry = await worker.runOnce(new Date("2026-09-20T13:00:00.000Z"));
+    assert.deepEqual(retry, []);
+    assert.equal((await jobs.findById(job.id))?.attemptCount, 1);
+  });
+
+  it("stops retrying failed publication jobs after the configured attempt limit", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const job = await jobService.enqueue(content);
+    await jobs.save({
+      ...job,
+      status: "failed",
+      attemptCount: MAX_PUBLICATION_JOB_ATTEMPTS,
+      lastError: "repeated provider failure",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService);
+    const results = await worker.runOnce(new Date("2026-09-20T13:00:00.000Z"));
+    assert.deepEqual(results, []);
+    assert.equal((await jobs.findById(job.id))?.attemptCount, MAX_PUBLICATION_JOB_ATTEMPTS);
   });
 
   it("records adapter failures and restores failed content before retrying after backoff", async () => {

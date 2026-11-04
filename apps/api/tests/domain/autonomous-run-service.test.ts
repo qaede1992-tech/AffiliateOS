@@ -98,4 +98,33 @@ describe("AutonomousRunService", () => {
     assert.equal(claim.run.status, "processing");
     assert.equal(claim.run.attemptCount, 1);
   });
+
+  it("terminalizes a run whose original offer cannot be recovered", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const run = createAutonomousRun({
+      idempotencyKey: "autonomous:test:unrecoverable-offer",
+      productId: "product-1",
+      offerId: "inactive-account-offer",
+      now: new Date("2026-10-08T09:00:00.000Z")
+    });
+    await repository.save({
+      ...run,
+      status: "processing",
+      attemptCount: 3,
+      updatedAt: "2026-10-08T09:00:00.000Z"
+    });
+
+    const terminal = await service.markUnrecoverable(
+      run.id,
+      "The original affiliate offer is no longer available under the active marketplace account.",
+      new Date("2026-10-27T00:00:00.000Z")
+    );
+
+    assert.equal(terminal.status, "failed");
+    assert.equal(terminal.attemptCount, 8);
+    assert.equal(terminal.nextAttemptAt, undefined);
+    assert.match(terminal.lastError ?? "", /no longer available/);
+    assert.equal((await service.listRecoverable(new Date("2026-10-27T00:01:00.000Z"))).length, 0);
+  });
 });

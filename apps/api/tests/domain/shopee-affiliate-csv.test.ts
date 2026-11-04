@@ -244,3 +244,130 @@ test("parses the actual LinkProdukSekaligus CSV with RB prices and affiliate lin
     "https://s.shopee.co.id/gQuD6nSp5"
   ]);
 });
+
+
+test("parses an optional HTTPS image_url from the normalized preview CSV", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,image_url",
+    "0,123,Produk Contoh,55000,1000,lower_bound,Toko Contoh,850,4675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,https://cf.shopee.co.id/file/product-image.jpg"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.imageUrl, "https://cf.shopee.co.id/file/product-image.jpg");
+});
+
+test("parses an optional Link Gambar column from the Indonesian CSV format", () => {
+  const csv = [
+    headers + ",Link Gambar",
+    "123,Produk Contoh,55RB,1RB,Toko Contoh,8.5%,Rp4.675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,https://cf.shopee.co.id/file/product-image.jpg"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.imageUrl, "https://cf.shopee.co.id/file/product-image.jpg");
+});
+
+test("parses optional Link Video from Indonesian CSV", () => {
+  const csv = [
+    headers + ",Link Video",
+    "123,Produk Video,55RB,1RB,Toko Contoh,8.5%,Rp4.675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,https://cdn.example.test/product.mp4"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.videoUrl, "https://cdn.example.test/product.mp4");
+});
+
+test("rejects insecure optional video URLs in Indonesian CSV", () => {
+  const csv = [
+    headers + ",Link Video",
+    "123,Produk Video,55RB,1RB,Toko Contoh,8.5%,Rp4.675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,http://cdn.example.test/product.mp4"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /Link Video harus berupa URL HTTPS/);
+});
+
+test("parses optional HTTPS video_url from normalized preview CSV", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,video_url",
+    "0,123,Produk Video,55000,1000,lower_bound,Toko Contoh,850,4675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,https://cdn.example.test/product.mp4"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.videoUrl, "https://cdn.example.test/product.mp4");
+});
+
+test("parses optional Link Video from Indonesian CSV and rejects non-HTTPS media", () => {
+  const csv = [
+    headers + ",Link Video",
+    "123,Produk Video,55RB,1RB,Toko Contoh,8.5%,Rp4.675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,http://cdn.example.test/product.mp4"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /Link Video harus berupa URL HTTPS/);
+});
+
+test("rejects insecure or credential-bearing optional product image URLs", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,image_url",
+    "0,123,Produk Contoh,55000,1000,lower_bound,Toko Contoh,850,4675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,http://cdn.example.test/product.jpg"
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /image_url harus berupa URL HTTPS/);
+});
+
+
+test("imports optional rating and review evidence from CSV when the source provides it", () => {
+  const csv = [
+    headers + ",Rating Produk,Jumlah Ulasan",
+    '101,Produk Teruji,55000,8.500,Toko Teruji,8%,Rp4.400,https://shopee.co.id/product/1/101,https://s.shopee.co.id/abc,"4,9","1.2RB+"',
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.ratingMilli, 4900);
+  assert.deepEqual(result.rows[0]?.reviewCount, { value: 1200, quality: "lower_bound", sourceText: "1.2RB+" });
+});
+
+test("keeps rating and review metrics explicitly missing when optional CSV columns are absent", () => {
+  const csv = [
+    headers,
+    "102,Produk Tanpa Rating,55000,850,Toko,8%,4400,https://shopee.co.id/product/1/102,https://s.shopee.co.id/abc",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.ratingMilli, undefined);
+  assert.deepEqual(result.rows[0]?.reviewCount, { value: null, quality: "missing", sourceText: "" });
+});
+
+test("rejects malformed optional rating or review metrics instead of silently treating them as zero", () => {
+  const csv = [
+    headers + ",Rating,Jumlah Ulasan",
+    "103,Produk Invalid,55000,850,Toko,8%,4400,https://shopee.co.id/product/1/103,https://s.shopee.co.id/abc,6,1.2.3",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /Rating harus berupa angka antara 0 dan 5/);
+  assert.match(result.errors[0]?.message ?? "", /Jumlah ulasan tidak dapat dibaca/);
+});
+
+test("preserves optional review lower-bound quality in normalized preview CSV", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,rating_milli,review_count_value,review_count_quality",
+    "0,104,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/104,https://s.shopee.co.id/abc,4900,1200,lower_bound",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.ratingMilli, 4900);
+  assert.deepEqual(result.rows[0]?.reviewCount, { value: 1200, quality: "lower_bound", sourceText: "1200+" });
+});
+
+
+test("rejects preview review counts without an explicit quality classification", () => {
+  const csv = [
+    "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,review_count_value,review_count_quality",
+    "0,105,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/105,https://s.shopee.co.id/abc,1200,",
+  ].join("\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /review_count_quality harus exact, lower_bound, atau missing/);
+});

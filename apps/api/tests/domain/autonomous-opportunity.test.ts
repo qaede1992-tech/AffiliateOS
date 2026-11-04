@@ -42,6 +42,16 @@ const offer = (productId: string, overrides: Partial<AffiliateOffer> = {}): Affi
 });
 
 describe("autonomous opportunity selection", () => {
+  it("requires persisted video evidence without lowering other selection thresholds", () => {
+    const candidate = { product: product("video-candidate"), offers: [offer("video-candidate")] };
+    const selector = new AutonomousOpportunitySelector();
+    const withoutVideo = selector.select([candidate], { minimumScore: 0, maximumResults: 1, requirePublishableMedia: true, requirePublishableVideo: true });
+    assert.equal(withoutVideo.selected.length, 0);
+    assert.ok(withoutVideo.rejected[0]?.reasons.some((reason) => reason.includes("validated, publishable video")));
+    const withStoredVideo = selector.select([candidate], { minimumScore: 0, maximumResults: 1, requirePublishableMedia: true, requirePublishableVideo: true }, new Map(), {}, new Map(), new Set(["video-candidate"]));
+    assert.equal(withStoredVideo.selected[0]?.product.id, "video-candidate");
+  });
+
   it("prefers marketplace-specific feedback over a product-only fallback", () => {
     const result = new AutonomousOpportunitySelector().select([
       { product: product("a", { marketplaceId: "market-1" }), offers: [offer("a")] },
@@ -250,7 +260,15 @@ describe("autonomous opportunity selection", () => {
       { product: product("high-demand"), offers: [offer("high-demand")] }
     ], { minimumScore: 0, minimumDemandScore: 10 });
     assert.deepEqual(result.selected.map((item) => item.product.id), ["high-demand"]);
-    assert.ok(result.rejected.find((item) => item.productId === "low-demand")?.reasons.includes("Demand score is below the minimum"));
+    assert.ok(result.rejected.find((item) => item.productId === "low-demand")?.reasons.includes("Demand evidence is unavailable"));
+  });
+
+  it("records data confidence in every autonomous decision audit", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("confidence-audit"), offers: [offer("confidence-audit")] }
+    ], { minimumScore: 0, maximumResults: 1 });
+    const audit = result.audit.find((item) => item.productId === "confidence-audit");
+    assert.ok(audit?.reasons.some((reason) => reason.startsWith("Data confidence:")));
   });
 
   it("clamps invalid policy guard values to safe bounds", () => {
@@ -354,6 +372,43 @@ describe("autonomous commission amount guard", () => {
       }]
     ]));
     assert.ok(result.selected[0]?.reasons.some((reason) => reason.includes("Historical conversion feedback")));
+  });
+
+});
+
+
+describe("validated media selection gate", () => {
+  it("does not treat an unverified HTTPS catalog URL as publishable media", () => {
+    const candidate = {
+      product: product("unverified-image", { imageUrl: "https://cdn.example.test/image.jpg" }),
+      offers: [offer("unverified-image")]
+    };
+    const selector = new AutonomousOpportunitySelector();
+    const withoutStoredMedia = selector.select([candidate], {
+      minimumScore: 0,
+      maximumResults: 1,
+      requirePublishableMedia: true
+    });
+    assert.equal(withoutStoredMedia.selected.length, 0);
+    assert.ok(withoutStoredMedia.rejected[0]?.reasons.some((reason) => reason.includes("validated, persisted image or video")));
+    const withStoredImage = selector.select(
+      [candidate],
+      { minimumScore: 0, maximumResults: 1, requirePublishableMedia: true },
+      new Map(),
+      {},
+      new Map(),
+      new Set(),
+      new Set(["unverified-image"])
+    );
+    assert.equal(withStoredImage.selected[0]?.product.id, "unverified-image");
+  });
+  it("rejects low-confidence product scores when the policy requires stronger evidence", () => {
+    const result = new AutonomousOpportunitySelector().select([
+      { product: product("partial-evidence"), offers: [offer("partial-evidence")] }
+    ], { minimumScore: 0, maximumResults: 1, minimumDataConfidence: 80 });
+    assert.equal(result.selected.length, 0);
+    assert.ok(result.rejected[0]?.reasons.some((reason) => reason.includes("Data confidence")));
+    assert.ok((result.audit[0]?.score ?? 0) >= 0);
   });
 
 });

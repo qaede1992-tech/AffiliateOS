@@ -122,6 +122,40 @@ describe("AutonomousOptimizationRunner", () => {
     await runner.run(new Date("2026-09-23T02:00:00.000Z"));
     assert.equal(evaluated, false);
   });
+  it("does not execute optimization actions when draft-only mode is active", async () => {
+    const campaign = metrics("c1", 200, 16);
+    let executorCalls = 0;
+    let stateWrites = 0;
+    const analytics = { async overview() { return overview(campaign); }, async campaign() { return campaign; } };
+    const outcomeWriter: AutonomousActionOutcomeWriter = {
+      async save(outcome) { return outcome; },
+      async latestByCampaign() {
+        return {
+          id: "outcome-draft-only", campaignId: "c1", action: "scale", status: "mutated", mutated: true,
+          observedAt: "2026-09-21T00:00:00.000Z",
+          baseline: { clickCount: 100, attributedConversionCount: 10, attributedRevenueCents: 10000, attributedCommissionCents: 500, conversionRate: 0.1 }
+        };
+      },
+      async updateEvaluation() { return undefined; }
+    };
+    const executor = { async execute() { executorCalls += 1; throw new Error("must not execute in draft-only mode"); } } as unknown as AutonomousCampaignActionExecutor;
+    const runner = new AutonomousOptimizationRunner(
+      analytics,
+      { async get() { return { action: "scale", appliedAt: "2026-09-21T00:00:00.000Z" }; } },
+      { async save() { stateWrites += 1; } },
+      executor,
+      outcomeWriter,
+      {},
+      60 * 60_000
+    );
+
+    const result = await runner.run(new Date("2026-09-23T02:00:00.000Z"), { allowMutations: false });
+
+    assert.equal(result.actions.length, 0);
+    assert.equal(executorCalls, 0);
+    assert.equal(stateWrites, 0);
+  });
+
   it("feeds delayed evaluation into the next optimization recommendation", async () => {
     const campaign = metrics("c1", 200, 16);
     let savedState: any;

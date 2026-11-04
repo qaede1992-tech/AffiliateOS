@@ -3,7 +3,7 @@ export interface SupabaseStorageConfig {
   serviceKey: string;
   bucket: string;
   fetchImpl?: typeof fetch;
-  /** Override for deterministic tests; production defaults to two minutes. */
+  /** Maximum duration for Storage operations; production defaults to two minutes. */
   uploadTimeoutMs?: number;
 }
 
@@ -50,6 +50,11 @@ export class SupabaseStorageClient {
   private readonly fetchImpl: typeof fetch;
   private readonly uploadTimeoutMs: number;
 
+  /** Configured private bucket; exposed for validating persisted bucket/key references. */
+  get bucketName(): string {
+    return this.bucket;
+  }
+
   constructor(config: SupabaseStorageConfig) {
     this.baseUrl = normalizeBaseUrl(config.supabaseUrl);
     this.bucket = validateSegment(config.bucket, "bucket");
@@ -85,6 +90,7 @@ export class SupabaseStorageClient {
     new Uint8Array(body).set(input.bytes);
     const response = await this.fetchImpl(url, {
       method: "POST",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
       headers: this.headers({
         "Content-Type": input.contentType,
         "x-upsert": input.upsert ? "true" : "false",
@@ -121,10 +127,55 @@ export class SupabaseStorageClient {
     const safeKey = validateObjectKey(key);
     const response = await this.fetchImpl(`${this.endpoint("object")}/${encodeURIComponent(this.bucket)}`, {
       method: "DELETE",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ prefixes: [safeKey] })
     });
     await this.assertSuccess(response, "delete");
+  }
+
+  async download(key: string, maxBytes: number): Promise<Uint8Array> {
+    const safeKey = validateObjectKey(key);
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Storage download limit must be a positive safe integer.");
+    const objectPath = safeKey.split("/").map(encodeURIComponent).join("/");
+    const response = await this.fetchImpl(`${this.endpoint("object")}/${encodeURIComponent(this.bucket)}/${objectPath}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
+      headers: this.headers()
+    });
+    await this.assertSuccess(response, "download");
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      await response.body?.cancel();
+      throw new Error("Stored media exceeds the configured download size limit.");
+    }
+    if (!response.body) throw new Error("Supabase Storage returned an empty download stream.");
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        if (!part.value) continue;
+        total += part.value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel();
+          throw new Error("Stored media exceeds the configured download size limit.");
+        }
+        chunks.push(part.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (total === 0) throw new Error("Supabase Storage returned an empty media object.");
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
   }
 
   async createSignedUrl(key: string, expiresInSeconds: number): Promise<string> {
@@ -135,6 +186,7 @@ export class SupabaseStorageClient {
     const objectPath = safeKey.split("/").map(encodeURIComponent).join("/");
     const response = await this.fetchImpl(`${this.endpoint("object/sign")}/${encodeURIComponent(this.bucket)}/${objectPath}`, {
       method: "POST",
+      signal: AbortSignal.timeout(this.uploadTimeoutMs),
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ expiresIn: expiresInSeconds })
     });
@@ -144,10 +196,15 @@ export class SupabaseStorageClient {
       throw new Error("Supabase Storage returned an invalid signed URL response.");
     }
     const signed = new URL(payload.signedURL, this.baseUrl);
+    if (signed.origin !== new URL(this.baseUrl).origin) throw new Error("Supabase Storage returned a URL for an unexpected origin.");
+    // Supabase Storage returns paths such as /object/sign/<bucket>/<key>, relative
+    // to its /storage/v1 API prefix. Add that prefix before returning a fetchable URL.
+    if (signed.pathname.startsWith("/object/sign/")) signed.pathname = `/storage/v1${signed.pathname}`;
+    const expectedPath = `/storage/v1/object/sign/${encodeURIComponent(this.bucket)}/${objectPath}`;
+    if (signed.pathname !== expectedPath) throw new Error("Supabase Storage returned an unexpected signed URL path.");
     if (signed.protocol !== "https:" && signed.hostname !== "localhost" && signed.hostname !== "127.0.0.1") {
       throw new Error("Supabase Storage returned a non-HTTPS signed URL.");
     }
-    if (signed.origin !== new URL(this.baseUrl).origin) throw new Error("Supabase Storage returned a URL for an unexpected origin.");
     return signed.toString();
   }
 }

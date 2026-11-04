@@ -50,17 +50,43 @@ try {
     "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') ORDER BY c.relname"
   ].join("\n"));
   assert.ok(tableResult.rows.length > 0, "Expected application tables in public schema.");
+  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "pre_media_eligibility_evidence"]);
+  assert.ok(
+    tableResult.rows.some((table) => appendOnlyTables.has(table.relname)),
+    "The append-only product media rights audit table must exist."
+  );
   for (const table of tableResult.rows) {
     assert.equal(table.relrowsecurity, true, table.relname + " must have RLS enabled.");
     assert.notEqual(table.owner, "affiliateos_runtime", table.relname + " must not be owned by the runtime role.");
     assert.equal(table.can_select, true, table.relname + " must be readable by the runtime role.");
     assert.equal(table.can_insert, true, table.relname + " must be insertable by the runtime role.");
-    assert.equal(table.can_update, true, table.relname + " must be updatable by the runtime role.");
-    assert.equal(table.can_delete, true, table.relname + " must be deletable by the runtime role.");
+    const appendOnly = appendOnlyTables.has(table.relname);
+    assert.equal(table.can_update, !appendOnly, table.relname + (appendOnly ? " must not be updatable by the runtime role." : " must be updatable by the runtime role."));
+    assert.equal(table.can_delete, !appendOnly, table.relname + (appendOnly ? " must not be deletable by the runtime role." : " must be deletable by the runtime role."));
     assert.equal(table.can_truncate, false, table.relname + " must not allow runtime TRUNCATE.");
     assert.equal(table.can_trigger, false, table.relname + " must not allow runtime TRIGGER privilege.");
     assert.equal(table.has_runtime_policy, true, table.relname + " must have the explicit runtime RLS policy.");
   }
+
+
+  const auditTrigger = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid " +
+    "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' " +
+    "AND c.relname = 'product_media_rights_audits' AND t.tgname = 'product_media_rights_audits_append_only' " +
+    "AND NOT t.tgisinternal) AS present"
+  );
+  assert.equal(auditTrigger.rows[0]?.present, true, "The rights audit table must have its append-only trigger.");
+
+  const auditFunctionSearchPath = await client.query(
+    "SELECT COALESCE(array_to_string(p.proconfig, ','), '') AS settings " +
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace " +
+    "WHERE n.nspname = 'public' AND p.proname = 'prevent_product_media_rights_audit_mutation' AND p.pronargs = 0"
+  );
+  assert.equal(auditFunctionSearchPath.rowCount, 1, "The append-only audit trigger function must exist.");
+  assert.ok(
+    auditFunctionSearchPath.rows[0]?.settings.split(",").includes("search_path=pg_catalog"),
+    "The append-only audit trigger function must pin search_path to pg_catalog."
+  );
 
   const schemaCreate = await client.query(
     "SELECT has_schema_privilege('affiliateos_runtime', 'public', 'CREATE') AS can_create"

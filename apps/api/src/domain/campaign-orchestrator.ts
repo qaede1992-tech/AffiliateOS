@@ -7,6 +7,8 @@ import { publisherSupportsContent, type DistributionEngine, type DistributionPla
 import type { ScoredOpportunity } from "./opportunity-scoring.js";
 import type { AutonomousRunService } from "./autonomous-run-service.js";
 import type { MediaAssetRepository } from "./media-asset.js";
+import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
+import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 export type CampaignOrchestratorInput = {
   opportunity: ScoredOpportunity;
@@ -31,6 +33,7 @@ export type GeneratedCampaignContent = {
 };
 
 const defaultPlatforms: ContentPlatform[] = ["instagram", "tiktok"];
+const productReferenceNumber = (product: Product): string => product.referenceNumber ? String(product.referenceNumber) : "";
 const orchestrationKey = (campaign: Awaited<ReturnType<CampaignService["create"]>>) => campaign.audience.autonomousOrchestrationKey;
 const trackingCodeFor = (idempotencyKey: string | undefined, campaignId: string, offerId: string, attempt = 0): string => {
   const seed = `${idempotencyKey ?? campaignId}:${offerId}:${attempt}`;
@@ -48,11 +51,14 @@ const trackingCodeCandidate = (existing: Awaited<ReturnType<TrackingService["lis
 export class DeterministicCampaignContentGenerator implements CampaignContentGenerator {
   generate(input: { product: Product; offer: AffiliateOffer; opportunity: ScoredOpportunity; platform: ContentPlatform }): GeneratedCampaignContent {
     const productName = input.product.name.trim();
-    const price = new Intl.NumberFormat("en-US", { style: "currency", currency: input.offer.currency ?? input.product.currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
-    const title = `${productName}: worth a look?`;
-    const caption = `${productName} is currently available for ${price}. ${input.opportunity.reasons.slice(0, 2).join(" ")} Check the offer and compare the details before buying.`;
-    const script = `Hook: Looking for ${productName}?\nHighlight: ${input.product.description?.trim() || "See the product details and current offer."}\nValue: Current offer price is ${price}.\nCTA: Check the offer through the link.`;
-    return { platform: input.platform, title, caption, script, cta: "Check the offer" };
+    const currency = input.offer.currency ?? input.product.currency;
+    const price = new Intl.NumberFormat("id-ID", { style: "currency", currency }).format((input.offer.priceCents ?? input.product.priceCents) / 100);
+    const title = productName;
+    const referenceNumber = productReferenceNumber(input.product);
+    const productLookup = referenceNumber ? `Nomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.` : "Buka toko AffiliateOS melalui tautan di bio dan cari nama produk ini.";
+    const caption = `${productName}. Harga pada katalog saat ini ${price}. ${productLookup} Periksa kembali harga, spesifikasi, dan ketersediaan pada halaman produk sebelum membeli.`;
+    const script = `Pembuka: Sedang mencari ${productName}?\nDetail: ${input.product.description?.trim() || "Lihat detail produk dan penawaran yang tersedia."}\nHarga: Harga pada katalog saat ini ${price}; cek kembali harga terbaru pada halaman produk.\nAjakan: Buka tautan untuk melihat detail penawaran.`;
+    return { platform: input.platform, title, caption, script, cta: "Lihat detail produk" };
   }
 }
 
@@ -83,7 +89,8 @@ export class CampaignOrchestrator {
     private readonly distribution?: DistributionEngine,
     private readonly autonomousRuns?: AutonomousRunService,
     private readonly mediaAssets?: MediaAssetRepository,
-    private readonly contentStory?: ContentStoryService
+    private readonly contentStory?: ContentStoryService,
+    private readonly productMediaAssets?: ProductMediaAssetRepository
   ) {}
 
   async execute(input: CampaignOrchestratorInput): Promise<CampaignOrchestrationResult> {
@@ -98,6 +105,20 @@ export class CampaignOrchestrator {
     const executionOffer = liveOffer;
     const liveProduct = await this.content.validateProductForPublication(input.product.id);
     if (liveProduct.id !== input.offer.productId) throw new Error("Live product and affiliate offer are inconsistent.");
+    // Autonomous Instagram and TikTok campaigns must use a validated, persisted video.
+    const requestedPlatforms = input.platforms ?? defaultPlatforms;
+    const requestsVideoCampaign = requestedPlatforms.some((platform) => platform === "instagram" || platform === "tiktok");
+    if (input.idempotencyKey && requestsVideoCampaign) {
+      // An autonomous idempotency key marks an unattended execution. Missing
+      // rights storage must never disable the product-media publication gate.
+      if (!this.productMediaAssets) {
+        throw new Error("Product media rights repository is required before autonomous social campaign creation.");
+      }
+      const storedProductMedia = await this.productMediaAssets.listByProduct(liveProduct.id);
+      if (!storedProductMedia.some((asset) => asset.kind === "video" && hasCurrentVerifiedRights(asset))) {
+        throw new Error("A stored, validated product video is required before autonomous social campaign creation.");
+      }
+    }
     if (input.scheduledAt && !this.distribution) throw new Error("Campaign orchestration requires a distribution engine when scheduledAt is provided.");
 
     const run = input.idempotencyKey && this.autonomousRuns
@@ -152,14 +173,37 @@ export class CampaignOrchestrator {
       let content: Awaited<ReturnType<ContentService["create"]>>[] = [];
       for (const platform of requestedPlatforms) {
         const existing = existingContent.find((item) => item.platform === platform && item.contentType === "affiliate-promotion" && item.status !== "archived");
-        if (existing?.status === "failed") {
-          const reset = await this.content.update(existing.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
-          content.push(await this.attachProductMediaIfAvailable(reset, liveProduct));
-        } else if (existing) {
-          content.push(await this.attachProductMediaIfAvailable(existing, liveProduct));
+        let reusable = existing;
+        if (reusable?.status === "failed") {
+          reusable = await this.content.update(reusable.id, { status: "draft", scheduledAt: undefined, publishedAt: undefined });
+        }
+        if (reusable) {
+          let reusableCaption = typeof reusable.caption === "string" ? reusable.caption : "";
+          reusableCaption = reusableCaption
+            .replace(/Kode produk:\s*AOS-[A-Z0-9-]+\.?/gi, "")
+            .replace(/Buka toko AffiliateOS melalui tautan di bio dan cari kode ini\./gi, "Buka toko AffiliateOS melalui tautan di bio dan cari nomor produk.");
+          const referenceNumber = productReferenceNumber(liveProduct);
+          if (reusable.status === "draft" && referenceNumber && !reusableCaption.includes(`Nomor produk: ${referenceNumber}`)) {
+            reusableCaption = `${reusableCaption.trim()}\n\nNomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.`;
+          }
+          if (platform === "instagram" && reusable.status === "draft" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(reusableCaption)) {
+            reusableCaption = `${reusableCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`;
+          }
+          if (reusable.status === "draft" && reusableCaption !== (typeof reusable.caption === "string" ? reusable.caption : "")) {
+            reusable = await this.content.update(reusable.id, { caption: reusableCaption });
+          }
+          content.push(await this.attachProductMediaIfAvailable(reusable, liveProduct));
         } else {
           const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
-          let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption: generated.caption, script: generated.script, cta: generated.cta, status: "draft" });
+          let generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
+          const referenceNumber = productReferenceNumber(liveProduct);
+          if (referenceNumber && !generatedCaption.includes(`Nomor produk: ${referenceNumber}`)) {
+            generatedCaption = `${generatedCaption.trim()}\n\nNomor produk: ${referenceNumber}. Buka toko AffiliateOS melalui tautan di bio dan cari nomor ini.`;
+          }
+          const caption = platform === "instagram" && !/link\s+di\s+bio|tautan\s+di\s+bio/i.test(generatedCaption)
+            ? `${generatedCaption.trim()}\n\nLihat tautan di bio untuk memilih produk.`
+            : generatedCaption;
+          let created = await this.content.create({ productId: input.product.id, campaignId: campaign.id, platform, contentType: "affiliate-promotion", title: generated.title, caption, script: generated.script, cta: generated.cta, status: "draft" });
           created = await this.attachProductMediaIfAvailable(created, liveProduct);
           content.push(created);
         }
@@ -186,6 +230,13 @@ export class CampaignOrchestrator {
       }
 
       const trackingLinks = [trackingLink];
+      if (!input.storyProducts?.length && this.contentStory && content.some((item) => item.mediaAssetIds?.length)) {
+        if (!completedRunRecovery) {
+          for (const item of content) {
+            await this.contentStory.replaceProducts(item.id, [{ productId: liveProduct.id, affiliateOfferId: executionOffer.id, position: 0, role: "primary" }]);
+          }
+        }
+      }
       if (input.storyProducts?.length) {
         if (!this.contentStory) throw new Error("Multi-product story orchestration requires a content story service.");
         const storyItems = [{ product: liveProduct, offer: executionOffer, role: "primary" as const, position: 0 }, ...input.storyProducts.filter((item) => item.product.id !== liveProduct.id).sort((a, b) => a.position - b.position)];
@@ -227,13 +278,39 @@ export class CampaignOrchestrator {
   ) {
     if (!this.mediaAssets) return content;
 
-    const media = content.platform === "instagram"
-      ? { kind: "image" as const, reference: product.imageUrl }
-      : content.platform === "tiktok"
-        ? product.videoUrl
-          ? { kind: "video" as const, reference: product.videoUrl }
-          : { kind: "image" as const, reference: product.imageUrl }
-        : undefined;
+    const media = content.platform === "instagram" || content.platform === "tiktok"
+      ? product.videoUrl
+        ? { kind: "video" as const, reference: product.videoUrl }
+        : { kind: "image" as const, reference: product.imageUrl }
+      : undefined;
+
+    if (this.productMediaAssets) {
+      const productAssets = await this.productMediaAssets.listByProduct(product.id);
+      // Never attach an asset that the final publisher rights gate will reject.
+      const publishableAssets = productAssets.filter(hasCurrentVerifiedRights);
+      const preferredKind = publishableAssets.some((asset) => asset.kind === "video") ? "video" : "image";
+      const stored = publishableAssets.find((asset) => asset.kind === preferredKind);
+      if (stored && this.mediaAssets) {
+        const existingAssets = await this.mediaAssets.listByContent(content.id);
+        const reference = stored.bucket + "/" + stored.objectKey;
+        const existingStored = existingAssets.find((asset) => asset.source === "object-storage" && asset.reference === reference);
+        if (existingStored) {
+          const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
+            ? [existingStored.id]
+            : [...new Set([...(content.mediaAssetIds ?? []), existingStored.id])];
+          if (selectedIds.length !== (content.mediaAssetIds ?? []).length || selectedIds.some((id, index) => id !== content.mediaAssetIds?.[index])) {
+            return this.content.update(content.id, { mediaAssetIds: selectedIds });
+          }
+          return content;
+        }
+        const now = new Date().toISOString();
+        const asset = await this.mediaAssets.save({ id: randomUUID(), contentId: content.id, kind: stored.kind, source: "object-storage", reference, mimeType: stored.mimeType, byteSize: stored.byteSize, durationSeconds: stored.durationMs == null ? undefined : Math.ceil(stored.durationMs / 1000), widthPx: stored.width ?? undefined, heightPx: stored.height ?? undefined, hasAudio: stored.hasAudio ?? undefined, createdAt: now, updatedAt: now });
+        const selectedIds = content.platform === "instagram" || content.platform === "tiktok"
+          ? [asset.id]
+          : [...new Set([...(content.mediaAssetIds ?? []), asset.id])];
+        return this.content.update(content.id, { mediaAssetIds: selectedIds });
+      }
+    }
 
     if (!media?.reference) return content;
 
