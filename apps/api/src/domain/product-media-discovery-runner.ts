@@ -218,7 +218,9 @@ export class ProductMediaDiscoveryRunner {
             updatedAt: now
           }));
           const saved = await this.catalogCandidates.saveMany(records);
-          candidatesFound = saved.length;
+          candidatesFound = accepted.length;
+          const insertedCount = saved.length;
+          const alreadyPresentCount = Math.max(0, accepted.length - insertedCount);
           console.info(JSON.stringify({
             event: "product_media_catalog_search_completed",
             provider: discoveryProvider,
@@ -226,7 +228,8 @@ export class ProductMediaDiscoveryRunner {
             productId: product.id,
             resultCount: discovered.length,
             acceptedCount: accepted.length,
-            savedCount: candidatesFound
+            savedCount: insertedCount,
+            alreadyPresentCount
           }));
         } catch (error) {
           const message = error instanceof Error ? error.message : "Openverse candidate search failed.";
