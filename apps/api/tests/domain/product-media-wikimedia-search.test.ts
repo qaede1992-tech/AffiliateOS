@@ -170,6 +170,64 @@ test("keeps broad category results as low-confidence manual-review candidates", 
   assert.ok(results[0]?.identityReasons.some((reason) => reason.includes("pencarian kategori")));
 });
 
+
+test("filters category search noise using file titles and descriptions", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [
+        {
+          title: "File:Baby Smurf eating ice cream.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-icecream.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Baby_Smurf_eating_ice_cream.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+              Description: { value: "A fictional baby eating a dessert." }
+            }
+          }]
+        },
+        {
+          title: "File:Jabiru feeding its babies.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-birds.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Jabiru_feeding_its_babies.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+              Description: { value: "A bird feeding chicks in a nest." }
+            }
+          }]
+        },
+        {
+          title: "File:Barrier cream product.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/thumb-cream.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Barrier_cream_product.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+              Description: { value: "A topical skin barrier cream product." }
+            }
+          }]
+        }
+      ]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "GENTLY Baby Calming Baby Cream 50 g | Perlengkapan Bayi"
+  }, { fetchImpl });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "Barrier cream product.jpg");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
+
+
 test("ignores invalid numeric HTML entities in external attribution metadata", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     query: {
@@ -193,4 +251,3 @@ test("ignores invalid numeric HTML entities in external attribution metadata", a
   assert.equal(results.length, 1);
   assert.equal(results[0]?.creator, "Example Photographer 😀");
 });
-
