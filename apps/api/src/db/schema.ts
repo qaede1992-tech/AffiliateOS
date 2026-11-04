@@ -118,9 +118,28 @@ export const productMediaCandidates = pgTable("product_media_candidates", {
   identityReasons: jsonb("identity_reasons").$type<string[]>().notNull().default([]),
   reviewStatus: varchar("review_status", { length: 20 }).notNull().default("pending"),
   rightsStatus: varchar("rights_status", { length: 20 }).notNull().default("unverified"),
+  reviewedBy: varchar("reviewed_by", { length: 255 }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
+  reviewReason: varchar("review_reason", { length: 1000 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_candidates_product_provider_hash_unique").on(table.productId, table.provider, table.candidateHash),
   index("product_media_candidates_product_review_idx").on(table.productId, table.reviewStatus, table.createdAt.desc())
+]);
+
+export const productMediaCandidateReviewAudits = pgTable("product_media_candidate_review_audits", {
+  id: uuid("id").primaryKey(),
+  candidateId: uuid("candidate_id").notNull().references(() => productMediaCandidates.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  previousStatus: varchar("previous_status", { length: 20 }).notNull(),
+  newStatus: varchar("new_status", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("product_media_candidate_review_audits_candidate_created_idx").on(table.candidateId, table.createdAt.desc()),
+  index("product_media_candidate_review_audits_product_created_idx").on(table.productId, table.createdAt.desc())
 ]);
