@@ -21,6 +21,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
 
   async saveMany(candidates: ProductMediaCandidateRecord[]): Promise<ProductMediaCandidateRecord[]> {
     if (candidates.length === 0) return [];
+
     const rows = await this.db.insert(productMediaCandidates).values(candidates.map((candidate) => ({
       ...candidate,
       creator: candidate.creator ?? null,
@@ -32,7 +33,32 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       identityReasons: candidate.identityReasons ?? [],
       reviewStatus: "pending",
       rightsStatus: "unverified"
-    }))).onConflictDoNothing().returning();
+    }))).onConflictDoUpdate({
+      target: [
+        productMediaCandidates.productId,
+        productMediaCandidates.provider,
+        productMediaCandidates.candidateHash
+      ],
+      // Refresh discovery evidence when the same source lead is found again.
+      // Human review and rights decisions are intentionally immutable here.
+      set: {
+        query: productMediaCandidates.query,
+        title: productMediaCandidates.title,
+        imageUrl: productMediaCandidates.imageUrl,
+        landingPageUrl: productMediaCandidates.landingPageUrl,
+        creator: productMediaCandidates.creator,
+        creatorUrl: productMediaCandidates.creatorUrl,
+        license: productMediaCandidates.license,
+        licenseVersion: productMediaCandidates.licenseVersion,
+        licenseUrl: productMediaCandidates.licenseUrl,
+        sourcePublisher: productMediaCandidates.sourcePublisher,
+        identityScore: productMediaCandidates.identityScore,
+        identityStatus: productMediaCandidates.identityStatus,
+        identityReasons: productMediaCandidates.identityReasons,
+        updatedAt: productMediaCandidates.updatedAt
+      }
+    }).returning();
+
     return rows.map(toCandidate);
   }
 
