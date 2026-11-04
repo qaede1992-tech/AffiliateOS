@@ -240,6 +240,14 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       throw new Error("Unable to download TikTok media source (HTTP " + response.status + ").");
     }
 
+    const contentLength = response.headers.get("content-length");
+    if (contentLength !== null) {
+      const declaredSize = Number(contentLength);
+      if (!Number.isSafeInteger(declaredSize) || declaredSize !== videoSize) {
+        throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received Content-Length " + contentLength + ").");
+      }
+    }
+
     const reader = response.body.getReader();
     let carry = Buffer.alloc(0);
     let offset = 0;
@@ -252,8 +260,14 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
         carry = carry.length ? Buffer.concat([carry, incoming]) : incoming;
 
         while (carry.length >= chunkSize) {
-          const chunk = carry.subarray(0, chunkSize);
-          carry = carry.subarray(chunkSize);
+          const remaining = videoSize - offset;
+          if (remaining <= 0) {
+            throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received at least " + (offset + carry.length) + ").");
+          }
+          const nextChunkSize = Math.min(chunkSize, remaining);
+          if (carry.length < nextChunkSize) break;
+          const chunk = carry.subarray(0, nextChunkSize);
+          carry = carry.subarray(nextChunkSize);
           await this.putUploadChunk(uploadUrl, chunk, offset, videoSize, asset.mimeType ?? "video/mp4");
           offset += chunk.length;
         }
@@ -263,6 +277,10 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     }
 
     if (carry.length > 0) {
+      const remaining = videoSize - offset;
+      if (carry.length !== remaining) {
+        throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received " + (offset + carry.length) + ").");
+      }
       await this.putUploadChunk(uploadUrl, carry, offset, videoSize, asset.mimeType ?? "video/mp4");
       offset += carry.length;
     }
