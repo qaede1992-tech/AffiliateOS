@@ -54,6 +54,7 @@ function makeService(overrides: {
   affiliateOffer?: AffiliateOffer;
   existingAsset?: ProductMediaAsset;
   product?: Product;
+  preMediaEvidence?: { id: string; cycleId: string; productId: string; marketplaceId: string; offerId?: string; eligible: boolean; score: number; policy: Record<string, unknown>; reasons: string[]; createdAt: string };
 } = {}) {
   let ingestionCalls = 0;
   let existing = overrides.existingAsset;
@@ -72,6 +73,9 @@ function makeService(overrides: {
         return { stored: [asset], skipped: [] };
       }
     } as never,
+    preMediaEligibility: overrides.preMediaEvidence ? {
+      listLatestByProduct: async () => [overrides.preMediaEvidence!]
+    } : undefined,
     audits: {
       list: async () => [{
         auditId: "77777777-7777-4777-8777-777777777777",
@@ -204,5 +208,106 @@ test("does not return an existing asset as reusable when its rights have been re
   const { service, ingestionCalls } = makeService({ existingAsset: revokedAsset });
   await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
     (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "MEDIA_ASSET_RIGHTS_REVOKED" && error.statusCode === 409);
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("imports using fresh preliminary non-media eligibility without requiring a completed campaign", async () => {
+  const { service, ingestionCalls } = makeService({
+    decision: { selected: false, createdAt: now.toISOString() },
+    preMediaEvidence: {
+      id: "99999999-9999-4999-8999-999999999999",
+      cycleId: "autonomous-execution:2026-11-04T03:00:00.000Z",
+      productId,
+      marketplaceId: product.marketplaceId,
+      offerId: offer.id,
+      eligible: true,
+      score: 78,
+      policy: { requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
+      reasons: [],
+      createdAt: now.toISOString()
+    }
+  });
+  const result = await service.importApprovedCandidate(productId, candidateId);
+  assert.equal(ingestionCalls(), 1);
+  assert.equal(result.asset.rightsStatus, "unverified");
+});
+
+test("rejects preliminary eligibility evidence for a different marketplace", async () => {
+  const { service, ingestionCalls } = makeService({
+    preMediaEvidence: {
+      id: "99999999-9999-4999-8999-999999999999",
+      cycleId: "cycle-1",
+      productId,
+      marketplaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      offerId: offer.id,
+      eligible: true,
+      score: 78,
+      policy: {},
+      reasons: [],
+      createdAt: now.toISOString()
+    }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("rejects stale preliminary eligibility evidence", async () => {
+  const stale = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString();
+  const { service, ingestionCalls } = makeService({
+    preMediaEvidence: {
+      id: "99999999-9999-4999-8999-999999999999",
+      cycleId: "cycle-1",
+      productId,
+      marketplaceId: product.marketplaceId,
+      offerId: offer.id,
+      eligible: true,
+      score: 78,
+      policy: {},
+      reasons: [],
+      createdAt: stale
+    }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("requires the currently usable affiliate offer to match preliminary eligibility evidence", async () => {
+  const { service, ingestionCalls } = makeService({
+    preMediaEvidence: {
+      id: "99999999-9999-4999-8999-999999999999",
+      cycleId: "cycle-1",
+      productId,
+      marketplaceId: product.marketplaceId,
+      offerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      eligible: true,
+      score: 78,
+      policy: {},
+      reasons: [],
+      createdAt: now.toISOString()
+    }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "AFFILIATE_OFFER_UNAVAILABLE");
+  assert.equal(ingestionCalls(), 0);
+});
+
+test("rejects when the latest preliminary cycle rejected a product with older positive evidence", async () => {
+  const { service, ingestionCalls } = makeService({
+    preMediaEvidence: {
+      id: "99999999-9999-4999-8999-999999999999",
+      cycleId: "newer-cycle",
+      productId,
+      marketplaceId: product.marketplaceId,
+      eligible: false,
+      score: 42,
+      policy: { minimumScore: 55 },
+      reasons: ["Score below preliminary minimum"],
+      createdAt: now.toISOString()
+    }
+  });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
   assert.equal(ingestionCalls(), 0);
 });
