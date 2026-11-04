@@ -519,6 +519,13 @@
       "when": 1794050405020,
       "tag": "0077_product_media_source_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1794050405021,
+      "tag": "0078_product_media_candidate_review_audit",
+      "breakpoints": true
     }
   ]
 }
