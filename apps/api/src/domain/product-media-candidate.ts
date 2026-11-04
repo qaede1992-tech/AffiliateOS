@@ -18,6 +18,9 @@ export interface ProductMediaCandidateRecord {
   identityReasons: string[];
   reviewStatus: "pending" | "approved" | "rejected";
   rightsStatus: "unverified" | "verified" | "revoked";
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -25,4 +28,27 @@ export interface ProductMediaCandidateRecord {
 export interface ProductMediaCandidateRepository {
   saveMany(candidates: ProductMediaCandidateRecord[]): Promise<ProductMediaCandidateRecord[]>;
   listPendingByProduct(productId: string, limit?: number): Promise<ProductMediaCandidateRecord[]>;
+  review(candidateId: string, productId: string, command: ProductMediaCandidateReviewCommand): Promise<ProductMediaCandidateRecord | undefined>;
+  listReviewAudits(productId: string, candidateId: string): Promise<ProductMediaCandidateReviewAudit[]>;
+}
+
+
+export interface ProductMediaCandidateReviewCommand {
+  status: "approved" | "rejected";
+  actorId: string;
+  actorRole: "admin";
+  reason: string;
+}
+
+export interface ProductMediaCandidateReviewAudit {
+  id: string;
+  candidateId: string;
+  productId: string;
+  actorId: string;
+  actorRole: "admin";
+  action: "approve" | "reject";
+  reason: string;
+  previousStatus: "pending";
+  newStatus: "approved" | "rejected";
+  createdAt: string;
 }
