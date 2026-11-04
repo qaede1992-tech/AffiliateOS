@@ -73,6 +73,7 @@ export const productMediaAssets = pgTable("product_media_assets", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
+  uniqueIndex("product_media_assets_source_candidate_unique").on(table.sourceCandidateId).where(sql`${table.sourceCandidateId} IS NOT NULL`),
   uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
   index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc())
 ]);
