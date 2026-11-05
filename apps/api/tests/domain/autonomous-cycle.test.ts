@@ -195,19 +195,13 @@ describe("autonomous cycle", () => {
     assert.ok(warningLogs.every((line) => line.includes('"errorType":"Error"')));
     assert.ok(warningLogs.every((line) => !line.includes("private-product-data-marker")));
     assert.ok(warningLogs.every((line) => !line.includes("INSERT INTO")));
+    // Both attempts must acquire and release the same lock; a failed evidence write
+    // must not leave the next cycle blocked behind a leaked lock.
     assert.equal(discoveryCalls, 0);
     assert.equal(executionCalls, 0);
-    assert.equal(acquireCount, 1);
-    assert.equal(releaseCount, 1);
-    assert.equal(lockHeld, false);
-
-    // A second attempt must acquire the same lock again rather than remain stuck
-    // behind a lock leaked by the failed evidence persistence.
     assert.equal(acquireCount, 2);
     assert.equal(releaseCount, 2);
     assert.equal(lockHeld, false);
-    assert.equal(discoveryCalls, 0);
-    assert.equal(executionCalls, 0);
   });
 
   it("loads candidates and delegates one execution pass", async () => {
