@@ -198,7 +198,7 @@ export class ProductMediaDiscoveryRunner {
             productId: product.id,
             provider: candidate.provider,
             candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
-            query,
+            query: candidate.searchQuery ?? query,
             title: candidate.title,
             imageUrl: candidate.imageUrl,
             landingPageUrl: candidate.landingPageUrl,
