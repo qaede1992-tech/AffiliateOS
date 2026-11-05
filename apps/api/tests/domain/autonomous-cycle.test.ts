@@ -142,7 +142,7 @@ describe("autonomous cycle", () => {
       }
     };
     const evidenceRepository = {
-      async saveMany() { throw new Error("evidence table unavailable"); },
+      async saveMany() { throw new Error("Failed query: INSERT INTO evidence VALUES ($1); params: private-product-data-marker"); },
       async listLatestByProduct() { return []; }
     };
 
@@ -175,10 +175,26 @@ describe("autonomous cycle", () => {
       evidenceRepository
     );
 
-    await assert.rejects(
-      () => service.runOnce({ publicationEnabled: false }),
-      /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
-    );
+    const warningLogs: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warningLogs.push(args.map(String).join(" "));
+    try {
+      await assert.rejects(
+        () => service.runOnce({ publicationEnabled: false }),
+        /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
+      );
+      await assert.rejects(
+        () => service.runOnce({ publicationEnabled: false }),
+        /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(warningLogs.length, 2);
+    assert.ok(warningLogs.every((line) => line.includes("autonomous_pre_media_eligibility_persist_failed")));
+    assert.ok(warningLogs.every((line) => line.includes('"errorType":"Error"')));
+    assert.ok(warningLogs.every((line) => !line.includes("private-product-data-marker")));
+    assert.ok(warningLogs.every((line) => !line.includes("INSERT INTO")));
     assert.equal(discoveryCalls, 0);
     assert.equal(executionCalls, 0);
     assert.equal(acquireCount, 1);
@@ -187,10 +203,6 @@ describe("autonomous cycle", () => {
 
     // A second attempt must acquire the same lock again rather than remain stuck
     // behind a lock leaked by the failed evidence persistence.
-    await assert.rejects(
-      () => service.runOnce({ publicationEnabled: false }),
-      /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
-    );
     assert.equal(acquireCount, 2);
     assert.equal(releaseCount, 2);
     assert.equal(lockHeld, false);
