@@ -375,6 +375,7 @@ test("maps representative Shopee product titles to concise category discovery qu
     ["GOODBABY Keranjang Tirisan Multifungsi 6 In1 Baskom Saringan Sayuran", "colander"],
     ["Tifale Food Kontainer Kotak Penyimpanan Makanan", "food container"],
     ["Omron Wrist Blood Pressure Monitor HEM 6161", "blood pressure monitor"],
+    ["Imboost Extra Vit C & D3 Tablet Daya Tahan Tubuh", "dietary supplement product"],
     ["NIIMBOT B1 Printer Label Bluetooth", "label printer"],
     ["Sepatu Sneakers Fashion", "sneakers"]
   ];
