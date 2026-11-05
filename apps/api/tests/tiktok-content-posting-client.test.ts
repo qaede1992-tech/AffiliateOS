@@ -83,9 +83,6 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
         assert.match(String(init?.body), /"video_size":4194304/);
         return new Response(JSON.stringify({ data: { publish_id: "publish-1", upload_url: "https://upload.example.test/video" }, error: { code: "ok" } }), { status: 200 });
       }
-      if (init?.method === "GET") {
-        return new Response(video, { status: 200, headers: { "content-type": "video/mp4", "content-length": String(video.byteLength) } });
-      }
       assert.equal(url, "https://upload.example.test/video");
       assert.equal(init?.method, "PUT");
       assert.equal(headers.get("content-range"), "bytes 0-4194303/4194304");
@@ -96,7 +93,7 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
 
   const result = await client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-1" });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-1" });
-  assert.deepEqual(calls.map((call) => call.method), ["POST", "POST", "GET", "PUT"]);
+  assert.deepEqual(calls.map((call) => call.method), ["POST", "POST", "PUT"]);
   assert.equal(calls[3]?.body?.byteLength, video.byteLength);
 });
 
