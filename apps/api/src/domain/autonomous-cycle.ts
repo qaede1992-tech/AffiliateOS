@@ -227,7 +227,7 @@ export class AutonomousCycleService {
             console.warn(JSON.stringify({
               event: "autonomous_product_media_discovery_failed",
               productId: candidate.product.id,
-              reason: error instanceof Error ? error.message : "Product media discovery failed."
+              errorType: error instanceof Error ? error.name : typeof error
             }));
           }
         }
@@ -239,7 +239,7 @@ export class AutonomousCycleService {
           mediaIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_media_index_failed",
-            reason: error instanceof Error ? error.message : "Product media index lookup failed."
+            errorType: error instanceof Error ? error.name : typeof error
           }));
         }
         try {
@@ -256,7 +256,7 @@ export class AutonomousCycleService {
           videoIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_video_index_failed",
-            reason: error instanceof Error ? error.message : "Product video index lookup failed."
+            errorType: error instanceof Error ? error.name : typeof error
           }));
         }
 
@@ -264,7 +264,7 @@ export class AutonomousCycleService {
           mediaReadinessScores = await this.productMediaDiscovery.listMediaReadinessScores(productIds, input.platforms);
         } catch (error) {
           mediaReadinessScores = Object.fromEntries(productIds.map((id) => [id, 0]));
-          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", reason: error instanceof Error ? error.message : "Media readiness scoring failed." }));
+          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", errorType: error instanceof Error ? error.name : typeof error }));
         }
 
         // Pass 2: final affiliate selection. It requires verified, persisted product media,
@@ -301,7 +301,7 @@ export class AutonomousCycleService {
             console.warn(JSON.stringify({
               event: "autonomous_product_promo_video_failed",
               productId: candidate.product.id,
-              reason: error instanceof Error ? error.message : "Product promo video generation failed."
+              errorType: error instanceof Error ? error.name : typeof error
             }));
           }
         }
@@ -311,7 +311,7 @@ export class AutonomousCycleService {
           videoIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_video_index_failed",
-            reason: error instanceof Error ? error.message : "Product video index lookup failed."
+            errorType: error instanceof Error ? error.name : typeof error
           }));
         }
         console.info(JSON.stringify({
