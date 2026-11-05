@@ -28,6 +28,25 @@ const safeHttps = (value: unknown): string | null => {
   try { return new URL(value).toString(); } catch { return null; }
 };
 
+const safeCreativeCommonsLicenseUrl = (value: unknown): string | null => {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== "https:" && url.protocol !== "http:") ||
+      url.hostname.toLowerCase() !== "creativecommons.org" ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== "80" && url.port !== "443")
+    ) return null;
+    url.protocol = "https:";
+    url.port = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
 const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefined, key: string): string | null => {
   const value = metadata?.[key]?.value;
   if (typeof value !== "string") return null;
@@ -194,7 +213,7 @@ export async function searchWikimediaCommonsProductMedia(
 
         const metadata = info.extmetadata;
         const licenseName = metadataText(metadata, "LicenseShortName");
-        const licenseUrl = safeHttps(metadata?.LicenseUrl?.value);
+        const licenseUrl = safeCreativeCommonsLicenseUrl(metadata?.LicenseUrl?.value);
         const acceptedLicense = normalizedLicense(licenseUrl, licenseName);
         if (!acceptedLicense) continue;
 

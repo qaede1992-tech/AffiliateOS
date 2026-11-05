@@ -409,3 +409,61 @@ test("ignores invalid numeric HTML entities in external attribution metadata", a
   assert.equal(results.length, 1);
   assert.equal(results[0]?.creator, "Example Photographer 😀");
 });
+
+
+test("accepts canonical HTTP Creative Commons license metadata and normalizes it to HTTPS", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Milk powder.jpg",
+        imageinfo: [{
+          thumburl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/milk-powder.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Milk_powder.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY-SA 3.0" },
+            LicenseUrl: { value: "http://creativecommons.org/licenses/by-sa/3.0/" },
+            Artist: { value: "Example Photographer" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Zeelandia L'Arome Vanilla Milk Powder 500 Gr"
+  }, { fetchImpl, timeoutMs: 1000 });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.license, "by-sa");
+  assert.equal(results[0]?.licenseVersion, "3.0");
+  assert.equal(results[0]?.licenseUrl, "https://creativecommons.org/licenses/by-sa/3.0/");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
+
+test("rejects license URLs outside the canonical Creative Commons host", async () => {
+  const invalidLicenseUrls = [
+    "http://creativecommons.org.evil.example/licenses/by/4.0/",
+    "https://evil.example/creativecommons.org/licenses/by/4.0/",
+    "https://user:password@creativecommons.org/licenses/by/4.0/",
+    "ftp://creativecommons.org/licenses/by/4.0/"
+  ];
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: invalidLicenseUrls.map((licenseUrl, index) => ({
+        title: "File:Sony WH-1000XM5 Wireless Headphones " + index + ".jpg",
+        imageinfo: [{
+          thumburl: "https://upload.wikimedia.org/thumb-" + index + ".jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_" + index + ".jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY 4.0" },
+            LicenseUrl: { value: licenseUrl }
+          }
+        }]
+      }))
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
+});
