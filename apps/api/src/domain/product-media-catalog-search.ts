@@ -164,23 +164,24 @@ const openverseTokenCache = new Map<string, { accessToken: string; expiresAt: nu
 // Cloudflare challenges are network-level blocks, not credential failures. Avoid
 // repeating token/search requests for every product while the same egress IP is blocked.
 const OPENVERSE_CLOUDFLARE_COOLDOWN_MS = 15 * 60_000;
-let openverseCloudflareBlock: { error: OpenverseHttpError; expiresAt: number } | null = null;
+const openverseCloudflareBlocks = new WeakMap<typeof fetch, { error: OpenverseHttpError; expiresAt: number }>();
 
-const getOpenverseCloudflareBlock = (): OpenverseHttpError | null => {
-  if (!openverseCloudflareBlock) return null;
-  if (openverseCloudflareBlock.expiresAt <= Date.now()) {
-    openverseCloudflareBlock = null;
+const getOpenverseCloudflareBlock = (fetchImpl: typeof fetch): OpenverseHttpError | null => {
+  const blocked = openverseCloudflareBlocks.get(fetchImpl);
+  if (!blocked) return null;
+  if (blocked.expiresAt <= Date.now()) {
+    openverseCloudflareBlocks.delete(fetchImpl);
     return null;
   }
-  return openverseCloudflareBlock.error;
+  return blocked.error;
 };
 
-const rememberOpenverseCloudflareBlock = (error: OpenverseHttpError): void => {
+const rememberOpenverseCloudflareBlock = (fetchImpl: typeof fetch, error: OpenverseHttpError): void => {
   if (error.details.responseKind !== "cloudflare_html_challenge") return;
-  openverseCloudflareBlock = {
+  openverseCloudflareBlocks.set(fetchImpl, {
     error,
     expiresAt: Date.now() + OPENVERSE_CLOUDFLARE_COOLDOWN_MS
-  };
+  });
 };
 export type OpenverseFailureEndpoint = "token" | "search";
 export type OpenverseFailureResponseKind =
@@ -265,7 +266,7 @@ const getOpenverseAccessToken = async (
     });
     if (!response.ok) {
       const error = new OpenverseHttpError(classifyOpenverseHttpFailure("token", response));
-      rememberOpenverseCloudflareBlock(error);
+      rememberOpenverseCloudflareBlock(fetchImpl, error);
       throw error;
     }
     const payload = await response.json() as OpenverseTokenResponse;
@@ -303,10 +304,9 @@ export async function searchOpenverseProductMedia(
     throw new Error("Openverse client ID and client secret must be configured together.");
   }
 
-  const cloudflareBlock = getOpenverseCloudflareBlock();
-  if (cloudflareBlock) throw cloudflareBlock;
-
   const fetchImpl = options.fetchImpl ?? fetch;
+  const cloudflareBlock = getOpenverseCloudflareBlock(fetchImpl);
+  if (cloudflareBlock) throw cloudflareBlock;
   const accessToken = options.clientId && options.clientSecret
     ? await getOpenverseAccessToken(options.clientId, options.clientSecret, fetchImpl, options.timeoutMs ?? 8_000)
     : undefined;
