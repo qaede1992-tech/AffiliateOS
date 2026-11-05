@@ -88,7 +88,7 @@ test("preserves existing HTTPS URL assets without requesting a signed URL", asyn
 
 test("rejects credentialed URL assets before they reach a publisher", async () => {
   const credentialedAsset = { ...asset, source: "url" as const, reference: "https://user:password@images.example.com/image.jpg" };
-  await assert.rejects(resolvePublisherMediaAssets({ id: contentId }, [credentialedAsset]), /credential-free public HTTPS URL/);
+  await assert.rejects(resolvePublisherMediaAssets({ id: contentId }, [credentialedAsset]), /credential-free public HTTPS hostname/);
 });
 
 test("rejects IP-literal and local-only URL assets before they reach a publisher", async () => {
@@ -99,7 +99,7 @@ test("rejects IP-literal and local-only URL assets before they reach a publisher
   ]) {
     await assert.rejects(
       resolvePublisherMediaAssets({ id: contentId }, [{ ...asset, source: "url" as const, reference }]),
-      /credential-free public HTTPS URL/
+      /credential-free public HTTPS hostname/
     );
   }
 });
@@ -109,5 +109,5 @@ test("rejects a signed URL containing embedded credentials", async () => {
     bucketName: "affiliate-media",
     async createSignedUrl() { return "https://user:password@project.supabase.co/signed"; }
   };
-  await assert.rejects(resolvePublisherMediaAssets({ id: contentId }, [asset], storage), /credential-free public HTTPS URL/);
+  await assert.rejects(resolvePublisherMediaAssets({ id: contentId }, [asset], storage), /credential-free public HTTPS hostname/);
 });
