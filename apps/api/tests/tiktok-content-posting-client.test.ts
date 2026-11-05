@@ -97,6 +97,50 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
   assert.equal(calls[2]?.body?.byteLength, video.byteLength);
 });
 
+test("TikTok FILE_UPLOAD cancels its source stream when a provider chunk upload fails", async () => {
+  let sourceCancelled = false;
+  let firstChunkSent = false;
+  const source = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!firstChunkSent) {
+        firstChunkSent = true;
+        controller.enqueue(new Uint8Array(asset.byteSize).fill(7));
+      }
+    },
+    cancel() {
+      sourceCancelled = true;
+    }
+  });
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    mediaFetchImpl: async (_url, init, maxBytes) => {
+      assert.equal(init.method, "GET");
+      assert.equal(maxBytes, asset.byteSize);
+      return new Response(source, {
+        status: 200,
+        headers: { "content-length": String(asset.byteSize) }
+      });
+    },
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        return new Response(JSON.stringify({ data: { publish_id: "publish-cleanup-1", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      assert.equal(init?.method, "PUT");
+      return new Response("TikTok upload endpoint unavailable", { status: 502 });
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-cleanup-1" }),
+    /TikTok upload endpoint unavailable/
+  );
+  assert.equal(sourceCancelled, true);
+});
+
 test("TikTok client retains PULL_FROM_URL as an explicit compatibility mode", async () => {
   const calls: string[] = [];
   const client = new TikTokContentPostingClient({
