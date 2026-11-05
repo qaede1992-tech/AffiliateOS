@@ -159,6 +159,42 @@ interface OpenverseTokenResponse {
   expires_in?: unknown;
 }
 
+export interface OpenverseHttpFailureDetails {
+  endpoint: string;
+  status: number;
+  contentType: string | null;
+  server: string | null;
+  cloudflareRayPresent: boolean;
+  responseKind: "cloudflare_html" | "html" | "json" | "unknown";
+}
+
+class OpenverseHttpError extends Error {
+  readonly details: OpenverseHttpFailureDetails;
+
+  constructor(endpoint: string, response: Response) {
+    const contentType = response.headers.get("content-type")?.slice(0, 120) ?? null;
+    const server = response.headers.get("server")?.slice(0, 80) ?? null;
+    const cloudflareRayPresent = response.headers.has("cf-ray");
+    const isHtml = Boolean(contentType?.toLowerCase().includes("text/html"));
+    super(`Openverse request failed with HTTP ${response.status}.`);
+    this.name = "OpenverseHttpError";
+    this.details = {
+      endpoint,
+      status: response.status,
+      contentType,
+      server,
+      cloudflareRayPresent,
+      responseKind: isHtml && (cloudflareRayPresent || server?.toLowerCase().includes("cloudflare"))
+        ? "cloudflare_html"
+        : isHtml ? "html" : contentType?.toLowerCase().includes("json") ? "json" : "unknown"
+    };
+  }
+}
+
+/** Returns bounded transport metadata only; never includes response bodies or credentials. */
+export const getOpenverseHttpFailureDetails = (error: unknown): OpenverseHttpFailureDetails | null =>
+  error instanceof OpenverseHttpError ? error.details : null;
+
 const openverseTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
 
 const getOpenverseAccessToken = async (
@@ -184,7 +220,7 @@ const getOpenverseAccessToken = async (
       body,
       signal: controller.signal
     });
-    if (!response.ok) throw new Error(`Openverse authentication failed with HTTP ${response.status}.`);
+    if (!response.ok) throw new OpenverseHttpError("https://api.openverse.org/v1/auth_tokens/token/", response);
     const payload = await response.json() as OpenverseTokenResponse;
     if (typeof payload.access_token !== "string" || !payload.access_token.trim()) {
       throw new Error("Openverse authentication response did not contain an access token.");
@@ -245,7 +281,7 @@ export async function searchOpenverseProductMedia(
       },
       signal: controller.signal
     });
-    if (!response.ok) throw new Error(`Openverse search failed with HTTP ${response.status}.`);
+    if (!response.ok) throw new OpenverseHttpError("https://api.openverse.org/v1/images/", response);
     const payload = await response.json() as OpenverseResponse;
     if (!Array.isArray(payload.results)) return [];
 
