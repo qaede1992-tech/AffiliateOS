@@ -561,13 +561,6 @@
       "when": 1794050405026,
       "tag": "0083_pre_media_fk_and_duplicate_click_indexes",
       "breakpoints": true
-    },
-    {
-      "idx": 80,
-      "version": "7",
-      "when": 1794050405027,
-      "tag": "0084_enable_drizzle_migration_ledger_rls",
-      "breakpoints": true
     }
   ]
 }
