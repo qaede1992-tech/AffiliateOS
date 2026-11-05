@@ -333,7 +333,7 @@ export async function searchOpenverseProductMedia(
     });
     if (!response.ok) {
       const error = new OpenverseHttpError(classifyOpenverseHttpFailure("search", response));
-      rememberOpenverseCloudflareBlock(error);
+      rememberOpenverseCloudflareBlock(fetchImpl, error);
       throw error;
     }
     const payload = await response.json() as OpenverseResponse;
