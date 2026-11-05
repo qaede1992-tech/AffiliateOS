@@ -144,6 +144,10 @@ function requestOnce(
       });
       incoming.on("error", (error) => limiter.destroy(error));
       incoming.pipe(limiter);
+      // A cancelled downstream stream must also close the upstream HTTP request.
+      limiter.on("close", () => {
+        if (!incoming.complete && !request.destroyed) request.destroy();
+      });
       const body = Readable.toWeb(limiter) as ReadableStream<Uint8Array>;
       const headers = new Headers();
       for (const [name, value] of Object.entries(incoming.headers)) {
