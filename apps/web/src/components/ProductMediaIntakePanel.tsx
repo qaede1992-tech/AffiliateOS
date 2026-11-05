@@ -22,7 +22,7 @@ export function ProductMediaIntakePanel() {
       setProducts(response.data);
       setSelectedId((current) => current && response.data.some((product) => product.id === current)
         ? current
-        : response.data.find((product) => !product.imageUrl || !product.videoUrl)?.id ?? response.data[0]?.id ?? "");
+        : response.data.find((product) => !product.imageUrl && !product.videoUrl)?.id ?? response.data[0]?.id ?? "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Daftar produk tidak dapat dimuat.");
     } finally {
@@ -83,7 +83,7 @@ export function ProductMediaIntakePanel() {
       setImageUrl(updated.imageUrl ?? "");
       setVideoUrl(updated.videoUrl ?? "");
       setRightsConfirmed(false);
-      setNotice("URL media tersimpan. Media akan divalidasi dan di-ingest ketika produk lolos seleksi awal autonomous.");
+      setNotice("URL media tersimpan. Konfirmasi hak penggunaan belum tercatat sebagai audit dan media belum dianggap terverifikasi untuk publikasi.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "URL media gagal disimpan.");
     } finally {
@@ -117,15 +117,15 @@ export function ProductMediaIntakePanel() {
             <input id="product-media-video" type="url" inputMode="url" placeholder="https://cdn.example.com/product-video.mp4" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} />
             <label className="media-rights-confirmation">
               <input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} />
-              Saya memiliki izin/hak untuk menggunakan media ini dalam konten promosi affiliate.
+              Saya memiliki izin/hak untuk menggunakan media ini. Konfirmasi ini hanya berlaku pada formulir dan belum disimpan sebagai bukti audit.
             </label>
             <button type="button" onClick={() => void saveMedia()} disabled={saving || !rightsConfirmed}>{saving ? "Menyimpan…" : "Simpan URL media"}</button>
           </>}
         </div>
       )}
       {error && <div className="shopee-import-error" role="alert"><strong>Media belum tersimpan</strong><p>{error}</p></div>}
-      {notice && <div className="shopee-import-success" role="status"><strong>Berhasil</strong><p>{notice}</p></div>}
-      <p className="shopee-import-note">AffiliateOS tidak mengambil gambar/video dari HTML halaman Shopee. URL yang dimasukkan akan diperiksa saat proses media discovery; konten hanya dibuat setelah produk lolos seleksi akhir dan media siap digunakan.</p>
+      {notice && <div className="shopee-import-success" role="status"><strong>URL tersimpan</strong><p>{notice}</p></div>}
+      <p className="shopee-import-note">Penting: API saat ini hanya menyimpan URL gambar/video; konfirmasi pada checkbox tidak dikirim atau disimpan sebagai catatan hak penggunaan. Karena itu, konfirmasi tersebut bukan verifikasi hak dan tidak boleh dianggap sebagai persetujuan publikasi. AffiliateOS tidak mengambil gambar/video dari HTML halaman Shopee. URL yang dimasukkan akan diperiksa saat proses media discovery; konten hanya dibuat setelah produk lolos seleksi akhir dan media siap digunakan.</p>
       <button type="button" className="secondary-button" onClick={() => void loadProducts()} disabled={loading || saving}>Muat ulang katalog</button>
     </article>
   );
