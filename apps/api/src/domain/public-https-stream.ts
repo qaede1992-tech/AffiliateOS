@@ -38,6 +38,7 @@ function isPublicAddress(address: string): boolean {
   if (normalized.startsWith("2001:0:") || normalized.startsWith("2001:2:") ||
       normalized.startsWith("2001:10:") || normalized.startsWith("2001:20:")) return false;
   if (normalized.startsWith("2002:")) return false;
+  return true;
 }
 
 function validateUrl(raw: string): URL {
