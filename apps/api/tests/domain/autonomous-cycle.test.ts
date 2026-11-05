@@ -142,7 +142,7 @@ describe("autonomous cycle", () => {
       }
     };
     const evidenceRepository = {
-      async saveMany() { throw new Error("Failed query: INSERT INTO evidence VALUES ($1); params: private-product-data-marker"); },
+      async saveMany() { const error = new Error("Failed query: INSERT INTO evidence VALUES ($1); params: private-product-data-marker"); error.name = "Error; INSERT INTO private_error_log"; throw error; },
       async listLatestByProduct() { return []; }
     };
 
