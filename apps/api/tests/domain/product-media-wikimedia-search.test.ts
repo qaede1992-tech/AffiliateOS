@@ -345,3 +345,33 @@ test("rejects a honey-category wildlife image that does not identify the honey p
 
   assert.deepEqual(results, []);
 });
+
+test("maps representative Shopee product titles to concise category discovery queries", () => {
+  const cases: Array<[string, string]> = [
+    ["Unisex Premium Sweater Half Zipper Fleece", "clothing and fashion accessories"],
+    ["Aksesoris Mobil Jaring Taruh Hp Rapi Dan Kuat", "automotive accessories"],
+    ["Lepet Filter Gantung Aquascape XP06 Free Batu", "aquarium equipment"],
+    ["Ternak Syams Goata Base Susu Kambing Etawa Bubuk", "milk powder"],
+    ["Flimeal Meal Replacement Coklat Susu", "dietary supplement product"],
+    ["Teh Tjap Solo Jumbo Teh Tubruk", "tea and coffee"],
+    ["GOGOMART Sikat Sepatu Multifungsi", "shoe cleaning brush"],
+    ["Masker Duckbill Isi 50pcs Facemask", "protective face mask"],
+    ["Tisu Wajah 3 Ply", "facial tissue"],
+    ["JOODUTP Filter Kran Air Kain", "water faucet filter"],
+    ["Kahf Antiperspirant Deodorant Roll On", "deodorant"],
+    ["RINSO Cair Anti Noda", "household cleaning products"],
+    ["Scarlite Perfume Unisex", "perfume bottle"],
+    ["Hanasui Mattedorable Lipstick", "cosmetics and skincare"],
+    ["INVEN Bulu Mata Tanpa Lem", "false eyelashes"],
+    ["Rak Penyimpanan Serbaguna Plastik", "household storage rack"],
+    ["Keset Lantai Motif Karakter", "floor mat"],
+    ["MamyPoko Pants Diaper", "baby diaper"],
+    ["Joyko Permanent Marker Dual Tip", "permanent marker pen"],
+    ["Shampo Makarizo Sachet", "shampoo bottle"],
+    ["HAN RIVER Kipas Angin 3in1", "electric fan"],
+    ["Dapurmanja Panci Masak Stainless Steel", "cookware"]
+  ];
+  for (const [name, expected] of cases) {
+    assert.deepEqual(buildWikimediaCommonsQueries({ name }), [expected], name);
+  }
+});
