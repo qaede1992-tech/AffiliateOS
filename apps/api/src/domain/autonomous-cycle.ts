@@ -35,6 +35,11 @@ export type AutonomousCycleResult = {
 
 export type AutonomousCycleSkipReason = "already_running" | "lock_busy";
 
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 const classifyMediaSkipReason = (reason: string): string => {
   const normalized = reason.toLowerCase();
   if (normalized.includes("shopee product-page media extraction is disabled")) return "shopee_catalog_media_missing";
@@ -192,7 +197,7 @@ export class AutonomousCycleService {
             console.warn(JSON.stringify({
               event: "autonomous_pre_media_eligibility_persist_failed",
               evidenceCount: evidence.length,
-              errorType: error instanceof Error ? error.name : typeof error
+              errorType: safeErrorType(error)
             }));
             // The evidence is the audit record that authorizes the later admin-reviewed
             // media-import workflow. Do not continue selection/discovery without it.
@@ -227,7 +232,7 @@ export class AutonomousCycleService {
             console.warn(JSON.stringify({
               event: "autonomous_product_media_discovery_failed",
               productId: candidate.product.id,
-              errorType: error instanceof Error ? error.name : typeof error
+              errorType: safeErrorType(error)
             }));
           }
         }
@@ -239,7 +244,7 @@ export class AutonomousCycleService {
           mediaIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_media_index_failed",
-            errorType: error instanceof Error ? error.name : typeof error
+            errorType: safeErrorType(error)
           }));
         }
         try {
@@ -256,7 +261,7 @@ export class AutonomousCycleService {
           videoIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_video_index_failed",
-            errorType: error instanceof Error ? error.name : typeof error
+            errorType: safeErrorType(error)
           }));
         }
 
@@ -264,7 +269,7 @@ export class AutonomousCycleService {
           mediaReadinessScores = await this.productMediaDiscovery.listMediaReadinessScores(productIds, input.platforms);
         } catch (error) {
           mediaReadinessScores = Object.fromEntries(productIds.map((id) => [id, 0]));
-          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", errorType: error instanceof Error ? error.name : typeof error }));
+          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", errorType: safeErrorType(error) }));
         }
 
         // Pass 2: final affiliate selection. It requires verified, persisted product media,
@@ -301,7 +306,7 @@ export class AutonomousCycleService {
             console.warn(JSON.stringify({
               event: "autonomous_product_promo_video_failed",
               productId: candidate.product.id,
-              errorType: error instanceof Error ? error.name : typeof error
+              errorType: safeErrorType(error)
             }));
           }
         }
@@ -311,7 +316,7 @@ export class AutonomousCycleService {
           videoIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_video_index_failed",
-            errorType: error instanceof Error ? error.name : typeof error
+            errorType: safeErrorType(error)
           }));
         }
         console.info(JSON.stringify({
