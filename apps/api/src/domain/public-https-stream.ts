@@ -90,6 +90,8 @@ function requestOnce(
       port: url.port || 443,
       path: url.pathname + url.search,
       method,
+      // Prevent shared keep-alive sockets from bypassing this request's validated DNS lookup.
+      agent: false,
       servername: url.hostname,
       headers: { "user-agent": "AffiliateOS TikTok media transfer", accept: "*/*" },
       lookup: (_hostname, lookupOptions, callback) => {
