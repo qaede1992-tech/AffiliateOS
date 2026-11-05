@@ -31,13 +31,13 @@ function isPublicAddress(address: string): boolean {
   }
   if (family !== 6) return false;
   const normalized = address.toLowerCase();
-  return /^[23]/.test(normalized) &&
-    !normalized.startsWith("2001:db8:") &&
-    !normalized.startsWith("2001:0:") &&
-    !normalized.startsWith("2001:2:") &&
-    !normalized.startsWith("2001:10:") &&
-    !normalized.startsWith("2001:20:") &&
-    !normalized.startsWith("2002:");
+  // Allow only global-unicast 2000::/3; reject documentation, transition,
+  // benchmarking, and other special-use IPv6 ranges.
+  if (!/^[23]/.test(normalized)) return false;
+  if (normalized.startsWith("2001:db8:") || normalized === "2001:db8") return false;
+  if (normalized.startsWith("2001:0:") || normalized.startsWith("2001:2:") ||
+      normalized.startsWith("2001:10:") || normalized.startsWith("2001:20:")) return false;
+  if (normalized.startsWith("2002:")) return false;
 }
 
 function validateUrl(raw: string): URL {
@@ -130,7 +130,12 @@ function requestOnce(
       incoming.on("error", (error) => limiter.destroy(error));
       incoming.pipe(limiter);
       const body = Readable.toWeb(limiter) as ReadableStream<Uint8Array>;
-      resolve(new Response(body, { status, headers: incoming.headers as HeadersInit }));
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (typeof value === "string") headers.set(name, value);
+        else if (Array.isArray(value)) headers.set(name, value.join(", "));
+      }
+      resolve(new Response(body, { status, headers }));
     });
     request.setTimeout(timeoutMs, () => request.destroy(new Error("TikTok media source request timed out.")));
     request.on("error", reject);
