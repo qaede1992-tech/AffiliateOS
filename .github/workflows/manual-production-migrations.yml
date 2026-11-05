@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      confirm_backup_completed:
+        description: "Confirm that a fresh, restorable Production backup has been completed and verified"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,10 +24,10 @@ concurrency:
 
 jobs:
   migrate:
-    if: ${{ inputs.confirm_production_migration == true }}
+    if: ${{ inputs.confirm_production_migration == true && inputs.confirm_backup_completed == true }}
     runs-on: ubuntu-latest
     environment: production-migrations
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -63,11 +68,11 @@ jobs:
           PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
           set -euo pipefail
-          # The URL is supplied only as a protected GitHub Environment secret.
+          # The owner connection is supplied only as a protected GitHub Environment secret.
           printf 'DATABASE_URL=%s\n' "$PRODUCTION_DATABASE_URL" > .env
           chmod 600 .env
 
-      - name: Verify expected pre-migration state (read-only)
+      - name: Verify exact pre-migration state and migration privileges (read-only)
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
@@ -78,25 +83,133 @@ jobs:
           import { Client } from "pg";
 
           const journal = JSON.parse(await readFile("apps/api/drizzle/meta/_journal.json", "utf8"));
-          const reconciliation = journal.entries.find((entry) => entry.tag === "0059_reconcile_missing_tiktok_and_content_products");
-          const target = journal.entries.find((entry) => entry.tag === "0060_test_data_retention_markers");
-          assert.ok(reconciliation, "Expected reconciliation migration 0059 in the checked-out journal");
-          assert.ok(target, "Expected target migration 0060 in the checked-out journal");
+          const expectedTags = [
+            "0075_product_media_rights_audit_search_path",
+            "0076_product_media_candidates",
+            "0077_product_media_source_provenance",
+            "0078_product_media_candidate_review_audit",
+            "0079_product_media_candidate_asset_idempotency",
+            "0080_product_media_asset_candidate_foreign_key",
+            "0081_pre_media_eligibility_evidence",
+            "0082_product_media_candidate_review_audit_append_only",
+            "0083_pre_media_fk_and_duplicate_click_indexes"
+          ];
+          const byTag = new Map(journal.entries.map((entry) => [entry.tag, entry]));
+          for (const tag of expectedTags) assert.ok(byTag.has(tag), "Missing expected journal entry " + tag);
+          assert.equal(journal.entries.at(-1).tag, "0083_pre_media_fk_and_duplicate_click_indexes", "This workflow only applies through migration 0083; update the workflow before adding later migrations.");
 
           const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
           await client.connect();
           try {
             await client.query("SET default_transaction_read_only = on");
-            const identity = await client.query("SELECT current_database() AS database");
-            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Connected database name differs from the protected production database name; refusing migration");
-            const { rows } = await client.query(
-              'SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC'
+            const identity = await client.query(`
+              SELECT current_database() AS database,
+                     current_user AS role,
+                     r.rolbypassrls AS role_bypasses_rls,
+                     pg_get_userbyid(c.relowner) AS ledger_owner,
+                     c.relrowsecurity AS ledger_rls_enabled,
+                     c.relforcerowsecurity AS ledger_force_rls,
+                     has_table_privilege(current_user, c.oid, 'SELECT') AS ledger_select,
+                     has_table_privilege(current_user, c.oid, 'INSERT') AS ledger_insert,
+                     has_table_privilege(current_user, c.oid, 'UPDATE') AS ledger_update,
+                     has_table_privilege(current_user, c.oid, 'DELETE') AS ledger_delete
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_roles r ON r.rolname = current_user
+               WHERE n.nspname = 'drizzle' AND c.relname = '__drizzle_migrations'
+            `);
+            assert.equal(identity.rows.length, 1, "Drizzle migration ledger is missing; manual investigation required.");
+            const role = identity.rows[0];
+            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Connected to an unexpected database.");
+            assert.equal(role.role, role.ledger_owner, "Migration connection must own the Drizzle ledger; runtime credentials are not accepted.");
+            assert.equal(role.role_bypasses_rls, true, "Migration owner must retain BYPASSRLS.");
+            assert.equal(role.ledger_select && role.ledger_insert && role.ledger_update && role.ledger_delete, true, "Migration owner lacks required ledger privileges.");
+            assert.equal(role.ledger_rls_enabled, false, "Unexpected Drizzle ledger RLS state; investigate before proceeding.");
+            assert.equal(role.ledger_force_rls, false, "Unexpected FORCE RLS state; investigate before proceeding.");
+
+            const ledger = await client.query('SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC');
+            const timestamps = new Set(ledger.rows.map((row) => Number(row.created_at)));
+            const latestTimestamp = Math.max(...timestamps);
+            const boundaryTimestamp = Number(byTag.get("0075_product_media_rights_audit_search_path").when);
+            assert.ok(timestamps.has(boundaryTimestamp), "Migration 0075 is not recorded.");
+            assert.equal(latestTimestamp, boundaryTimestamp, "Production ledger is not at the expected 0075 boundary.");
+            const expectedHistoricalGaps = [
+              "0056_tiktok_publication_approval_and_media_duration",
+              "0057_content_products_multi_product_story"
+            ];
+            const missingPrefixTags = journal.entries
+              .filter((entry) => Number(entry.when) <= boundaryTimestamp && !timestamps.has(Number(entry.when)))
+              .map((entry) => entry.tag)
+              .sort();
+            assert.deepEqual(
+              missingPrefixTags,
+              expectedHistoricalGaps.slice().sort(),
+              "Production ledger has unexpected historical gaps before migration 0076."
             );
-            const timestamps = rows.map((row) => Number(row.created_at));
-            assert.ok(timestamps.includes(Number(reconciliation.when)), "Migration 0059 is not recorded; refusing automatic migration");
-            assert.ok(!timestamps.includes(Number(target.when)), "Migration 0060 is already recorded; refusing an unexpected state");
-            assert.equal(Math.max(...timestamps), Number(reconciliation.when), "Unexpected pending/history state; manual investigation required");
-            console.log("Pre-migration ledger state is exactly as expected: 0059 recorded, 0060 absent, no later ledger entry.");
+            assert.equal(ledger.rows.length, 70, "Production ledger row count differs from the audited 0075 boundary.");
+            for (const tag of expectedTags.slice(1)) {
+              assert.ok(!timestamps.has(Number(byTag.get(tag).when)), "Migration " + tag + " is already recorded; inspect the current state instead of replaying this workflow.");
+            }
+
+            const schema = await client.query(`
+              SELECT
+                to_regclass('public.product_media_candidates') IS NOT NULL AS has_candidates,
+                to_regclass('public.product_media_candidate_review_audits') IS NULL AS review_audits_missing,
+                to_regclass('public.pre_media_eligibility_evidence') IS NULL AS evidence_missing,
+                (SELECT count(*) = 0 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'product_media_assets'
+                    AND column_name IN ('source_provider','source_candidate_id','source_landing_page_url','source_title','source_query','source_creator','source_creator_url','source_license','source_license_version','source_license_url')) AS provenance_columns_missing,
+                (SELECT count(*) = 0 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'product_media_candidates'
+                    AND column_name IN ('reviewed_by','reviewed_at','review_reason')) AS candidate_review_columns_missing,
+                to_regclass('public.product_media_assets_source_candidate_unique') IS NULL AS source_candidate_index_missing,
+                NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'public.product_media_assets'::regclass
+                    AND conname = 'product_media_assets_source_candidate_fk') AS source_candidate_fk_missing,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_link_occurred_idx') AS duplicate_click_index_present,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_link_idempotency_unique') AS duplicate_idempotency_index_present,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_tracking_link_occurred_idx') AS canonical_click_index_present,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_tracking_link_idempotency_unique') AS canonical_idempotency_index_present,
+                NOT EXISTS (
+                  SELECT 1
+                    FROM pg_constraint constraint_row
+                    JOIN pg_class index_row ON index_row.oid = constraint_row.conindid
+                   WHERE index_row.relname IN ('clicks_link_occurred_idx','clicks_link_idempotency_unique')
+                ) AS duplicate_click_indexes_not_constraint_backed
+            `);
+            const state = schema.rows[0];
+            assert.equal(state.has_candidates, true, "Expected the idempotent 0076 candidate table to exist already.");
+            assert.equal(state.review_audits_missing, true, "Review audit table already exists; inspect before applying.");
+            assert.equal(state.evidence_missing, true, "Pre-media evidence table already exists; inspect before applying.");
+            assert.equal(state.provenance_columns_missing, true, "0077 provenance columns are partially or fully present; inspect before applying.");
+            assert.equal(state.candidate_review_columns_missing, true, "Candidate review columns already exist; inspect before applying.");
+            assert.equal(state.source_candidate_index_missing, true, "0079 index already exists; inspect before applying.");
+            assert.equal(state.source_candidate_fk_missing, true, "0080 foreign key already exists; inspect before applying.");
+            assert.equal(state.duplicate_click_index_present, true, "Expected duplicate click index is missing; inspect before applying.");
+            assert.equal(state.duplicate_idempotency_index_present, true, "Expected duplicate idempotency index is missing; inspect before applying.");
+            assert.equal(state.canonical_click_index_present, true, "Canonical click index is missing; refusing to drop duplicates.");
+            assert.equal(state.canonical_idempotency_index_present, true, "Canonical idempotency index is missing; refusing to drop duplicates.");
+            assert.equal(state.duplicate_click_indexes_not_constraint_backed, true, "A duplicate click index is constraint-backed; refusing to drop it.");
+
+            const candidateTable = await client.query(`
+              SELECT c.relrowsecurity, c.relforcerowsecurity,
+                     pg_get_userbyid(c.relowner) AS owner,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'SELECT') AS runtime_select,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'INSERT') AS runtime_insert,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'UPDATE') AS runtime_update,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'DELETE') AS runtime_delete,
+                     has_table_privilege('anon', c.oid, 'SELECT') AS anon_select,
+                     has_table_privilege('authenticated', c.oid, 'SELECT') AS authenticated_select
+                FROM pg_class c
+               WHERE c.oid = 'public.product_media_candidates'::regclass
+            `);
+            const candidate = candidateTable.rows[0];
+            assert.equal(candidate.relrowsecurity, true, "Existing candidate table must keep RLS enabled.");
+            assert.equal(candidate.relforcerowsecurity, false, "Existing candidate table must not FORCE RLS.");
+            assert.equal(candidate.owner, "postgres", "Unexpected owner on the existing candidate table.");
+            assert.equal(candidate.runtime_select && candidate.runtime_insert && candidate.runtime_update && candidate.runtime_delete, true, "Runtime candidate permissions differ from the expected 0076 contract.");
+            assert.equal(candidate.anon_select || candidate.authenticated_select, false, "Public roles must not read candidate records.");
+            console.log("Production pre-migration boundary and owner connection verified. No database changes were made.");
           } finally {
             await client.end();
           }
@@ -105,53 +218,129 @@ jobs:
       - name: Check migration files and journal
         run: npm run db:check
 
-      - name: Apply pending migrations
+      - name: Apply pending migrations 0076 through 0083
         run: npm run db:migrate
 
-      - name: Verify applied production schema and migration ledger
+      - name: Verify applied Production schema and migration ledger
         run: npm run db:verify:applied
 
-      - name: Verify test-data retention columns and indexes
+      - name: Verify media schema, rights gates, indexes, and append-only grants
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
         run: |
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
+          import { readFile } from "node:fs/promises";
           import { Client } from "pg";
 
+          const journal = JSON.parse(await readFile("apps/api/drizzle/meta/_journal.json", "utf8"));
+          const expectedTags = [
+            "0075_product_media_rights_audit_search_path",
+            "0076_product_media_candidates",
+            "0077_product_media_source_provenance",
+            "0078_product_media_candidate_review_audit",
+            "0079_product_media_candidate_asset_idempotency",
+            "0080_product_media_asset_candidate_foreign_key",
+            "0081_pre_media_eligibility_evidence",
+            "0082_product_media_candidate_review_audit_append_only",
+            "0083_pre_media_fk_and_duplicate_click_indexes"
+          ];
+          const byTag = new Map(journal.entries.map((entry) => [entry.tag, entry]));
           const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
           await client.connect();
           try {
             await client.query("SET default_transaction_read_only = on");
-            const identity = await client.query("SELECT current_database() AS database");
-            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Post-migration connection reached an unexpected database");
-            const columns = await client.query(
-              "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('campaigns', 'is_test'), ('autonomous_runs', 'is_test'))"
-            );
-            const actualColumns = new Map(columns.rows.map((row) => [`${row.table_name}.${row.column_name}`, row]));
-            for (const key of ["campaigns.is_test", "autonomous_runs.is_test"]) {
-              const column = actualColumns.get(key);
-              assert.ok(column, `Missing required column ${key}`);
-              assert.equal(column.data_type, "boolean", `${key} must be boolean`);
-              assert.equal(column.is_nullable, "NO", `${key} must be NOT NULL`);
-              assert.match(column.column_default ?? "", /^false(?:::boolean)?$/i, `${key} must default to false`);
+            const identity = await client.query("SELECT current_database() AS database, current_user AS role");
+            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Post-migration connection reached an unexpected database.");
+
+            const ledger = await client.query('SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC');
+            const timestamps = new Set(ledger.rows.map((row) => Number(row.created_at)));
+            for (const tag of expectedTags) {
+              assert.ok(timestamps.has(Number(byTag.get(tag).when)), "Missing applied migration " + tag);
+            }
+            assert.equal(Math.max(...timestamps), Number(byTag.get("0083_pre_media_fk_and_duplicate_click_indexes").when), "Expected Production ledger to end exactly at 0083.");
+
+            const schema = await client.query(`
+              SELECT
+                to_regclass('public.product_media_candidates') IS NOT NULL AS has_candidates,
+                to_regclass('public.product_media_candidate_review_audits') IS NOT NULL AS has_review_audits,
+                to_regclass('public.pre_media_eligibility_evidence') IS NOT NULL AS has_evidence,
+                (SELECT count(*) = 10 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'pre_media_eligibility_evidence'
+                    AND column_name IN ('id','cycle_id','product_id','marketplace_id','offer_id','eligible','score','policy','reasons','created_at')) AS evidence_columns_complete,
+                (SELECT count(*) = 10 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'product_media_candidate_review_audits'
+                    AND column_name IN ('id','candidate_id','product_id','actor_id','actor_role','action','reason','previous_status','new_status','created_at')) AS review_audit_columns_complete,
+                (SELECT count(*) = 3 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'product_media_candidates'
+                    AND column_name IN ('reviewed_by','reviewed_at','review_reason')) AS candidate_review_columns_complete,
+                (SELECT count(*) = 10 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'product_media_assets'
+                    AND column_name IN ('source_provider','source_candidate_id','source_landing_page_url','source_title','source_query','source_creator','source_creator_url','source_license','source_license_version','source_license_url')) AS provenance_columns_complete,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='product_media_assets_source_candidate_unique') AS source_candidate_index_present,
+                EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.product_media_assets'::regclass AND conname='product_media_assets_source_candidate_fk' AND contype='f' AND confdeltype='n' AND convalidated) AS source_candidate_fk_validated,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='pre_media_eligibility_product_created_idx') AS evidence_product_index_present,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='pre_media_eligibility_cycle_idx') AS evidence_cycle_index_present,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='pre_media_eligibility_marketplace_idx') AS evidence_marketplace_index_present,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='pre_media_eligibility_offer_idx') AS evidence_offer_index_present,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='clicks_link_occurred_idx') AS duplicate_click_index_remains,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='clicks_link_idempotency_unique') AS duplicate_idempotency_index_remains,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='clicks_tracking_link_occurred_idx') AS canonical_click_index_remains,
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='clicks_tracking_link_idempotency_unique') AS canonical_idempotency_index_remains
+            `);
+            const state = schema.rows[0];
+            for (const key of [
+              "has_candidates","has_review_audits","has_evidence","evidence_columns_complete",
+              "review_audit_columns_complete","candidate_review_columns_complete","provenance_columns_complete",
+              "source_candidate_index_present","source_candidate_fk_validated","evidence_product_index_present",
+              "evidence_cycle_index_present","evidence_marketplace_index_present","evidence_offer_index_present",
+              "canonical_click_index_remains","canonical_idempotency_index_remains"
+            ]) assert.equal(state[key], true, "Production schema verification failed: " + key);
+            assert.equal(state.duplicate_click_index_remains, false, "Duplicate click index was not removed.");
+            assert.equal(state.duplicate_idempotency_index_remains, false, "Duplicate idempotency index was not removed.");
+
+            const policies = await client.query(`
+              SELECT tablename, policyname, roles, cmd
+                FROM pg_policies
+               WHERE schemaname = 'public'
+                 AND tablename IN ('pre_media_eligibility_evidence','product_media_candidate_review_audits')
+            `);
+            assert.equal(policies.rows.length, 2, "Expected one runtime policy on each append-only media table.");
+            for (const row of policies.rows) {
+              assert.equal(row.policyname, "affiliateos_runtime_access", row.tablename + " has an unexpected RLS policy.");
+              assert.equal(row.cmd, "ALL", row.tablename + " policy must cover all commands.");
+              assert.ok(row.roles.includes("affiliateos_runtime"), row.tablename + " policy must target affiliateos_runtime.");
             }
 
-            const indexes = await client.query(
-              "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('campaigns_test_created_idx', 'autonomous_runs_test_created_idx')"
-            );
-            const actualIndexes = new Map(indexes.rows.map((row) => [row.indexname, row.indexdef.toLowerCase().replace(/\s+/g, " ")]));
-            for (const [name, table] of [["campaigns_test_created_idx", "campaigns"], ["autonomous_runs_test_created_idx", "autonomous_runs"]]) {
-              const definition = actualIndexes.get(name);
-              assert.ok(definition, `Missing required index ${name}`);
-              assert.ok(definition.includes(`on public.${table} using btree (is_test, created_at)`), `Index ${name} has an unexpected definition`);
+            const rights = await client.query(`
+              SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'SELECT') AS runtime_select,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'INSERT') AS runtime_insert,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'UPDATE') AS runtime_update,
+                     has_table_privilege('affiliateos_runtime', c.oid, 'DELETE') AS runtime_delete,
+                     has_table_privilege('anon', c.oid, 'SELECT') AS anon_select,
+                     has_table_privilege('authenticated', c.oid, 'SELECT') AS authenticated_select
+                FROM pg_class c
+               WHERE c.oid IN ('public.pre_media_eligibility_evidence'::regclass,
+                               'public.product_media_candidate_review_audits'::regclass)
+            `);
+            assert.equal(rights.rows.length, 2);
+            for (const row of rights.rows) {
+              assert.equal(row.relrowsecurity, true, row.relname + " must have RLS enabled.");
+              assert.equal(row.relforcerowsecurity, false, row.relname + " must not FORCE RLS.");
+              assert.equal(row.runtime_select && row.runtime_insert, true, row.relname + " must allow runtime SELECT/INSERT.");
+              assert.equal(row.runtime_update || row.runtime_delete, false, row.relname + " must remain append-only for runtime.");
+              assert.equal(row.anon_select || row.authenticated_select, false, row.relname + " must not be accessible to public roles.");
             }
-            console.log("Migration 0060 schema verified: both boolean markers and both expected indexes exist.");
+            console.log("Production migration 0076-0083 verified: schema, migration ledger, FK, indexes, RLS, and append-only runtime grants are correct.");
           } finally {
             await client.end();
           }
           NODE
+
+      - name: Confirm the migration runner can read the completed ledger
+        run: npm run db:migrate
 
       - name: Remove temporary environment file
         if: always()
