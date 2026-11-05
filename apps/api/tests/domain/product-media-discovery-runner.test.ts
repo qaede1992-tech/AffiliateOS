@@ -432,3 +432,50 @@ test("counts duplicate catalog candidates as discovered without reporting them a
     console.info = originalInfo;
   }
 });
+
+
+test("does not expose catalog persistence errors in discovery logs or skipped results", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warnings: string[] = [];
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Cat food bag.jpg",
+        imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/c/c1/cat-food.jpg",
+          thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/cat-food.jpg/800px-cat-food.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_food_bag.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC0" },
+            LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+            Artist: { value: "Example creator" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  console.warn = (message?: unknown) => { warnings.push(String(message)); };
+  try {
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      { async saveMany() { throw new Error("insert into product_media_candidates values ($1) -- private-media-index-marker"); } },
+      { fetchImpl: (async () => new Response("{}", { status: 403 })) as typeof fetch }
+    );
+    const result = await runner.discover({
+      ...product,
+      name: "cat food",
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+    assert.equal(result.candidatesFound, 0);
+    assert.ok(result.skipped.some((item) => item.reason === "catalog_discovery_failed"));
+    assert.doesNotMatch(JSON.stringify(result) + warnings.join("\\n"), /insert into|private-media-index-marker|\\$1/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
