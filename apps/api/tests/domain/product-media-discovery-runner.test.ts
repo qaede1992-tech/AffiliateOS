@@ -473,7 +473,7 @@ test("does not expose catalog persistence errors in discovery logs or skipped re
     }, true);
     assert.equal(result.candidatesFound, 0);
     assert.ok(result.skipped.some((item) => item.reason === "catalog_discovery_failed"));
-    assert.doesNotMatch(JSON.stringify(result) + warnings.join("\\n"), /insert into|private-media-index-marker|\\$1/);
+    assert.doesNotMatch(JSON.stringify(result) + warnings.join("\n"), /insert into|private-media-index-marker|\$1/);
   } finally {
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
