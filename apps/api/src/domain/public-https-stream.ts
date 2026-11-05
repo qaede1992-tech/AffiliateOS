@@ -34,9 +34,17 @@ function isPublicAddress(address: string): boolean {
   // Allow only global-unicast 2000::/3; reject documentation, transition,
   // benchmarking, and other special-use IPv6 ranges.
   if (!/^[23]/.test(normalized)) return false;
+  // IANA marks 2001::/23 as non-globally-reachable except for a few
+  // narrowly allocated anycast/protocol prefixes. Media origins should not
+  // resolve into that special-purpose block.
+  if (normalized.startsWith("2001:")) {
+    const secondHextet = normalized.split(":")[1] ?? "";
+    const secondValue = secondHextet ? Number.parseInt(secondHextet, 16) : 0;
+    if (Number.isFinite(secondValue) && secondValue < 0x0200) return false;
+  }
+  // 3fff::/20 is the current IPv6 documentation prefix.
+  if (normalized.startsWith("3fff:") || normalized === "3fff") return false;
   if (normalized.startsWith("2001:db8:") || normalized === "2001:db8") return false;
-  if (normalized.startsWith("2001:0:") || normalized.startsWith("2001:2:") ||
-      normalized.startsWith("2001:10:") || normalized.startsWith("2001:20:")) return false;
   if (normalized.startsWith("2002:")) return false;
   return true;
 }
