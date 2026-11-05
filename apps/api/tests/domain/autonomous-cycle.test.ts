@@ -146,11 +146,29 @@ describe("autonomous cycle", () => {
       async listLatestByProduct() { return []; }
     };
 
+    let lockHeld = false;
+    let acquireCount = 0;
+    let releaseCount = 0;
+    const lock: AutonomousCycleLock = {
+      async tryAcquire(key) {
+        assert.equal(key, "pre-media-evidence");
+        if (lockHeld) return false;
+        lockHeld = true;
+        acquireCount += 1;
+        return true;
+      },
+      async release(key) {
+        assert.equal(key, "pre-media-evidence");
+        assert.equal(lockHeld, true);
+        lockHeld = false;
+        releaseCount += 1;
+      }
+    };
     const service = new AutonomousCycleService(
       provider,
       execution,
-      undefined,
-      undefined,
+      lock,
+      "pre-media-evidence",
       undefined,
       undefined,
       discovery as never,
@@ -161,6 +179,21 @@ describe("autonomous cycle", () => {
       () => service.runOnce({ publicationEnabled: false }),
       /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
     );
+    assert.equal(discoveryCalls, 0);
+    assert.equal(executionCalls, 0);
+    assert.equal(acquireCount, 1);
+    assert.equal(releaseCount, 1);
+    assert.equal(lockHeld, false);
+
+    // A second attempt must acquire the same lock again rather than remain stuck
+    // behind a lock leaked by the failed evidence persistence.
+    await assert.rejects(
+      () => service.runOnce({ publicationEnabled: false }),
+      /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
+    );
+    assert.equal(acquireCount, 2);
+    assert.equal(releaseCount, 2);
+    assert.equal(lockHeld, false);
     assert.equal(discoveryCalls, 0);
     assert.equal(executionCalls, 0);
   });
