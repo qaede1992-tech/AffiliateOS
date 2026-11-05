@@ -377,3 +377,11 @@ test("maps representative Shopee product titles to concise category discovery qu
     assert.deepEqual(buildWikimediaCommonsQueries({ name }), [expected], name);
   }
 });
+
+
+test("uses the imported CSV category when a product title does not identify its category", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Item 3pcs Premium",
+    category: "Fashion > Bags > Backpack"
+  }), ["backpack"]);
+});

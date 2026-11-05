@@ -96,7 +96,8 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
     .join(" ");
   if (!source.trim()) return [];
 
-  const matchedCategory = categoryQueries.find(({ pattern }) => pattern.test(source));
+  const categorySource = identity.category?.trim() ?? "";
+  const matchedCategory = categoryQueries.find(({ pattern }) => pattern.test(source) || (categorySource.length > 0 && pattern.test(categorySource)));
   if (matchedCategory) return [matchedCategory.query];
 
   const stopWords = new Set([

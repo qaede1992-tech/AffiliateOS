@@ -173,7 +173,7 @@ export class ProductMediaDiscoveryRunner {
       let candidatesFound = 0;
       if (this.catalogCandidates) {
         try {
-          const identity = { name: product.name };
+          const identity = { name: product.name, ...(product.category?.trim() ? { category: product.category } : {}) };
           const query = buildProductMediaSearchQuery(identity);
           let discovered: ProductMediaCatalogCandidate[];
           let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";

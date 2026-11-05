@@ -7,6 +7,8 @@
  */
 export interface ProductMediaSearchIdentity {
   name: string;
+  /** Marketplace taxonomy preserved from the affiliate CSV, used only to improve discovery queries. */
+  category?: string | null;
   brand?: string | null;
   model?: string | null;
   sku?: string | null;
