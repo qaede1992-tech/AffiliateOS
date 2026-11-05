@@ -136,7 +136,7 @@ test("maps Indonesian marketplace listing titles to concise Commons category que
   }), ["honey"]);
 });
 
-test("rejects broad category results that do not match product identity", async () => {
+test("queues relevant category-only results for mandatory human review instead of discarding them", async () => {
   let requestedUrl = "";
   const fetchImpl: typeof fetch = async (input) => {
     requestedUrl = String(input);
@@ -163,7 +163,12 @@ test("rejects broad category results that do not match product identity", async 
     name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
   }, { fetchImpl });
   assert.match(requestedUrl, /gsrsearch=backpack/);
-  assert.deepEqual(results, []);
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "Military backpack 01.jpg");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.identityScore, 20);
+  assert.equal(results[0]?.rightsStatus, "unverified");
+  assert.ok(results[0]?.identityReasons.some((reason) => /kategori.*diperiksa manusia/i.test(reason)));
 });
 
 
