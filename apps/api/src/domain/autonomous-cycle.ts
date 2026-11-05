@@ -187,10 +187,12 @@ export class AutonomousCycleService {
           try {
             await this.preMediaEligibility.saveMany(evidence);
           } catch (error) {
+            // Database/ORM errors may embed the full SQL statement and bound values.
+            // Keep operational logs useful without leaking query parameters or product data.
             console.warn(JSON.stringify({
               event: "autonomous_pre_media_eligibility_persist_failed",
               evidenceCount: evidence.length,
-              reason: error instanceof Error ? error.message : "Pre-media eligibility evidence could not be persisted."
+              errorType: error instanceof Error ? error.name : typeof error
             }));
             // The evidence is the audit record that authorizes the later admin-reviewed
             // media-import workflow. Do not continue selection/discovery without it.
