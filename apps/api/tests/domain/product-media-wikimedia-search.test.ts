@@ -423,7 +423,7 @@ test("accepts canonical HTTP Creative Commons license metadata and normalizes it
       pages: [{
         title: "File:Milk powder.jpg",
         imageinfo: [{
-          thumburl: "https://thumb.wikimedia.org/wikipedia/commons/thumb/milk-powder.jpg",
+          thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/milk-powder.jpg",
           descriptionurl: "https://commons.wikimedia.org/wiki/File:Milk_powder.jpg",
           mime: "image/jpeg",
           extmetadata: {
