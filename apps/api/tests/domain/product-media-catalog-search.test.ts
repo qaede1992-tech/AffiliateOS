@@ -238,3 +238,32 @@ test("classifies token endpoint 403 JSON separately from Cloudflare HTML challen
     }
   );
 });
+
+
+test("backs off repeated Openverse token requests during a Cloudflare challenge", async () => {
+  let tokenCalls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    tokenCalls += 1;
+    return new Response("<html>challenge</html>", {
+      status: 403,
+      headers: { "content-type": "text/html; charset=UTF-8", server: "cloudflare", "cf-ray": "cooldown-test-ray" }
+    });
+  };
+  const options = {
+    fetchImpl,
+    clientId: "openverse-cloudflare-cooldown-client",
+    clientSecret: "test-secret",
+    timeoutMs: 1000
+  };
+
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, options),
+    /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
+  );
+  await assert.rejects(
+    () => searchOpenverseProductMedia({ ...identity, name: "Different product" }, options),
+    /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
+  );
+
+  assert.equal(tokenCalls, 1, "the same blocked egress transport must not retry once per product");
+});
