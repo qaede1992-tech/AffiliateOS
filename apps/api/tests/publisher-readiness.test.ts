@@ -187,3 +187,35 @@ test("publisher readiness accepts credential and publishing scope from the same 
   assert.equal(result?.credentialResolvable, true);
   assert.equal(result?.requiredScopeGranted, true);
 });
+
+test("TikTok publisher readiness does not borrow video.publish scope from another account", async () => {
+  const tiktokPublisher: SocialPublisher = {
+    provider: "tiktok-provider",
+    supports: (platform) => platform === "tiktok"
+  };
+  const credentials = new InMemorySocialCredentialResolver();
+  credentials.set("secret://social/tiktok-valid-without-scope", { accessToken: "redacted-test-value" });
+  const repository = {
+    list: async () => [
+      account({
+        id: "tiktok-credential-account",
+        platform: "tiktok",
+        credentialReference: "secret://social/tiktok-valid-without-scope",
+        connection: { grantedScopes: ["user.info.basic"] }
+      }),
+      account({
+        id: "tiktok-scope-account",
+        platform: "tiktok",
+        credentialReference: "secret://social/tiktok-missing",
+        connection: { grantedScopes: ["video.publish"] }
+      })
+    ]
+  };
+  const service = new PublisherReadinessService([tiktokPublisher], true, repository, credentials);
+
+  const result = (await service.list()).find((item) => item.platform === "tiktok");
+  assert.equal(result?.status, "unconfigured");
+  assert.equal(result?.credentialResolvable, true);
+  assert.equal(result?.requiredScope, "video.publish");
+  assert.equal(result?.requiredScopeGranted, false);
+});
