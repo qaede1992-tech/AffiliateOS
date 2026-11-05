@@ -224,6 +224,7 @@ export async function searchWikimediaCommonsProductMedia(
 
         const candidate: ProductMediaCatalogCandidate = {
           provider: "wikimedia_commons",
+          searchQuery: query,
           title,
           imageUrl,
           landingPageUrl,
