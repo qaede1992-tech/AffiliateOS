@@ -100,9 +100,9 @@ function requestOnce(
         resolve({ status, ...(typeof location === "string" ? { location } : {}) });
         return;
       }
-      if (status < 200 || status >= 300) {
+      if (status < 200 || status >= 300 || (method === "GET" && (status === 204 || status === 205))) {
         incoming.resume();
-        reject(new Error("TikTok media source returned HTTP " + status + "."));
+        reject(new Error("TikTok media source returned HTTP " + status + " without a usable media body."));
         return;
       }
       const declaredLength = Number(incoming.headers["content-length"]);
