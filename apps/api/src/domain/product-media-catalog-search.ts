@@ -15,6 +15,8 @@ export interface ProductMediaSearchIdentity {
 
 export interface ProductMediaCatalogCandidate {
   provider: "openverse" | "wikimedia_commons";
+  /** Exact provider query used to discover this candidate, when available. */
+  searchQuery?: string;
   title: string;
   imageUrl: string;
   landingPageUrl: string;
