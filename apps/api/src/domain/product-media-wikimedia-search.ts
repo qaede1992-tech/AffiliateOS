@@ -49,6 +49,31 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
 };
 
 const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp; exclude?: RegExp }> = [
+
+  { pattern: /\b(sweater|sweatshirt|hoodie|blouse|polo shirt|gamis|dress|celana|pakaian|hijab|jilbab|bergo|sling bag|tas wanita|dompet|topi baseball|baseball cap|kaos kaki|socks|sandal|kacamata hitam)\b/i, query: "clothing and fashion accessories", relevant: /\b(sweater|sweatshirt|hoodie|blouse|polo shirt|dress|pants|trousers|hijab|headscarf|bag|wallet|cap|hat|socks|sandal|sunglasses|eyeglasses)\b/i },
+  { pattern: /\b(aksesoris mobil|pengait kargo|injector cleaner|car phone holder|jaring taruh hp)\b/i, query: "automotive accessories", relevant: /\b(car phone holder|phone holder|car accessory|automotive accessory|cargo hook|motorcycle accessory|vehicle)\b/i },
+  { pattern: /\b(aquascape|aquarium|filter gantung aquarium|aquarium mini)\b/i, query: "aquarium equipment", relevant: /\b(aquarium|aquascape|aquarium filter|fish tank|aquatic tank)\b/i },
+  { pattern: /\b(susu kuda|susu kambing|horse milk|goat milk|susu bubuk)\b/i, query: "milk powder", relevant: /\b(milk powder|powdered milk|goat milk|horse milk|dairy powder)\b/i },
+  { pattern: /\b(baso aci|bakso|snack|cokelat|chocolate|cadbury|alpukat|avocado|beras|rice)\b/i, query: "food product", relevant: /\b(food product|packaged food|snack|chocolate|cocoa|avocado|rice|meatball|baso|food packaging)\b/i },
+  { pattern: /\b(meal replacement|protein shake|gummy vitamin|vitamin d|vitamin|supplement|suplemen|herbal diet)\b/i, query: "dietary supplement product", relevant: /\b(dietary supplement|vitamin supplement|vitamin d|protein powder|meal replacement|supplement bottle)\b/i },
+  { pattern: /\b(teh|tea|kopi|coffee)\b/i, query: "tea and coffee", relevant: /\b(tea|tea leaves|tea bag|coffee|coffee beans|ground coffee)\b/i },
+  { pattern: /\b(sikat sepatu|pembersih sepatu|tissue pembersih sepatu|shoe brush|shoe cleaner)\b/i, query: "shoe cleaning brush", relevant: /\b(shoe brush|shoe cleaning|shoe cleaner|shoe polish brush)\b/i },
+  { pattern: /\b(masker duckbill|facemask|face mask|masker wajah|masker medis)\b/i, query: "protective face mask", relevant: /\b(face mask|facemask|surgical mask|protective mask|respirator)\b/i },
+  { pattern: /\b(tisu wajah|tissue|tisu|paper towel)\b/i, query: "facial tissue", relevant: /\b(facial tissue|tissue paper|paper tissue|paper towel)\b/i },
+  { pattern: /\b(filter kran|water filter|saringan air)\b/i, query: "water faucet filter", relevant: /\b(water filter|faucet filter|tap filter|water purifier filter)\b/i },
+  { pattern: /\b(deodorant|deodoran|antiperspirant|tawas spray)\b/i, query: "deodorant", relevant: /\b(deodorant|antiperspirant|underarm deodorant)\b/i },
+  { pattern: /\b(detergent|deterjen|rinso|sabun cuci piring|dish soap|sabun mandi|bar soap)\b/i, query: "household cleaning products", relevant: /\b(detergent|dish soap|dishwashing liquid|bar soap|laundry detergent|cleaning product)\b/i },
+  { pattern: /\b(perfume|parfum|fragrance|body mist|cologne)\b/i, query: "perfume bottle", relevant: /\b(perfume|fragrance|cologne|body mist|perfume bottle)\b/i },
+  { pattern: /\b(lipstick|lip cream|lip balm|lip tint|makeup|skincare|toner|sunscreen)\b/i, query: "cosmetics and skincare", relevant: /\b(cosmetic|makeup|lipstick|lip balm|lip cream|skincare|sunscreen|skin care product|toner)\b/i },
+  { pattern: /\b(bulu mata|eyelash|false eyelashes)\b/i, query: "false eyelashes", relevant: /\b(false eyelashes|eyelashes|eyelash extensions|artificial eyelashes)\b/i },
+  { pattern: /\b(rak susun|rak penyimpanan|storage rack|organizer|troli plastik)\b/i, query: "household storage rack", relevant: /\b(storage rack|shelving|shelf|organizer|storage trolley)\b/i },
+  { pattern: /\b(keset|floor mat|keset lantai)\b/i, query: "floor mat", relevant: /\b(floor mat|doormat|door mat|bath mat)\b/i },
+  { pattern: /\b(pampers|mamypoko|diaper|popok)\b/i, query: "baby diaper", relevant: /\b(baby diaper|diaper|nappy)\b/i },
+  { pattern: /\b(marker|spidol|permanent marker)\b/i, query: "permanent marker pen", relevant: /\b(permanent marker|marker pen|felt-tip pen)\b/i },
+  { pattern: /\b(shampoo|shampo|hair shampoo)\b/i, query: "shampoo bottle", relevant: /\b(shampoo|shampoo bottle|hair care)\b/i },
+  { pattern: /\b(kipas angin|electric fan|fan 3in1)\b/i, query: "electric fan", relevant: /\b(electric fan|desk fan|standing fan|pedestal fan)\b/i },
+  { pattern: /\b(panci|cookware|mangkuk ramen|wajan|frying pan)\b/i, query: "cookware", relevant: /\b(cookware|saucepan|cooking pot|frying pan|wok|stainless steel pot)\b/i },
+  { pattern: /\b(sarung tangan plastik|disposable gloves|gloves)\b/i, query: "disposable gloves", relevant: /\b(disposable gloves|plastic gloves|nitrile gloves|latex gloves)\b/i },
   { pattern: /\b(backpack|rucksack|ransel|tas sekolah|tas kuliah)\b/i, query: "backpack", relevant: /\b(backpack|rucksack|knapsack|school bag)\b/i },
   { pattern: /\b(botol minum|tumbler|termos|water bottle)\b/i, query: "water bottle", relevant: /\b(water bottle|bottle|thermos|flask|canteen)\b/i },
   { pattern: /\b(charger|pengisi daya|fast charging)\b/i, query: "charger", relevant: /\b(charger|charging adapter|power adapter)\b/i },
@@ -56,7 +81,7 @@ const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp;
   { pattern: /\b(cat food|makanan kucing|pakan kucing)\b/i, query: "cat food", relevant: /\b(cat food|kibble|cat kibble|dry cat food)\b/i, exclude: /\b(donation|donation box|donation booth|shelter|charity|feeding program|wet (?:cat )?food)\b/i },
   { pattern: /\b(baby cream|krim bayi|baby lotion|perlengkapan bayi)\b/i, query: "baby cream", relevant: /\b(baby cream|barrier cream|skin cream|lotion|moisturizer|ointment|skincare)\b/i },
   { pattern: /\b(hand soap|hand wash|sabun cuci tangan)\b/i, query: "hand soap", relevant: /\b(hand soap|hand wash|liquid soap|soap dispenser|handwashing)\b/i },
-  { pattern: /\b(honey|madu)\b/i, query: "honey", relevant: /\b(honey|honeycomb|honey jar|bee honey)\b/i },
+  { pattern: /\b(honey|madu)\b/i, query: "honey", relevant: /\b(honey|honeycomb|honey jar|bee honey)\b/i, exclude: /\b(honey buzzard|buzzard|wildlife|birds?)\b/i },
   { pattern: /\b(hair clip|hair clips|jepit rambut|perhiasan rambut)\b/i, query: "hair clips", relevant: /\b(hair clip|hair clips|hair clasp|barrette|hairpin)\b/i },
   { pattern: /\b(crisper tray|air fryer|baking tray)\b/i, query: "crisper tray", relevant: /\b(crisper tray|air fryer|oven tray)\b/i, exclude: /\b(potato wedges|food served|ready for serving|serving tray)\b/i }
 ];
@@ -101,9 +126,9 @@ const normalizedLicense = (licenseUrl: string | null, licenseName: string | null
 };
 
 /**
- * Returns product-identity matches only. Category-level relevance is not enough
- * to identify a product; rejected identity matches are discarded. Rights remain
- * unverified and no media is downloaded.
+ * Returns identity matches plus category-relevant leads for mandatory human review.
+ * Category relevance never proves product identity: weak matches stay pending and
+ * rights remain unverified. This module never imports or downloads media.
  */
 export async function searchWikimediaCommonsProductMedia(
   identity: ProductMediaSearchIdentity,
@@ -174,7 +199,24 @@ export async function searchWikimediaCommonsProductMedia(
           .filter((value): value is string => Boolean(value))
           .join(" ");
         if (category && (!category.relevant.test(descriptiveText) || category.exclude?.test(descriptiveText))) continue;
-        if (identityMatch.status === "rejected") continue;
+
+        // A category-only match is useful as a discovery lead, not as proof of
+        // identity. Preserve it solely in the pending administrator review queue.
+        // The import path separately requires an explicit admin approval and
+        // fresh non-media eligibility evidence; rights remain unverified.
+        const identityStatus = identityMatch.status === "rejected" && category
+          ? "review_required" as const
+          : identityMatch.status;
+        if (identityStatus === "rejected") continue;
+        const identityScore = identityMatch.status === "rejected"
+          ? Math.max(identityMatch.score, 20)
+          : identityMatch.score;
+        const identityReasons = identityMatch.status === "rejected"
+          ? [
+              ...identityMatch.reasons,
+              `Hasil hanya cocok pada kategori "${category!.query}"; identitas produk belum terbukti dan wajib diperiksa manusia.`
+            ]
+          : identityMatch.reasons;
         const creatorHref = metadata?.Artist?.value && typeof metadata.Artist.value === "string"
           ? metadata.Artist.value.match(/href=["']([^"']+)["']/i)?.[1]
           : null;
@@ -182,6 +224,7 @@ export async function searchWikimediaCommonsProductMedia(
 
         const candidate: ProductMediaCatalogCandidate = {
           provider: "wikimedia_commons",
+          searchQuery: query,
           title,
           imageUrl,
           landingPageUrl,
@@ -191,9 +234,12 @@ export async function searchWikimediaCommonsProductMedia(
           licenseVersion: licenseName?.match(/\d+(?:\.\d+)?/)?.[0] ?? null,
           licenseUrl: acceptedLicense.licenseUrl,
           sourcePublisher: "Wikimedia Commons",
-          identityScore: identityMatch.score,
-          identityStatus: identityMatch.status,
-          identityReasons: [...identityMatch.reasons, "Kecocokan identitas produk memadai; hasil tetap wajib diperiksa manusia."],
+          identityScore,
+          identityStatus,
+          identityReasons: [
+            ...identityReasons,
+            "Semua kandidat tetap pending; pemeriksaan identitas dan hak penggunaan oleh administrator wajib dilakukan sebelum impor."
+          ],
           rightsStatus: "unverified"
         };
         candidates.set(landingPageUrl, candidate);
