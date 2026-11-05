@@ -9,7 +9,7 @@ import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from ".
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
 import { createHash, randomUUID } from "node:crypto";
-import { buildProductMediaSearchQuery, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
+import { buildProductMediaSearchQuery, getOpenverseHttpFailureDetails, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
 import { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 
@@ -178,17 +178,29 @@ export class ProductMediaDiscoveryRunner {
           let discovered: ProductMediaCatalogCandidate[];
           let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
           let openverseFailure: string | undefined;
+          let openverseFailureDetails: ReturnType<typeof getOpenverseHttpFailureDetails> = null;
           try {
             discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
           } catch (error) {
             openverseFailure = safeErrorType(error);
+            openverseFailureDetails = getOpenverseHttpFailureDetails(error);
             discoveryProvider = "wikimedia_commons";
             console.warn(JSON.stringify({
               event: "product_media_catalog_provider_fallback",
               primaryProvider: "openverse",
               fallbackProvider: "wikimedia_commons",
               productId: product.id,
-              reason: openverseFailure
+              errorType: openverseFailure,
+              ...(openverseFailureDetails ? {
+                failureDetails: {
+                  endpoint: openverseFailureDetails.endpoint,
+                  status: openverseFailureDetails.status,
+                  contentType: openverseFailureDetails.contentType,
+                  server: openverseFailureDetails.server,
+                  cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
+                  responseKind: openverseFailureDetails.responseKind
+                }
+              } : {})
             }));
             discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
           }
@@ -230,6 +242,16 @@ export class ProductMediaDiscoveryRunner {
             event: "product_media_catalog_search_completed",
             provider: discoveryProvider,
             fallbackReason: openverseFailure,
+            ...(openverseFailureDetails ? {
+              fallbackFailureDetails: {
+                endpoint: openverseFailureDetails.endpoint,
+                status: openverseFailureDetails.status,
+                contentType: openverseFailureDetails.contentType,
+                server: openverseFailureDetails.server,
+                cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
+                responseKind: openverseFailureDetails.responseKind
+              }
+            } : {}),
             productId: product.id,
             resultCount: discovered.length,
             acceptedCount: accepted.length,
