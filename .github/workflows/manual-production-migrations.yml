@@ -141,9 +141,9 @@ jobs:
                 to_regclass('public.product_media_candidates') IS NOT NULL AS has_candidates,
                 to_regclass('public.product_media_candidate_review_audits') IS NULL AS review_audits_missing,
                 to_regclass('public.pre_media_eligibility_evidence') IS NULL AS evidence_missing,
-                (SELECT count(*) = 10 FROM information_schema.columns
+                (SELECT count(*) = 0 FROM information_schema.columns
                   WHERE table_schema = 'public' AND table_name = 'product_media_assets'
-                    AND column_name = ANY(ARRAY['source_provider','source_candidate_id','source_landing_page_url','source_title','source_query','source_creator','source_creator_url','source_license','source_license_version','source_license_url'])) AS provenance_complete,
+                    AND column_name IN ('source_provider','source_candidate_id','source_landing_page_url','source_title','source_query','source_creator','source_creator_url','source_license','source_license_version','source_license_url')) AS provenance_columns_missing,
                 (SELECT count(*) = 0 FROM information_schema.columns
                   WHERE table_schema = 'public' AND table_name = 'product_media_candidates'
                     AND column_name IN ('reviewed_by','reviewed_at','review_reason')) AS candidate_review_columns_missing,
@@ -160,7 +160,7 @@ jobs:
             assert.equal(state.has_candidates, true, "Expected the idempotent 0076 candidate table to exist already.");
             assert.equal(state.review_audits_missing, true, "Review audit table already exists; inspect before applying.");
             assert.equal(state.evidence_missing, true, "Pre-media evidence table already exists; inspect before applying.");
-            assert.equal(state.provenance_complete, true, "0077 provenance columns are not in the expected state.");
+            assert.equal(state.provenance_columns_missing, true, "0077 provenance columns are partially or fully present; inspect before applying.");
             assert.equal(state.candidate_review_columns_missing, true, "Candidate review columns already exist; inspect before applying.");
             assert.equal(state.source_candidate_index_missing, true, "0079 index already exists; inspect before applying.");
             assert.equal(state.source_candidate_fk_missing, true, "0080 foreign key already exists; inspect before applying.");
