@@ -295,11 +295,11 @@ test("backs off repeated Openverse image-search requests during a Cloudflare cha
 
   await assert.rejects(
     () => searchOpenverseProductMedia(identity, options),
-    /search endpoint returned HTTP 403 \\(cloudflare_html_challenge\\)/
+    /search endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
   );
   await assert.rejects(
     () => searchOpenverseProductMedia({ ...identity, name: "Different product" }, options),
-    /search endpoint returned HTTP 403 \\(cloudflare_html_challenge\\)/
+    /search endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
   );
 
   assert.equal(tokenCalls, 1, "the cached token must not be requested again during the cooldown");
