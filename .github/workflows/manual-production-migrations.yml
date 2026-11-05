@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           # The owner connection is supplied only as a protected GitHub Environment secret.
-          printf 'DATABASE_URL=%s\\n' "$PRODUCTION_DATABASE_URL" > .env
+          printf 'DATABASE_URL=%s\n' "$PRODUCTION_DATABASE_URL" > .env
           chmod 600 .env
 
       - name: Verify exact pre-migration state and migration privileges (read-only)
