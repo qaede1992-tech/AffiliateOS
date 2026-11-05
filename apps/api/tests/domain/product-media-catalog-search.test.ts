@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildProductMediaSearchQuery,
+  getOpenverseHttpFailureDetails,
   evaluateProductMediaIdentity,
   searchOpenverseProductMedia
 } from "../../src/domain/product-media-catalog-search.js";
@@ -149,4 +150,36 @@ test("fails closed for non-official endpoints and invalid result URLs", async ()
     }]
   }), { status: 200 });
   assert.deepEqual(await searchOpenverseProductMedia(identity, { fetchImpl }), []);
+});
+
+
+test("classifies Cloudflare HTML failures using bounded transport metadata only", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(
+    "<html>challenge page with private response details</html>",
+    {
+      status: 403,
+      headers: {
+        "content-type": "text/html; charset=UTF-8",
+        server: "cloudflare",
+        "cf-ray": "example-ray-id"
+      }
+    }
+  );
+  let failure: unknown;
+  try {
+    await searchOpenverseProductMedia(identity, { fetchImpl, timeoutMs: 1000 });
+  } catch (error) {
+    failure = error;
+  }
+  const details = getOpenverseHttpFailureDetails(failure);
+  assert.deepEqual(details, {
+    endpoint: "https://api.openverse.org/v1/images/",
+    status: 403,
+    contentType: "text/html; charset=UTF-8",
+    server: "cloudflare",
+    cloudflareRayPresent: true,
+    responseKind: "cloudflare_html"
+  });
+  assert.doesNotMatch(JSON.stringify(details), /challenge page|example-ray-id|private response/);
+  assert.equal(getOpenverseHttpFailureDetails(new Error("ordinary failure")), null);
 });
