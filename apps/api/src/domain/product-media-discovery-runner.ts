@@ -25,6 +25,11 @@ export interface ProductMediaDiscoveryResult extends ProductMediaIngestionResult
   candidatesFound?: number;
 }
 
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 const isShopeeHost = (hostname: string): boolean => {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   return host === "shopee.co.id" || host.endsWith(".shopee.co.id") ||
@@ -173,19 +178,29 @@ export class ProductMediaDiscoveryRunner {
           let discovered: ProductMediaCatalogCandidate[];
           let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
           let openverseFailure: string | undefined;
+          let openverseFailureDetails: ReturnType<typeof getOpenverseHttpFailureDetails> = null;
           try {
             discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
           } catch (error) {
-            openverseFailure = error instanceof Error ? error.message : "Openverse candidate search failed.";
+            openverseFailure = safeErrorType(error);
+            openverseFailureDetails = getOpenverseHttpFailureDetails(error);
             discoveryProvider = "wikimedia_commons";
-            const openverseFailureDetails = getOpenverseHttpFailureDetails(error);
             console.warn(JSON.stringify({
               event: "product_media_catalog_provider_fallback",
               primaryProvider: "openverse",
               fallbackProvider: "wikimedia_commons",
               productId: product.id,
-              reason: openverseFailure,
-              ...(openverseFailureDetails ? { openverseFailure: openverseFailureDetails } : {})
+              errorType: openverseFailure,
+              ...(openverseFailureDetails ? {
+                failureDetails: {
+                  endpoint: openverseFailureDetails.endpoint,
+                  status: openverseFailureDetails.status,
+                  contentType: openverseFailureDetails.contentType,
+                  server: openverseFailureDetails.server,
+                  cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
+                  responseKind: openverseFailureDetails.responseKind
+                }
+              } : {})
             }));
             discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
           }
@@ -227,6 +242,16 @@ export class ProductMediaDiscoveryRunner {
             event: "product_media_catalog_search_completed",
             provider: discoveryProvider,
             fallbackReason: openverseFailure,
+            ...(openverseFailureDetails ? {
+              fallbackFailureDetails: {
+                endpoint: openverseFailureDetails.endpoint,
+                status: openverseFailureDetails.status,
+                contentType: openverseFailureDetails.contentType,
+                server: openverseFailureDetails.server,
+                cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
+                responseKind: openverseFailureDetails.responseKind
+              }
+            } : {}),
             productId: product.id,
             resultCount: discovered.length,
             acceptedCount: accepted.length,
@@ -234,14 +259,14 @@ export class ProductMediaDiscoveryRunner {
             alreadyPresentCount
           }));
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Openverse candidate search failed.";
+          const message = safeErrorType(error);
           console.warn(JSON.stringify({
             event: "product_media_catalog_search_failed",
             provider: "wikimedia_commons",
             productId: product.id,
-            reason: message
+            errorType: message
           }));
-          skipped.push({ url: "https://commons.wikimedia.org/w/api.php", reason: "Openverse and Wikimedia Commons candidate discovery failed: " + message });
+          skipped.push({ url: "https://commons.wikimedia.org/w/api.php", reason: "catalog_discovery_failed" });
         }
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
@@ -257,7 +282,7 @@ export class ProductMediaDiscoveryRunner {
           }
           catalogCandidates.push({ kind: candidate.kind, url: mediaUrl.toString(), source: "catalog" });
         } catch (error) {
-          skipped.push({ url: candidate.url, reason: error instanceof Error ? error.message : "Explicit catalog media URL could not be validated." });
+          skipped.push({ url: candidate.url, reason: "Explicit catalog media URL could not be validated." });
         }
       }
       if (catalogCandidates.length > 0) {
@@ -310,7 +335,7 @@ export class ProductMediaDiscoveryRunner {
       const stored = await this.assets.listByProduct(product.id);
       return { productId: product.id, pageFetched: true, hasVideo: stored.some((asset) => asset.kind === "video"), stored: ingested.stored, skipped: [...skipped, ...ingested.skipped] };
     } catch (error) {
-      skipped.push({ url: pageUrl.toString(), reason: error instanceof Error ? error.message : "Product page discovery failed." });
+      skipped.push({ url: pageUrl.toString(), reason: "product_page_discovery_failed:" + safeErrorType(error) });
       if (product.videoUrl) {
         try {
           const videoUrl = new URL(product.videoUrl);
@@ -319,7 +344,7 @@ export class ProductMediaDiscoveryRunner {
             skipped.push(...fallback.skipped);
           }
         } catch (fallbackError) {
-          skipped.push({ url: product.videoUrl, reason: fallbackError instanceof Error ? fallbackError.message : "Existing product video could not be validated." });
+          skipped.push({ url: product.videoUrl, reason: "fallback_video_ingestion_failed:" + safeErrorType(fallbackError) });
         }
       }
       const stored = await this.assets.listByProduct(product.id);
