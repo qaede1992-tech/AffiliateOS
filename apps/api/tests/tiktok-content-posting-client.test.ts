@@ -94,7 +94,7 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
   const result = await client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-1" });
   assert.deepEqual(result, { status: "accepted", providerOperationId: "publish-1" });
   assert.deepEqual(calls.map((call) => call.method), ["POST", "POST", "PUT"]);
-  assert.equal(calls[3]?.body?.byteLength, video.byteLength);
+  assert.equal(calls[2]?.body?.byteLength, video.byteLength);
 });
 
 test("TikTok client retains PULL_FROM_URL as an explicit compatibility mode", async () => {
