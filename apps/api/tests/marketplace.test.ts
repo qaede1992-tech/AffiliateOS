@@ -133,3 +133,60 @@ test("marketplace product ingestion rejects unsafe video media URLs", async () =
     return true;
   });
 });
+
+test("Shopee CSV reimport preserves an existing category when the later row omits it", async () => {
+  const {
+    InMemoryAffiliateAccountRepository,
+    InMemoryAffiliateOfferRepository,
+    InMemoryMarketplaceConnectionRepository,
+    InMemoryProductCatalogRepository,
+    InMemoryRepository
+  } = await import("../src/domain/repository.js");
+  const affiliates = new InMemoryRepository<import("@affiliateos/shared").Affiliate>();
+  const offers = new InMemoryRepository<import("@affiliateos/shared").Offer>();
+  const products = new InMemoryProductCatalogRepository();
+  const accounts = new InMemoryAffiliateAccountRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const connections = new InMemoryMarketplaceConnectionRepository();
+  const affiliateId = "00000000-0000-4000-8000-000000000091";
+  await affiliates.save({
+    id: affiliateId,
+    name: "CSV category test affiliate",
+    email: "category-test@example.invalid",
+    status: "active",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  });
+  const service = new MarketplaceService(
+    new MarketplaceProviderRegistry(),
+    connections,
+    products,
+    accounts,
+    affiliates,
+    affiliateOffers,
+    offers
+  );
+  const baseItem = {
+    externalProductId: "shopee-category-preserve-1",
+    name: "Test product",
+    priceCents: 125000,
+    currency: "IDR",
+    productUrl: "https://shopee.co.id/product/1/123",
+    affiliateUrl: "https://s.shopee.co.id/example",
+    availability: "in_stock" as const,
+    commissionRateBps: 850,
+    commissionAmountCents: 4675
+  };
+  await service.importShopeeAffiliateFeed({
+    affiliateId,
+    items: [{ ...baseItem, category: "Elektronik" }]
+  });
+  await service.importShopeeAffiliateFeed({
+    affiliateId,
+    items: [baseItem]
+  });
+  const saved = await products.findByMarketplaceProduct(
+    (await connections.findBySlug("shopee-affiliate-feed"))!.id,
+    baseItem.externalProductId
+  );
+  assert.equal(saved?.category, "Elektronik");
+});
