@@ -248,6 +248,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     const reader = response.body.getReader();
     let carry = Buffer.alloc(0);
     let offset = 0;
+    let completed = false;
 
     try {
       while (true) {
@@ -263,17 +264,21 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
           offset += chunk.length;
         }
       }
+
+      if (carry.length > 0) {
+        await this.putUploadChunk(uploadUrl, carry, offset, videoSize, asset.mimeType ?? "video/mp4");
+        offset += carry.length;
+      }
+
+      if (offset !== videoSize) {
+        throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received " + offset + ").");
+      }
+      completed = true;
     } finally {
+      if (!completed) {
+        await reader.cancel().catch(() => undefined);
+      }
       reader.releaseLock();
-    }
-
-    if (carry.length > 0) {
-      await this.putUploadChunk(uploadUrl, carry, offset, videoSize, asset.mimeType ?? "video/mp4");
-      offset += carry.length;
-    }
-
-    if (offset !== videoSize) {
-      throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received " + offset + ").");
     }
   }
 
