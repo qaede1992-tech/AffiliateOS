@@ -267,3 +267,41 @@ test("backs off repeated Openverse token requests during a Cloudflare challenge"
 
   assert.equal(tokenCalls, 1, "the same blocked egress transport must not retry once per product");
 });
+
+
+test("backs off repeated Openverse image-search requests during a Cloudflare challenge", async () => {
+  let tokenCalls = 0;
+  let searchCalls = 0;
+  const fetchImpl: typeof fetch = async (input) => {
+    if (String(input).endsWith("/auth_tokens/token/")) {
+      tokenCalls += 1;
+      return new Response(JSON.stringify({ access_token: "search-cooldown-token", expires_in: 3600 }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    searchCalls += 1;
+    return new Response("<html>challenge</html>", {
+      status: 403,
+      headers: { "content-type": "text/html; charset=UTF-8", server: "cloudflare", "cf-ray": "search-cooldown-ray" }
+    });
+  };
+  const options = {
+    fetchImpl,
+    clientId: "openverse-search-cloudflare-cooldown-client",
+    clientSecret: "test-secret",
+    timeoutMs: 1000
+  };
+
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, options),
+    /search endpoint returned HTTP 403 \\(cloudflare_html_challenge\\)/
+  );
+  await assert.rejects(
+    () => searchOpenverseProductMedia({ ...identity, name: "Different product" }, options),
+    /search endpoint returned HTTP 403 \\(cloudflare_html_challenge\\)/
+  );
+
+  assert.equal(tokenCalls, 1, "the cached token must not be requested again during the cooldown");
+  assert.equal(searchCalls, 1, "the blocked image endpoint must not be retried for each product");
+});
