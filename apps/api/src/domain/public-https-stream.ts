@@ -1,0 +1,165 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { Transform, Readable } from "node:stream";
+
+type Address = { address: string; family: number };
+type RequestImpl = typeof httpsRequest;
+
+export interface SafeStreamingFetchOptions {
+  maxBytes: number;
+  timeoutMs?: number;
+  maxRedirects?: number;
+  resolveHost?: typeof dnsLookup;
+  requestImpl?: RequestImpl;
+}
+
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
+function isPublicAddress(address: string): boolean {
+  const family = isIP(address);
+  if (family === 4) {
+    const [a, b, c] = address.split(".").map(Number);
+    if (a === undefined || b === undefined || c === undefined) return false;
+    return !(a === 0 || a === 10 || a === 127 || a >= 224 ||
+      (a === 100 && b! >= 64 && b! <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b! >= 16 && b! <= 31) ||
+      (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)) || (b === 88 && c === 99))) ||
+      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+      (a === 203 && b === 0 && c === 113));
+  }
+  if (family !== 6) return false;
+  const normalized = address.toLowerCase();
+  return /^[23]/.test(normalized) &&
+    !normalized.startsWith("2001:db8:") &&
+    !normalized.startsWith("2001:0:") &&
+    !normalized.startsWith("2001:2:") &&
+    !normalized.startsWith("2001:10:") &&
+    !normalized.startsWith("2001:20:") &&
+    !normalized.startsWith("2002:");
+}
+
+function validateUrl(raw: string): URL {
+  const url = new URL(raw);
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (url.protocol !== "https:" || url.username || url.password || !hostname ||
+      hostname === "localhost" || hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") || isIP(hostname)) {
+    throw new Error("TikTok media source must be a credential-free public HTTPS URL.");
+  }
+  url.hash = "";
+  return url;
+}
+
+async function resolvePublic(hostname: string, resolver: typeof dnsLookup): Promise<Address> {
+  const addresses = await resolver(hostname, { all: true, verbatim: true });
+  if (!addresses.length || addresses.some((entry) => !isPublicAddress(entry.address))) {
+    throw new Error("TikTok media hostname resolves to a private or special-use address.");
+  }
+  const selected = addresses[0];
+  if (!selected) throw new Error("TikTok media hostname has no usable address.");
+  return selected;
+}
+
+function requestOnce(
+  url: URL,
+  address: Address,
+  method: "HEAD" | "GET",
+  maxBytes: number,
+  timeoutMs: number,
+  requestImpl: RequestImpl
+): Promise<Response | { status: number; location?: string }> {
+  return new Promise((resolve, reject) => {
+    const options: RequestOptions = {
+      protocol: "https:",
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      method,
+      servername: url.hostname,
+      headers: { "user-agent": "AffiliateOS TikTok media transfer", accept: "*/*" },
+      lookup: (_hostname, lookupOptions, callback) => {
+        if (lookupOptions && typeof lookupOptions === "object" && "all" in lookupOptions && lookupOptions.all) {
+          callback(null, [address]);
+        } else {
+          callback(null, address.address, address.family);
+        }
+      }
+    };
+    const request = requestImpl(options, (incoming) => {
+      const status = incoming.statusCode ?? 0;
+      if (REDIRECTS.has(status)) {
+        const location = incoming.headers.location;
+        incoming.resume();
+        resolve({ status, ...(typeof location === "string" ? { location } : {}) });
+        return;
+      }
+      if (status < 200 || status >= 300) {
+        incoming.resume();
+        reject(new Error("TikTok media source returned HTTP " + status + "."));
+        return;
+      }
+      const declaredLength = Number(incoming.headers["content-length"]);
+      if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+        request.destroy(new Error("TikTok media source exceeds the configured byte limit."));
+        return;
+      }
+      if (method === "HEAD") {
+        incoming.resume();
+        resolve(new Response(null, { status, headers: incoming.headers as HeadersInit }));
+        return;
+      }
+      let received = 0;
+      const limiter = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          received += chunk.byteLength;
+          if (received > maxBytes) {
+            callback(new Error("TikTok media source exceeds the configured byte limit."));
+            request.destroy(new Error("TikTok media source exceeds the configured byte limit."));
+            return;
+          }
+          callback(null, chunk);
+        }
+      });
+      incoming.on("error", (error) => limiter.destroy(error));
+      incoming.pipe(limiter);
+      const body = Readable.toWeb(limiter) as ReadableStream<Uint8Array>;
+      resolve(new Response(body, { status, headers: incoming.headers as HeadersInit }));
+    });
+    request.setTimeout(timeoutMs, () => request.destroy(new Error("TikTok media source request timed out.")));
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+/**
+ * DNS-pinned streaming HTTPS fetch for TikTok FILE_UPLOAD. Redirects are
+ * revalidated and video bytes are bounded while streaming, never buffered whole.
+ */
+export async function fetchPublicHttpsStream(
+  rawUrl: string,
+  init: { method: "HEAD" | "GET" },
+  options: SafeStreamingFetchOptions
+): Promise<Response> {
+  if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1) {
+    throw new Error("maxBytes must be a positive safe integer.");
+  }
+  const timeoutMs = options.timeoutMs ?? 20_000;
+  const maxRedirects = options.maxRedirects ?? 3;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error("timeoutMs must be positive.");
+  if (!Number.isSafeInteger(maxRedirects) || maxRedirects < 0 || maxRedirects > 10) {
+    throw new Error("maxRedirects must be between 0 and 10.");
+  }
+  const resolver = options.resolveHost ?? dnsLookup;
+  const requestImpl = options.requestImpl ?? httpsRequest;
+  let current = validateUrl(rawUrl);
+  for (let redirects = 0; ; redirects++) {
+    const address = await resolvePublic(current.hostname, resolver);
+    const result = await requestOnce(current, address, init.method, options.maxBytes, timeoutMs, requestImpl);
+    if (result instanceof Response) return result;
+    if (redirects >= maxRedirects) throw new Error("TikTok media redirect limit exceeded.");
+    if (!result.location) throw new Error("TikTok media redirect is missing a Location header.");
+    current = validateUrl(new URL(result.location, current).toString());
+  }
+}
