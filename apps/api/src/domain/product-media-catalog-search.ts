@@ -160,6 +160,28 @@ interface OpenverseTokenResponse {
 }
 
 const openverseTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+
+// Cloudflare challenges are network-level blocks, not credential failures. Avoid
+// repeating token/search requests for every product while the same egress IP is blocked.
+const OPENVERSE_CLOUDFLARE_COOLDOWN_MS = 15 * 60_000;
+let openverseCloudflareBlock: { error: OpenverseHttpError; expiresAt: number } | null = null;
+
+const getOpenverseCloudflareBlock = (): OpenverseHttpError | null => {
+  if (!openverseCloudflareBlock) return null;
+  if (openverseCloudflareBlock.expiresAt <= Date.now()) {
+    openverseCloudflareBlock = null;
+    return null;
+  }
+  return openverseCloudflareBlock.error;
+};
+
+const rememberOpenverseCloudflareBlock = (error: OpenverseHttpError): void => {
+  if (error.details.responseKind !== "cloudflare_html_challenge") return;
+  openverseCloudflareBlock = {
+    error,
+    expiresAt: Date.now() + OPENVERSE_CLOUDFLARE_COOLDOWN_MS
+  };
+};
 export type OpenverseFailureEndpoint = "token" | "search";
 export type OpenverseFailureResponseKind =
   | "cloudflare_html_challenge"
@@ -241,7 +263,11 @@ const getOpenverseAccessToken = async (
       body,
       signal: controller.signal
     });
-    if (!response.ok) throw new OpenverseHttpError(classifyOpenverseHttpFailure("token", response));
+    if (!response.ok) {
+      const error = new OpenverseHttpError(classifyOpenverseHttpFailure("token", response));
+      rememberOpenverseCloudflareBlock(error);
+      throw error;
+    }
     const payload = await response.json() as OpenverseTokenResponse;
     if (typeof payload.access_token !== "string" || !payload.access_token.trim()) {
       throw new Error("Openverse authentication response did not contain an access token.");
@@ -277,6 +303,9 @@ export async function searchOpenverseProductMedia(
     throw new Error("Openverse client ID and client secret must be configured together.");
   }
 
+  const cloudflareBlock = getOpenverseCloudflareBlock();
+  if (cloudflareBlock) throw cloudflareBlock;
+
   const fetchImpl = options.fetchImpl ?? fetch;
   const accessToken = options.clientId && options.clientSecret
     ? await getOpenverseAccessToken(options.clientId, options.clientSecret, fetchImpl, options.timeoutMs ?? 8_000)
@@ -302,7 +331,11 @@ export async function searchOpenverseProductMedia(
       },
       signal: controller.signal
     });
-    if (!response.ok) throw new OpenverseHttpError(classifyOpenverseHttpFailure("search", response));
+    if (!response.ok) {
+      const error = new OpenverseHttpError(classifyOpenverseHttpFailure("search", response));
+      rememberOpenverseCloudflareBlock(error);
+      throw error;
+    }
     const payload = await response.json() as OpenverseResponse;
     if (!Array.isArray(payload.results)) return [];
 
