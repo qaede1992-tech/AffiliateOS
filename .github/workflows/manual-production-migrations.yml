@@ -154,7 +154,13 @@ jobs:
                 EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_link_occurred_idx') AS duplicate_click_index_present,
                 EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_link_idempotency_unique') AS duplicate_idempotency_index_present,
                 EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_tracking_link_occurred_idx') AS canonical_click_index_present,
-                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_tracking_link_idempotency_unique') AS canonical_idempotency_index_present
+                EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'clicks_tracking_link_idempotency_unique') AS canonical_idempotency_index_present,
+                NOT EXISTS (
+                  SELECT 1
+                    FROM pg_constraint constraint_row
+                    JOIN pg_class index_row ON index_row.oid = constraint_row.conindid
+                   WHERE index_row.relname IN ('clicks_link_occurred_idx','clicks_link_idempotency_unique')
+                ) AS duplicate_click_indexes_not_constraint_backed
             `);
             const state = schema.rows[0];
             assert.equal(state.has_candidates, true, "Expected the idempotent 0076 candidate table to exist already.");
@@ -168,6 +174,7 @@ jobs:
             assert.equal(state.duplicate_idempotency_index_present, true, "Expected duplicate idempotency index is missing; inspect before applying.");
             assert.equal(state.canonical_click_index_present, true, "Canonical click index is missing; refusing to drop duplicates.");
             assert.equal(state.canonical_idempotency_index_present, true, "Canonical idempotency index is missing; refusing to drop duplicates.");
+            assert.equal(state.duplicate_click_indexes_not_constraint_backed, true, "A duplicate click index is constraint-backed; refusing to drop it.");
 
             const candidateTable = await client.query(`
               SELECT c.relrowsecurity, c.relforcerowsecurity,
@@ -277,6 +284,19 @@ jobs:
             ]) assert.equal(state[key], true, "Production schema verification failed: " + key);
             assert.equal(state.duplicate_click_index_remains, false, "Duplicate click index was not removed.");
             assert.equal(state.duplicate_idempotency_index_remains, false, "Duplicate idempotency index was not removed.");
+
+            const policies = await client.query(`
+              SELECT tablename, policyname, roles, cmd
+                FROM pg_policies
+               WHERE schemaname = 'public'
+                 AND tablename IN ('pre_media_eligibility_evidence','product_media_candidate_review_audits')
+            `);
+            assert.equal(policies.rows.length, 2, "Expected one runtime policy on each append-only media table.");
+            for (const row of policies.rows) {
+              assert.equal(row.policyname, "affiliateos_runtime_access", row.tablename + " has an unexpected RLS policy.");
+              assert.equal(row.cmd, "ALL", row.tablename + " policy must cover all commands.");
+              assert.ok(row.roles.includes("affiliateos_runtime"), row.tablename + " policy must target affiliateos_runtime.");
+            }
 
             const rights = await client.query(`
               SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
