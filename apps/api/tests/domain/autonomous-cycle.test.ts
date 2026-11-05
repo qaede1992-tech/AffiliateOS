@@ -192,7 +192,7 @@ describe("autonomous cycle", () => {
     }
     assert.equal(warningLogs.length, 2);
     assert.ok(warningLogs.every((line) => line.includes("autonomous_pre_media_eligibility_persist_failed")));
-    assert.ok(warningLogs.every((line) => line.includes('"errorType":"Error"')));
+    assert.ok(warningLogs.every((line) => line.includes('"errorType":"UnknownError"')));
     assert.ok(warningLogs.every((line) => !line.includes("private-product-data-marker")));
     assert.ok(warningLogs.every((line) => !line.includes("INSERT INTO")));
     // Both attempts must acquire and release the same lock; a failed evidence write
