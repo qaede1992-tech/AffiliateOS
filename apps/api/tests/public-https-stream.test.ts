@@ -80,3 +80,39 @@ test("streaming media fetch re-resolves redirect hosts and blocks DNS rebinding 
   assert.equal(resolutionCount, 2);
   assert.equal(requestCount, 1);
 });
+
+
+test("streaming media fetch rejects successful GET responses that cannot carry a body", async () => {
+  const requestImpl = ((_options: unknown, callback: (response: PassThrough & {
+    statusCode?: number;
+    headers: Record<string, string>;
+  }) => void) => {
+    const request = new EventEmitter() as EventEmitter & {
+      setTimeout: () => void;
+      end: () => void;
+      destroy: (error?: Error) => void;
+    };
+    request.setTimeout = () => undefined;
+    request.destroy = () => undefined;
+    request.end = () => {
+      const response = new PassThrough() as PassThrough & {
+        statusCode?: number;
+        headers: Record<string, string>;
+      };
+      response.statusCode = 204;
+      response.headers = {};
+      callback(response);
+      response.end();
+    };
+    return request;
+  }) as never;
+
+  await assert.rejects(
+    () => fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+      maxBytes: 1024,
+      resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+      requestImpl
+    }),
+    /without a usable media body/i
+  );
+});
