@@ -1,6 +1,6 @@
 import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
 import { fetchPublicHttpsStream } from "./public-https-stream.js";
-import type { MediaAsset } from "./media-asset.js";
+import { isPublicMediaUrl, type MediaAsset } from "./media-asset.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { PublicationCheckResult, PublishOutcome } from "./distribution-engine.js";
 import type { TikTokContentPublisherClient, TikTokCreatorInfo } from "./tiktok-content-publisher.js";
@@ -93,18 +93,18 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
 
     if (asset.kind === "image") {
       if (asset.source !== "url") throw new Error("TikTok photo publishing requires a media URL.");
-      if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok photo URL must use HTTPS.");
+      if (!isPublicMediaUrl(asset.reference)) throw new Error("TikTok photo URL must be a credential-free HTTPS URL with a public-looking hostname.");
       return this.initializePhotoDirectPost(input, accessToken, privacyLevel, asset.reference, disableComment, approval);
     }
 
     if (this.mediaTransferMode === "PULL_FROM_URL") {
       if (asset.source !== "url") throw new Error("TikTok PULL_FROM_URL publishing requires a media URL.");
-      if (!this.isHttpsUrl(asset.reference)) throw new Error("TikTok media URL must use HTTPS.");
+      if (!isPublicMediaUrl(asset.reference)) throw new Error("TikTok media URL must be a credential-free HTTPS URL with a public-looking hostname.");
       return this.initializePullFromUrl(input, accessToken, privacyLevel, asset.reference, disableComment, disableDuet, disableStitch, approval);
     }
 
-    if (!this.isHttpsUrl(asset.reference)) {
-      throw new Error("TikTok FILE_UPLOAD publishing requires an HTTPS media source that AffiliateOS can download.");
+    if (!isPublicMediaUrl(asset.reference)) {
+      throw new Error("TikTok FILE_UPLOAD publishing requires a credential-free HTTPS media source with a public-looking hostname.");
     }
 
     const videoSize = await this.resolveVideoSize(asset);
@@ -244,10 +244,15 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     if (!response.ok || !response.body) {
       throw new Error("Unable to download TikTok media source (HTTP " + response.status + ").");
     }
+    const declaredLength = response.headers.get("content-length");
+    if (declaredLength !== null && (!Number.isSafeInteger(Number(declaredLength)) || Number(declaredLength) !== videoSize)) {
+      throw new Error("TikTok media source size changed during download.");
+    }
 
     const reader = response.body.getReader();
     let carry = Buffer.alloc(0);
     let offset = 0;
+    let received = 0;
     let completed = false;
 
     try {
@@ -255,9 +260,13 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
         const next = await reader.read();
         if (next.done) break;
         const incoming = Buffer.from(next.value);
+        received += incoming.length;
+        if (received > videoSize) {
+          throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received more than expected).");
+        }
         carry = carry.length ? Buffer.concat([carry, incoming]) : incoming;
 
-        while (carry.length >= chunkSize) {
+        while (carry.length > chunkSize && videoSize - offset > chunkSize) {
           const chunk = carry.subarray(0, chunkSize);
           carry = carry.subarray(chunkSize);
           await this.putUploadChunk(uploadUrl, chunk, offset, videoSize, asset.mimeType ?? "video/mp4");
@@ -265,7 +274,14 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
         }
       }
 
+      if (received !== videoSize) {
+        throw new Error("TikTok media source size changed during download (expected " + videoSize + " bytes, received " + received + ").");
+      }
       if (carry.length > 0) {
+        const remainingBytes = videoSize - offset;
+        if (carry.length !== remainingBytes) {
+          throw new Error("TikTok media source size changed during download.");
+        }
         await this.putUploadChunk(uploadUrl, carry, offset, videoSize, asset.mimeType ?? "video/mp4");
         offset += carry.length;
       }
