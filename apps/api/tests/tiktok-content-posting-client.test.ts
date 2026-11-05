@@ -66,6 +66,11 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
   const video = new Uint8Array(asset.byteSize).fill(7);
   const client = new TikTokContentPostingClient({
     accessTokenResolver: async () => "secret-token",
+    mediaFetchImpl: async (_url, init, maxBytes) => {
+      assert.equal(init.method, "GET");
+      assert.equal(maxBytes, asset.byteSize);
+      return new Response(video, { status: 200, headers: { "content-length": String(video.byteLength) } });
+    },
     fetchImpl: async (input, init) => {
       const url = String(input);
       const headers = new Headers(init?.headers);
