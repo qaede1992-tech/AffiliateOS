@@ -130,8 +130,23 @@ jobs:
             const ledger = await client.query('SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC');
             const timestamps = new Set(ledger.rows.map((row) => Number(row.created_at)));
             const latestTimestamp = Math.max(...timestamps);
-            assert.ok(timestamps.has(Number(byTag.get("0075_product_media_rights_audit_search_path").when)), "Migration 0075 is not recorded.");
-            assert.equal(latestTimestamp, Number(byTag.get("0075_product_media_rights_audit_search_path").when), "Production ledger is not at the expected 0075 boundary.");
+            const boundaryTimestamp = Number(byTag.get("0075_product_media_rights_audit_search_path").when);
+            assert.ok(timestamps.has(boundaryTimestamp), "Migration 0075 is not recorded.");
+            assert.equal(latestTimestamp, boundaryTimestamp, "Production ledger is not at the expected 0075 boundary.");
+            const expectedHistoricalGaps = [
+              "0056_tiktok_publication_approval_and_media_duration",
+              "0057_content_products_multi_product_story"
+            ];
+            const missingPrefixTags = journal.entries
+              .filter((entry) => Number(entry.when) <= boundaryTimestamp && !timestamps.has(Number(entry.when)))
+              .map((entry) => entry.tag)
+              .sort();
+            assert.deepEqual(
+              missingPrefixTags,
+              expectedHistoricalGaps.slice().sort(),
+              "Production ledger has unexpected historical gaps before migration 0076."
+            );
+            assert.equal(ledger.rows.length, 70, "Production ledger row count differs from the audited 0075 boundary.");
             for (const tag of expectedTags.slice(1)) {
               assert.ok(!timestamps.has(Number(byTag.get(tag).when)), "Migration " + tag + " is already recorded; inspect the current state instead of replaying this workflow.");
             }
