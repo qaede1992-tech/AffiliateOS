@@ -1,4 +1,5 @@
 import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
+import { fetchPublicHttpsStream } from "./public-https-stream.js";
 import type { MediaAsset } from "./media-asset.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { PublicationCheckResult, PublishOutcome } from "./distribution-engine.js";
@@ -46,17 +47,21 @@ export type TikTokContentPostingClientConfiguration = {
   fetchImpl?: typeof fetch;
   baseUrl?: string;
   mediaTransferMode?: TikTokMediaTransferMode;
+  /** Test seam for media transport; production defaults to the DNS-pinned streaming fetcher. */
+  mediaFetchImpl?: (url: string, init: { method: "HEAD" | "GET" }, maxBytes: number) => Promise<Response>;
 };
 
 export class TikTokContentPostingClient implements TikTokContentPublisherClient {
   private readonly fetchImpl: typeof fetch;
   private readonly baseUrl: string;
   private readonly mediaTransferMode: TikTokMediaTransferMode;
+  private readonly mediaFetchImpl: (url: string, init: { method: "HEAD" | "GET" }, maxBytes: number) => Promise<Response>;
 
   constructor(private readonly configuration: TikTokContentPostingClientConfiguration) {
     this.fetchImpl = configuration.fetchImpl ?? fetch;
     this.baseUrl = (configuration.baseUrl ?? "https://open.tiktokapis.com").replace(/\/$/, "");
     this.mediaTransferMode = configuration.mediaTransferMode ?? "FILE_UPLOAD";
+    this.mediaFetchImpl = configuration.mediaFetchImpl ?? ((url, init, maxBytes) => fetchPublicHttpsStream(url, init, { maxBytes, timeoutMs: 20_000, maxRedirects: 3 }));
   }
 
   async publish(input: { content: Content; account: SocialAccount; mediaAssets: MediaAsset[]; idempotencyKey: string; tiktokApproval?: TikTokPublicationApproval }): Promise<PublishOutcome> {
@@ -224,7 +229,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
       return asset.byteSize;
     }
 
-    const response = await this.fetchImpl(asset.reference, { method: "HEAD" });
+    const response = await this.mediaFetchImpl(asset.reference, { method: "HEAD" }, MAX_VIDEO_SIZE);
     if (!response.ok) throw new Error("Unable to determine TikTok media size (HTTP " + response.status + ").");
     const value = Number(response.headers.get("content-length"));
     if (!Number.isSafeInteger(value)) {
@@ -235,7 +240,7 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
   }
 
   private async uploadVideo(asset: MediaAsset, uploadUrl: string, videoSize: number, chunkSize: number): Promise<void> {
-    const response = await this.fetchImpl(asset.reference, { method: "GET" });
+    const response = await this.mediaFetchImpl(asset.reference, { method: "GET" }, videoSize);
     if (!response.ok || !response.body) {
       throw new Error("Unable to download TikTok media source (HTTP " + response.status + ").");
     }
