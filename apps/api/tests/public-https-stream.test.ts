@@ -135,3 +135,41 @@ test("streaming media fetch rejects IANA IPv6 non-global and documentation range
     assert.equal(requestOpened, false, address + " must be rejected before opening a socket");
   }
 });
+
+
+test("streaming media fetch disables pooled HTTPS agents so each request uses its validated DNS pin", async () => {
+  let observedOptions: unknown;
+  const requestImpl = ((_options: unknown, callback: (response: PassThrough & {
+    statusCode?: number;
+    headers: Record<string, string>;
+  }) => void) => {
+    observedOptions = _options;
+    const request = new EventEmitter() as EventEmitter & {
+      setTimeout: () => void;
+      end: () => void;
+      destroy: (error?: Error) => void;
+    };
+    request.setTimeout = () => undefined;
+    request.destroy = () => undefined;
+    request.end = () => {
+      const response = new PassThrough() as PassThrough & {
+        statusCode?: number;
+        headers: Record<string, string>;
+      };
+      response.statusCode = 200;
+      response.headers = { "content-length": "0" };
+      callback(response);
+      response.end();
+    };
+    return request;
+  }) as never;
+
+  const response = await fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "HEAD" }, {
+    maxBytes: 1024,
+    resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+    requestImpl
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal((observedOptions as { agent?: unknown } | undefined)?.agent, false);
+});
