@@ -472,7 +472,7 @@ test("does not expose catalog persistence errors in discovery logs or skipped re
       productUrl: "https://shopee.co.id/product/123/456"
     }, true);
     assert.equal(result.candidatesFound, 0);
-    assert.ok(result.skipped.some((item) => item.reason === "catalog_discovery_failed"));
+    assert.ok(result.skipped.some((item) => item.reason === "catalog_persistence_failed"));
     assert.doesNotMatch(JSON.stringify(result) + warnings.join("\n"), /insert into|private-media-index-marker|\$1/);
   } finally {
     globalThis.fetch = originalFetch;
