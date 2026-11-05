@@ -72,6 +72,12 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
 };
 
 const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp; exclude?: RegExp }> = [
+  { pattern: /\\b(keranjang|colander|strainer|tirisan|saringan sayuran|vegetable strainer)\\b/i, query: "colander", relevant: /\\b(colander|strainer|draining basket|vegetable strainer|food strainer)\\b/i },
+  { pattern: /\\b(food container|food storage|kontainer|kotak penyimpanan makanan|wadah makanan)\\b/i, query: "food container", relevant: /\\b(food container|food storage container|plastic food container|kitchen storage container)\\b/i },
+  { pattern: /\\b(blood pressure monitor|wrist blood pressure|tensimeter|sphygmomanometer|omron hem)\\b/i, query: "blood pressure monitor", relevant: /\\b(blood pressure monitor|blood pressure monitoring|sphygmomanometer)\\b/i },
+  { pattern: /\\b(label printer|printer label|niimbot|thermal label printer)\\b/i, query: "label printer", relevant: /\\b(label printer|label maker|thermal printer|label scanner)\\b/i },
+  { pattern: /\\b(sneakers|sneaker|sepatu sneakers|sepatu olahraga)\\b/i, query: "sneakers", relevant: /\\b(sneaker|sneakers|athletic shoe|running shoe)\\b/i },
+
 
   { pattern: /\b(sweater|sweatshirt|hoodie|blouse|polo shirt|gamis|dress|celana|pakaian|hijab|jilbab|bergo|sling bag|tas wanita|dompet|topi baseball|baseball cap|kaos kaki|socks|sandal|kacamata hitam)\b/i, query: "clothing and fashion accessories", relevant: /\b(sweater|sweatshirt|hoodie|blouse|polo shirt|dress|pants|trousers|hijab|headscarf|bag|wallet|cap|hat|socks|sandal|sunglasses|eyeglasses)\b/i },
   { pattern: /\b(aksesoris mobil|pengait kargo|injector cleaner|car phone holder|jaring taruh hp)\b/i, query: "automotive accessories", relevant: /\b(car phone holder|phone holder|car accessory|automotive accessory|cargo hook|motorcycle accessory|vehicle)\b/i },

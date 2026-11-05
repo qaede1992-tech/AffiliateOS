@@ -371,7 +371,12 @@ test("maps representative Shopee product titles to concise category discovery qu
     ["Joyko Permanent Marker Dual Tip", "permanent marker pen"],
     ["Shampo Makarizo Sachet", "shampoo bottle"],
     ["HAN RIVER Kipas Angin 3in1", "electric fan"],
-    ["Dapurmanja Panci Masak Stainless Steel", "cookware"]
+    ["Dapurmanja Panci Masak Stainless Steel", "cookware"],
+    ["GOODBABY Keranjang Tirisan Multifungsi 6 In1 Baskom Saringan Sayuran", "colander"],
+    ["Tifale Food Kontainer Kotak Penyimpanan Makanan", "food container"],
+    ["Omron Wrist Blood Pressure Monitor HEM 6161", "blood pressure monitor"],
+    ["NIIMBOT B1 Printer Label Bluetooth", "label printer"],
+    ["Sepatu Sneakers Fashion", "sneakers"]
   ];
   for (const [name, expected] of cases) {
     assert.deepEqual(buildWikimediaCommonsQueries({ name }), [expected], name);
@@ -466,4 +471,37 @@ test("rejects license URLs outside the canonical Creative Commons host", async (
     }
   }), { status: 200, headers: { "content-type": "application/json" } });
   assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
+});
+
+
+test("discovers an Omron blood pressure monitor lead from Commons with rights still unverified", async () => {
+  let requestedUrl = "";
+  const fetchImpl: typeof fetch = async (input) => {
+    requestedUrl = String(input);
+    return new Response(JSON.stringify({
+      query: {
+        pages: [{
+          title: "File:An Omron wrist blood pressure monitor.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/wikipedia/commons/omron-monitor.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:An_Omron_wrist_blood_pressure_monitor.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "http://creativecommons.org/publicdomain/zero/1.0/deed.en" },
+              Artist: { value: "Example Photographer" }
+            }
+          }]
+        }]
+      }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Omron Wrist Blood Pressure Monitor HEM 6161"
+  }, { fetchImpl });
+  assert.match(requestedUrl, /gsrsearch=blood\+pressure\+monitor/);
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "An Omron wrist blood pressure monitor.jpg");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
 });
