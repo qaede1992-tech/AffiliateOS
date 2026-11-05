@@ -479,3 +479,54 @@ test("does not expose catalog persistence errors in discovery logs or skipped re
     console.warn = originalWarn;
   }
 });
+
+
+test("classifies catalog persistence failures separately and keeps provider errors sanitized", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warnings: string[] = [];
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    results: [{
+      title: "Demo product",
+      url: "https://media.openverse-demo.net/demo.jpg",
+      foreign_landing_url: "https://catalog.openverse-demo.net/demo",
+      license: "cc0",
+      source: "Openverse"
+    }]
+  }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  console.warn = (message?: unknown) => { warnings.push(String(message)); };
+
+  try {
+    const assets: ProductMediaAsset[] = [];
+    const assetRepository = {
+      async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+    };
+    const candidateRepository = {
+      async saveMany() { throw new Error('relation "product_media_candidates" does not exist'); },
+      async listPendingByProduct() { return []; }
+    };
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      assetRepository,
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      candidateRepository as never
+    );
+    const result = await runner.discover({
+      ...product,
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+    const events = warnings.map((message) => JSON.parse(message) as Record<string, unknown>);
+    assert.equal(events.some((event) => event.event === "product_media_catalog_persistence_failed"), true);
+    assert.equal(events.some((event) => event.event === "product_media_catalog_search_failed"), false);
+    assert.equal(result.skipped.some((item) => item.reason === "catalog_persistence_failed"), true);
+    assert.equal(JSON.stringify(events).includes("product_media_candidates"), false);
+    assert.equal(result.pageFetched, false);
+    assert.equal(result.hasVideo, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});

@@ -5,6 +5,8 @@
  * grants usage rights, or marks assets publishable. A human rights review and
  * persisted evidence are still required by product-media-publication-rights.
  */
+import { isPublicMediaUrl } from "./media-asset.js";
+
 export interface ProductMediaSearchIdentity {
   name: string;
   /** Marketplace taxonomy preserved from the affiliate CSV, used only to improve discovery queries. */
@@ -132,14 +134,8 @@ export const evaluateProductMediaIdentity = (
 };
 
 const safeHttps = (value: unknown): string | null => {
-  if (typeof value !== "string" || value.length > 2048) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || !url.hostname) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
+  if (typeof value !== "string" || value.length > 2048 || !isPublicMediaUrl(value)) return null;
+  try { return new URL(value).toString(); } catch { return null; }
 };
 
 interface OpenverseImage {

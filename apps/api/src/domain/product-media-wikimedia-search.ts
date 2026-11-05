@@ -1,3 +1,4 @@
+import { isPublicMediaUrl } from "./media-asset.js";
 import {
   evaluateProductMediaIdentity,
   type ProductMediaCatalogCandidate,
@@ -23,14 +24,8 @@ interface WikimediaPage { title?: unknown; imageinfo?: WikimediaImageInfo[]; }
 interface WikimediaSearchResponse { query?: { pages?: WikimediaPage[] }; }
 
 const safeHttps = (value: unknown): string | null => {
-  if (typeof value !== "string" || value.length > 2048) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || !url.hostname) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
+  if (typeof value !== "string" || value.length > 2048 || !isPublicMediaUrl(value)) return null;
+  try { return new URL(value).toString(); } catch { return null; }
 };
 
 const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefined, key: string): string | null => {
@@ -42,7 +37,16 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#(\d+);/g, (_match, code: string) => {
+      const codePoint = Number(code);
+      const isXmlCharacter = codePoint === 0x9
+        || codePoint === 0xA
+        || codePoint === 0xD
+        || (codePoint >= 0x20 && codePoint <= 0xD7FF)
+        || (codePoint >= 0xE000 && codePoint <= 0xFFFD)
+        || (codePoint >= 0x10000 && codePoint <= 0x10FFFF);
+      return isXmlCharacter ? String.fromCodePoint(codePoint) : " ";
+    })
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 1000) || null;
