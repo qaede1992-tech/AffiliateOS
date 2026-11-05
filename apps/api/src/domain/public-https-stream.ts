@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { Transform, Readable } from "node:stream";
 
-type Address = { address: string; family: number };
+type Address = { address: string; family: 4 | 6 };
 type RequestImpl = typeof httpsRequest;
 
 export interface SafeStreamingFetchOptions {
@@ -107,7 +107,7 @@ function requestOnce(
       }
       if (method === "HEAD") {
         incoming.resume();
-        resolve(new Response(null, { status, headers: incoming.headers as HeadersInit }));
+        const headers = new Headers();\n        for (const [name, value] of Object.entries(incoming.headers)) {\n          if (typeof value === "string") headers.set(name, value);\n          else if (Array.isArray(value)) headers.set(name, value.join(", "));\n        }\n        resolve(new Response(null, { status, headers }));
         return;
       }
       let received = 0;
