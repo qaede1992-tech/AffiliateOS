@@ -109,6 +109,11 @@ const EXTENSION: Record<SupportedMime, string> = {
   "video/mp4": "mp4"
 };
 
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 const detectMime = (bytes: Uint8Array): SupportedMime | undefined =>
   MIME_TYPES.find((mimeType) => isStructurallyValidMedia(mimeType, bytes));
 
@@ -233,7 +238,7 @@ export class ProductMediaIngestionService {
           throw error;
         }
       } catch (error) {
-        skipped.push({ url: candidate.url, reason: error instanceof Error ? error.message : "Unknown media ingestion failure." });
+        skipped.push({ url: candidate.url, reason: "media_ingestion_failed:" + safeErrorType(error) });
       }
     }
     return { stored, skipped };
