@@ -163,8 +163,8 @@ export function scoreOpportunity(input: OpportunityScoringInput): ScoredOpportun
   if (commissionEvidence && commissionEvidence.score >= 60) reasons.push("Strong commission potential");
   if (demandEvidence && demand >= 60) {
     const demandSources = [
-      ...(salesKnown ? ["recorded sales"] : []),
-      ...(reviewsKnown ? ["recorded reviews"] : []),
+      ...(salesKnown && product.soldCount > 0 ? ["recorded sales"] : []),
+      ...(reviewsKnown && product.reviewCount > 0 ? ["recorded reviews"] : []),
       ...(audienceReachKnown || reachEvidenceKnown ? ["audience reach"] : [])
     ];
     reasons.push(`Strong demand from ${demandSources.join(", ")}`);
