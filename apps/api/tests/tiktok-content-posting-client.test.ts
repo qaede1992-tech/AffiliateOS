@@ -115,13 +115,15 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
 });
 
 test("TikTok FILE_UPLOAD cancels its source stream when a provider chunk upload fails", async () => {
+  const videoSize = 64 * 1024 * 1024 + 1;
+  const firstChunkSize = Math.ceil(videoSize / 2);
   let sourceCancelled = false;
   let firstChunkSent = false;
   const source = new ReadableStream<Uint8Array>({
     pull(controller) {
       if (!firstChunkSent) {
         firstChunkSent = true;
-        controller.enqueue(new Uint8Array(asset.byteSize).fill(7));
+        controller.enqueue(new Uint8Array(firstChunkSize).fill(7));
       }
     },
     cancel() {
@@ -132,10 +134,10 @@ test("TikTok FILE_UPLOAD cancels its source stream when a provider chunk upload 
     accessTokenResolver: async () => "secret-token",
     mediaFetchImpl: async (_url, init, maxBytes) => {
       assert.equal(init.method, "GET");
-      assert.equal(maxBytes, asset.byteSize);
+      assert.equal(maxBytes, videoSize);
       return new Response(source, {
         status: 200,
-        headers: { "content-length": String(asset.byteSize) }
+        headers: { "content-length": String(videoSize) }
       });
     },
     fetchImpl: async (input, init) => {
@@ -152,7 +154,7 @@ test("TikTok FILE_UPLOAD cancels its source stream when a provider chunk upload 
   });
 
   await assert.rejects(
-    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-cleanup-1" }),
+    () => client.publish({ content, account, mediaAssets: [{ ...asset, byteSize: videoSize }], tiktokApproval: approval, idempotencyKey: "idem-cleanup-1" }),
     /TikTok upload endpoint unavailable/
   );
   assert.equal(sourceCancelled, true);
