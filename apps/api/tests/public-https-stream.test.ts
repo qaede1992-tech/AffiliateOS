@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import test from "node:test";
 import { fetchPublicHttpsStream } from "../src/domain/public-https-stream.js";
 
