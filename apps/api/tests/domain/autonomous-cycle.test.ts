@@ -204,6 +204,40 @@ describe("autonomous cycle", () => {
     assert.equal(lockHeld, false);
   });
 
+  it("sanitizes database errors from media index lookups before logging", async () => {
+    const product = { id: "media-index-error-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+    };
+    const execution = {
+      async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
+      async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
+      async listPublishableMediaProductIds() { return []; },
+      async listVideoProductIds() {
+        throw new Error("Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: private-media-index-marker");
+      },
+      async listPublishableVideoProductIds() { return []; },
+      async listMediaReadinessScores() { return { [product.id]: 0 }; }
+    };
+    const warningLogs: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warningLogs.push(args.map(String).join(" "));
+    try {
+      const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
+      await service.runOnce({ publicationEnabled: false });
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(warningLogs.length, 1);
+    assert.ok(warningLogs[0]?.includes("autonomous_product_video_index_failed"));
+    assert.ok(warningLogs[0]?.includes('"errorType":"Error"'));
+    assert.equal(warningLogs.some((line) => line.includes("private-media-index-marker")), false);
+    assert.equal(warningLogs.some((line) => line.includes("SELECT *")), false);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
