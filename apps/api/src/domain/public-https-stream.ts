@@ -144,11 +144,33 @@ function requestOnce(
       });
       incoming.on("error", (error) => limiter.destroy(error));
       incoming.pipe(limiter);
-      // A cancelled downstream stream must also close the upstream HTTP request.
-      limiter.on("close", () => {
-        if (!incoming.complete && !request.destroyed) request.destroy();
+      const nodeBody = Readable.toWeb(limiter) as ReadableStream<Uint8Array>;
+      const nodeReader = nodeBody.getReader();
+      const body = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const next = await nodeReader.read();
+            if (next.done) {
+              controller.close();
+              nodeReader.releaseLock();
+              return;
+            }
+            controller.enqueue(next.value);
+          } catch (error) {
+            controller.error(error);
+            try { nodeReader.releaseLock(); } catch { /* The reader may already be released. */ }
+          }
+        },
+        async cancel(reason) {
+          try {
+            await nodeReader.cancel(reason);
+          } finally {
+            try { nodeReader.releaseLock(); } catch { /* The reader may already be released. */ }
+            if (!request.destroyed) request.destroy();
+            if (!incoming.destroyed) incoming.destroy();
+          }
+        }
       });
-      const body = Readable.toWeb(limiter) as ReadableStream<Uint8Array>;
       const headers = new Headers();
       for (const [name, value] of Object.entries(incoming.headers)) {
         if (typeof value === "string") headers.set(name, value);
