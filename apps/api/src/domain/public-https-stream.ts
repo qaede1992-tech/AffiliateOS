@@ -60,7 +60,11 @@ async function resolvePublic(hostname: string, resolver: typeof dnsLookup): Prom
   }
   const selected = addresses[0];
   if (!selected) throw new Error("TikTok media hostname has no usable address.");
-  return selected;
+  const family = isIP(selected.address);
+  if (family !== 4 && family !== 6) {
+    throw new Error("TikTok media hostname returned an invalid address.");
+  }
+  return { address: selected.address, family };
 }
 
 function requestOnce(
