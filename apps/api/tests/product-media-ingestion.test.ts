@@ -411,3 +411,29 @@ test("links candidate provenance to a matching existing unverified asset without
   assert.equal(result.stored[0]?.rightsStatus, "unverified");
   assert.equal(attached?.sourceUrl, "https://cdn.example.com/candidate.png");
 });
+
+
+test("does not expose database error messages in skipped media ingestion results", async () => {
+  const bytes = Uint8Array.from([
+    0, 0, 0, 16, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0,
+    0, 0, 0, 9, 0x6d, 0x64, 0x61, 0x74, 1
+  ]);
+  const storage = {
+    upload: async ({ key }: { key: string }) => ({ bucket: "affiliate-media", key }),
+    remove: async () => {}
+  } as never;
+  const repository = {
+    findByProductAndHash: async () => undefined,
+    save: async () => { throw new Error('insert into product_media_assets values ($1) -- private-media-index-marker'); }
+  } as never;
+  const fetcher = (async () => ({ status: 200, headers: {}, url: "https://cdn.example.com/product.mp4", bytes })) as never;
+  const service = new ProductMediaIngestionService(storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher);
+  const result = await service.ingest({
+    productId, nonMediaEligibilityPassed: true,
+    candidates: [{ kind: "video", url: "https://cdn.example.com/product.mp4", source: "catalog" }]
+  });
+  assert.equal(result.stored.length, 0);
+  assert.equal(result.skipped.length, 1);
+  assert.match(result.skipped[0]?.reason ?? "", /^media_ingestion_failed:Error$/);
+  assert.doesNotMatch(JSON.stringify(result), /insert into|private-media-index-marker|\$1/);
+});
