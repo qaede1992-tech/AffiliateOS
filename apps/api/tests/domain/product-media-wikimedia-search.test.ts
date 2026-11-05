@@ -33,6 +33,7 @@ test("searches Wikimedia Commons and preserves attribution and license evidence"
   const results = await searchWikimediaCommonsProductMedia(identity, { fetchImpl, timeoutMs: 1000 });
   assert.equal(results.length, 1);
   assert.equal(results[0]?.provider, "wikimedia_commons");
+  assert.equal(results[0]?.searchQuery, "Sony WH-1000XM5 Wireless Headphones");
   assert.equal(results[0]?.license, "by");
   assert.equal(results[0]?.licenseVersion, "4.0");
   assert.equal(results[0]?.creator, "Example Photographer");
@@ -165,6 +166,7 @@ test("queues relevant category-only results for mandatory human review instead o
   assert.match(requestedUrl, /gsrsearch=backpack/);
   assert.equal(results.length, 1);
   assert.equal(results[0]?.title, "Military backpack 01.jpg");
+  assert.equal(results[0]?.searchQuery, "backpack");
   assert.equal(results[0]?.identityStatus, "review_required");
   assert.equal(results[0]?.identityScore, 20);
   assert.equal(results[0]?.rightsStatus, "unverified");
