@@ -371,3 +371,27 @@ test("rejects preview review counts without an explicit quality classification",
   assert.equal(result.rows.length, 0);
   assert.match(result.errors[0]?.message ?? "", /review_count_quality harus exact, lower_bound, atau missing/);
 });
+
+
+test("imports optional category from Indonesian Shopee CSV without inferring missing values", () => {
+  const csv = [
+    headers + ",Kategori",
+    "123,Produk Contoh,55RB,1RB,Toko Contoh,8.5%,Rp4.675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,Elektronik"
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.rows[0]?.category, "Elektronik");
+  const withoutCategory = parseShopeeAffiliateCsv([headers, "124,Produk Lain,55RB,1RB,Toko Contoh,8.5%,Rp4.675,https://shopee.co.id/product/1/124,https://s.shopee.co.id/def"].join("\\n"));
+  assert.equal(withoutCategory.rows[0]?.category, undefined);
+});
+
+test("supports normalized preview category fields and rejects ambiguous category columns", () => {
+  const previewHeaders = "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url,category";
+  const row = "0,123,Produk,55000,1000,lower_bound,Toko,850,4675,https://shopee.co.id/product/1/123,https://s.shopee.co.id/abc,Elektronik";
+  const parsed = parseShopeeAffiliateCsv([previewHeaders, row].join("\\n"));
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.rows[0]?.category, "Elektronik");
+  const ambiguous = parseShopeeAffiliateCsv([previewHeaders + ",category_name", row + ",Elektronik"].join("\\n"));
+  assert.equal(ambiguous.rows.length, 0);
+  assert.match(ambiguous.errors[0]?.message ?? "", /hanya satu kolom kategori/);
+});
