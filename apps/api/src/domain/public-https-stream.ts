@@ -107,7 +107,12 @@ function requestOnce(
       }
       if (method === "HEAD") {
         incoming.resume();
-        const headers = new Headers();\n        for (const [name, value] of Object.entries(incoming.headers)) {\n          if (typeof value === "string") headers.set(name, value);\n          else if (Array.isArray(value)) headers.set(name, value.join(", "));\n        }\n        resolve(new Response(null, { status, headers }));
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(incoming.headers)) {
+          if (typeof value === "string") headers.set(name, value);
+          else if (Array.isArray(value)) headers.set(name, value.join(", "));
+        }
+        resolve(new Response(null, { status, headers }));
         return;
       }
       let received = 0;
