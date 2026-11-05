@@ -173,3 +173,45 @@ test("streaming media fetch disables pooled HTTPS agents so each request uses it
   assert.equal(response.status, 200);
   assert.equal((observedOptions as { agent?: unknown } | undefined)?.agent, false);
 });
+
+
+test("streaming media fetch destroys the upstream request when its response body is cancelled", async () => {
+  let requestDestroyed = false;
+  let incoming: PassThrough | undefined;
+  const requestImpl = ((_options: unknown, callback: (response: PassThrough & {
+    statusCode?: number;
+    headers: Record<string, string>;
+  }) => void) => {
+    const request = new EventEmitter() as EventEmitter & {
+      setTimeout: () => void;
+      end: () => void;
+      destroy: (error?: Error) => void;
+    };
+    request.setTimeout = () => undefined;
+    request.destroy = () => {
+      requestDestroyed = true;
+      incoming?.destroy();
+    };
+    request.end = () => {
+      incoming = new PassThrough() as PassThrough & {
+        statusCode?: number;
+        headers: Record<string, string>;
+      };
+      incoming.statusCode = 200;
+      incoming.headers = {};
+      callback(incoming);
+      incoming.write(Buffer.from("streaming video bytes"));
+    };
+    return request;
+  }) as never;
+
+  const response = await fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+    maxBytes: 1024,
+    resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+    requestImpl
+  });
+
+  assert.ok(response.body);
+  await response.body.cancel();
+  assert.equal(requestDestroyed, true);
+});
