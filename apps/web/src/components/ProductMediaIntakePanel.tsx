@@ -65,7 +65,7 @@ export function ProductMediaIntakePanel() {
         const parsed = new URL(value);
         if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error();
         const host = parsed.hostname.toLowerCase();
-        if (/(^|\.)shopee\\./.test(host) || host === "susercontent.com" || host.endsWith(".susercontent.com")) {
+        if (/(^|\.)shopee\./.test(host) || host === "susercontent.com" || host.endsWith(".susercontent.com") || host === "shopeeusercontent.com" || host.endsWith(".shopeeusercontent.com")) {
           setError(`URL ${label.toLowerCase()} berasal dari domain Shopee/CDN. AffiliateOS tidak mengunduh materi Shopee secara otomatis; unggah file yang dibuat sendiri atau diberikan penjual dengan izin penggunaan.`);
           return;
         }
