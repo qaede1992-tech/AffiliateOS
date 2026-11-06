@@ -18,6 +18,13 @@ test("builds a bounded query from product identity rather than marketplace URLs"
   assert.ok(buildProductMediaSearchQuery({ name: "x".repeat(300) }).length <= 200);
 });
 
+test("includes marketplace category in Openverse query without changing category-free queries", () => {
+  assert.equal(
+    buildProductMediaSearchQuery({ name: "Mini Food Container", category: "Kitchen Storage" }),
+    "Mini Food Container Kitchen Storage"
+  );
+});
+
 test("requires exact model/SKU evidence for a strong match", () => {
   const match = evaluateProductMediaIdentity(identity, "Sony WH-1000XM5 Wireless Headphones Black");
   assert.equal(match.status, "strong_match");
