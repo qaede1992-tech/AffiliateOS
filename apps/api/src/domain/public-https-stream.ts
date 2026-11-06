@@ -102,7 +102,16 @@ function requestOnce(
         }
       }
     };
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearDeadline = (): void => {
+      if (deadlineTimer !== undefined) {
+        clearTimeout(deadlineTimer);
+        deadlineTimer = undefined;
+      }
+    };
     const request = requestImpl(options, (incoming) => {
+      incoming.once("end", clearDeadline);
+      incoming.once("close", clearDeadline);
       const status = incoming.statusCode ?? 0;
       if (REDIRECTS.has(status)) {
         const location = incoming.headers.location;
@@ -178,8 +187,18 @@ function requestOnce(
       }
       resolve(new Response(body, { status, headers }));
     });
+    // Node's request.setTimeout is an inactivity timeout. Keep a separate absolute
+    // deadline active through response streaming so slow-drip origins cannot hold
+    // a media transfer open indefinitely while periodically sending small chunks.
+    deadlineTimer = setTimeout(() => {
+      request.destroy(new Error("TikTok media source exceeded the absolute transfer deadline."));
+    }, timeoutMs);
+    deadlineTimer.unref?.();
     request.setTimeout(timeoutMs, () => request.destroy(new Error("TikTok media source request timed out.")));
-    request.on("error", reject);
+    request.on("error", (error) => {
+      clearDeadline();
+      reject(error);
+    });
     request.end();
   });
 }
