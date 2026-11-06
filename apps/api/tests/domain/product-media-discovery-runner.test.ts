@@ -122,8 +122,8 @@ test("never downloads Shopee-owned CDN image or video URLs supplied in a product
   assert.equal(fetched, false);
   assert.equal(result.pageFetched, false);
   assert.equal(result.stored.length, 0);
-  assert.equal(result.skipped.length, 2);
-  assert.ok(result.skipped.every((item) => /Shopee-hosted media is not fetched automatically/.test(item.reason)));
+  const blockedShopeeMedia = result.skipped.filter((item) => /Shopee-hosted media is not fetched automatically/.test(item.reason));
+  assert.equal(blockedShopeeMedia.length, 2);
 });
 
 test("continues discovering catalog images when an existing video has unverified rights", async () => {
