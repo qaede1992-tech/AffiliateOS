@@ -9,6 +9,8 @@ export function ProductMediaIntakePanel() {
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +47,7 @@ export function ProductMediaIntakePanel() {
     setImageUrl(selectedProduct?.imageUrl ?? "");
     setVideoUrl(selectedProduct?.videoUrl ?? "");
     setRightsConfirmed(false);
+    setUploadFile(null);
     setNotice(null);
   }, [selectedId]);
 
@@ -61,6 +64,11 @@ export function ProductMediaIntakePanel() {
       try {
         const parsed = new URL(value);
         if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error();
+        const host = parsed.hostname.toLowerCase();
+        if (/(^|\\.)shopee\\./.test(host) || host === "susercontent.com" || host.endsWith(".susercontent.com")) {
+          setError(`URL ${label.toLowerCase()} berasal dari domain Shopee/CDN. AffiliateOS tidak mengunduh materi Shopee secara otomatis; unggah file yang dibuat sendiri atau diberikan penjual dengan izin penggunaan.`);
+          return;
+        }
       } catch {
         setError(`URL ${label.toLowerCase()} harus berupa tautan HTTPS langsung tanpa kredensial.`);
         return;
@@ -91,6 +99,27 @@ export function ProductMediaIntakePanel() {
     }
   };
 
+  const uploadMedia = async () => {
+    if (!selectedProduct || !uploadFile) return;
+    const kind = uploadFile.type.startsWith("image/") ? "image" : uploadFile.type === "video/mp4" ? "video" : null;
+    const allowedImage = ["image/jpeg", "image/png", "image/webp"].includes(uploadFile.type);
+    if (!kind || (kind === "image" && !allowedImage)) { setError("Format file harus JPG, PNG, WebP, atau MP4."); return; }
+    const limit = kind === "video" ? 45 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (uploadFile.size <= 0 || uploadFile.size > limit) { setError(`Ukuran ${kind === "video" ? "video" : "gambar"} harus lebih dari 0 dan maksimal ${Math.round(limit / 1024 / 1024)} MiB.`); return; }
+    if (!rightsConfirmed) { setError("Konfirmasikan hak penggunaan media sebelum mengunggah."); return; }
+    setUploading(true); setError(null); setNotice(null);
+    try {
+      const asset = await api.uploadProductMedia(selectedProduct.id, uploadFile, kind);
+      setNotice(`${kind === "video" ? "Video" : "Gambar"} tersimpan di penyimpanan privat AffiliateOS (SHA-256 ${asset.sha256.slice(0, 12)}…). Status hak tetap ${asset.rightsStatus}; admin harus memeriksa bukti izin sebelum aset dapat digunakan untuk publikasi.`);
+      setUploadFile(null);
+      const input = document.getElementById("product-media-file") as HTMLInputElement | null;
+      if (input) input.value = "";
+      setRightsConfirmed(false);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "File media gagal diunggah.");
+    } finally { setUploading(false); }
+  };
+
   return (
     <article className="panel shopee-import-panel" id="product-media-intake">
       <div className="panel-heading">
@@ -117,15 +146,20 @@ export function ProductMediaIntakePanel() {
             <input id="product-media-video" type="url" inputMode="url" placeholder="https://cdn.example.com/product-video.mp4" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} />
             <label className="media-rights-confirmation">
               <input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} />
-              Saya memiliki izin/hak untuk menggunakan media ini. Konfirmasi ini hanya berlaku pada formulir dan belum disimpan sebagai bukti audit.
+              Media dibuat sendiri atau saya memiliki izin tertulis dari pemegang hak untuk menggunakannya dalam promosi, termasuk penyuntingan/produksi konten. Bukti tetap harus diperiksa admin sebelum publikasi.
             </label>
-            <button type="button" onClick={() => void saveMedia()} disabled={saving || !rightsConfirmed}>{saving ? "Menyimpan…" : "Simpan URL media"}</button>
+            <button type="button" onClick={() => void saveMedia()} disabled={saving || !rightsConfirmed}>{saving ? "Menyimpan…" : "Simpan URL media eksternal"}</button>
+            <div className="shopee-file-summary"><strong>Unggah file media yang berizin</strong><small>Gunakan foto/video buatan sendiri atau file yang dikirim penjual disertai izin tertulis untuk penggunaan promosi dan penyuntingan. Jangan mengunduh otomatis dari halaman atau CDN Shopee.</small></div>
+            <label htmlFor="product-media-file">File gambar/video</label>
+            <input id="product-media-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={(event) => setUploadFile(event.currentTarget.files?.[0] ?? null)} disabled={uploading} />
+            {uploadFile && <small>{uploadFile.name} · {uploadFile.size.toLocaleString("id-ID")} byte</small>}
+            <button type="button" onClick={() => void uploadMedia()} disabled={uploading || !uploadFile || !rightsConfirmed}>{uploading ? "Mengunggah media…" : "Unggah gambar/video"}</button>
           </>}
         </div>
       )}
       {error && <div className="shopee-import-error" role="alert"><strong>Media belum tersimpan</strong><p>{error}</p></div>}
       {notice && <div className="shopee-import-success" role="status"><strong>URL tersimpan</strong><p>{notice}</p></div>}
-      <p className="shopee-import-note">Penting: API saat ini hanya menyimpan URL gambar/video; konfirmasi pada checkbox tidak dikirim atau disimpan sebagai catatan hak penggunaan. Karena itu, konfirmasi tersebut bukan verifikasi hak dan tidak boleh dianggap sebagai persetujuan publikasi. AffiliateOS tidak mengambil gambar/video dari HTML halaman Shopee. URL yang dimasukkan akan diperiksa saat proses media discovery; konten hanya dibuat setelah produk lolos seleksi akhir dan media siap digunakan.</p>
+      <p className="shopee-import-note">Hak media tidak otomatis dianggap sah hanya karena file dapat diunggah. Untuk foto/video dari penjual, simpan bukti izin tertulis yang mencakup kanal promosi dan hak penyuntingan/produksi konten, lalu masukkan saat Review media produk. Aset baru berstatus verified setelah admin memeriksa bukti. Materi kreatif Shopee yang hanya berlisensi untuk ditampilkan tanpa perubahan tidak boleh diolah menjadi karya turunan tanpa izin tertulis terpisah.</p>
       <button type="button" className="secondary-button" onClick={() => void loadProducts()} disabled={loading || saving}>Muat ulang katalog</button>
     </article>
   );
