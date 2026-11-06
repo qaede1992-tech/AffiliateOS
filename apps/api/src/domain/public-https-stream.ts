@@ -111,7 +111,6 @@ function requestOnce(
     };
     const request = requestImpl(options, (incoming) => {
       incoming.once("end", clearDeadline);
-      incoming.once("close", clearDeadline);
       const status = incoming.statusCode ?? 0;
       if (REDIRECTS.has(status)) {
         const location = incoming.headers.location;
@@ -151,6 +150,17 @@ function requestOnce(
           callback(null, chunk);
         }
       });
+      // IncomingMessage emits "close" both after normal completion and after an
+      // interrupted response. Do not treat an incomplete close as success: surface
+      // truncation to the consumer and stop the absolute deadline.
+      incoming.once("close", () => {
+        if (incoming.complete === false) {
+          clearDeadline();
+          limiter.destroy(new Error("TikTok media source closed before the response completed."));
+          return;
+        }
+        clearDeadline();
+      });
       incoming.on("error", (error) => limiter.destroy(error));
       incoming.pipe(limiter);
       const nodeBody = Readable.toWeb(limiter) as ReadableStream<Uint8Array>;
@@ -174,6 +184,7 @@ function requestOnce(
           try {
             await nodeReader.cancel(reason);
           } finally {
+            clearDeadline();
             try { nodeReader.releaseLock(); } catch { /* The reader may already be released. */ }
             if (!request.destroyed) request.destroy();
             if (!incoming.destroyed) incoming.destroy();
