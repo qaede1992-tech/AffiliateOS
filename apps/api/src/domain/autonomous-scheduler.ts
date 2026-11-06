@@ -19,6 +19,12 @@ export type AutonomousSchedulerStatus = {
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
 const MIN_INTERVAL_MS = 5 * 60_000;
+
+/** Avoid exposing ORM messages that may contain SQL and bound parameters. */
+export const safeAutonomousErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class AutonomousScheduler {
@@ -105,7 +111,7 @@ export class AutonomousScheduler {
       })
       .catch(async (error) => {
         this.lastSkipReason = undefined;
-        this.lastError = error instanceof Error ? error.message : String(error);
+        this.lastError = safeAutonomousErrorType(error);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyError(error);
         return undefined;
