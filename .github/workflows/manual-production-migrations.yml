@@ -24,11 +24,19 @@ concurrency:
 
 jobs:
   migrate:
-    if: ${{ inputs.confirm_production_migration == true && inputs.confirm_backup_completed == true }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_production_migration == true && inputs.confirm_backup_completed == true }}
     runs-on: ubuntu-latest
     environment: production-migrations
     timeout-minutes: 20
     steps:
+      - name: Require the protected main branch
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Production migrations may only run from the protected main branch."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
