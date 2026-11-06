@@ -73,7 +73,7 @@ const overlap = (expected: Set<string>, actual: Set<string>): number => {
 
 /** Builds a bounded, descriptive query without embedding marketplace URLs. */
 export const buildProductMediaSearchQuery = (identity: ProductMediaSearchIdentity): string => {
-  const parts = [identity.brand, identity.name, identity.model, identity.sku, identity.variant]
+  const parts = [identity.brand, identity.name, identity.category, identity.model, identity.sku, identity.variant]
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0);
   return [...new Set(parts.map((part) => part.trim()))].join(" ").slice(0, 200);
 };
