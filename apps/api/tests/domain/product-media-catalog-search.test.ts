@@ -23,6 +23,13 @@ test("includes marketplace category in Openverse query without changing category
     buildProductMediaSearchQuery({ name: "Mini Food Container", category: "Kitchen Storage" }),
     "Mini Food Container Kitchen Storage"
   );
+  const longNameQuery = buildProductMediaSearchQuery({
+    name: "x".repeat(180),
+    model: "MODEL-123",
+    category: "Kitchen Storage"
+  });
+  assert.match(longNameQuery, /MODEL-123/);
+  assert.ok(longNameQuery.length <= 200);
 });
 
 test("requires exact model/SKU evidence for a strong match", () => {
