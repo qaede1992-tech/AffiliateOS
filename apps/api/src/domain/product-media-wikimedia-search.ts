@@ -56,7 +56,7 @@ const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp;
   { pattern: /\b(cat food|makanan kucing|pakan kucing)\b/i, query: "cat food", relevant: /\b(cat food|kibble|cat kibble|dry cat food)\b/i, exclude: /\b(donation|donation box|donation booth|shelter|charity|feeding program|wet (?:cat )?food)\b/i },
   { pattern: /\b(baby cream|krim bayi|baby lotion|perlengkapan bayi)\b/i, query: "baby cream", relevant: /\b(baby cream|barrier cream|skin cream|lotion|moisturizer|ointment|skincare)\b/i },
   { pattern: /\b(hand soap|hand wash|sabun cuci tangan)\b/i, query: "hand soap", relevant: /\b(hand soap|hand wash|liquid soap|soap dispenser|handwashing)\b/i },
-  { pattern: /\b(honey|madu)\b/i, query: "honey", relevant: /\b(honey|honeycomb|honey jar|bee honey)\b/i },
+  { pattern: /\b(honey|madu)\b/i, query: "honey", relevant: /\b(honey|honeycomb|honey jar|bee honey)\b/i, exclude: /\b(buzzard|bird|raptor|eagle|hawk|falcon|owl|vulture|wildlife)\b/i },
   { pattern: /\b(hair clip|hair clips|jepit rambut|perhiasan rambut)\b/i, query: "hair clips", relevant: /\b(hair clip|hair clips|hair clasp|barrette|hairpin)\b/i },
   { pattern: /\b(crisper tray|air fryer|baking tray)\b/i, query: "crisper tray", relevant: /\b(crisper tray|air fryer|oven tray)\b/i, exclude: /\b(potato wedges|food served|ready for serving|serving tray)\b/i }
 ];
@@ -101,9 +101,9 @@ const normalizedLicense = (licenseUrl: string | null, licenseName: string | null
 };
 
 /**
- * Returns product-identity matches only. Category-level relevance is not enough
- * to identify a product; rejected identity matches are discarded. Rights remain
- * unverified and no media is downloaded.
+ * Returns identity matches plus conservative category-only leads for manual
+ * review. Category-only leads never become strong matches or publishable assets;
+ * rights remain unverified and no media is downloaded.
  */
 export async function searchWikimediaCommonsProductMedia(
   identity: ProductMediaSearchIdentity,
@@ -174,7 +174,9 @@ export async function searchWikimediaCommonsProductMedia(
           .filter((value): value is string => Boolean(value))
           .join(" ");
         if (category && (!category.relevant.test(descriptiveText) || category.exclude?.test(descriptiveText))) continue;
-        if (identityMatch.status === "rejected") continue;
+        const primaryIdentifier = identity.model?.trim() || identity.sku?.trim();
+        const categoryOnlyMatch = identityMatch.status === "rejected" && !primaryIdentifier && category !== undefined;
+        if (identityMatch.status === "rejected" && !categoryOnlyMatch) continue;
         const creatorHref = metadata?.Artist?.value && typeof metadata.Artist.value === "string"
           ? metadata.Artist.value.match(/href=["']([^"']+)["']/i)?.[1]
           : null;
@@ -191,9 +193,11 @@ export async function searchWikimediaCommonsProductMedia(
           licenseVersion: licenseName?.match(/\d+(?:\.\d+)?/)?.[0] ?? null,
           licenseUrl: acceptedLicense.licenseUrl,
           sourcePublisher: "Wikimedia Commons",
-          identityScore: identityMatch.score,
-          identityStatus: identityMatch.status,
-          identityReasons: [...identityMatch.reasons, "Kecocokan identitas produk memadai; hasil tetap wajib diperiksa manusia."],
+          identityScore: categoryOnlyMatch ? Math.max(20, Math.min(identityMatch.score, 49)) : identityMatch.score,
+          identityStatus: categoryOnlyMatch ? "review_required" : identityMatch.status,
+          identityReasons: categoryOnlyMatch
+            ? [...identityMatch.reasons, `Kecocokan hanya pada tingkat kategori "${query}"; identitas produk tidak terbukti dan wajib diperiksa manusia.`]
+            : [...identityMatch.reasons, "Kecocokan identitas produk memadai; hasil tetap wajib diperiksa manusia."],
           rightsStatus: "unverified"
         };
         candidates.set(landingPageUrl, candidate);
