@@ -118,6 +118,25 @@ test("streaming media fetch rejects successful GET responses that cannot carry a
 });
 
 
+test("streaming media fetch rejects non-global 192.0.0.0/24 protocol assignments", async () => {
+  for (const address of ["192.0.0.1", "192.0.0.8", "192.0.0.170", "192.0.0.171"]) {
+    let requestOpened = false;
+    await assert.rejects(
+      () => fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+        maxBytes: 1024,
+        resolveHost: (async () => [{ address, family: 4 }]) as never,
+        requestImpl: (() => {
+          requestOpened = true;
+          throw new Error("socket must not open");
+        }) as never
+      }),
+      /private or special-use address/i
+    );
+    assert.equal(requestOpened, false, address + " must be rejected before opening a socket");
+  }
+});
+
+
 test("streaming media fetch rejects IANA IPv6 non-global and documentation ranges", async () => {
   for (const address of ["2001::1", "2001:1ff::1", "3fff::1"]) {
     let requestOpened = false;
