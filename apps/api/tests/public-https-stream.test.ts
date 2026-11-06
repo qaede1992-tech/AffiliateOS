@@ -267,3 +267,44 @@ test("streaming media fetch enforces an absolute deadline against slow-drip resp
   assert.match(requestError?.message ?? "", /absolute transfer deadline/i);
   if (interval) clearInterval(interval);
 });
+
+
+test("streaming media fetch rejects a response that closes before it completes", async () => {
+  let incoming: PassThrough | undefined;
+  const requestImpl = ((_options: unknown, callback: (response: PassThrough & {
+    statusCode?: number;
+    headers: Record<string, string>;
+  }) => void) => {
+    const request = new EventEmitter() as EventEmitter & {
+      setTimeout: () => void;
+      end: () => void;
+      destroy: (error?: Error) => void;
+    };
+    request.setTimeout = () => undefined;
+    request.destroy = () => undefined;
+    request.end = () => {
+      incoming = new PassThrough() as PassThrough & {
+        statusCode?: number;
+        headers: Record<string, string>;
+      };
+      incoming.statusCode = 200;
+      incoming.headers = {};
+      callback(incoming);
+      incoming.write(Buffer.from("partial video bytes"));
+      setImmediate(() => incoming?.destroy());
+    };
+    return request;
+  }) as never;
+
+  const response = await fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
+    maxBytes: 1024,
+    timeoutMs: 1000,
+    resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+    requestImpl
+  });
+
+  await assert.rejects(
+    () => response.arrayBuffer(),
+    /closed before the response completed/i
+  );
+});
