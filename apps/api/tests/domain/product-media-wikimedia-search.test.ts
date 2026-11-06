@@ -33,6 +33,7 @@ test("searches Wikimedia Commons and preserves attribution and license evidence"
   const results = await searchWikimediaCommonsProductMedia(identity, { fetchImpl, timeoutMs: 1000 });
   assert.equal(results.length, 1);
   assert.equal(results[0]?.provider, "wikimedia_commons");
+  assert.equal(results[0]?.searchQuery, "sony wireless headphones");
   assert.equal(results[0]?.license, "by");
   assert.equal(results[0]?.licenseVersion, "4.0");
   assert.equal(results[0]?.creator, "Example Photographer");
@@ -136,7 +137,7 @@ test("maps Indonesian marketplace listing titles to concise Commons category que
   }), ["honey"]);
 });
 
-test("rejects broad category results that do not match product identity", async () => {
+test("queues relevant category-only results for mandatory human review instead of discarding them", async () => {
   let requestedUrl = "";
   const fetchImpl: typeof fetch = async (input) => {
     requestedUrl = String(input);
@@ -163,7 +164,13 @@ test("rejects broad category results that do not match product identity", async 
     name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
   }, { fetchImpl });
   assert.match(requestedUrl, /gsrsearch=backpack/);
-  assert.deepEqual(results, []);
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "Military backpack 01.jpg");
+  assert.equal(results[0]?.searchQuery, "backpack");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.identityScore, 20);
+  assert.equal(results[0]?.rightsStatus, "unverified");
+  assert.ok(results[0]?.identityReasons.some((reason) => /kategori.*diperiksa manusia/i.test(reason)));
 });
 
 
@@ -339,4 +346,163 @@ test("rejects a honey-category wildlife image that does not identify the honey p
   }, { fetchImpl });
 
   assert.deepEqual(results, []);
+});
+
+test("maps representative Shopee product titles to concise category discovery queries", () => {
+  const cases: Array<[string, string]> = [
+    ["Unisex Premium Sweater Half Zipper Fleece", "clothing and fashion accessories"],
+    ["Aksesoris Mobil Jaring Taruh Hp Rapi Dan Kuat", "automotive accessories"],
+    ["Lepet Filter Gantung Aquascape XP06 Free Batu", "aquarium equipment"],
+    ["Ternak Syams Goata Base Susu Kambing Etawa Bubuk", "milk powder"],
+    ["Flimeal Meal Replacement Coklat Susu", "dietary supplement product"],
+    ["Teh Tjap Solo Jumbo Teh Tubruk", "tea and coffee"],
+    ["GOGOMART Sikat Sepatu Multifungsi", "shoe cleaning brush"],
+    ["Masker Duckbill Isi 50pcs Facemask", "protective face mask"],
+    ["Tisu Wajah 3 Ply", "facial tissue"],
+    ["JOODUTP Filter Kran Air Kain", "water faucet filter"],
+    ["Kahf Antiperspirant Deodorant Roll On", "deodorant"],
+    ["RINSO Cair Anti Noda", "household cleaning products"],
+    ["Scarlite Perfume Unisex", "perfume bottle"],
+    ["Hanasui Mattedorable Lipstick", "cosmetics and skincare"],
+    ["INVEN Bulu Mata Tanpa Lem", "false eyelashes"],
+    ["Rak Penyimpanan Serbaguna Plastik", "household storage rack"],
+    ["Keset Lantai Motif Karakter", "floor mat"],
+    ["MamyPoko Pants Diaper", "baby diaper"],
+    ["Joyko Permanent Marker Dual Tip", "permanent marker pen"],
+    ["Shampo Makarizo Sachet", "shampoo bottle"],
+    ["HAN RIVER Kipas Angin 3in1", "electric fan"],
+    ["Dapurmanja Panci Masak Stainless Steel", "cookware"],
+    ["GOODBABY Keranjang Tirisan Multifungsi 6 In1 Baskom Saringan Sayuran", "colander"],
+    ["Tifale Food Kontainer Kotak Penyimpanan Makanan", "food container"],
+    ["Omron Wrist Blood Pressure Monitor HEM 6161", "blood pressure monitor"],
+    ["Imboost Extra Vit C & D3 Tablet Daya Tahan Tubuh", "dietary supplement product"],
+    ["NIIMBOT B1 Printer Label Bluetooth", "label printer"],
+    ["Sepatu Sneakers Fashion", "sneakers"]
+  ];
+  for (const [name, expected] of cases) {
+    assert.deepEqual(buildWikimediaCommonsQueries({ name }), [expected], name);
+  }
+});
+
+
+test("uses the imported CSV category when a product title does not identify its category", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Item 3pcs Premium",
+    category: "Fashion > Bags > Backpack"
+  }), ["backpack"]);
+});
+
+
+test("ignores invalid numeric HTML entities in external attribution metadata", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Sony WH-1000XM5 Wireless Headphones.jpg",
+        imageinfo: [{
+          thumburl: "https://upload.wikimedia.org/thumb.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY 4.0" },
+            LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0/" },
+            Artist: { value: "Example Photographer &#128512; &#0; &#55296; &#65535; &#99999999;" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  const results = await searchWikimediaCommonsProductMedia(identity, { fetchImpl, timeoutMs: 1000 });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.creator, "Example Photographer 😀");
+});
+
+
+test("accepts canonical HTTP Creative Commons license metadata and normalizes it to HTTPS", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Milk powder.jpg",
+        imageinfo: [{
+          thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/milk-powder.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Milk_powder.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY-SA 3.0" },
+            LicenseUrl: { value: "http://creativecommons.org/licenses/by-sa/3.0/" },
+            Artist: { value: "Example Photographer" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Zeelandia L'Arome Vanilla Milk Powder 500 Gr"
+  }, { fetchImpl, timeoutMs: 1000 });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.license, "by-sa");
+  assert.equal(results[0]?.licenseVersion, "3.0");
+  assert.equal(results[0]?.licenseUrl, "https://creativecommons.org/licenses/by-sa/3.0/");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
+
+test("rejects license URLs outside the canonical Creative Commons host", async () => {
+  const invalidLicenseUrls = [
+    "http://creativecommons.org.evil.example/licenses/by/4.0/",
+    "https://evil.example/creativecommons.org/licenses/by/4.0/",
+    "https://user:password@creativecommons.org/licenses/by/4.0/",
+    "ftp://creativecommons.org/licenses/by/4.0/"
+  ];
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: invalidLicenseUrls.map((licenseUrl, index) => ({
+        title: "File:Sony WH-1000XM5 Wireless Headphones " + index + ".jpg",
+        imageinfo: [{
+          thumburl: "https://upload.wikimedia.org/thumb-" + index + ".jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_" + index + ".jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY 4.0" },
+            LicenseUrl: { value: licenseUrl }
+          }
+        }]
+      }))
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
+});
+
+
+test("discovers an Omron blood pressure monitor lead from Commons with rights still unverified", async () => {
+  let requestedUrl = "";
+  const fetchImpl: typeof fetch = async (input) => {
+    requestedUrl = String(input);
+    return new Response(JSON.stringify({
+      query: {
+        pages: [{
+          title: "File:An Omron wrist blood pressure monitor.jpg",
+          imageinfo: [{
+            thumburl: "https://upload.wikimedia.org/wikipedia/commons/omron-monitor.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:An_Omron_wrist_blood_pressure_monitor.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "http://creativecommons.org/publicdomain/zero/1.0/deed.en" },
+              Artist: { value: "Example Photographer" }
+            }
+          }]
+        }]
+      }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Omron Wrist Blood Pressure Monitor HEM 6161"
+  }, { fetchImpl });
+  assert.match(requestedUrl, /gsrsearch=blood\+pressure\+monitor/);
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "An Omron wrist blood pressure monitor.jpg");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
 });

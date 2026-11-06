@@ -108,6 +108,136 @@ describe("autonomous cycle", () => {
     assert.equal(logs.some((line) => line.includes("private-product-path")), false);
   });
 
+  it("aborts before media discovery and execution when preliminary eligibility evidence cannot be persisted", async () => {
+    const product = { id: "pre-media-evidence-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+    };
+    let discoveryCalls = 0;
+    let executionCalls = 0;
+    const execution = {
+      async previewSelection() {
+        return {
+          selected: [{ product: product as never, offerId: "offer-1", score: 90 }],
+          rejected: [],
+          audit: [{
+            productId: product.id,
+            marketplaceId: "marketplace-1",
+            selected: true,
+            score: 90,
+            policy: {},
+            reasons: ["eligible"]
+          }]
+        };
+      },
+      async runOnce() {
+        executionCalls += 1;
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() {
+        discoveryCalls += 1;
+        return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] };
+      }
+    };
+    const evidenceRepository = {
+      async saveMany() { const error = new Error("Failed query: INSERT INTO evidence VALUES ($1); params: private-product-data-marker"); error.name = "Error; INSERT INTO private_error_log"; throw error; },
+      async listLatestByProduct() { return []; }
+    };
+
+    let lockHeld = false;
+    let acquireCount = 0;
+    let releaseCount = 0;
+    const lock: AutonomousCycleLock = {
+      async tryAcquire(key) {
+        assert.equal(key, "pre-media-evidence");
+        if (lockHeld) return false;
+        lockHeld = true;
+        acquireCount += 1;
+        return true;
+      },
+      async release(key) {
+        assert.equal(key, "pre-media-evidence");
+        assert.equal(lockHeld, true);
+        lockHeld = false;
+        releaseCount += 1;
+      }
+    };
+    const service = new AutonomousCycleService(
+      provider,
+      execution,
+      lock,
+      "pre-media-evidence",
+      undefined,
+      undefined,
+      discovery as never,
+      evidenceRepository
+    );
+
+    const warningLogs: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warningLogs.push(args.map(String).join(" "));
+    try {
+      await assert.rejects(
+        () => service.runOnce({ publicationEnabled: false }),
+        /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
+      );
+      await assert.rejects(
+        () => service.runOnce({ publicationEnabled: false }),
+        /pre-media eligibility evidence could not be persisted; autonomous cycle aborted/i
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(warningLogs.length, 2);
+    assert.ok(warningLogs.every((line) => line.includes("autonomous_pre_media_eligibility_persist_failed")));
+    assert.ok(warningLogs.every((line) => line.includes('"errorType":"UnknownError"')));
+    assert.ok(warningLogs.every((line) => !line.includes("private-product-data-marker")));
+    assert.ok(warningLogs.every((line) => !line.includes("INSERT INTO")));
+    // Both attempts must acquire and release the same lock; a failed evidence write
+    // must not leave the next cycle blocked behind a leaked lock.
+    assert.equal(discoveryCalls, 0);
+    assert.equal(executionCalls, 0);
+    assert.equal(acquireCount, 2);
+    assert.equal(releaseCount, 2);
+    assert.equal(lockHeld, false);
+  });
+
+  it("sanitizes database errors from media index lookups before logging", async () => {
+    const product = { id: "media-index-error-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+    };
+    const execution = {
+      async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
+      async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
+      async listPublishableMediaProductIds() { return []; },
+      async listVideoProductIds() {
+        throw new Error("Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: private-media-index-marker");
+      },
+      async listPublishableVideoProductIds() { return []; },
+      async listMediaReadinessScores() { return { [product.id]: 0 }; }
+    };
+    const warningLogs: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => warningLogs.push(args.map(String).join(" "));
+    try {
+      const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
+      await service.runOnce({ publicationEnabled: false });
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(warningLogs.length, 1);
+    assert.ok(warningLogs[0]?.includes("autonomous_product_video_index_failed"));
+    assert.ok(warningLogs[0]?.includes('"errorType":"Error"'));
+    assert.equal(warningLogs.some((line) => line.includes("private-media-index-marker")), false);
+    assert.equal(warningLogs.some((line) => line.includes("SELECT *")), false);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {

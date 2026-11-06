@@ -18,6 +18,20 @@ test("builds a bounded query from product identity rather than marketplace URLs"
   assert.ok(buildProductMediaSearchQuery({ name: "x".repeat(300) }).length <= 200);
 });
 
+test("includes marketplace category in Openverse query without changing category-free queries", () => {
+  assert.equal(
+    buildProductMediaSearchQuery({ name: "Mini Food Container", category: "Kitchen Storage" }),
+    "Mini Food Container Kitchen Storage"
+  );
+  const longNameQuery = buildProductMediaSearchQuery({
+    name: "x".repeat(180),
+    model: "MODEL-123",
+    category: "Kitchen Storage"
+  });
+  assert.match(longNameQuery, /MODEL-123/);
+  assert.ok(longNameQuery.length <= 200);
+});
+
 test("requires exact model/SKU evidence for a strong match", () => {
   const match = evaluateProductMediaIdentity(identity, "Sony WH-1000XM5 Wireless Headphones Black");
   assert.equal(match.status, "strong_match");
@@ -62,10 +76,10 @@ test("searches the official Openverse API and keeps rights unverified", async ()
       results: [
         {
           title: "Sony WH-1000XM5 Wireless Headphones Black",
-          url: "https://images.example.test/sony.jpg",
-          foreign_landing_url: "https://source.example.test/photo/1",
+          url: "https://images.example.com/sony.jpg",
+          foreign_landing_url: "https://source.example.com/photo/1",
           creator: "Photographer",
-          creator_url: "https://source.example.test/creator",
+          creator_url: "https://source.example.com/creator",
           license: "by",
           license_version: "4.0",
           license_url: "https://creativecommons.org/licenses/by/4.0/",
@@ -73,15 +87,15 @@ test("searches the official Openverse API and keeps rights unverified", async ()
         },
         {
           title: "Sony WH-1000XM4 Wireless Headphones",
-          url: "https://images.example.test/wrong.jpg",
-          foreign_landing_url: "https://source.example.test/photo/2",
+          url: "https://images.example.com/wrong.jpg",
+          foreign_landing_url: "https://source.example.com/photo/2",
           license: "by",
           source: "example"
         },
         {
           title: "Sony WH-1000XM5 Wireless Headphones",
-          url: "https://images.example.test/nc.jpg",
-          foreign_landing_url: "https://source.example.test/photo/3",
+          url: "https://images.example.com/nc.jpg",
+          foreign_landing_url: "https://source.example.com/photo/3",
           license: "by-nc",
           source: "example"
         }
@@ -109,8 +123,8 @@ test("uses Openverse client credentials and sends a cached bearer token", async 
     }
     return new Response(JSON.stringify({ results: [{
       title: "Sony WH-1000XM5 Wireless Headphones Black",
-      url: "https://images.example.test/sony-auth.jpg",
-      foreign_landing_url: "https://source.example.test/photo/auth",
+      url: "https://images.example.com/sony-auth.jpg",
+      foreign_landing_url: "https://source.example.com/photo/auth",
       license: "by",
       source: "example"
     }] }), { status: 200, headers: { "content-type": "application/json" } });
@@ -143,8 +157,8 @@ test("fails closed for non-official endpoints and invalid result URLs", async ()
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     results: [{
       title: "Sony WH-1000XM5 Wireless Headphones",
-      url: "http://images.example.test/image.jpg",
-      foreign_landing_url: "https://source.example.test/photo",
+      url: "http://images.example.com/image.jpg",
+      foreign_landing_url: "https://source.example.com/photo",
       license: "cc0"
     }]
   }), { status: 200 });
@@ -237,4 +251,91 @@ test("classifies token endpoint 403 JSON separately from Cloudflare HTML challen
       return true;
     }
   );
+});
+
+
+test("backs off repeated Openverse token requests during a Cloudflare challenge", async () => {
+  let tokenCalls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    tokenCalls += 1;
+    return new Response("<html>challenge</html>", {
+      status: 403,
+      headers: { "content-type": "text/html; charset=UTF-8", server: "cloudflare", "cf-ray": "cooldown-test-ray" }
+    });
+  };
+  const options = {
+    fetchImpl,
+    clientId: "openverse-cloudflare-cooldown-client",
+    clientSecret: "test-secret",
+    timeoutMs: 1000
+  };
+
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, options),
+    /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
+  );
+  await assert.rejects(
+    () => searchOpenverseProductMedia({ ...identity, name: "Different product" }, options),
+    /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
+  );
+
+  assert.equal(tokenCalls, 1, "the same blocked egress transport must not retry once per product");
+});
+
+
+test("backs off repeated Openverse image-search requests during a Cloudflare challenge", async () => {
+  let tokenCalls = 0;
+  let searchCalls = 0;
+  const fetchImpl: typeof fetch = async (input) => {
+    if (String(input).endsWith("/auth_tokens/token/")) {
+      tokenCalls += 1;
+      return new Response(JSON.stringify({ access_token: "search-cooldown-token", expires_in: 3600 }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    searchCalls += 1;
+    return new Response("<html>challenge</html>", {
+      status: 403,
+      headers: { "content-type": "text/html; charset=UTF-8", server: "cloudflare", "cf-ray": "search-cooldown-ray" }
+    });
+  };
+  const options = {
+    fetchImpl,
+    clientId: "openverse-search-cloudflare-cooldown-client",
+    clientSecret: "test-secret",
+    timeoutMs: 1000
+  };
+
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, options),
+    /search endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
+  );
+  await assert.rejects(
+    () => searchOpenverseProductMedia({ ...identity, name: "Different product" }, options),
+    /search endpoint returned HTTP 403 \(cloudflare_html_challenge\)/
+  );
+
+  assert.equal(tokenCalls, 1, "the cached token must not be requested again during the cooldown");
+  assert.equal(searchCalls, 1, "the blocked image endpoint must not be retried for each product");
+});
+
+
+test("rejects IP literals, local names, and reserved hostnames in catalog media URLs", async () => {
+  const invalidUrls = [
+    "https://127.0.0.1/image.jpg",
+    "https://[::1]/image.jpg",
+    "https://localhost/image.jpg",
+    "https://metadata.google.internal/image.jpg",
+    "https://images.example.test/image.jpg"
+  ];
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    results: invalidUrls.map((url) => ({
+      title: "Sony WH-1000XM5 Wireless Headphones Black",
+      url,
+      foreign_landing_url: "https://source.example.com/photo",
+      license: "cc0"
+    }))
+  }), { status: 200 });
+  assert.deepEqual(await searchOpenverseProductMedia(identity, { fetchImpl }), []);
 });

@@ -5,8 +5,12 @@
  * grants usage rights, or marks assets publishable. A human rights review and
  * persisted evidence are still required by product-media-publication-rights.
  */
+import { isPublicMediaUrl } from "./media-asset.js";
+
 export interface ProductMediaSearchIdentity {
   name: string;
+  /** Marketplace taxonomy preserved from the affiliate CSV, used only to improve discovery queries. */
+  category?: string | null;
   brand?: string | null;
   model?: string | null;
   sku?: string | null;
@@ -15,6 +19,8 @@ export interface ProductMediaSearchIdentity {
 
 export interface ProductMediaCatalogCandidate {
   provider: "openverse" | "wikimedia_commons";
+  /** Exact provider query used to discover this candidate, when available. */
+  searchQuery?: string;
   title: string;
   imageUrl: string;
   landingPageUrl: string;
@@ -67,7 +73,7 @@ const overlap = (expected: Set<string>, actual: Set<string>): number => {
 
 /** Builds a bounded, descriptive query without embedding marketplace URLs. */
 export const buildProductMediaSearchQuery = (identity: ProductMediaSearchIdentity): string => {
-  const parts = [identity.brand, identity.name, identity.model, identity.sku, identity.variant]
+  const parts = [identity.brand, identity.name, identity.model, identity.sku, identity.variant, identity.category]
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0);
   return [...new Set(parts.map((part) => part.trim()))].join(" ").slice(0, 200);
 };
@@ -128,14 +134,8 @@ export const evaluateProductMediaIdentity = (
 };
 
 const safeHttps = (value: unknown): string | null => {
-  if (typeof value !== "string" || value.length > 2048) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || !url.hostname) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
+  if (typeof value !== "string" || value.length > 2048 || !isPublicMediaUrl(value)) return null;
+  try { return new URL(value).toString(); } catch { return null; }
 };
 
 interface OpenverseImage {
@@ -160,6 +160,29 @@ interface OpenverseTokenResponse {
 }
 
 const openverseTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+
+// Cloudflare challenges are network-level blocks, not credential failures. Avoid
+// repeating token/search requests for every product while the same egress IP is blocked.
+const OPENVERSE_CLOUDFLARE_COOLDOWN_MS = 15 * 60_000;
+const openverseCloudflareBlocks = new WeakMap<typeof fetch, { error: OpenverseHttpError; expiresAt: number }>();
+
+const getOpenverseCloudflareBlock = (fetchImpl: typeof fetch): OpenverseHttpError | null => {
+  const blocked = openverseCloudflareBlocks.get(fetchImpl);
+  if (!blocked) return null;
+  if (blocked.expiresAt <= Date.now()) {
+    openverseCloudflareBlocks.delete(fetchImpl);
+    return null;
+  }
+  return blocked.error;
+};
+
+const rememberOpenverseCloudflareBlock = (fetchImpl: typeof fetch, error: OpenverseHttpError): void => {
+  if (error.details.responseKind !== "cloudflare_html_challenge") return;
+  openverseCloudflareBlocks.set(fetchImpl, {
+    error,
+    expiresAt: Date.now() + OPENVERSE_CLOUDFLARE_COOLDOWN_MS
+  });
+};
 export type OpenverseFailureEndpoint = "token" | "search";
 export type OpenverseFailureResponseKind =
   | "cloudflare_html_challenge"
@@ -241,7 +264,11 @@ const getOpenverseAccessToken = async (
       body,
       signal: controller.signal
     });
-    if (!response.ok) throw new OpenverseHttpError(classifyOpenverseHttpFailure("token", response));
+    if (!response.ok) {
+      const error = new OpenverseHttpError(classifyOpenverseHttpFailure("token", response));
+      rememberOpenverseCloudflareBlock(fetchImpl, error);
+      throw error;
+    }
     const payload = await response.json() as OpenverseTokenResponse;
     if (typeof payload.access_token !== "string" || !payload.access_token.trim()) {
       throw new Error("Openverse authentication response did not contain an access token.");
@@ -278,6 +305,8 @@ export async function searchOpenverseProductMedia(
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
+  const cloudflareBlock = getOpenverseCloudflareBlock(fetchImpl);
+  if (cloudflareBlock) throw cloudflareBlock;
   const accessToken = options.clientId && options.clientSecret
     ? await getOpenverseAccessToken(options.clientId, options.clientSecret, fetchImpl, options.timeoutMs ?? 8_000)
     : undefined;
@@ -302,7 +331,11 @@ export async function searchOpenverseProductMedia(
       },
       signal: controller.signal
     });
-    if (!response.ok) throw new OpenverseHttpError(classifyOpenverseHttpFailure("search", response));
+    if (!response.ok) {
+      const error = new OpenverseHttpError(classifyOpenverseHttpFailure("search", response));
+      rememberOpenverseCloudflareBlock(fetchImpl, error);
+      throw error;
+    }
     const payload = await response.json() as OpenverseResponse;
     if (!Array.isArray(payload.results)) return [];
 

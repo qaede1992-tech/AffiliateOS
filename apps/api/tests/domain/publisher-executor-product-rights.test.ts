@@ -40,9 +40,9 @@ const media: MediaAsset = {
 const productMedia = (rightsStatus: ProductMediaAsset["rightsStatus"]): ProductMediaAsset => ({
   id: "44444444-4444-4444-8444-444444444444", productId, kind: "video",
   bucket: "affiliate-media", objectKey: `products/${productId}/video.mp4`, mimeType: "video/mp4",
-  byteSize: 123, sha256: "a".repeat(64), sourceUrl: "https://cdn.example.test/video.mp4",
+  byteSize: 123, sha256: "a".repeat(64), sourceUrl: "https://cdn.example.com/video.mp4",
   sourcePublisher: "Verified publisher", rightsStatus, rightsBasis: "explicit_permission",
-  rightsEvidenceUrl: "https://publisher.example.test/permission",
+  rightsEvidenceUrl: "https://publisher.example.com/permission",
   rightsVerifiedAt: "2026-11-02T00:00:00.000Z", createdAt: "2026-11-02T00:00:00.000Z"
 });
 
@@ -104,7 +104,7 @@ test("publisher re-reads current product-media rights immediately before provide
 
 
 test("blocks registered product source URLs without current verified rights before provider dispatch", async () => {
-  const productSourceUrl: MediaAsset = { ...media, source: "url", reference: "https://cdn.example.test/video.mp4" };
+  const productSourceUrl: MediaAsset = { ...media, source: "url", reference: "https://cdn.example.com/video.mp4" };
   const unverified = await setup("unverified", productSourceUrl);
   await assert.rejects(
     unverified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z")),
@@ -122,7 +122,7 @@ test("keeps legacy external URL media publishable without changing the TikTok di
   const legacyUrl: MediaAsset = {
     ...media,
     source: "url",
-    reference: "https://cdn.example.test/legacy-tiktok-video.mp4"
+    reference: "https://cdn.example.com/legacy-tiktok-video.mp4"
   };
   const fixture = await setup("unverified", legacyUrl);
   const result = await fixture.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
