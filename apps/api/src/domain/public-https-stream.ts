@@ -154,7 +154,7 @@ function requestOnce(
       // interrupted response. Do not treat an incomplete close as success: surface
       // truncation to the consumer and stop the absolute deadline.
       incoming.once("close", () => {
-        if (incoming.complete === false) {
+        if (incoming.complete === false || !incoming.readableEnded) {
           clearDeadline();
           limiter.destroy(new Error("TikTok media source closed before the response completed."));
           return;
