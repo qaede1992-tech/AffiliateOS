@@ -37,7 +37,7 @@ const isShopeeHost = (hostname: string): boolean => {
 };
 
 const isShopeeOwnedMediaHost = (hostname: string): boolean => {
-  const host = hostname.toLowerCase().replace(/\\.$/, "");
+  const host = hostname.toLowerCase().replace(/\.$/, "");
   return isShopeeHost(host) || host === "susercontent.com" || host.endsWith(".susercontent.com") ||
     host === "shopeeusercontent.com" || host.endsWith(".shopeeusercontent.com");
 };
