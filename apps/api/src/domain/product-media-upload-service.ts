@@ -141,7 +141,8 @@ export class ProductMediaUploadService {
         key: objectKey,
         body,
         contentType: input.mimeType,
-        contentLength: bytes.byteLength
+        contentLength: bytes.byteLength,
+        ...(input.signal ? { signal: input.signal } : {})
       });
     } catch (error) {
       try { await this.storage.remove(objectKey); } catch {}
