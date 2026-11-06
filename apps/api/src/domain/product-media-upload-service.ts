@@ -79,7 +79,7 @@ export class ProductMediaUploadService {
     const reader = input.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
-    const cancelOnAbort = () => { void reader.cancel(); };
+    const cancelOnAbort = () => { void reader.cancel().catch(() => {}); };
     input.signal?.addEventListener("abort", cancelOnAbort, { once: true });
     if (input.signal?.aborted) cancelOnAbort();
     try {
@@ -99,6 +99,9 @@ export class ProductMediaUploadService {
         }
         chunks.push(part.value);
       }
+    } catch (error) {
+      try { await reader.cancel(error); } catch {}
+      throw error;
     } finally {
       input.signal?.removeEventListener("abort", cancelOnAbort);
       try { reader.releaseLock(); } catch {}
@@ -124,6 +127,7 @@ export class ProductMediaUploadService {
     const existing = await this.assets.findByProductAndHash(input.productId, sha256);
     if (existing) return existing;
 
+    const metadata = extractProductMediaTechnicalMetadata(input.mimeType, bytes);
     const id = randomUUID();
     const objectKey = `products/${input.productId}/${sha256}-${id}.${EXTENSION[input.mimeType]}`;
     let stored: { bucket: string; key: string };
@@ -134,7 +138,6 @@ export class ProductMediaUploadService {
       throw error;
     }
 
-    const metadata = extractProductMediaTechnicalMetadata(input.mimeType, bytes);
     const asset: ProductMediaAsset = {
       id,
       productId: input.productId,
@@ -164,7 +167,13 @@ export class ProductMediaUploadService {
       createdAt: new Date().toISOString()
     };
     try {
-      return await this.assets.save(asset);
+      const persisted = await this.assets.save(asset);
+      // A concurrent upload may win the unique product/hash insert. Keep only
+      // the object referenced by the persisted row and remove this upload's orphan.
+      if (persisted.objectKey !== stored.key) {
+        try { await this.storage.remove(stored.key); } catch {}
+      }
+      return persisted;
     } catch (error) {
       try { await this.storage.remove(stored.key); } catch {}
       throw error;
