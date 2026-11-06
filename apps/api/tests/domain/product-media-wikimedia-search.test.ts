@@ -136,7 +136,7 @@ test("maps Indonesian marketplace listing titles to concise Commons category que
   }), ["honey"]);
 });
 
-test("rejects broad category results that do not match product identity", async () => {
+test("keeps category-relevant results as low-confidence manual-review candidates", async () => {
   let requestedUrl = "";
   const fetchImpl: typeof fetch = async (input) => {
     requestedUrl = String(input);
@@ -163,6 +163,32 @@ test("rejects broad category results that do not match product identity", async 
     name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
   }, { fetchImpl });
   assert.match(requestedUrl, /gsrsearch=backpack/);
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.ok((results[0]?.identityScore ?? 100) < 50);
+  assert.equal(results[0]?.rightsStatus, "unverified");
+  assert.ok(results[0]?.identityReasons.some((reason) => reason.includes("tingkat kategori")));
+});
+
+test("hard-rejects category candidates when an explicit model or SKU does not match", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: [{
+      title: "File:Military backpack 01.jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/thumb-backpack.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Military_backpack_01.jpg",
+        mime: "image/jpeg",
+        extmetadata: {
+          LicenseShortName: { value: "CC0" },
+          LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+        }
+      }]
+    }] }
+  }), { status: 200 });
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah",
+    model: "RB-900"
+  }, { fetchImpl });
   assert.deepEqual(results, []);
 });
 
