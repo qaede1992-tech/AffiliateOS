@@ -51,13 +51,13 @@ The CLI may prompt for the database password. Enter it only into the trusted int
 From the same linked project directory, save all output directly into the protected backup directory:
 
 ```powershell
-supabase db dump --linked -f (Join-Path $BackupDir "roles.sql") --role-only
+supabase db dump --db-url $env:AFFILIATEOS_PRODUCTION_DB_URL -f (Join-Path $BackupDir "roles.sql") --role-only
 if ($LASTEXITCODE -ne 0) { throw "Production role export failed" }
 
-supabase db dump --linked -f (Join-Path $BackupDir "schema.sql")
+supabase db dump --db-url $env:AFFILIATEOS_PRODUCTION_DB_URL -f (Join-Path $BackupDir "schema.sql")
 if ($LASTEXITCODE -ne 0) { throw "Production schema export failed" }
 
-supabase db dump --linked -f (Join-Path $BackupDir "data.sql") --use-copy --data-only -x "storage.buckets_vectors" -x "storage.vector_indexes"
+supabase db dump --db-url $env:AFFILIATEOS_PRODUCTION_DB_URL -f (Join-Path $BackupDir "data.sql") --use-copy --data-only
 if ($LASTEXITCODE -ne 0) { throw "Production data export failed" }
 ```
 
@@ -68,7 +68,7 @@ Get-Item (Join-Path $BackupDir "roles.sql"), (Join-Path $BackupDir "schema.sql")
   Select-Object Name, Length, LastWriteTimeUtc
 ```
 
-The current Supabase CLI reference uses `--linked` for a linked project and documents that the default dump excludes managed schemas and does not include data or custom roles unless the corresponding flags are used. Do not assume these three exports contain Storage object bytes.
+The official CLI guide documents `--db-url`, `--role-only`, `--data-only`, and `--use-copy`. The command intentionally does not add raw `pg_dump` switches: Supabase CLI applies its own filtering, including excluding managed `auth` and `storage` schemas. Do not assume these three exports contain Storage object bytes.
 
 ## C. Export Storage objects and metadata separately
 
