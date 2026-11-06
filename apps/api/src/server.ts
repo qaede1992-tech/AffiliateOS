@@ -11,7 +11,7 @@ import { DrizzlePublicationOperationRepository } from "./db/publication-operatio
 import { DrizzleAutonomousRunRepository } from "./db/autonomous-run-repository.js";
 import { DrizzleAutonomousFeedbackMemoryRepository } from "./db/autonomous-feedback-memory-repository.js";
 import { ProviderEventWorker } from "./domain/provider-event-worker.js";
-import { ProviderEventScheduler } from "./domain/provider-event-scheduler.js";
+import { ProviderEventScheduler, safeProviderEventErrorType } from "./domain/provider-event-scheduler.js";
 import { ProviderEventProcessor } from "./domain/provider-event-processor.js";
 import { ShopeeIntakeRecoveryWorker } from "./domain/shopee-intake-recovery-worker.js";
 import { ShopeeIntakeRecoveryScheduler } from "./domain/shopee-intake-recovery-scheduler.js";
@@ -130,7 +130,7 @@ const providerEventProcessor = new ProviderEventConversionProcessor(
 const providerEventWorker = new ProviderEventWorker(persistence.providerEvents, providerEventProcessor);
 const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   intervalMs: environment.PROVIDER_EVENT_WORKER_INTERVAL_MS,
-  onError: (error) => app.log.error(error, "Provider event worker cycle failed")
+  onError: (error) => app.log.error({ errorType: safeProviderEventErrorType(error) }, "Provider event worker cycle failed")
 });
 
 const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
