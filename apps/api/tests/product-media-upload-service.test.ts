@@ -20,7 +20,7 @@ const makeHarness = (overrides: {
   saveResult?: ProductMediaAsset;
   uploadError?: Error;
 } = {}) => {
-  const calls = { uploads: [] as Array<{ key: string; bytes: Uint8Array; contentType: string; contentLength: number }>, removals: [] as string[], saved: [] as ProductMediaAsset[] };
+  const calls = { uploads: [] as Array<{ key: string; bytes: Uint8Array; contentType: string; contentLength: number; signal?: AbortSignal }>, removals: [] as string[], saved: [] as ProductMediaAsset[] };
   const assets: ProductMediaAssetRepository = {
     async findByProductAndHash() { return overrides.prior; },
     async findBySourceCandidateId() { return undefined; },
@@ -56,7 +56,7 @@ const makeHarness = (overrides: {
           bytes.set(chunk, offset);
           offset += chunk.byteLength;
         }
-        calls.uploads.push({ key: input.key, bytes, contentType: input.contentType, contentLength: input.contentLength });
+        calls.uploads.push({ key: input.key, bytes, contentType: input.contentType, contentLength: input.contentLength, ...(input.signal ? { signal: input.signal } : {}) });
         if (overrides.uploadError) throw overrides.uploadError;
         return { bucket: "affiliate-media", key: input.key };
       },
@@ -77,8 +77,10 @@ const input = (bytes = png) => ({
 
 test("uploads product media without creating content and leaves rights unverified", async () => {
   const { service, calls } = makeHarness();
-  const asset = await service.uploadStream(input());
+  const controller = new AbortController();
+  const asset = await service.uploadStream({ ...input(), signal: controller.signal });
   assert.equal(calls.uploads.length, 1);
+  assert.equal(calls.uploads[0]!.signal, controller.signal);
   assert.equal(calls.uploads[0]!.contentType, "image/png");
   assert.equal(calls.uploads[0]!.contentLength, png.byteLength);
   assert.deepEqual(calls.uploads[0]!.bytes, png);
