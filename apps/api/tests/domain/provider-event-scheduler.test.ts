@@ -79,3 +79,16 @@ test("provider event scheduler does not reject because error observer fails", as
 
   await assert.rejects(scheduler.runNow(), /worker failure/);
 });
+
+test("provider event scheduler redacts database details from status after worker failure", async () => {
+  const workerError = new Error("Failed query: SELECT * FROM provider_events WHERE id = $1; params: private-event-marker");
+  workerError.name = "Error; INSERT INTO private_error_log";
+  const scheduler = new ProviderEventScheduler({
+    runOnce: async () => { throw workerError; }
+  });
+
+  await assert.rejects(scheduler.runNow(), /Failed query/);
+  assert.equal(scheduler.status.lastError, "UnknownError");
+  assert.equal(scheduler.status.lastError?.includes("private-event-marker"), false);
+  assert.equal(scheduler.status.lastError?.includes("SELECT *"), false);
+});

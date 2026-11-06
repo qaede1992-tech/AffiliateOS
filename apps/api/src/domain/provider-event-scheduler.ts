@@ -20,6 +20,11 @@ const DEFAULT_INTERVAL_MS = 60_000;
 const MIN_INTERVAL_MS = 10_000;
 type TimerHandle = ReturnType<typeof setTimeout>;
 
+export const safeProviderEventErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 export class ProviderEventScheduler {
   private readonly intervalMs: number;
   private readonly now: () => Date;
@@ -89,7 +94,7 @@ export class ProviderEventScheduler {
         return result;
       })
       .catch(async (error) => {
-        this.lastError = error instanceof Error ? error.message : String(error);
+        this.lastError = safeProviderEventErrorType(error);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyError(error);
         throw error;
