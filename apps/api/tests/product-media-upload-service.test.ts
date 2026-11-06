@@ -20,7 +20,7 @@ const makeHarness = (overrides: {
   saveResult?: ProductMediaAsset;
   uploadError?: Error;
 } = {}) => {
-  const calls = { uploads: [] as Array<{ key: string; bytes: Uint8Array; contentType: string }>, removals: [] as string[], saved: [] as ProductMediaAsset[] };
+  const calls = { uploads: [] as Array<{ key: string; bytes: Uint8Array; contentType: string; contentLength: number }>, removals: [] as string[], saved: [] as ProductMediaAsset[] };
   const assets: ProductMediaAssetRepository = {
     async findByProductAndHash() { return overrides.prior; },
     async findBySourceCandidateId() { return undefined; },
@@ -35,8 +35,28 @@ const makeHarness = (overrides: {
     { async findById() { return overrides.productExists === false ? undefined : { id: productId }; } },
     assets,
     {
-      async upload(input) {
-        calls.uploads.push(input);
+      async uploadStream(input) {
+        const reader = input.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        try {
+          while (true) {
+            const part = await reader.read();
+            if (part.done) break;
+            if (!part.value) continue;
+            chunks.push(part.value);
+            total += part.value.byteLength;
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        const bytes = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        calls.uploads.push({ key: input.key, bytes, contentType: input.contentType, contentLength: input.contentLength });
         if (overrides.uploadError) throw overrides.uploadError;
         return { bucket: "affiliate-media", key: input.key };
       },
