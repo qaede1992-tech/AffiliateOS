@@ -17,6 +17,7 @@ const makeHarness = (overrides: {
   productExists?: boolean;
   prior?: ProductMediaAsset;
   saveError?: Error;
+  saveResult?: ProductMediaAsset;
   uploadError?: Error;
 } = {}) => {
   const calls = { uploads: [] as Array<{ key: string; bytes: Uint8Array; contentType: string }>, removals: [] as string[], saved: [] as ProductMediaAsset[] };
@@ -27,7 +28,7 @@ const makeHarness = (overrides: {
     async save(asset) {
       if (overrides.saveError) throw overrides.saveError;
       calls.saved.push(asset);
-      return asset;
+      return overrides.saveResult ?? asset;
     }
   };
   const service = new ProductMediaUploadService(
@@ -108,4 +109,49 @@ test("rejects a mismatched Content-Length", async () => {
   await assert.rejects(service.uploadStream({ ...input(), contentLength: png.byteLength + 1 }), (error: unknown) =>
     error instanceof ProductMediaUploadError && error.code === "CONTENT_LENGTH_MISMATCH");
   assert.equal(calls.uploads.length, 0);
+});
+
+
+test("cancels an oversized upload stream before any storage write", async () => {
+  const { service, calls } = makeHarness();
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new Uint8Array(1024 * 1024 + 1)); },
+    cancel() { cancelled = true; }
+  });
+  await assert.rejects(
+    service.uploadStream({ ...input(), body, contentLength: 1024 * 1024 }),
+    (error: unknown) => error instanceof ProductMediaUploadError && error.code === "MEDIA_TOO_LARGE"
+  );
+  assert.equal(cancelled, true);
+  assert.equal(calls.uploads.length, 0);
+});
+
+test("removes a losing storage object when a concurrent insert returns the winning asset", async () => {
+  const winner: ProductMediaAsset = {
+    id: "winner-asset",
+    productId,
+    kind: "image",
+    bucket: "affiliate-media",
+    objectKey: `products/${productId}/winner.png`,
+    mimeType: "image/png",
+    byteSize: png.byteLength,
+    width: 1,
+    height: 1,
+    durationMs: null,
+    hasAudio: null,
+    sha256: "winner-hash",
+    sourceUrl: "user-upload://winner",
+    sourcePublisher: "user-provided",
+    sourceProvider: "user_upload",
+    rightsStatus: "unverified",
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    createdAt: new Date().toISOString()
+  };
+  const { service, calls } = makeHarness({ saveResult: winner });
+  const result = await service.uploadStream(input());
+  assert.equal(result.id, winner.id);
+  assert.deepEqual(calls.removals, [calls.uploads[0]!.key]);
 });
