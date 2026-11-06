@@ -79,6 +79,9 @@ test("uploads product media without creating content and leaves rights unverifie
   const { service, calls } = makeHarness();
   const asset = await service.uploadStream(input());
   assert.equal(calls.uploads.length, 1);
+  assert.equal(calls.uploads[0]!.contentType, "image/png");
+  assert.equal(calls.uploads[0]!.contentLength, png.byteLength);
+  assert.deepEqual(calls.uploads[0]!.bytes, png);
   assert.match(asset.objectKey, new RegExp(`^products/${productId}/`));
   assert.equal(asset.rightsStatus, "unverified");
   assert.equal(asset.rightsBasis, null);
