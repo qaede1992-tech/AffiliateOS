@@ -98,7 +98,7 @@ test("operator can upload product media but viewer is denied before service invo
   }
 });
 
-test("product upload rejects invalid media kind and missing content length before service invocation", async () => {
+test("product upload rejects invalid media kind and missing MIME type before service invocation", async () => {
   let calls = 0;
   const app = makeApp("admin", async () => { calls += 1; return asset; });
   try {
