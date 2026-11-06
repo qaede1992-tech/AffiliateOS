@@ -64,8 +64,11 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       if (typeof declaredMimeType !== "string") {
         return reply.status(400).send({ error: "MEDIA_MIME_TYPE_REQUIRED", message: "X-Media-Mime-Type is required." });
       }
-      const rawLength = request.headers["content-length"];
-      const contentLength = typeof rawLength === "string" && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+      const headerLength = request.headers["content-length"] ?? request.raw.headers["content-length"];
+      const rawLength = Array.isArray(headerLength) ? headerLength[0] : headerLength;
+      const contentLength = typeof rawLength === "number"
+        ? rawLength
+        : typeof rawLength === "string" && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
       if (!Number.isSafeInteger(contentLength) || contentLength <= 0) {
         return reply.status(411).send({ error: "CONTENT_LENGTH_REQUIRED", message: "A valid Content-Length header is required." });
       }
