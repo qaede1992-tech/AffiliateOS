@@ -52,7 +52,7 @@ test("admin can upload product-scoped media and rights remain unverified", async
     const response = await app.inject({
       method: "POST",
       url: `/api/v1/products/${productId}/media-upload?kind=image`,
-      headers: { "content-type": "application/octet-stream", "x-media-mime-type": "image/png" },
+      headers: { "content-type": "application/octet-stream", "content-length": String(png.byteLength), "x-media-mime-type": "image/png" },
       payload: png
     });
     assert.equal(response.statusCode, 201);
@@ -74,7 +74,7 @@ test("operator can upload product media but viewer is denied before service invo
     const response = await operator.inject({
       method: "POST",
       url: `/api/v1/products/${productId}/media-upload?kind=image`,
-      headers: { "content-type": "application/octet-stream", "x-media-mime-type": "image/png" },
+      headers: { "content-type": "application/octet-stream", "content-length": String(png.byteLength), "x-media-mime-type": "image/png" },
       payload: png
     });
     assert.equal(response.statusCode, 201);
@@ -88,7 +88,7 @@ test("operator can upload product media but viewer is denied before service invo
     const response = await viewer.inject({
       method: "POST",
       url: `/api/v1/products/${productId}/media-upload?kind=image`,
-      headers: { "content-type": "application/octet-stream", "x-media-mime-type": "image/png" },
+      headers: { "content-type": "application/octet-stream", "content-length": String(png.byteLength), "x-media-mime-type": "image/png" },
       payload: png
     });
     assert.equal(response.statusCode, 403);
@@ -105,7 +105,7 @@ test("product upload rejects invalid media kind and missing content length befor
     const invalidKind = await app.inject({
       method: "POST",
       url: `/api/v1/products/${productId}/media-upload?kind=thumbnail`,
-      headers: { "content-type": "application/octet-stream", "x-media-mime-type": "image/png" },
+      headers: { "content-type": "application/octet-stream", "content-length": String(png.byteLength), "x-media-mime-type": "image/png" },
       payload: png
     });
     assert.equal(invalidKind.statusCode, 400);
@@ -133,7 +133,7 @@ test("product upload maps a missing product to 404 without leaking internal deta
     const response = await app.inject({
       method: "POST",
       url: `/api/v1/products/${productId}/media-upload?kind=image`,
-      headers: { "content-type": "application/octet-stream", "x-media-mime-type": "image/png" },
+      headers: { "content-type": "application/octet-stream", "content-length": String(png.byteLength), "x-media-mime-type": "image/png" },
       payload: png
     });
     assert.equal(response.statusCode, 404);
