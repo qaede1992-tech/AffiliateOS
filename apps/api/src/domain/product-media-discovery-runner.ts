@@ -36,6 +36,12 @@ const isShopeeHost = (hostname: string): boolean => {
     host === "shopee.com" || host.endsWith(".shopee.com");
 };
 
+const isShopeeOwnedMediaHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase().replace(/\\.$/, "");
+  return isShopeeHost(host) || host === "susercontent.com" || host.endsWith(".susercontent.com") ||
+    host === "shopeeusercontent.com" || host.endsWith(".shopeeusercontent.com");
+};
+
 /**
  * Discovers public product media only after the caller has selected a candidate
  * using non-media affiliate criteria. It does not bypass login, CAPTCHA, or bot
@@ -299,6 +305,10 @@ export class ProductMediaDiscoveryRunner {
           const mediaUrl = new URL(candidate.url);
           if (mediaUrl.protocol !== "https:" || mediaUrl.username || mediaUrl.password) {
             throw new Error("Explicit catalog media URLs must use credential-free HTTPS.");
+          }
+          if (isShopeeOwnedMediaHost(mediaUrl.hostname)) {
+            skipped.push({ url: mediaUrl.toString(), reason: "Shopee-hosted media is not fetched automatically; upload a seller-authorized or self-created file instead." });
+            continue;
           }
           catalogCandidates.push({ kind: candidate.kind, url: mediaUrl.toString(), source: "catalog" });
         } catch (error) {
