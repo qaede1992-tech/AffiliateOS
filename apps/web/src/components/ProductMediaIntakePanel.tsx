@@ -152,6 +152,7 @@ export function ProductMediaIntakePanel() {
             <div className="shopee-file-summary"><strong>Unggah file media yang berizin</strong><small>Gunakan foto/video buatan sendiri atau file yang dikirim penjual disertai izin tertulis untuk penggunaan promosi dan penyuntingan. Jangan mengunduh otomatis dari halaman atau CDN Shopee.</small></div>
             <label htmlFor="product-media-file">File gambar/video</label>
             <input id="product-media-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={(event) => setUploadFile(event.currentTarget.files?.[0] ?? null)} disabled={uploading} />
+            <small>Format yang diterima: JPG/PNG/WebP maksimal 10 MiB atau MP4 maksimal 45 MiB.</small>
             {uploadFile && <small>{uploadFile.name} · {uploadFile.size.toLocaleString("id-ID")} byte</small>}
             <button type="button" onClick={() => void uploadMedia()} disabled={uploading || !uploadFile || !rightsConfirmed}>{uploading ? "Mengunggah media…" : "Unggah gambar/video"}</button>
           </>}
