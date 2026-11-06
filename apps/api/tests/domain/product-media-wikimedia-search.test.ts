@@ -185,11 +185,14 @@ test("hard-rejects category candidates when an explicit model or SKU does not ma
       }]
     }] }
   }), { status: 200 });
-  const results = await searchWikimediaCommonsProductMedia({
-    name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah",
-    model: "RB-900"
-  }, { fetchImpl });
-  assert.deepEqual(results, []);
+  const productName = "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah";
+  for (const identity of [
+    { name: productName, model: "RB-900" },
+    { name: productName, sku: "RB-900" }
+  ]) {
+    const results = await searchWikimediaCommonsProductMedia(identity, { fetchImpl });
+    assert.deepEqual(results, []);
+  }
 });
 
 
