@@ -4,7 +4,7 @@ import { isStructurallyValidMedia } from "./media-file-validation.js";
 import { extractProductMediaTechnicalMetadata } from "./product-media-technical-metadata.js";
 
 export interface ProductMediaUploadStorage {
-  uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number }): Promise<{ bucket: string; key: string }>;
+  uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<{ bucket: string; key: string }>;
   remove(key: string): Promise<void>;
 }
 
