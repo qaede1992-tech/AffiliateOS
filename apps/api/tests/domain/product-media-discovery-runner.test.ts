@@ -99,6 +99,33 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
 });
 
+test("never downloads Shopee-owned CDN image or video URLs supplied in a product catalog", async () => {
+  const assets: ProductMediaAsset[] = [];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  let fetched = false;
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unexpected" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async () => { fetched = true; throw new Error("Shopee-owned CDN must not be fetched"); }) as never
+  );
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cf.shopee.co.id/file/product-image.jpg",
+    videoUrl: "https://down-id.img.susercontent.com/file/product-video.mp4"
+  }, true);
+  assert.equal(fetched, false);
+  assert.equal(result.pageFetched, false);
+  assert.equal(result.stored.length, 0);
+  assert.equal(result.skipped.length, 2);
+  assert.ok(result.skipped.every((item) => /Shopee-hosted media is not fetched automatically/.test(item.reason)));
+});
+
 test("continues discovering catalog images when an existing video has unverified rights", async () => {
   const existingVideo: ProductMediaAsset = {
     id: "33333333-3333-4333-8333-333333333333",
