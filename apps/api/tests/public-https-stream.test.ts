@@ -215,3 +215,55 @@ test("streaming media fetch destroys the upstream request when its response body
   await response.body.cancel();
   assert.equal(requestDestroyed, true);
 });
+
+
+test("streaming media fetch enforces an absolute deadline against slow-drip responses", async () => {
+  let incoming: (PassThrough & { statusCode?: number; headers: Record<string, string> }) | undefined;
+  let requestError: Error | undefined;
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const requestImpl = ((_options: unknown, callback: (response: PassThrough & {
+    statusCode?: number;
+    headers: Record<string, string>;
+  }) => void) => {
+    const request = new EventEmitter() as EventEmitter & {
+      setTimeout: () => void;
+      end: () => void;
+      destroy: (error?: Error) => void;
+    };
+    request.setTimeout = () => undefined;
+    request.destroy = (error?: Error) => {
+      if (error) {
+        requestError = error;
+        incoming?.destroy(error);
+        request.emit("error", error);
+      } else {
+        incoming?.destroy();
+      }
+    };
+    request.end = () => {
+      incoming = new PassThrough() as PassThrough & {
+        statusCode?: number;
+        headers: Record<string, string>;
+      };
+      incoming.statusCode = 200;
+      incoming.headers = {};
+      incoming.once("close", () => {
+        if (interval) clearInterval(interval);
+      });
+      callback(incoming);
+      interval = setInterval(() => incoming?.write(Buffer.from("x")), 10);
+    };
+    return request;
+  }) as never;
+
+  const response = await fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
+    maxBytes: 1024,
+    timeoutMs: 60,
+    resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+    requestImpl
+  });
+
+  await assert.rejects(() => response.arrayBuffer(), /absolute transfer deadline/i);
+  assert.match(requestError?.message ?? "", /absolute transfer deadline/i);
+  if (interval) clearInterval(interval);
+});
