@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { createApp } from "./app.js";
+import { createApp, safeHttpErrorLogFields } from "./app.js";
 import { environment } from "./config.js";
 import { createServices } from "./domain/container.js";
 import { createDatabasePersistence } from "./db/client.js";
@@ -152,7 +152,7 @@ try {
   if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
-  app.log.error(error);
+  app.log.error(safeHttpErrorLogFields(error));
   await services.autonomousScheduler.stop();
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
