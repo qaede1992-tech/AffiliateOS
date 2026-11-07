@@ -8,6 +8,7 @@ import { createAffiliateSchema, createConversionSchema, createOfferSchema, score
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { ProductMediaCandidateImportError } from "../domain/product-media-candidate-import.js";
+import { ProductMediaUploadError } from "../domain/product-media-upload-service.js";
 import { requireAdmin, requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
@@ -40,7 +41,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       done(null, payload);
     });
     mediaApp.addHook("onRequest", async (request, reply) => {
-      if (request.url.split("?", 1)[0] !== "/api/v1/content/media-upload") return;
+      const pathname = request.url.split("?", 1)[0] ?? "";
+      if (pathname !== "/api/v1/content/media-upload" && !/^\/api\/v1\/products\/[^/]+\/media-upload$/.test(pathname)) return;
       const role = request.auth?.role;
       if (role !== "admin" && role !== "operator") {
         auditSecurityEvent(request.log, request, "authorization_denied", { reason: "media_upload_requires_operator" });
@@ -94,6 +96,61 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           return reply.status(400).send({ error: "INVALID_MEDIA_UPLOAD", message: "The media upload failed validation." });
         }
         return reply.status(502).send({ error: "MEDIA_UPLOAD_FAILED", message: "The media upload could not be completed." });
+      } finally {
+        request.raw.removeListener("aborted", abortUpload);
+        reply.raw.removeListener("close", onResponseClose);
+      }
+    });
+
+    mediaApp.post<{ Params: { productId: string }; Querystring: { kind?: string }; Body: unknown }>("/api/v1/products/:productId/media-upload", { bodyLimit: 45 * 1024 * 1024 }, async (request, reply) => {
+      if (!services.productMediaUpload) return reply.status(503).send({ error: "PRODUCT_MEDIA_UPLOAD_UNAVAILABLE", message: "Product media upload is not configured." });
+      const kind = request.query.kind;
+      if (kind !== "image" && kind !== "video") {
+        return reply.status(400).send({ error: "INVALID_MEDIA_KIND", message: "Product media kind must be image or video." });
+      }
+      const mimeType = request.headers["content-type"];
+      if (typeof mimeType !== "string" || mimeType.trim().toLowerCase() !== "application/octet-stream") {
+        return reply.status(415).send({ error: "UNSUPPORTED_MEDIA_TYPE", message: "Send the file as application/octet-stream and declare its media type with X-Media-Mime-Type." });
+      }
+      const declaredMimeType = request.headers["x-media-mime-type"];
+      if (typeof declaredMimeType !== "string") {
+        return reply.status(400).send({ error: "MEDIA_MIME_TYPE_REQUIRED", message: "X-Media-Mime-Type is required." });
+      }
+      const headerLength = request.headers["content-length"] ?? request.raw.headers["content-length"];
+      const rawLength = Array.isArray(headerLength) ? headerLength[0] : headerLength;
+      const contentLength = typeof rawLength === "number"
+        ? rawLength
+        : typeof rawLength === "string" && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+      if (!Number.isSafeInteger(contentLength) || contentLength <= 0) {
+        return reply.status(411).send({ error: "CONTENT_LENGTH_REQUIRED", message: "A valid Content-Length header is required." });
+      }
+      if (!(request.body instanceof Readable)) {
+        return reply.status(400).send({ error: "MEDIA_STREAM_UNAVAILABLE", message: "The request body could not be streamed." });
+      }
+      const body = Readable.toWeb(request.body) as ReadableStream<Uint8Array>;
+      const abortController = new AbortController();
+      const abortUpload = () => abortController.abort(new Error("Product media upload client disconnected."));
+      const onResponseClose = () => { if (!reply.raw.writableEnded) abortUpload(); };
+      request.raw.once("aborted", abortUpload);
+      reply.raw.once("close", onResponseClose);
+      try {
+        const asset = await services.productMediaUpload.uploadStream({
+          productId: request.params.productId,
+          kind,
+          mimeType: declaredMimeType.trim().toLowerCase(),
+          body,
+          contentLength,
+          signal: abortController.signal
+        });
+        return reply.status(201).send(asset);
+      } catch (error) {
+        request.log.warn({ errorName: error instanceof Error ? error.name : "UnknownError" }, "product media upload rejected");
+        if (error instanceof ProductMediaUploadError) {
+          if (error.code === "PRODUCT_NOT_FOUND") return reply.status(404).send({ error: error.code, message: "The target product does not exist." });
+          if (error.code === "UPLOAD_CANCELLED") return reply.status(400).send({ error: error.code, message: "The product media upload was cancelled." });
+          return reply.status(400).send({ error: error.code, message: "The product media upload failed validation." });
+        }
+        return reply.status(502).send({ error: "PRODUCT_MEDIA_UPLOAD_FAILED", message: "The product media upload could not be completed." });
       } finally {
         request.raw.removeListener("aborted", abortUpload);
         reply.raw.removeListener("close", onResponseClose);
