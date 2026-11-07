@@ -241,7 +241,7 @@ export const getOpenverseHttpFailureDetails = (
 ): OpenverseHttpFailureDetails | null => error instanceof OpenverseHttpError ? error.details : null;
 
 
-const getOpenverseAccessToken = async (
+const requestOpenverseAccessToken = async (
   clientId: string,
   clientSecret: string,
   fetchImpl: typeof fetch,
@@ -282,6 +282,37 @@ const getOpenverseAccessToken = async (
   } finally {
     clearTimeout(timeout);
   }
+};
+
+
+// Coalesce concurrent token requests per transport and client. A Cloudflare
+// response is only known after the first request completes; without single-flight
+// coordination, every product in the same discovery batch can race past cooldown.
+const openverseTokenRequests = new WeakMap<typeof fetch, Map<string, Promise<string>>>();
+
+const getOpenverseAccessToken = (
+  clientId: string,
+  clientSecret: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<string> => {
+  const blocked = getOpenverseCloudflareBlock(fetchImpl);
+  if (blocked) return Promise.reject(blocked);
+
+  let requests = openverseTokenRequests.get(fetchImpl);
+  if (!requests) {
+    requests = new Map<string, Promise<string>>();
+    openverseTokenRequests.set(fetchImpl, requests);
+  }
+  const pending = requests.get(clientId);
+  if (pending) return pending;
+
+  const request = requestOpenverseAccessToken(clientId, clientSecret, fetchImpl, timeoutMs);
+  requests.set(clientId, request);
+  void request.finally(() => {
+    if (requests?.get(clientId) === request) requests.delete(clientId);
+  }).catch(() => undefined);
+  return request;
 };
 
 /**
