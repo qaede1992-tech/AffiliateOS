@@ -34,6 +34,14 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
       setError("Maksimal 200 file dapat dipilih dalam satu batch.");
       return;
     }
+    if (manifest.size > 1024 * 1024) {
+      setError("Ukuran CSV manifest maksimal 1 MiB.");
+      return;
+    }
+    if (files.reduce((total, file) => total + file.size, 0) > 250 * 1024 * 1024) {
+      setError("Total ukuran seluruh file dalam satu batch maksimal 250 MiB.");
+      return;
+    }
 
     setRunning(true);
     setError(null);
@@ -105,13 +113,15 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
         (failures.length ? ` Rincian: ${failures.join(" | ")}` : "")
       );
       setProgress("");
-      setManifest(null);
-      setFiles([]);
-      setRightsConfirmed(false);
-      const manifestInput = document.getElementById("product-media-batch-manifest") as HTMLInputElement | null;
-      const filesInput = document.getElementById("product-media-batch-files") as HTMLInputElement | null;
-      if (manifestInput) manifestInput.value = "";
-      if (filesInput) filesInput.value = "";
+      if (failures.length === 0) {
+        setManifest(null);
+        setFiles([]);
+        setRightsConfirmed(false);
+        const manifestInput = document.getElementById("product-media-batch-manifest") as HTMLInputElement | null;
+        const filesInput = document.getElementById("product-media-batch-files") as HTMLInputElement | null;
+        if (manifestInput) manifestInput.value = "";
+        if (filesInput) filesInput.value = "";
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Manifest media tidak dapat diproses.");
       setProgress("");
