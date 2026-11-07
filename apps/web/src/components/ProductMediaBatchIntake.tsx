@@ -30,6 +30,11 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
       return;
     }
 
+    if (files.length > 200) {
+      setError("Maksimal 200 file dapat dipilih dalam satu batch.");
+      return;
+    }
+
     setRunning(true);
     setError(null);
     setResult(null);
