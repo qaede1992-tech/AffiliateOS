@@ -93,16 +93,23 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous) * freshness
         : 0;
-      const windows = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
-        ? await buildWindows(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId, signal, observedAt)
+      // Read the 30-day product history once and share it across all feedback
+      // calculations. Previously windows, recovery episode detection, and
+      // recovery stability each fetched overlapping history independently.
+      const historySince = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const recentSnapshots = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
+        ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId, historySince)
+        : undefined;
+      const windows = recentSnapshots
+        ? buildWindows(recentSnapshots, signal, observedAt)
         : undefined;
       const regime = windows ? classifyWindowRegime(windows, signal.conversionRate) : "stable";
       const regimeConfidence = windows ? calculateRegimeConfidence(windows, regime) : 0;
       const anomalyScore = windows ? calculateAnomalyScore(windows) : 0;
       const elapsedSincePrevious = previous ? Date.parse(observedAt) - Date.parse(previous.observedAt) : Number.POSITIVE_INFINITY;
       const recentHalt = previous?.anomaly === "halt" && elapsedSincePrevious < ANOMALY_COOLDOWN_MS;
-      const recoveryAnchor = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
-        ? (await activeRecoveryEpisode(this.memory!.recentByProductAndMarketplace.bind(this.memory!), productId, marketplaceId, observedAt)
+      const recoveryAnchor = recentSnapshots
+        ? (activeRecoveryEpisode(recentSnapshots, observedAt)
           ?? (previous?.anomaly === "halt" ? previous : undefined))
         : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
@@ -117,8 +124,8 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       // anomaly signal is watched rather than immediately reopening a halt.
       const hysteresisAnomaly = recoveredHysteresis && classifiedAnomaly === "halt" ? "watch" : classifiedAnomaly;
       const anomaly = recentHalt || recoveryGate ? "halt" : hysteresisAnomaly;
-      const stableRecovery = recoveryAnchor && recoveryEvidence
-        ? await hasStableRecoveryWindow(this.memory!.recentByProductAndMarketplace!.bind(this.memory!), productId, marketplaceId!, recoveryAnchor.observedAt, observedAt)
+      const stableRecovery = recoveryAnchor && recoveryEvidence && recentSnapshots
+        ? hasStableRecoveryWindow(recentSnapshots, recoveryAnchor.observedAt, observedAt)
         : false;
       const anomalyRecovery: AnomalyRecoveryState = recoveryAnchor
         ? (recentHalt || recoveryGate
@@ -272,11 +279,9 @@ function splitSignalKey(key: string): [string | undefined, string] {
   return separator < 0 ? [undefined, key] : [key.slice(0, separator), key.slice(separator + 1)];
 }
 
-async function hasStableRecoveryWindow(
-  reader:(productId:string,marketplaceId:string,since:string)=>Promise<AutonomousFeedbackSnapshot[]>,
-  productId:string, marketplaceId:string, haltObservedAt:string, observedAt:string
-):Promise<boolean> {
-  const snapshots = await reader(productId, marketplaceId, haltObservedAt);
+function hasStableRecoveryWindow(
+  snapshots:AutonomousFeedbackSnapshot[], haltObservedAt:string, observedAt:string
+):boolean {
   const eligible = snapshots
     .filter((snapshot) => Date.parse(snapshot.observedAt) > Date.parse(haltObservedAt) && Date.parse(snapshot.observedAt) <= Date.parse(observedAt))
     .sort((a,b) => a.observedAt.localeCompare(b.observedAt));
@@ -285,12 +290,9 @@ async function hasStableRecoveryWindow(
   return recent.every((snapshot) => snapshot.recoveryEvidenceScore >= 0.75 && snapshot.anomaly !== "halt");
 }
 
-async function activeRecoveryEpisode(
-  reader:(productId:string,marketplaceId:string,since:string)=>Promise<AutonomousFeedbackSnapshot[]>,
-  productId:string, marketplaceId:string, observedAt:string
-):Promise<AutonomousFeedbackSnapshot|undefined> {
-  const since = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const snapshots = await reader(productId, marketplaceId, since);
+function activeRecoveryEpisode(
+  snapshots:AutonomousFeedbackSnapshot[], observedAt:string
+):AutonomousFeedbackSnapshot|undefined {
   const ordered = snapshots
     .filter((snapshot) => Date.parse(snapshot.observedAt) <= Date.parse(observedAt))
     .sort((a,b) => a.observedAt.localeCompare(b.observedAt) || a.id.localeCompare(b.id));
@@ -304,12 +306,10 @@ async function activeRecoveryEpisode(
   return closed ? undefined : halt;
 }
 
-async function buildWindows(
-  reader:(productId:string,marketplaceId:string,since:string)=>Promise<AutonomousFeedbackSnapshot[]>,
-  productId:string, marketplaceId:string, current:OpportunityPerformanceSignal, observedAt:string
-):Promise<{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow }> {
+function buildWindows(
+  snapshots:AutonomousFeedbackSnapshot[], current:OpportunityPerformanceSignal, observedAt:string
+):{ "24h":PerformanceWindow; "7d":PerformanceWindow; "30d":PerformanceWindow } {
   const now=Date.parse(observedAt);
-  const snapshots=await reader(productId,marketplaceId,new Date(now-30*24*60*60*1000).toISOString());
   const make=(ms:number):PerformanceWindow=>{
     const since=new Date(now-ms).getTime();
     const base=[...snapshots].filter(s=>Date.parse(s.observedAt)>=since).sort((a,b)=>a.observedAt.localeCompare(b.observedAt))[0];
