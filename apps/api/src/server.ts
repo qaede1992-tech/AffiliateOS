@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { createApp } from "./app.js";
+import { createApp, safeHttpErrorLogFields } from "./app.js";
 import { environment } from "./config.js";
 import { createServices } from "./domain/container.js";
 import { createDatabasePersistence } from "./db/client.js";
@@ -130,7 +130,7 @@ const providerEventProcessor = new ProviderEventConversionProcessor(
 const providerEventWorker = new ProviderEventWorker(persistence.providerEvents, providerEventProcessor);
 const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   intervalMs: environment.PROVIDER_EVENT_WORKER_INTERVAL_MS,
-  onError: (error) => app.log.error(error, "Provider event worker cycle failed")
+  onError: (error) => app.log.error(safeHttpErrorLogFields(error), "Provider event worker cycle failed")
 });
 
 const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
@@ -141,7 +141,7 @@ const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shope
 const shopeeIntakeRecoveryScheduler = new ShopeeIntakeRecoveryScheduler(shopeeIntakeRecoveryWorker, {
   intervalMs: environment.SHOPEE_INTAKE_RECOVERY_INTERVAL_MS,
   onResult: (result) => app.log.info({ ...result }, "Shopee stale intake recovery cycle completed"),
-  onError: (error) => app.log.error(error, "Shopee stale intake recovery cycle failed")
+  onError: (error) => app.log.error(safeHttpErrorLogFields(error), "Shopee stale intake recovery cycle failed")
 });
 
 try {
@@ -152,7 +152,7 @@ try {
   if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
-  app.log.error(error);
+  app.log.error(safeHttpErrorLogFields(error), "API startup failed");
   await services.autonomousScheduler.stop();
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
