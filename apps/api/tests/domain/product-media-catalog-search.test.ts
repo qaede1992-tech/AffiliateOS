@@ -128,6 +128,37 @@ test("uses Openverse client credentials and sends a cached bearer token", async 
   assert.match(String(tokenCalls[0]?.init?.body), /grant_type=client_credentials/);
 });
 
+test("coalesces concurrent Openverse token requests for the same client", async () => {
+  let tokenCalls = 0;
+  let releaseResponse!: (response: Response) => void;
+  const response = new Promise<Response>((resolve) => { releaseResponse = resolve; });
+  const fetchImpl: typeof fetch = async () => {
+    tokenCalls += 1;
+    return response;
+  };
+  const options = {
+    fetchImpl,
+    clientId: "openverse-concurrent-token-client",
+    clientSecret: "test-secret",
+    timeoutMs: 1000
+  };
+
+  const searches = Array.from({ length: 10 }, (_, index) =>
+    searchOpenverseProductMedia({ ...identity, name: `Concurrent product ${index}` }, options)
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseResponse(new Response("<html>challenge</html>", {
+    status: 403,
+    headers: { "content-type": "text/html; charset=UTF-8", server: "cloudflare", "cf-ray": "singleflight-test-ray" }
+  }));
+
+  const results = await Promise.allSettled(searches);
+  assert.equal(tokenCalls, 1, "concurrent searches must share one in-flight token request");
+  assert.equal(results.filter((result) => result.status === "rejected").length, 10);
+  assert.ok(results.every((result) => result.status === "rejected" &&
+    /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/.test((result.reason as Error).message)));
+});
+
 test("rejects partial Openverse credentials instead of silently falling back to anonymous access", async () => {
   await assert.rejects(
     () => searchOpenverseProductMedia(identity, { clientId: "configured-without-secret" }),
