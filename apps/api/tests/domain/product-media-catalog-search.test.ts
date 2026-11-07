@@ -283,6 +283,37 @@ test("backs off repeated Openverse token requests during a Cloudflare challenge"
 });
 
 
+test("coalesces concurrent Openverse token requests during a Cloudflare challenge", async () => {
+  let tokenCalls = 0;
+  let releaseResponse!: (response: Response) => void;
+  const response = new Promise<Response>((resolve) => { releaseResponse = resolve; });
+  const fetchImpl: typeof fetch = async () => {
+    tokenCalls += 1;
+    return response;
+  };
+  const options = {
+    fetchImpl,
+    clientId: "openverse-concurrent-cloudflare-client",
+    clientSecret: "test-secret",
+    timeoutMs: 1000
+  };
+
+  const searches = Array.from({ length: 10 }, (_, index) =>
+    searchOpenverseProductMedia({ ...identity, name: `Concurrent product ${index}` }, options)
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  releaseResponse(new Response("<html>challenge</html>", {
+    status: 403,
+    headers: { "content-type": "text/html; charset=UTF-8", server: "cloudflare", "cf-ray": "concurrent-cooldown-ray" }
+  }));
+
+  const results = await Promise.allSettled(searches);
+  assert.equal(tokenCalls, 1, "concurrent products must share one in-flight token request");
+  assert.equal(results.filter((result) => result.status === "rejected").length, 10);
+  assert.ok(results.every((result) => result.status === "rejected" &&
+    /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/.test((result.reason as Error).message)));
+});
+
 test("backs off repeated Openverse image-search requests during a Cloudflare challenge", async () => {
   let tokenCalls = 0;
   let searchCalls = 0;
