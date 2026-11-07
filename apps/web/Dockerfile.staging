@@ -1,7 +1,8 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 # Isolated staging dashboard; never point this image at production.
-ARG VITE_API_URL=https://affiliateos-staging-mainline.affiliateos.blitz.cloud
+# Use the canonical Blitz host: the .blitz.cloud alias does not pass browser CORS preflight.
+ARG VITE_API_URL=https://affiliateos-staging-mainline.affiliateos.prod.page
 RUN test -n "$VITE_API_URL"
 ENV VITE_API_URL=$VITE_API_URL
 COPY package.json package-lock.json ./
