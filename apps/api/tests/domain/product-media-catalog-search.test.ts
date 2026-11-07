@@ -156,7 +156,7 @@ test("coalesces concurrent Openverse token requests for the same client", async 
   assert.equal(tokenCalls, 1, "concurrent searches must share one in-flight token request");
   assert.equal(results.filter((result) => result.status === "rejected").length, 10);
   assert.ok(results.every((result) => result.status === "rejected" &&
-    /token endpoint returned HTTP 403 \\(cloudflare_html_challenge\\)/.test((result.reason as Error).message)));
+    /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/.test((result.reason as Error).message)));
 });
 
 test("rejects partial Openverse credentials instead of silently falling back to anonymous access", async () => {
