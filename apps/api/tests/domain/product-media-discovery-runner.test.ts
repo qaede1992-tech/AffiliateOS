@@ -431,4 +431,67 @@ test("counts duplicate catalog candidates as discovered without reporting them a
     globalThis.fetch = originalFetch;
     console.info = originalInfo;
   }
+
+test("redacts database query details when catalog candidate persistence fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warningMessages: string[] = [];
+  const catalogFetch = async () => new Response("{}", { status: 403 });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Cat food bag.jpg",
+        imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/c/c1/cat-food.jpg",
+          thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/cat-food.jpg/800px-cat-food.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_food_bag.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC0" },
+            LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+            Artist: { value: "Example creator" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  console.warn = (message?: unknown) => { warningMessages.push(String(message)); };
+  try {
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      {
+        async listByProduct() { return []; },
+        async findByProductAndHash() { return undefined; },
+        async save() { throw new Error("No asset ingestion expected"); }
+      },
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      {
+        async saveMany() {
+          const error = new Error("Failed query: INSERT INTO product_media_candidates VALUES ($1); params: private-catalog-db-marker");
+          error.name = "DatabaseError";
+          throw error;
+        }
+      },
+      { fetchImpl: catalogFetch as typeof fetch }
+    );
+    const result = await runner.discover({
+      ...product,
+      name: "cat food",
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+
+    const failure = warningMessages.map((message) => {
+      try { return JSON.parse(message) as Record<string, unknown>; } catch { return undefined; }
+    }).find((message) => message?.event === "product_media_catalog_search_failed");
+    assert.equal(failure?.errorType, "DatabaseError");
+    assert.equal(failure?.reason, undefined);
+    assert.doesNotMatch(warningMessages.join("\n"), /Failed query|params:|private-catalog-db-marker/i);
+    assert.doesNotMatch(result.skipped.map((item) => item.reason).join("\n"), /Failed query|params:|private-catalog-db-marker/i);
+    assert.ok(result.skipped.some((item) => /candidate discovery failed \(DatabaseError\)/i.test(item.reason)));
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
 });
