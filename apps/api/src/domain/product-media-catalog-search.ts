@@ -218,7 +218,7 @@ export const getOpenverseHttpFailureDetails = (
 ): OpenverseHttpFailureDetails | null => error instanceof OpenverseHttpError ? error.details : null;
 
 
-const getOpenverseAccessToken = async (
+const requestOpenverseAccessToken = async (
   clientId: string,
   clientSecret: string,
   fetchImpl: typeof fetch,
@@ -255,6 +255,35 @@ const getOpenverseAccessToken = async (
   } finally {
     clearTimeout(timeout);
   }
+};
+
+
+// Share an in-flight token request across products in the same discovery batch.
+// The resolved-token cache above handles later calls; this map prevents concurrent
+// misses from issuing duplicate client-credentials requests.
+const openverseTokenRequests = new WeakMap<typeof fetch, Map<string, Promise<string>>>();
+
+const getOpenverseAccessToken = (
+  clientId: string,
+  clientSecret: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<string> => {
+  let requests = openverseTokenRequests.get(fetchImpl);
+  if (!requests) {
+    requests = new Map<string, Promise<string>>();
+    openverseTokenRequests.set(fetchImpl, requests);
+  }
+
+  const pending = requests.get(clientId);
+  if (pending) return pending;
+
+  const request = requestOpenverseAccessToken(clientId, clientSecret, fetchImpl, timeoutMs);
+  requests.set(clientId, request);
+  void request.finally(() => {
+    if (requests?.get(clientId) === request) requests.delete(clientId);
+  }).catch(() => undefined);
+  return request;
 };
 
 /**
