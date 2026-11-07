@@ -75,3 +75,5 @@ export interface SocialOAuthStartResponse { authorizationUrl: string; state: str
 export interface ConversionAttribution { conversionId: EntityId; trackingLinkId: EntityId; attributedAt: IsoTimestamp; }
 export interface CampaignAnalytics { campaignId: EntityId; productId?: EntityId; marketplaceId?: EntityId; category?: string; audienceSegments?: string[]; clickCount: number; trackingLinkCount: number; contentCount: number; publishedContentCount: number; scheduledContentCount: number; attributedConversionCount: number; attributedRevenueCents: MoneyCents; attributedCommissionCents: MoneyCents; conversionRate: number; }
 export interface AnalyticsOverview extends Omit<CampaignAnalytics, "campaignId" | "productId"> { campaignCount: number; campaigns: CampaignAnalytics[]; }
+
+export { parseProductMediaBatchManifest, ProductMediaBatchManifestError, type ProductMediaBatchManifestRow, type ProductMediaBatchKind } from "./product-media-batch-manifest.js";
