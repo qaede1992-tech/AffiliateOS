@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
+import { ProductMediaBatchIntake } from "./ProductMediaBatchIntake";
 
 export function ProductMediaIntakePanel() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -155,6 +156,7 @@ export function ProductMediaIntakePanel() {
             <small>Format yang diterima: JPG/PNG/WebP maksimal 10 MiB atau MP4 maksimal 45 MiB.</small>
             {uploadFile && <small>{uploadFile.name} · {uploadFile.size.toLocaleString("id-ID")} byte</small>}
             <button type="button" onClick={() => void uploadMedia()} disabled={uploading || !uploadFile || !rightsConfirmed}>{uploading ? "Mengunggah media…" : "Unggah gambar/video"}</button>
+            <ProductMediaBatchIntake products={products} />
           </>}
         </div>
       )}
