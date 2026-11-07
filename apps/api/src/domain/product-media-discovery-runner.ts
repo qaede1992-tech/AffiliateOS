@@ -31,6 +31,12 @@ const isShopeeHost = (hostname: string): boolean => {
     host === "shopee.com" || host.endsWith(".shopee.com");
 };
 
+/** Keep ORM/query details out of discovery logs and persisted skip reasons. */
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 /**
  * Discovers public product media only after the caller has selected a candidate
  * using non-media affiliate criteria. It does not bypass login, CAPTCHA, or bot
@@ -234,14 +240,17 @@ export class ProductMediaDiscoveryRunner {
             alreadyPresentCount
           }));
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Openverse candidate search failed.";
+          const errorType = safeErrorType(error);
           console.warn(JSON.stringify({
             event: "product_media_catalog_search_failed",
             provider: "wikimedia_commons",
             productId: product.id,
-            reason: message
+            errorType
           }));
-          skipped.push({ url: "https://commons.wikimedia.org/w/api.php", reason: "Openverse and Wikimedia Commons candidate discovery failed: " + message });
+          skipped.push({
+            url: "https://commons.wikimedia.org/w/api.php",
+            reason: `Openverse and Wikimedia Commons candidate discovery failed (${errorType}).`
+          });
         }
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
