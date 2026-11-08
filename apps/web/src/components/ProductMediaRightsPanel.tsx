@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
-import { api, type ProductMediaAssetView, type ProductMediaRightsAuditView, type ProductMediaRightsBasis } from "../api/client";
+import { api, type ProductMediaAssetView, type ProductMediaRightsAuditView, type ProductMediaIdentityAuditView, type ProductMediaRightsBasis } from "../api/client";
 
 type ReviewForm = { rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string };
 const basisOptions: Array<{ value: ProductMediaRightsBasis; label: string }> = [
@@ -21,6 +21,9 @@ export function ProductMediaRightsPanel() {
   const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [audits, setAudits] = useState<Record<string, ProductMediaRightsAuditView[]>>({});
+  const [identityAudits, setIdentityAudits] = useState<Record<string, ProductMediaIdentityAuditView[]>>({});
+  const [identityReasons, setIdentityReasons] = useState<Record<string, string>>({});
+  const [generationStyles, setGenerationStyles] = useState<Record<string, "studio" | "lifestyle" | "minimal">>({});
   const [forms, setForms] = useState<Record<string, ReviewForm>>({});
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -50,6 +53,7 @@ export function ProductMediaRightsPanel() {
     setAssets([]);
     setPreviews({});
     setAudits({});
+    setIdentityAudits({});
     if (!selectedProductId) { setLoading(false); return; }
     setLoading(true);
     setError(null);
@@ -57,7 +61,10 @@ export function ProductMediaRightsPanel() {
       const response = await api.productMediaAssets(selectedProductId);
       if (requestId !== requestSequence.current) return;
       setAssets(response.data);
-      const [signed, history] = await Promise.all([
+      const aiAssets = response.data.filter((asset) =>
+        asset.sourceProvider === "openai" && asset.sourceUrl.startsWith("generated:openai-image-edit:")
+      );
+      const [signed, history, identityHistory] = await Promise.all([
         Promise.all(response.data.map(async (asset) => {
           try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
           catch { return [asset.id, ""] as const; }
@@ -65,11 +72,16 @@ export function ProductMediaRightsPanel() {
         Promise.all(response.data.map(async (asset) => {
           try { return [asset.id, (await api.productMediaRightsAudits(selectedProductId, asset.id)).data] as const; }
           catch { return [asset.id, []] as const; }
+        })),
+        Promise.all(aiAssets.map(async (asset) => {
+          try { return [asset.id, (await api.productMediaIdentityAudits(selectedProductId, asset.id)).data] as const; }
+          catch { return [asset.id, []] as const; }
         }))
       ]);
       if (requestId !== requestSequence.current) return;
       setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
       setAudits(Object.fromEntries(history));
+      setIdentityAudits(Object.fromEntries(identityHistory));
     } catch (requestError) {
       if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
@@ -83,6 +95,7 @@ export function ProductMediaRightsPanel() {
     setAssets([]);
     setPreviews({});
     setAudits({});
+    setIdentityAudits({});
     setBusyAssetId(null);
     setError(null);
     setNotice(null);
@@ -93,6 +106,44 @@ export function ProductMediaRightsPanel() {
 
   const updateForm = (assetId: string, field: keyof ReviewForm, value: string) => {
     setForms((current) => ({ ...current, [assetId]: { ...(current[assetId] ?? initialForm()), [field]: value } }));
+  };
+
+  const generateImage = async (asset: ProductMediaAssetView) => {
+    if (asset.kind !== "image" || asset.rightsStatus !== "verified" || asset.rightsBasis !== "user_owned") {
+      setError("Pembuatan visual AI memerlukan gambar referensi milik sendiri yang hak penggunaannya sudah diverifikasi.");
+      return;
+    }
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    const style = generationStyles[asset.id] ?? "studio";
+    setBusyAssetId(asset.id); setError(null); setNotice(null);
+    try {
+      const result = await api.generateProductImage(selectedProductId, asset.id, style);
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      if (!result.asset) throw new Error(result.reason ?? "Generator AI tidak menghasilkan aset gambar.");
+      setNotice("Visual AI tersimpan sebagai aset baru. Status identitas masih pending dan belum dapat digunakan untuk video atau publikasi.");
+      await loadAssets(selectedProductId);
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Pembuatan visual AI gagal. Pastikan layanan OpenAI Staging telah dikonfigurasi.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
+  };
+
+  const reviewIdentity = async (asset: ProductMediaAssetView, status: "verified" | "rejected") => {
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    const reason = (identityReasons[asset.id] ?? "").trim();
+    if (!reason) { setError("Tuliskan hasil perbandingan bentuk, warna, logo, kemasan, dan detail produk sebelum memberi keputusan."); return; }
+    setBusyAssetId(asset.id); setError(null); setNotice(null);
+    try {
+      await api.reviewProductMediaIdentity(selectedProductId, asset.id, { status, reason });
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      setNotice(status === "verified"
+        ? "Identitas visual disetujui dan dicatat dalam audit. Hak penggunaan tetap harus diverifikasi secara terpisah."
+        : "Visual AI ditolak dan dicatat dalam audit. Aset ini tetap tidak layak untuk publikasi.");
+      await loadAssets(selectedProductId);
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Review identitas produk gagal.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
   const verify = async (asset: ProductMediaAssetView) => {
