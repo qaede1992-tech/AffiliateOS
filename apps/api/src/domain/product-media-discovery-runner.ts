@@ -182,7 +182,7 @@ export class ProductMediaDiscoveryRunner {
           try {
             discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
           } catch (error) {
-            openverseFailure = error instanceof Error ? error.message : "Openverse candidate search failed.";
+            openverseFailure = safeErrorType(error);
             discoveryProvider = "wikimedia_commons";
             const openverseFailureDetails = getOpenverseHttpFailureDetails(error);
             console.warn(JSON.stringify({
@@ -190,7 +190,7 @@ export class ProductMediaDiscoveryRunner {
               primaryProvider: "openverse",
               fallbackProvider: "wikimedia_commons",
               productId: product.id,
-              reason: openverseFailure,
+              errorType: openverseFailure,
               ...(openverseFailureDetails ? { openverseFailure: openverseFailureDetails } : {})
             }));
             discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
@@ -232,7 +232,7 @@ export class ProductMediaDiscoveryRunner {
           console.info(JSON.stringify({
             event: "product_media_catalog_search_completed",
             provider: discoveryProvider,
-            fallbackReason: openverseFailure,
+            fallbackErrorType: openverseFailure,
             productId: product.id,
             resultCount: discovered.length,
             acceptedCount: accepted.length,
@@ -266,7 +266,7 @@ export class ProductMediaDiscoveryRunner {
           }
           catalogCandidates.push({ kind: candidate.kind, url: mediaUrl.toString(), source: "catalog" });
         } catch (error) {
-          skipped.push({ url: candidate.url, reason: error instanceof Error ? error.message : "Explicit catalog media URL could not be validated." });
+          skipped.push({ url: candidate.url, reason: `Explicit catalog media URL could not be validated (${safeErrorType(error)}).` });
         }
       }
       if (catalogCandidates.length > 0) {
@@ -319,7 +319,7 @@ export class ProductMediaDiscoveryRunner {
       const stored = await this.assets.listByProduct(product.id);
       return { productId: product.id, pageFetched: true, hasVideo: stored.some((asset) => asset.kind === "video"), stored: ingested.stored, skipped: [...skipped, ...ingested.skipped] };
     } catch (error) {
-      skipped.push({ url: pageUrl.toString(), reason: error instanceof Error ? error.message : "Product page discovery failed." });
+      skipped.push({ url: pageUrl.toString(), reason: `Product page discovery failed (${safeErrorType(error)}).` });
       if (product.videoUrl) {
         try {
           const videoUrl = new URL(product.videoUrl);
@@ -328,7 +328,7 @@ export class ProductMediaDiscoveryRunner {
             skipped.push(...fallback.skipped);
           }
         } catch (fallbackError) {
-          skipped.push({ url: product.videoUrl, reason: fallbackError instanceof Error ? fallbackError.message : "Existing product video could not be validated." });
+          skipped.push({ url: product.videoUrl, reason: `Existing product video fallback failed (${safeErrorType(fallbackError)}).` });
         }
       }
       const stored = await this.assets.listByProduct(product.id);
