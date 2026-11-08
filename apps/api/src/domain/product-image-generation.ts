@@ -290,6 +290,10 @@ export class ProductImageGenerationService {
       rightsBasis: null,
       rightsEvidenceUrl: null,
       rightsVerifiedAt: null,
+      identityStatus: "pending",
+      identityReviewedBy: null,
+      identityReviewedAt: null,
+      identityReviewReason: null,
       createdAt: new Date().toISOString()
     };
     try {
