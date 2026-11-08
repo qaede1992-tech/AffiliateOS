@@ -60,7 +60,7 @@ const makeHarness = (reference = makeReference()) => {
         assert.equal(url, "https://api.openai.com/v1/images/edits");
         assert.equal(init?.method, "POST");
         const form = init?.body as FormData;
-        assert.equal(form.get("model"), "gpt-image-2.5-sunburst");
+        assert.equal(form.get("model"), "gpt-image-2");
         assert.match(String(form.get("prompt")), /PRODUCT IDENTITY IS THE HIGHEST PRIORITY/);
         assert.equal(form.get("n"), "1");
         return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from(png).toString("base64") }] }), {
