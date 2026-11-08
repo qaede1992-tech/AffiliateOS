@@ -44,6 +44,7 @@ export class ProductImageGenerationError extends Error {
     readonly code:
       | "INVALID_PRODUCT_ID"
       | "INVALID_REFERENCE_ASSET"
+      | "INVALID_STYLE"
       | "PRODUCT_NOT_FOUND"
       | "REFERENCE_NOT_FOUND"
       | "REFERENCE_NOT_ELIGIBLE"
@@ -158,7 +159,7 @@ export class ProductImageGenerationService {
       throw new ProductImageGenerationError("A valid reference asset UUID is required.", "INVALID_REFERENCE_ASSET");
     }
     if (!Object.hasOwn(STYLE_INSTRUCTIONS, input.style)) {
-      throw new ProductImageGenerationError("A supported image style is required.", "INVALID_REFERENCE_ASSET");
+      throw new ProductImageGenerationError("A supported image style is required.", "INVALID_STYLE");
     }
     if (!(await this.products.findById(input.productId))) {
       throw new ProductImageGenerationError("Product does not exist.", "PRODUCT_NOT_FOUND");
@@ -167,6 +168,15 @@ export class ProductImageGenerationService {
     const productAssets = await this.assets.listByProduct(input.productId);
     const reference = productAssets.find((asset) => asset.id === input.referenceAssetId);
     if (!reference) throw new ProductImageGenerationError("Reference image does not belong to this product.", "REFERENCE_NOT_FOUND");
+    const existingForStyle = productAssets.find((asset) =>
+      asset.kind === "image" &&
+      asset.sourceProvider === "openai" &&
+      asset.sourceUrl === `generated:openai-image-edit:${reference.id}` &&
+      asset.sourceQuery === input.style
+    );
+    if (existingForStyle) {
+      return { generated: false, asset: existingForStyle, reason: "An AI-edited image already exists for this reference and style." };
+    }
     if (
       reference.kind !== "image" ||
       reference.bucket !== this.storage.bucketName ||
