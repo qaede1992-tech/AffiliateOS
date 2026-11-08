@@ -6,8 +6,14 @@ ALTER TABLE public.product_media_assets
 --> statement-breakpoint
 
 ALTER TABLE public.product_media_assets
+  DROP CONSTRAINT IF EXISTS product_media_assets_identity_status_check;
+--> statement-breakpoint
+ALTER TABLE public.product_media_assets
   ADD CONSTRAINT product_media_assets_identity_status_check
   CHECK (identity_status IN ('not_required', 'pending', 'verified', 'rejected'));
+--> statement-breakpoint
+ALTER TABLE public.product_media_assets
+  DROP CONSTRAINT IF EXISTS product_media_assets_identity_review_evidence_check;
 --> statement-breakpoint
 ALTER TABLE public.product_media_assets
   ADD CONSTRAINT product_media_assets_identity_review_evidence_check
@@ -77,6 +83,8 @@ AS 'BEGIN
 END;';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.prevent_product_media_identity_audit_mutation() FROM PUBLIC, anon, authenticated;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS product_media_identity_audits_append_only ON public.product_media_identity_audits;
 --> statement-breakpoint
 CREATE TRIGGER product_media_identity_audits_append_only
   BEFORE UPDATE OR DELETE ON public.product_media_identity_audits
