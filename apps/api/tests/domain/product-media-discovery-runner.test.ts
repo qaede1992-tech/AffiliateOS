@@ -495,3 +495,102 @@ test("redacts database query details when catalog candidate persistence fails", 
   }
 });
 });
+
+test("redacts database errors from product-page discovery and existing-video fallback", async () => {
+  const marker = "private-product-media-discovery-marker";
+  const databaseError = new Error(`Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: ${marker}`);
+  databaseError.name = "DatabaseError";
+  const fetched: string[] = [];
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { return asset; }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async (url: string) => {
+      fetched.push(url);
+      throw databaseError;
+    }) as never
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shop.example.test/product/1",
+    videoUrl: "https://cdn.example.com/video.mp4"
+  }, true);
+  const reasons = result.skipped.map((item) => item.reason).join("\\n");
+
+  assert.equal(fetched.length, 2);
+  assert.match(reasons, /DatabaseError/);
+  assert.doesNotMatch(reasons, /Failed query|params:|private-product-media-discovery-marker/i);
+});
+
+test("redacts Openverse transport errors in provider fallback and completion logs", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const originalInfo = console.info;
+  const warningMessages: string[] = [];
+  const infoMessages: string[] = [];
+  const marker = "private-openverse-token-marker";
+  const catalogFetch = async () => {
+    const error = new Error(`Openverse transport failed: ${marker}`);
+    error.name = "OpenverseTransportError";
+    throw error;
+  };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Cat food bag.jpg",
+        imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/c/c1/cat-food.jpg",
+          thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/cat-food.jpg/800px-cat-food.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_food_bag.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC0" },
+            LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+            Artist: { value: "Example creator" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  console.warn = (message?: unknown) => { warningMessages.push(String(message)); };
+  console.info = (message?: unknown) => { infoMessages.push(String(message)); };
+  try {
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => { throw new Error("No media upload expected"); }, remove: async () => {} } as never,
+      {
+        async listByProduct() { return []; },
+        async findByProductAndHash() { return undefined; },
+        async save() { throw new Error("No asset persistence expected"); }
+      },
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      { async saveMany() { return []; } },
+      { fetchImpl: catalogFetch as typeof fetch }
+    );
+    await runner.discover({
+      ...product,
+      name: "cat food",
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+
+    const fallback = warningMessages.map((message) => {
+      try { return JSON.parse(message) as Record<string, unknown>; } catch { return undefined; }
+    }).find((message) => message?.event === "product_media_catalog_provider_fallback");
+    const completed = infoMessages.map((message) => {
+      try { return JSON.parse(message) as Record<string, unknown>; } catch { return undefined; }
+    }).find((message) => message?.event === "product_media_catalog_search_completed");
+
+    assert.equal(fallback?.errorType, "OpenverseTransportError");
+    assert.equal(completed?.fallbackErrorType, "OpenverseTransportError");
+    assert.doesNotMatch([...warningMessages, ...infoMessages].join("\\n"), /private-openverse-token-marker/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.info = originalInfo;
+  }
+});
