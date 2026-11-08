@@ -195,7 +195,7 @@ export function ProductMediaRightsPanel() {
         <span>Khusus admin</span>
       </div>
       <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
-      <p className="analytics-note">Untuk gambar AI, bandingkan hasil dengan foto referensi asli. Persetujuan identitas dan persetujuan hak penggunaan adalah dua pemeriksaan terpisah.</p>
+      <p className="analytics-note">Untuk gambar AI, bandingkan hasil dengan foto referensi asli. Persetujuan identitas dan persetujuan hak penggunaan adalah dua pemeriksaan terpisah. Generator hanya aktif setelah konfigurasi OpenAI Staging tersedia.</p>
       <div className="affiliate-form">
         <label htmlFor="product-media-rights-product">Produk</label>
         <select id="product-media-rights-product" value={productId} onChange={(event) => selectProduct(event.target.value)}>
@@ -301,7 +301,7 @@ export function ProductMediaRightsPanel() {
                       <p className="analytics-note">Pastikan siluet, proporsi, warna, bahan, komponen, logo, tulisan, label, dan kemasan tetap sesuai foto asli. Tolak jika AI mengubah atau mengarang detail produk.</p>
                       {asset.identityStatus === "verified" && <p className="analytics-note">Diperiksa oleh {asset.identityReviewedBy ?? "admin"} · {asset.identityReviewedAt ? new Date(asset.identityReviewedAt).toLocaleString("id-ID") : "—"} · {asset.identityReviewReason}</p>}
                       <label htmlFor={"identity-reason-" + asset.id}>Alasan / hasil perbandingan</label>
-                      <textarea id={"identity-reason-" + asset.id} rows={3} value={identityReasons[asset.id] ?? ""} onChange={(event) => setIdentityReasons((current) => ({ ...current, [asset.id]: event.target.value }))} placeholder="Contoh: bentuk, warna, logo, dan kemasan sama dengan referensi." disabled={Boolean(busyAssetId)} />
+                      <textarea id={"identity-reason-" + asset.id} rows={3} maxLength={1000} value={identityReasons[asset.id] ?? ""} onChange={(event) => setIdentityReasons((current) => ({ ...current, [asset.id]: event.target.value }))} placeholder="Contoh: bentuk, warna, logo, dan kemasan sama dengan referensi." disabled={Boolean(busyAssetId)} />
                       <div className="product-media-rights-actions">
                         <button type="button" onClick={() => void reviewIdentity(asset, "verified")} disabled={Boolean(busyAssetId) || identityStatus === "verified" || !(identityReasons[asset.id] ?? "").trim()}>{busyAssetId === asset.id ? "Menyimpan…" : "Setujui identitas"}</button>
                         <button type="button" className="secondary-button" onClick={() => void reviewIdentity(asset, "rejected")} disabled={Boolean(busyAssetId) || identityStatus === "rejected" || !(identityReasons[asset.id] ?? "").trim()}>Tolak visual AI</button>
