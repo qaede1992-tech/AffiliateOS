@@ -203,7 +203,7 @@ export class ProductImageGenerationService {
     form.set("output_format", "png");
     form.set("n", "1");
     const extension = reference.mimeType === "image/jpeg" ? "jpg" : reference.mimeType === "image/webp" ? "webp" : "png";
-    form.append("image[]", new Blob([sourceBytes], { type: reference.mimeType }), `reference.${extension}`);
+    form.append("image[]", new Blob([sourceBytes.slice().buffer as ArrayBuffer], { type: reference.mimeType }), `reference.${extension}`);
 
     let response: Response;
     try {
