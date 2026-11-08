@@ -10,6 +10,9 @@ const VERIFIED_BASES = new Set([
 ]);
 
 export const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
+  // AI-edited derivatives remain ineligible until a separate product-identity
+  // review is persisted. A rights-only approval must never imply visual accuracy.
+  if (asset.sourceProvider === "openai" && asset.sourceUrl.startsWith("generated:openai-image-edit:")) return false;
   if (
     asset.rightsStatus !== "verified" ||
     !asset.rightsBasis ||
