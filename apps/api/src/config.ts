@@ -64,7 +64,7 @@ const environmentSchema = z.object({
   OPENVERSE_CLIENT_SECRET: z.string().min(1).optional(),
   OPENAI_API_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
   AI_PRODUCT_IMAGE_GENERATION_ENABLED: booleanEnvironment,
-  AI_PRODUCT_IMAGE_MODEL: z.string().trim().min(1).max(100).default("gpt-image-2.5-sunburst"),
+  AI_PRODUCT_IMAGE_MODEL: z.string().trim().min(1).max(100).default("gpt-image-2"),
   SOCIAL_CREDENTIALS_JSON: z.string().optional(),
   SOCIAL_CREDENTIAL_STORE_PATH: z.string().trim().default("/var/lib/affiliateos/secrets/social-credentials.enc"),
   SOCIAL_CREDENTIAL_STORE_KEY: z.string().trim().min(32).optional(),
