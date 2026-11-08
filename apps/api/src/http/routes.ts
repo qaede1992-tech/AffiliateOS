@@ -158,6 +158,24 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       }
     });
 
+    mediaApp.get<{ Params: { productId: string } }>("/api/v1/products/:productId/media-generation-status", adminGuard, async (request) => {
+      const params = productMediaParamsSchema.parse(request.params);
+      const repository = services.productMediaAssets;
+      if (!services.productImageGeneration || !repository) {
+        return { enabled: false, eligibleReferenceAssetIds: [] as string[], reason: "not_configured" };
+      }
+      const assets = await repository.listByProduct(params.productId);
+      const eligibleReferenceAssetIds = assets.filter((asset) =>
+        asset.kind === "image" &&
+        asset.sourceProvider !== "openai" &&
+        asset.bucket.length > 0 &&
+        asset.objectKey.startsWith(`products/${params.productId}/`) &&
+        asset.rightsBasis === "user_owned" &&
+        hasCurrentVerifiedRights(asset)
+      ).map((asset) => asset.id);
+      return { enabled: true, eligibleReferenceAssetIds, reason: eligibleReferenceAssetIds.length > 0 ? undefined : "no_verified_user_owned_reference" };
+    });
+
     mediaApp.post<{ Params: { productId: string }; Body: unknown }>("/api/v1/products/:productId/media-generate", { preHandler: requireOperator }, async (request, reply) => {
       if (!services.productImageGeneration) {
         return reply.status(503).send({ error: "PRODUCT_IMAGE_GENERATION_UNAVAILABLE", message: "AI product image generation is not enabled or configured." });
