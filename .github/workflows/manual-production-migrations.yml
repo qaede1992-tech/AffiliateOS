@@ -29,13 +29,14 @@ jobs:
     environment: production-migrations
     timeout-minutes: 20
     steps:
-      - name: Require the protected main branch
+      - name: Require the main branch ref
         run: |
           set -euo pipefail
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "Production migrations may only run from the protected main branch."
+            echo "Production migrations may only run from refs/heads/main."
             exit 1
           fi
+          echo "This step validates only the ref; it does not verify GitHub branch protection."
 
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
