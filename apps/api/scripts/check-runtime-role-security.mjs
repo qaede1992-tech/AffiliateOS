@@ -50,7 +50,7 @@ try {
     "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') ORDER BY c.relname"
   ].join("\n"));
   assert.ok(tableResult.rows.length > 0, "Expected application tables in public schema.");
-  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "pre_media_eligibility_evidence"]);
+  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "product_media_identity_audits", "pre_media_eligibility_evidence"]);
   assert.ok(
     tableResult.rows.some((table) => appendOnlyTables.has(table.relname)),
     "The append-only product media rights audit table must exist."
@@ -77,15 +77,34 @@ try {
   );
   assert.equal(auditTrigger.rows[0]?.present, true, "The rights audit table must have its append-only trigger.");
 
+  const identityAuditTrigger = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid " +
+    "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' " +
+    "AND c.relname = 'product_media_identity_audits' AND t.tgname = 'product_media_identity_audits_append_only' " +
+    "AND NOT t.tgisinternal) AS present"
+  );
+  assert.equal(identityAuditTrigger.rows[0]?.present, true, "The identity audit table must have its append-only trigger.");
+
   const auditFunctionSearchPath = await client.query(
     "SELECT COALESCE(array_to_string(p.proconfig, ','), '') AS settings " +
     "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace " +
     "WHERE n.nspname = 'public' AND p.proname = 'prevent_product_media_rights_audit_mutation' AND p.pronargs = 0"
   );
-  assert.equal(auditFunctionSearchPath.rowCount, 1, "The append-only audit trigger function must exist.");
+  assert.equal(auditFunctionSearchPath.rowCount, 1, "The append-only rights audit trigger function must exist.");
   assert.ok(
     auditFunctionSearchPath.rows[0]?.settings.split(",").includes("search_path=pg_catalog"),
-    "The append-only audit trigger function must pin search_path to pg_catalog."
+    "The append-only rights audit trigger function must pin search_path to pg_catalog."
+  );
+
+  const identityAuditFunctionSearchPath = await client.query(
+    "SELECT COALESCE(array_to_string(p.proconfig, ','), '') AS settings " +
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace " +
+    "WHERE n.nspname = 'public' AND p.proname = 'prevent_product_media_identity_audit_mutation' AND p.pronargs = 0"
+  );
+  assert.equal(identityAuditFunctionSearchPath.rowCount, 1, "The append-only identity audit trigger function must exist.");
+  assert.ok(
+    identityAuditFunctionSearchPath.rows[0]?.settings.split(",").includes("search_path=pg_catalog"),
+    "The append-only identity audit trigger function must pin search_path to pg_catalog."
   );
 
   const schemaCreate = await client.query(
