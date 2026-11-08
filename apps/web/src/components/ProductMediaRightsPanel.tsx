@@ -195,6 +195,7 @@ export function ProductMediaRightsPanel() {
         <span>Khusus admin</span>
       </div>
       <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
+      <p className="analytics-note">Untuk gambar AI, bandingkan hasil dengan foto referensi asli. Persetujuan identitas dan persetujuan hak penggunaan adalah dua pemeriksaan terpisah.</p>
       <div className="affiliate-form">
         <label htmlFor="product-media-rights-product">Produk</label>
         <select id="product-media-rights-product" value={productId} onChange={(event) => selectProduct(event.target.value)}>
@@ -260,6 +261,64 @@ export function ProductMediaRightsPanel() {
                         ))}
                       </ol>}
                 </details>
+                {asset.kind === "image" && asset.sourceProvider !== "openai" && asset.rightsStatus === "verified" && asset.rightsBasis === "user_owned" && (
+                  <div className="affiliate-form product-ai-generate">
+                    <strong>Buat visual promosi dengan AI</strong>
+                    <small>Foto ini menjadi referensi asli. AI hanya diminta mengubah latar dan komposisi; hasil tetap wajib diperiksa sebelum digunakan.</small>
+                    <label htmlFor={"ai-image-style-" + asset.id}>Gaya visual</label>
+                    <select id={"ai-image-style-" + asset.id} value={generationStyles[asset.id] ?? "studio"} onChange={(event) => setGenerationStyles((current) => ({ ...current, [asset.id]: event.target.value as "studio" | "lifestyle" | "minimal" }))} disabled={Boolean(busyAssetId)}>
+                      <option value="studio">Studio profesional</option>
+                      <option value="lifestyle">Lifestyle</option>
+                      <option value="minimal">Minimalis</option>
+                    </select>
+                    <button type="button" onClick={() => void generateImage(asset)} disabled={Boolean(busyAssetId)}>{busyAssetId === asset.id ? "Membuat visual…" : "Buat visual AI dari foto ini"}</button>
+                  </div>
+                )}
+                {asset.sourceProvider === "openai" && asset.sourceUrl.startsWith("generated:openai-image-edit:") && (() => {
+                  const referenceId = asset.sourceUrl.slice("generated:openai-image-edit:".length);
+                  const reference = assets.find((item) => item.id === referenceId);
+                  const referencePreview = previews[referenceId];
+                  const history = identityAudits[asset.id] ?? [];
+                  const identityStatus = asset.identityStatus ?? "pending";
+                  return (
+                    <div className="product-media-identity-review">
+                      <div className="panel-heading">
+                        <div><p className="eyebrow">Pemeriksaan kesetiaan produk</p><h4>Referensi asli vs hasil AI</h4></div>
+                        <span className={"badge " + (identityStatus === "verified" ? "active" : identityStatus === "rejected" ? "inactive" : "")}>{identityStatus}</span>
+                      </div>
+                      <div className="product-media-identity-compare">
+                        <figure>
+                          <figcaption>Foto referensi asli</figcaption>
+                          {referencePreview ? <img src={referencePreview} alt="Foto referensi produk asli" /> : <span>Referensi tidak tersedia</span>}
+                          <small>{reference ? reference.id.slice(0, 8) : referenceId.slice(0, 8)}</small>
+                        </figure>
+                        <figure>
+                          <figcaption>Visual hasil AI</figcaption>
+                          {preview ? <img src={preview} alt="Visual produk hasil AI" /> : <span>Preview tidak tersedia</span>}
+                          <small>{asset.id.slice(0, 8)}</small>
+                        </figure>
+                      </div>
+                      <p className="analytics-note">Pastikan siluet, proporsi, warna, bahan, komponen, logo, tulisan, label, dan kemasan tetap sesuai foto asli. Tolak jika AI mengubah atau mengarang detail produk.</p>
+                      {asset.identityStatus === "verified" && <p className="analytics-note">Diperiksa oleh {asset.identityReviewedBy ?? "admin"} · {asset.identityReviewedAt ? new Date(asset.identityReviewedAt).toLocaleString("id-ID") : "—"} · {asset.identityReviewReason}</p>}
+                      <label htmlFor={"identity-reason-" + asset.id}>Alasan / hasil perbandingan</label>
+                      <textarea id={"identity-reason-" + asset.id} rows={3} value={identityReasons[asset.id] ?? ""} onChange={(event) => setIdentityReasons((current) => ({ ...current, [asset.id]: event.target.value }))} placeholder="Contoh: bentuk, warna, logo, dan kemasan sama dengan referensi." disabled={Boolean(busyAssetId)} />
+                      <div className="product-media-rights-actions">
+                        <button type="button" onClick={() => void reviewIdentity(asset, "verified")} disabled={Boolean(busyAssetId) || identityStatus === "verified" || !(identityReasons[asset.id] ?? "").trim()}>{busyAssetId === asset.id ? "Menyimpan…" : "Setujui identitas"}</button>
+                        <button type="button" className="secondary-button" onClick={() => void reviewIdentity(asset, "rejected")} disabled={Boolean(busyAssetId) || identityStatus === "rejected" || !(identityReasons[asset.id] ?? "").trim()}>Tolak visual AI</button>
+                      </div>
+                      <details className="product-media-rights-history">
+                        <summary>Riwayat review identitas ({history.length})</summary>
+                        {history.length === 0 ? <p className="analytics-note">Belum ada pemeriksaan identitas.</p> : <ol>{history.map((entry) => (
+                          <li key={entry.id}>
+                            <strong>{entry.action === "verify" ? "Disetujui" : "Ditolak"} · {entry.previousIdentityStatus} → {entry.newIdentityStatus}</strong>
+                            <small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId}</small>
+                            <p>{entry.reason}</p>
+                          </li>
+                        ))}</ol>}
+                      </details>
+                    </div>
+                  );
+                })()}
                 <div className="affiliate-form">
                   <label htmlFor={`rights-basis-${asset.id}`}>Dasar hak</label>
                   <select id={`rights-basis-${asset.id}`} value={form.rightsBasis} onChange={(event) => updateForm(asset.id, "rightsBasis", event.target.value)} disabled={busyAssetId === asset.id}>
