@@ -114,6 +114,10 @@ Connection `configuration` rejects secret-like fields. Failed health checks pers
 
 Do not put API keys, OAuth tokens, marketplace credentials, or bearer credentials in `.env.example`, source code, migrations, or database metadata JSON. Production adapters must use official OAuth/API scopes and consent flows.
 
+## Product media and AI image editing
+
+Product media is stored in the private Supabase Storage bucket and remains rights-unverified until an authorized operator completes the rights review. AI product image editing is opt-in through `AI_PRODUCT_IMAGE_GENERATION_ENABLED=false` (default) and a deployment-managed `OPENAI_API_KEY`. It requires a private, rights-verified, user-owned product reference image; it edits the background and composition while explicitly instructing the model to preserve the physical product. Generated derivatives are always saved with `rightsStatus=unverified` and are not eligible for autonomous publication until separately reviewed. The API endpoint is `POST /api/v1/products/:productId/media-generate` with `referenceAssetId` and one of the `studio`, `lifestyle`, or `minimal` styles. The service does not fetch marketplace pages, scrape Shopee, or publish generated media.
+
 ## HTTP runtime hardening
 
 The API supports explicit CORS, a 1 MiB request-body limit, sensitive request-log redaction, authenticated application endpoints in production, browser session authentication, a configurable in-memory application rate limiter, and a database dependency readiness check returning `503` when PostgreSQL is unavailable. Rate limiting is disabled by default in development unless configured, and defaults to 120 application requests per client IP per 60 seconds in production. Health and readiness endpoints are excluded so infrastructure probes remain available.
