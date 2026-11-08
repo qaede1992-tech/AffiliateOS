@@ -168,15 +168,6 @@ export class ProductImageGenerationService {
     const productAssets = await this.assets.listByProduct(input.productId);
     const reference = productAssets.find((asset) => asset.id === input.referenceAssetId);
     if (!reference) throw new ProductImageGenerationError("Reference image does not belong to this product.", "REFERENCE_NOT_FOUND");
-    const existingForStyle = productAssets.find((asset) =>
-      asset.kind === "image" &&
-      asset.sourceProvider === "openai" &&
-      asset.sourceUrl === `generated:openai-image-edit:${reference.id}` &&
-      asset.sourceQuery === input.style
-    );
-    if (existingForStyle) {
-      return { generated: false, asset: existingForStyle, reason: "An AI-edited image already exists for this reference and style." };
-    }
     if (
       reference.kind !== "image" ||
       reference.bucket !== this.storage.bucketName ||
@@ -188,6 +179,15 @@ export class ProductImageGenerationService {
         "AI editing requires a private, rights-verified, user-owned product reference image.",
         "REFERENCE_NOT_ELIGIBLE"
       );
+    }
+    const existingForStyle = productAssets.find((asset) =>
+      asset.kind === "image" &&
+      asset.sourceProvider === "openai" &&
+      asset.sourceUrl === `generated:openai-image-edit:${reference.id}` &&
+      asset.sourceQuery === input.style
+    );
+    if (existingForStyle) {
+      return { generated: false, asset: existingForStyle, reason: "An AI-edited image already exists for this reference and style." };
     }
 
     let sourceBytes: Uint8Array;
