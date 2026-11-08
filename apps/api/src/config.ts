@@ -62,7 +62,7 @@ const environmentSchema = z.object({
   INSTAGRAM_CLIENT_SECRET: z.string().optional(),
   OPENVERSE_CLIENT_ID: z.string().trim().min(1).optional(),
   OPENVERSE_CLIENT_SECRET: z.string().min(1).optional(),
-  OPENAI_API_KEY: z.string().trim().min(1).optional(),
+  OPENAI_API_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
   AI_PRODUCT_IMAGE_GENERATION_ENABLED: booleanEnvironment,
   AI_PRODUCT_IMAGE_MODEL: z.string().trim().min(1).max(100).default("gpt-image-2.5-sunburst"),
   SOCIAL_CREDENTIALS_JSON: z.string().optional(),
@@ -83,6 +83,9 @@ const environmentSchema = z.object({
     });
   }
   const storageConfigured = Boolean(value.SUPABASE_URL || value.SUPABASE_STORAGE_SERVICE_KEY);
+  if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["SUPABASE_STORAGE_SERVICE_KEY"], message: "Supabase private Storage must be configured when AI product image generation is enabled." });
+  }
   if (storageConfigured && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
