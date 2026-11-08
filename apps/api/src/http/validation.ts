@@ -94,3 +94,5 @@ export const createShopeeAffiliateLinkIntakeSchema = z.object({
   }, "Only credential-free Shopee HTTPS links are supported.")
 });
 export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entityId });
+
+export const generateProductImageSchema = z.object({ referenceAssetId: entityId, style: z.enum(["studio", "lifestyle", "minimal"]) });
