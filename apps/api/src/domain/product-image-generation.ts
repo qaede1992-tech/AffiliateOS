@@ -167,7 +167,7 @@ export class ProductImageGenerationService {
 
     const productAssets = await this.assets.listByProduct(input.productId);
     const reference = productAssets.find((asset) => asset.id === input.referenceAssetId);
-    if (!reference) throw new ProductImageGenerationError("Reference image does not belong to this product.", "REFERENCE_NOT_FOUND");
+    if (!reference || reference.productId !== input.productId) throw new ProductImageGenerationError("Reference image does not belong to this product.", "REFERENCE_NOT_FOUND");
     if (
       reference.kind !== "image" ||
       reference.bucket !== this.storage.bucketName ||
