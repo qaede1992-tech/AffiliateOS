@@ -25,7 +25,6 @@ ALTER TABLE public.product_media_assets
       AND length(btrim(identity_review_reason)) > 0)
   );
 --> statement-breakpoint
---> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS product_media_assets_identity_status_idx
   ON public.product_media_assets (identity_status, product_id);
@@ -59,6 +58,7 @@ REVOKE ALL ON TABLE public.product_media_identity_audits FROM PUBLIC, anon, auth
 GRANT SELECT, INSERT ON TABLE public.product_media_identity_audits TO affiliateos_runtime;
 --> statement-breakpoint
 DROP POLICY IF EXISTS affiliateos_runtime_all ON public.product_media_identity_audits;
+--> statement-breakpoint
 CREATE POLICY affiliateos_runtime_all
   ON public.product_media_identity_audits
   FOR ALL TO affiliateos_runtime
