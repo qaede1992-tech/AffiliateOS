@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand } from "../domain/product-media-ingestion.js";
-import { productMediaAssets, productMediaRightsAudits } from "./schema.js";
+import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand, ProductMediaIdentityAudit, ProductMediaIdentityReviewCommand } from "../domain/product-media-ingestion.js";
+import { productMediaAssets, productMediaRightsAudits, productMediaIdentityAudits } from "./schema.js";
 
 type DatabaseExecutor = any;
 
@@ -34,6 +34,10 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   rightsBasis: row.rightsBasis as ProductMediaAsset["rightsBasis"],
   rightsEvidenceUrl: row.rightsEvidenceUrl,
   rightsVerifiedAt: row.rightsVerifiedAt,
+  identityStatus: row.identityStatus as ProductMediaAsset["identityStatus"],
+  identityReviewedBy: row.identityReviewedBy,
+  identityReviewedAt: row.identityReviewedAt,
+  identityReviewReason: row.identityReviewReason,
   createdAt: row.createdAt
 });
 
@@ -158,6 +162,64 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       rightsBasis: row.rightsBasis as ProductMediaRightsAudit["rightsBasis"],
       rightsEvidenceUrl: row.rightsEvidenceUrl,
       sourcePublisher: row.sourcePublisher,
+      createdAt: row.createdAt
+    }));
+  }
+
+  async reviewIdentity(assetId: string, productId: string, review: ProductMediaIdentityReviewCommand): Promise<ProductMediaAsset | undefined> {
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      const existingRows = await tx.select().from(productMediaAssets).where(and(
+        eq(productMediaAssets.id, assetId),
+        eq(productMediaAssets.productId, productId)
+      )).limit(1).for("update");
+      const existing = existingRows[0];
+      if (!existing) return undefined;
+      if (existing.sourceProvider !== "openai" || !existing.sourceUrl.startsWith("generated:openai-image-edit:")) return undefined;
+
+      const reviewedAt = new Date().toISOString();
+      const updatedRows = await tx.update(productMediaAssets).set({
+        identityStatus: review.status,
+        identityReviewedBy: review.actorId,
+        identityReviewedAt: reviewedAt,
+        identityReviewReason: review.reason
+      }).where(and(
+        eq(productMediaAssets.id, assetId),
+        eq(productMediaAssets.productId, productId)
+      )).returning();
+      const updated = updatedRows[0];
+      if (!updated) return undefined;
+
+      await tx.insert(productMediaIdentityAudits).values({
+        id: randomUUID(),
+        assetId,
+        productId,
+        actorId: review.actorId,
+        actorRole: review.actorRole,
+        action: review.status === "verified" ? "verify" : "reject",
+        reason: review.reason,
+        previousIdentityStatus: existing.identityStatus,
+        newIdentityStatus: updated.identityStatus,
+        createdAt: reviewedAt
+      });
+      return toAsset(updated);
+    });
+  }
+
+  async listIdentityAudits(productId: string, assetId: string): Promise<ProductMediaIdentityAudit[]> {
+    const rows = await this.db.select().from(productMediaIdentityAudits).where(and(
+      eq(productMediaIdentityAudits.productId, productId),
+      eq(productMediaIdentityAudits.assetId, assetId)
+    )).orderBy(desc(productMediaIdentityAudits.createdAt)).limit(50);
+    return rows.map((row: typeof productMediaIdentityAudits.$inferSelect) => ({
+      id: row.id,
+      assetId: row.assetId,
+      productId: row.productId,
+      actorId: row.actorId,
+      actorRole: row.actorRole,
+      action: row.action as ProductMediaIdentityAudit["action"],
+      reason: row.reason,
+      previousIdentityStatus: row.previousIdentityStatus,
+      newIdentityStatus: row.newIdentityStatus,
       createdAt: row.createdAt
     }));
   }

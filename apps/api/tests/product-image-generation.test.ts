@@ -91,6 +91,7 @@ test("AI product image editing stores output as unverified and records reference
   assert.equal(result.asset?.mimeType, "image/png");
   assert.equal(result.asset?.rightsStatus, "unverified");
   assert.equal(result.asset?.rightsBasis, null);
+  assert.equal(result.asset?.identityStatus, "pending");
   assert.equal(result.asset?.sourceProvider, "openai");
   assert.equal(result.asset?.sourceUrl, `generated:openai-image-edit:${referenceId}`);
   assert.match(result.asset?.sourceTitle ?? "", new RegExp(referenceId));
@@ -118,4 +119,21 @@ test("AI-generated derivatives remain ineligible after rights-only verification"
     rightsVerifiedAt: new Date(Date.now() - 1000).toISOString()
   });
   assert.equal(hasCurrentVerifiedRights(generated), false);
+});
+
+test("AI product image requires explicit identity verification before publication eligibility", () => {
+  const generated = makeReference({
+    sourceUrl: `generated:openai-image-edit:${referenceId}`,
+    sourceProvider: "openai",
+    sourcePublisher: "AffiliateOS AI",
+    rightsStatus: "verified",
+    rightsBasis: "user_owned",
+    rightsEvidenceUrl: "https://evidence.example/ai-derivative",
+    rightsVerifiedAt: new Date(Date.now() - 1000).toISOString(),
+    identityStatus: "verified",
+    identityReviewedBy: "admin-1",
+    identityReviewedAt: new Date(Date.now() - 500).toISOString(),
+    identityReviewReason: "Bentuk, warna, logo, dan kemasan cocok dengan foto referensi."
+  });
+  assert.equal(hasCurrentVerifiedRights(generated), true);
 });

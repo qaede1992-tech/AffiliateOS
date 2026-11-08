@@ -96,3 +96,5 @@ export const createShopeeAffiliateLinkIntakeSchema = z.object({
 export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entityId });
 
 export const generateProductImageSchema = z.object({ referenceAssetId: entityId, style: z.enum(["studio", "lifestyle", "minimal"]) });
+
+export const reviewProductMediaIdentitySchema = z.object({ status: z.enum(["verified", "rejected"]), reason: nonEmptyText.max(1000) });
