@@ -74,7 +74,7 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog
 AS 'BEGIN
   RAISE EXCEPTION ''Product media identity audit records are append-only.'';
-END';
+END;';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.prevent_product_media_identity_audit_mutation() FROM PUBLIC, anon, authenticated;
 --> statement-breakpoint
