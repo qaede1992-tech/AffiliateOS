@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ProductImageGenerationError, ProductImageGenerationService } from "../src/domain/product-image-generation.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "../src/domain/product-media-ingestion.js";
+import { hasCurrentVerifiedRights } from "../src/domain/product-media-publication-rights.js";
 
 const productId = "11111111-1111-4111-8111-111111111111";
 const referenceId = "22222222-2222-4222-8222-222222222222";
@@ -104,4 +105,17 @@ test("AI product image editing rejects a reference asset from another product", 
     (error: unknown) => error instanceof ProductImageGenerationError && error.code === "REFERENCE_NOT_FOUND"
   );
   assert.equal(harness.providerCalls, 0);
+});
+
+test("AI-generated derivatives remain ineligible after rights-only verification", () => {
+  const generated = makeReference({
+    sourceUrl: `generated:openai-image-edit:${referenceId}`,
+    sourceProvider: "openai",
+    sourcePublisher: "AffiliateOS AI",
+    rightsStatus: "verified",
+    rightsBasis: "user_owned",
+    rightsEvidenceUrl: "https://evidence.example/ai-derivative",
+    rightsVerifiedAt: new Date(Date.now() - 1000).toISOString()
+  });
+  assert.equal(hasCurrentVerifiedRights(generated), false);
 });
