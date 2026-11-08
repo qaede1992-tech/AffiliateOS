@@ -124,6 +124,22 @@ export class TrackingService {
     const link = await this.links.findByCode(code);
     if (!link) throw new DomainError("TRACKING_LINK_NOT_FOUND", "The tracking link does not exist.", 404);
     if (link.status !== "active") throw new DomainError("TRACKING_LINK_NOT_ACTIVE", "Clicks require an active tracking link.");
+    const offer = await this.affiliateOffers.findById(link.affiliateOfferId);
+    if (!offer) throw new DomainError("AFFILIATE_OFFER_NOT_FOUND", "The affiliate offer for this tracking link no longer exists.", 404);
+    if (offer.status !== "active") throw new DomainError("AFFILIATE_OFFER_NOT_ACTIVE", "The affiliate offer for this tracking link is no longer active.", 409);
+    if (!isExplicitlyAffiliateEligible(offer)) throw new DomainError("AFFILIATE_OFFER_NOT_ELIGIBLE", "The affiliate offer is no longer eligible for tracking.", 409);
+    if (offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) {
+      throw new DomainError("AFFILIATE_LINK_NOT_ACTIVE", "The affiliate link for this tracking link is no longer active.", 409);
+    }
+    if (offer.affiliateLinkExpiresAt) {
+      const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        throw new DomainError("AFFILIATE_LINK_EXPIRED", "The affiliate link for this tracking link has expired.", 410);
+      }
+    }
+    if (link.destinationUrl !== offer.affiliateUrl) {
+      throw new DomainError("AFFILIATE_LINK_DESTINATION_MISMATCH", "The tracking link no longer matches the active affiliate destination.", 409);
+    }
     await this.recordClick(link.id, { metadata });
     return decorateShopeeDestination(link.destinationUrl, link.code);
   }
