@@ -5,39 +5,26 @@ ALTER TABLE public.product_media_assets
   ADD COLUMN IF NOT EXISTS identity_review_reason varchar(1000);
 --> statement-breakpoint
 
-DO $
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid = 'public.product_media_assets'::regclass
-      AND conname = 'product_media_assets_identity_status_check'
-  ) THEN
-    ALTER TABLE public.product_media_assets
-      ADD CONSTRAINT product_media_assets_identity_status_check
-      CHECK (identity_status IN ('not_required', 'pending', 'verified', 'rejected'));
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid = 'public.product_media_assets'::regclass
-      AND conname = 'product_media_assets_identity_review_evidence_check'
-  ) THEN
-    ALTER TABLE public.product_media_assets
-      ADD CONSTRAINT product_media_assets_identity_review_evidence_check
-      CHECK (
-        (identity_status IN ('not_required', 'pending')
-          AND identity_reviewed_by IS NULL
-          AND identity_reviewed_at IS NULL
-          AND identity_review_reason IS NULL)
-        OR
-        (identity_status IN ('verified', 'rejected')
-          AND identity_reviewed_by IS NOT NULL
-          AND length(btrim(identity_reviewed_by)) > 0
-          AND identity_reviewed_at IS NOT NULL
-          AND identity_review_reason IS NOT NULL
-          AND length(btrim(identity_review_reason)) > 0)
-      );
-  END IF;
-END $;
+ALTER TABLE public.product_media_assets
+  ADD CONSTRAINT product_media_assets_identity_status_check
+  CHECK (identity_status IN ('not_required', 'pending', 'verified', 'rejected'));
+--> statement-breakpoint
+ALTER TABLE public.product_media_assets
+  ADD CONSTRAINT product_media_assets_identity_review_evidence_check
+  CHECK (
+    (identity_status IN ('not_required', 'pending')
+      AND identity_reviewed_by IS NULL
+      AND identity_reviewed_at IS NULL
+      AND identity_review_reason IS NULL)
+    OR
+    (identity_status IN ('verified', 'rejected')
+      AND identity_reviewed_by IS NOT NULL
+      AND length(btrim(identity_reviewed_by)) > 0
+      AND identity_reviewed_at IS NOT NULL
+      AND identity_review_reason IS NOT NULL
+      AND length(btrim(identity_review_reason)) > 0)
+  );
+--> statement-breakpoint
 --> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS product_media_assets_identity_status_idx
@@ -85,11 +72,9 @@ CREATE OR REPLACE FUNCTION public.prevent_product_media_identity_audit_mutation(
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
-AS $
-BEGIN
-  RAISE EXCEPTION 'Product media identity audit records are append-only.';
-END;
-$;
+AS 'BEGIN
+  RAISE EXCEPTION ''Product media identity audit records are append-only.'';
+END';
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.prevent_product_media_identity_audit_mutation() FROM PUBLIC, anon, authenticated;
 --> statement-breakpoint
