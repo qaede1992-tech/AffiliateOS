@@ -4,11 +4,12 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, generateProductImageSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { ProductMediaCandidateImportError } from "../domain/product-media-candidate-import.js";
 import { ProductMediaUploadError } from "../domain/product-media-upload-service.js";
+import { ProductImageGenerationError } from "../domain/product-image-generation.js";
 import { requireAdmin, requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
@@ -154,6 +155,47 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       } finally {
         request.raw.removeListener("aborted", abortUpload);
         reply.raw.removeListener("close", onResponseClose);
+      }
+    });
+
+    mediaApp.post<{ Params: { productId: string }; Body: unknown }>("/api/v1/products/:productId/media-generate", { preHandler: requireOperator }, async (request, reply) => {
+      if (!services.productImageGeneration) {
+        return reply.status(503).send({ error: "PRODUCT_IMAGE_GENERATION_UNAVAILABLE", message: "AI product image generation is not enabled or configured." });
+      }
+      const params = productMediaParamsSchema.parse(request.params);
+      const input = generateProductImageSchema.parse(request.body);
+      try {
+        const result = await services.productImageGeneration.generate({
+          productId: params.productId,
+          referenceAssetId: input.referenceAssetId,
+          style: input.style
+        });
+        if (!result.asset) return reply.status(502).send({ error: "PRODUCT_IMAGE_GENERATION_FAILED", message: "The generated image could not be stored." });
+        auditSecurityEvent(request.log, request, "product_ai_image_generated", {
+          productId: params.productId,
+          referenceAssetId: input.referenceAssetId,
+          generatedAssetId: result.asset.id,
+          style: input.style,
+          rightsStatus: result.asset.rightsStatus
+        });
+        return reply.status(result.generated ? 201 : 200).send(result);
+      } catch (error) {
+        if (error instanceof ProductImageGenerationError) {
+          request.log.warn({ code: error.code }, "AI product image generation rejected");
+          if (error.code === "PRODUCT_NOT_FOUND" || error.code === "REFERENCE_NOT_FOUND") {
+            return reply.status(404).send({ error: error.code, message: "The product or reference image was not found." });
+          }
+          if (error.code === "REFERENCE_NOT_ELIGIBLE") {
+            return reply.status(409).send({ error: error.code, message: "A private, rights-verified, user-owned reference image is required." });
+          }
+          if (error.code === "AI_PROVIDER_UNAVAILABLE") {
+            return reply.status(503).send({ error: error.code, message: "The AI image provider is temporarily unavailable." });
+          }
+          return reply.status(error.code.startsWith("AI_PROVIDER") || error.code === "GENERATED_IMAGE_INVALID" ? 502 : 400)
+            .send({ error: error.code, message: "AI product image generation could not be completed." });
+        }
+        request.log.error({ errorName: error instanceof Error ? error.name : "UnknownError" }, "AI product image generation failed");
+        return reply.status(502).send({ error: "PRODUCT_IMAGE_GENERATION_FAILED", message: "AI product image generation could not be completed." });
       }
     });
   });
