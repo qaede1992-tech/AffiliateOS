@@ -62,6 +62,7 @@ CREATE INDEX IF NOT EXISTS product_media_identity_audits_product_created_idx
 ALTER TABLE public.product_media_identity_audits ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.product_media_identity_audits FROM PUBLIC, anon, authenticated, affiliateos_runtime;
 GRANT SELECT, INSERT ON TABLE public.product_media_identity_audits TO affiliateos_runtime;
+DROP POLICY IF EXISTS affiliateos_runtime_all ON public.product_media_identity_audits;
 CREATE POLICY affiliateos_runtime_all
   ON public.product_media_identity_audits
   FOR ALL TO affiliateos_runtime
