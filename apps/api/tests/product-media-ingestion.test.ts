@@ -411,3 +411,45 @@ test("links candidate provenance to a matching existing unverified asset without
   assert.equal(result.stored[0]?.rightsStatus, "unverified");
   assert.equal(attached?.sourceUrl, "https://cdn.example.com/candidate.png");
 });
+
+test("redacts database errors from persisted media ingestion skip reasons", async () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  const marker = "private-media-ingestion-db-marker";
+  const databaseError = new Error(`Failed query: INSERT INTO product_media_assets VALUES ($1); params: ${marker}`);
+  databaseError.name = "DatabaseError";
+  const removed: string[] = [];
+  const storage = {
+    upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }),
+    remove: async (key: string) => { removed.push(key); }
+  } as never;
+  const repository = {
+    listByProduct: async () => [],
+    findByProductAndHash: async () => undefined,
+    save: async () => { throw databaseError; }
+  } as never;
+  const fetcher = (async (url: string) => ({
+    status: 200,
+    headers: { "content-type": "image/png" },
+    url,
+    bytes: png
+  })) as never;
+  const service = new ProductMediaIngestionService(
+    storage,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    fetcher
+  );
+
+  const result = await service.ingest({
+    productId,
+    nonMediaEligibilityPassed: true,
+    candidates: [{ kind: "image", url: "https://cdn.example.com/image.png", source: "catalog" }]
+  });
+  const reasons = result.skipped.map((item) => item.reason).join("\\n");
+
+  assert.equal(result.stored.length, 0);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0]?.reason, "Media ingestion failed (DatabaseError).");
+  assert.doesNotMatch(reasons, /Failed query|params:|private-media-ingestion-db-marker/i);
+  assert.equal(removed.length, 1);
+});
