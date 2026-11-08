@@ -26,6 +26,7 @@ import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClien
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
+import { ProductImageGenerationService } from "./domain/product-image-generation.js";
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
@@ -115,6 +116,14 @@ const services = createServices(
   },
   persistence.preMediaEligibility
 );
+if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
+  services.productImageGeneration = new ProductImageGenerationService(
+    persistence.repositories.products,
+    persistence.repositories.productMediaAssets,
+    mediaStorage,
+    { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
+  );
+}
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
   readinessCheck: async () => {
