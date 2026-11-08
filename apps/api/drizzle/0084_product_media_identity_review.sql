@@ -73,7 +73,8 @@ REVOKE UPDATE, DELETE ON TABLE public.product_media_identity_audits FROM affilia
 CREATE OR REPLACE FUNCTION public.prevent_product_media_identity_audit_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
-AS $$
+SET search_path = pg_catalog
+AS $
 BEGIN
   RAISE EXCEPTION 'Product media identity audit records are append-only.';
 END;
