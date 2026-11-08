@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
-import { api, type ProductMediaAssetView, type ProductMediaRightsAuditView, type ProductMediaRightsBasis } from "../api/client";
+import { api, type ProductMediaAssetView, type ProductMediaRightsAuditView, type ProductMediaIdentityAuditView, type ProductMediaRightsBasis } from "../api/client";
 
 type ReviewForm = { rightsBasis: ProductMediaRightsBasis; rightsEvidenceUrl: string; sourcePublisher: string; reason: string };
 const basisOptions: Array<{ value: ProductMediaRightsBasis; label: string }> = [
@@ -21,6 +21,9 @@ export function ProductMediaRightsPanel() {
   const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [audits, setAudits] = useState<Record<string, ProductMediaRightsAuditView[]>>({});
+  const [identityAudits, setIdentityAudits] = useState<Record<string, ProductMediaIdentityAuditView[]>>({});
+  const [identityReasons, setIdentityReasons] = useState<Record<string, string>>({});
+  const [generationStyles, setGenerationStyles] = useState<Record<string, "studio" | "lifestyle" | "minimal">>({});
   const [forms, setForms] = useState<Record<string, ReviewForm>>({});
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -50,6 +53,7 @@ export function ProductMediaRightsPanel() {
     setAssets([]);
     setPreviews({});
     setAudits({});
+    setIdentityAudits({});
     if (!selectedProductId) { setLoading(false); return; }
     setLoading(true);
     setError(null);
@@ -57,7 +61,10 @@ export function ProductMediaRightsPanel() {
       const response = await api.productMediaAssets(selectedProductId);
       if (requestId !== requestSequence.current) return;
       setAssets(response.data);
-      const [signed, history] = await Promise.all([
+      const aiAssets = response.data.filter((asset) =>
+        asset.sourceProvider === "openai" && asset.sourceUrl.startsWith("generated:openai-image-edit:")
+      );
+      const [signed, history, identityHistory] = await Promise.all([
         Promise.all(response.data.map(async (asset) => {
           try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
           catch { return [asset.id, ""] as const; }
@@ -65,11 +72,16 @@ export function ProductMediaRightsPanel() {
         Promise.all(response.data.map(async (asset) => {
           try { return [asset.id, (await api.productMediaRightsAudits(selectedProductId, asset.id)).data] as const; }
           catch { return [asset.id, []] as const; }
+        })),
+        Promise.all(aiAssets.map(async (asset) => {
+          try { return [asset.id, (await api.productMediaIdentityAudits(selectedProductId, asset.id)).data] as const; }
+          catch { return [asset.id, []] as const; }
         }))
       ]);
       if (requestId !== requestSequence.current) return;
       setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
       setAudits(Object.fromEntries(history));
+      setIdentityAudits(Object.fromEntries(identityHistory));
     } catch (requestError) {
       if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
@@ -83,6 +95,7 @@ export function ProductMediaRightsPanel() {
     setAssets([]);
     setPreviews({});
     setAudits({});
+    setIdentityAudits({});
     setBusyAssetId(null);
     setError(null);
     setNotice(null);
@@ -93,6 +106,44 @@ export function ProductMediaRightsPanel() {
 
   const updateForm = (assetId: string, field: keyof ReviewForm, value: string) => {
     setForms((current) => ({ ...current, [assetId]: { ...(current[assetId] ?? initialForm()), [field]: value } }));
+  };
+
+  const generateImage = async (asset: ProductMediaAssetView) => {
+    if (asset.kind !== "image" || asset.rightsStatus !== "verified" || asset.rightsBasis !== "user_owned") {
+      setError("Pembuatan visual AI memerlukan gambar referensi milik sendiri yang hak penggunaannya sudah diverifikasi.");
+      return;
+    }
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    const style = generationStyles[asset.id] ?? "studio";
+    setBusyAssetId(asset.id); setError(null); setNotice(null);
+    try {
+      const result = await api.generateProductImage(selectedProductId, asset.id, style);
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      if (!result.asset) throw new Error(result.reason ?? "Generator AI tidak menghasilkan aset gambar.");
+      setNotice("Visual AI tersimpan sebagai aset baru. Status identitas masih pending dan belum dapat digunakan untuk video atau publikasi.");
+      await loadAssets(selectedProductId);
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Pembuatan visual AI gagal. Pastikan layanan OpenAI Staging telah dikonfigurasi.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
+  };
+
+  const reviewIdentity = async (asset: ProductMediaAssetView, status: "verified" | "rejected") => {
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    const reason = (identityReasons[asset.id] ?? "").trim();
+    if (!reason) { setError("Tuliskan hasil perbandingan bentuk, warna, logo, kemasan, dan detail produk sebelum memberi keputusan."); return; }
+    setBusyAssetId(asset.id); setError(null); setNotice(null);
+    try {
+      await api.reviewProductMediaIdentity(selectedProductId, asset.id, { status, reason });
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      setNotice(status === "verified"
+        ? "Identitas visual disetujui dan dicatat dalam audit. Hak penggunaan tetap harus diverifikasi secara terpisah."
+        : "Visual AI ditolak dan dicatat dalam audit. Aset ini tetap tidak layak untuk publikasi.");
+      await loadAssets(selectedProductId);
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Review identitas produk gagal.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
   const verify = async (asset: ProductMediaAssetView) => {
@@ -144,6 +195,7 @@ export function ProductMediaRightsPanel() {
         <span>Khusus admin</span>
       </div>
       <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
+      <p className="analytics-note">Untuk gambar AI, bandingkan hasil dengan foto referensi asli. Persetujuan identitas dan persetujuan hak penggunaan adalah dua pemeriksaan terpisah. Generator hanya aktif setelah konfigurasi OpenAI Staging tersedia.</p>
       <div className="affiliate-form">
         <label htmlFor="product-media-rights-product">Produk</label>
         <select id="product-media-rights-product" value={productId} onChange={(event) => selectProduct(event.target.value)}>
@@ -209,6 +261,64 @@ export function ProductMediaRightsPanel() {
                         ))}
                       </ol>}
                 </details>
+                {asset.kind === "image" && asset.sourceProvider !== "openai" && asset.rightsStatus === "verified" && asset.rightsBasis === "user_owned" && (
+                  <div className="affiliate-form product-ai-generate">
+                    <strong>Buat visual promosi dengan AI</strong>
+                    <small>Foto ini menjadi referensi asli. AI hanya diminta mengubah latar dan komposisi; hasil tetap wajib diperiksa sebelum digunakan.</small>
+                    <label htmlFor={"ai-image-style-" + asset.id}>Gaya visual</label>
+                    <select id={"ai-image-style-" + asset.id} value={generationStyles[asset.id] ?? "studio"} onChange={(event) => setGenerationStyles((current) => ({ ...current, [asset.id]: event.target.value as "studio" | "lifestyle" | "minimal" }))} disabled={Boolean(busyAssetId)}>
+                      <option value="studio">Studio profesional</option>
+                      <option value="lifestyle">Lifestyle</option>
+                      <option value="minimal">Minimalis</option>
+                    </select>
+                    <button type="button" onClick={() => void generateImage(asset)} disabled={Boolean(busyAssetId)}>{busyAssetId === asset.id ? "Membuat visual…" : "Buat visual AI dari foto ini"}</button>
+                  </div>
+                )}
+                {asset.sourceProvider === "openai" && asset.sourceUrl.startsWith("generated:openai-image-edit:") && (() => {
+                  const referenceId = asset.sourceUrl.slice("generated:openai-image-edit:".length);
+                  const reference = assets.find((item) => item.id === referenceId);
+                  const referencePreview = previews[referenceId];
+                  const history = identityAudits[asset.id] ?? [];
+                  const identityStatus = asset.identityStatus ?? "pending";
+                  return (
+                    <div className="product-media-identity-review">
+                      <div className="panel-heading">
+                        <div><p className="eyebrow">Pemeriksaan kesetiaan produk</p><h4>Referensi asli vs hasil AI</h4></div>
+                        <span className={"badge " + (identityStatus === "verified" ? "active" : identityStatus === "rejected" ? "inactive" : "")}>{identityStatus}</span>
+                      </div>
+                      <div className="product-media-identity-compare">
+                        <figure>
+                          <figcaption>Foto referensi asli</figcaption>
+                          {referencePreview ? <img src={referencePreview} alt="Foto referensi produk asli" /> : <span>Referensi tidak tersedia</span>}
+                          <small>{reference ? reference.id.slice(0, 8) : referenceId.slice(0, 8)}</small>
+                        </figure>
+                        <figure>
+                          <figcaption>Visual hasil AI</figcaption>
+                          {preview ? <img src={preview} alt="Visual produk hasil AI" /> : <span>Preview tidak tersedia</span>}
+                          <small>{asset.id.slice(0, 8)}</small>
+                        </figure>
+                      </div>
+                      <p className="analytics-note">Pastikan siluet, proporsi, warna, bahan, komponen, logo, tulisan, label, dan kemasan tetap sesuai foto asli. Tolak jika AI mengubah atau mengarang detail produk.</p>
+                      {asset.identityStatus === "verified" && <p className="analytics-note">Diperiksa oleh {asset.identityReviewedBy ?? "admin"} · {asset.identityReviewedAt ? new Date(asset.identityReviewedAt).toLocaleString("id-ID") : "—"} · {asset.identityReviewReason}</p>}
+                      <label htmlFor={"identity-reason-" + asset.id}>Alasan / hasil perbandingan</label>
+                      <textarea id={"identity-reason-" + asset.id} rows={3} maxLength={1000} value={identityReasons[asset.id] ?? ""} onChange={(event) => setIdentityReasons((current) => ({ ...current, [asset.id]: event.target.value }))} placeholder="Contoh: bentuk, warna, logo, dan kemasan sama dengan referensi." disabled={Boolean(busyAssetId)} />
+                      <div className="product-media-rights-actions">
+                        <button type="button" onClick={() => void reviewIdentity(asset, "verified")} disabled={Boolean(busyAssetId) || identityStatus === "verified" || !(identityReasons[asset.id] ?? "").trim()}>{busyAssetId === asset.id ? "Menyimpan…" : "Setujui identitas"}</button>
+                        <button type="button" className="secondary-button" onClick={() => void reviewIdentity(asset, "rejected")} disabled={Boolean(busyAssetId) || identityStatus === "rejected" || !(identityReasons[asset.id] ?? "").trim()}>Tolak visual AI</button>
+                      </div>
+                      <details className="product-media-rights-history">
+                        <summary>Riwayat review identitas ({history.length})</summary>
+                        {history.length === 0 ? <p className="analytics-note">Belum ada pemeriksaan identitas.</p> : <ol>{history.map((entry) => (
+                          <li key={entry.id}>
+                            <strong>{entry.action === "verify" ? "Disetujui" : "Ditolak"} · {entry.previousIdentityStatus} → {entry.newIdentityStatus}</strong>
+                            <small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId}</small>
+                            <p>{entry.reason}</p>
+                          </li>
+                        ))}</ol>}
+                      </details>
+                    </div>
+                  );
+                })()}
                 <div className="affiliate-form">
                   <label htmlFor={`rights-basis-${asset.id}`}>Dasar hak</label>
                   <select id={`rights-basis-${asset.id}`} value={form.rightsBasis} onChange={(event) => updateForm(asset.id, "rightsBasis", event.target.value)} disabled={busyAssetId === asset.id}>

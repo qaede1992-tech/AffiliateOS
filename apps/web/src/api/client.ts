@@ -57,7 +57,9 @@ export interface ProductMediaAssetView {
   sourceProvider?: string | null; sourceCandidateId?: string | null; sourceLandingPageUrl?: string | null; sourceTitle?: string | null;
   sourceCreator?: string | null; sourceCreatorUrl?: string | null; sourceLicense?: string | null; sourceLicenseVersion?: string | null; sourceLicenseUrl?: string | null;
   rightsStatus: "unverified" | "verified" | "revoked"; rightsBasis: ProductMediaRightsBasis | null;
-  rightsEvidenceUrl: string | null; rightsVerifiedAt: string | null; createdAt: string;
+  rightsEvidenceUrl: string | null; rightsVerifiedAt: string | null;
+  identityStatus?: "not_required" | "pending" | "verified" | "rejected"; identityReviewedBy?: string | null;
+  identityReviewedAt?: string | null; identityReviewReason?: string | null; createdAt: string;
   technicalReadiness: { instagram: MediaTechnicalReadinessView; tiktok: MediaTechnicalReadinessView };
 }
 export type ProductMediaRightsReviewInput =
@@ -76,6 +78,14 @@ export interface ProductMediaCandidateReviewAuditView {
   id: string; candidateId: string; productId: string; actorId: string; actorRole: "admin";
   action: "approve" | "reject"; reason: string; previousStatus: "pending";
   newStatus: "approved" | "rejected"; createdAt: string;
+}
+export interface ProductMediaIdentityAuditView {
+  id: string; assetId: string; productId: string; actorId: string; actorRole: string;
+  action: "verify" | "reject"; reason: string; previousIdentityStatus: string;
+  newIdentityStatus: "verified" | "rejected"; createdAt: string;
+}
+export interface ProductImageGenerationResultView {
+  generated: boolean; asset?: Omit<ProductMediaAssetView, "technicalReadiness">; reason?: string;
 }
 export interface ProductMediaRightsAuditView {
   id: string; assetId: string; productId: string; actorId: string; actorRole: string;
@@ -106,6 +116,9 @@ export const api = {
   productMediaCandidateReviewAudits: (productId: string, candidateId: string) => get<ListResponse<ProductMediaCandidateReviewAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/review-audits`),
   importProductMediaCandidate: (productId: string, candidateId: string) => post<{ asset: Omit<ProductMediaAssetView, "technicalReadiness">; alreadyImported: boolean }>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/import`, {}),
   productMediaRightsAudits: (productId: string, assetId: string) => get<ListResponse<ProductMediaRightsAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights-audits`),
+  productMediaIdentityAudits: (productId: string, assetId: string) => get<ListResponse<ProductMediaIdentityAuditView>>("/api/v1/products/" + encodeURIComponent(productId) + "/media-assets/" + encodeURIComponent(assetId) + "/identity-audits"),
+  reviewProductMediaIdentity: (productId: string, assetId: string, input: { status: "verified" | "rejected"; reason: string }) => patch<Omit<ProductMediaAssetView, "technicalReadiness">>("/api/v1/products/" + encodeURIComponent(productId) + "/media-assets/" + encodeURIComponent(assetId) + "/identity-review", input),
+  generateProductImage: (productId: string, referenceAssetId: string, style: "studio" | "lifestyle" | "minimal") => post<ProductImageGenerationResultView>("/api/v1/products/" + encodeURIComponent(productId) + "/media-generate", { referenceAssetId, style }),
   productMediaPreview: (productId: string, assetId: string) => get<{ url: string; expiresInSeconds: number }>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/preview`),
   reviewProductMediaRights: (productId: string, assetId: string, input: ProductMediaRightsReviewInput) => patch<ProductMediaAssetView>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights`, input),
   marketplaceProviders: () => get<ListResponse<MarketplaceProviderInfo>>("/api/v1/marketplaces/providers"), marketplaceConnections: () => get<ListResponse<MarketplaceConnectionView>>("/api/v1/marketplaces"), marketplaceSetEnabled: (connectionSlug: string, enabled: boolean) => put<MarketplaceConnectionView>(`/api/v1/marketplaces/${encodeURIComponent(connectionSlug)}/enabled`, enabled ? { enabled: true, confirmation: "CONFIRM_MARKETPLACE_CONNECTION" } : { enabled: false }), products: () => get<ListResponse<Product>>("/api/v1/products"), updateProductMedia: (productId: string, input: { imageUrl?: string; videoUrl?: string }) => patch<Product>(`/api/v1/products/${encodeURIComponent(productId)}/media`, input), affiliateOffers: () => get<ListResponse<AffiliateOffer>>("/api/v1/affiliate-offers"), affiliateOfferVerification: () => get<ListResponse<AffiliateOfferVerification>>("/api/v1/affiliate-offers/verification"),
