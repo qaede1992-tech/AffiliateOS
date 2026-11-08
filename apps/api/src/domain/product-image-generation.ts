@@ -5,7 +5,7 @@ import { isStructurallyValidMedia } from "./media-file-validation.js";
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DEFAULT_MODEL = "gpt-image-2.5-sunburst";
+const DEFAULT_MODEL = "gpt-image-2";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_INPUT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
