@@ -1,19 +1,46 @@
+import { createHash } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 import type { PreMediaEligibilityEvidence, PreMediaEligibilityRepository } from "../domain/pre-media-eligibility.js";
 import { preMediaEligibilityEvidence } from "./schema.js";
 
 type DatabaseExecutor = any;
 
+const stableValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, stableValue(nested)]));
+  }
+  return value;
+};
+
+const evidenceFingerprint = (record: PreMediaEligibilityEvidence): string => createHash("sha256")
+  .update(JSON.stringify(stableValue({
+    productId: record.productId,
+    marketplaceId: record.marketplaceId,
+    offerId: record.offerId ?? null,
+    eligible: record.eligible,
+    score: record.score,
+    policy: record.policy,
+    reasons: record.reasons
+  })))
+  .digest("hex");
+
 export class DrizzlePreMediaEligibilityRepository implements PreMediaEligibilityRepository {
   constructor(private readonly db: DatabaseExecutor) {}
 
   async saveMany(records: PreMediaEligibilityEvidence[]): Promise<void> {
     if (!records.length) return;
-    await this.db.insert(preMediaEligibilityEvidence).values(records.map((record) => ({
+    const rows = records.map((record) => ({
       ...record,
       policy: record.policy,
-      reasons: record.reasons
-    })));
+      reasons: record.reasons,
+      fingerprint: evidenceFingerprint(record)
+    }));
+    // A unique fingerprint makes repeated cycles idempotent while retaining a
+    // new append-only evidence row whenever eligibility, score, policy or reasons change.
+    await this.db.insert(preMediaEligibilityEvidence).values(rows).onConflictDoNothing();
   }
 
   async listLatestByProduct(productId: string, limit = 5): Promise<PreMediaEligibilityEvidence[]> {
