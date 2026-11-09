@@ -44,7 +44,7 @@ function calculateRecoveryQuality(metrics: RecoveryEpisodeMetrics): number {
   );
 }
 
-export type AutonomousFeedbackContext = { observationKey?: string; };
+export type AutonomousFeedbackContext = { observationKey?: string; historyMode?: "latest" | "full"; };
 
 export interface AutonomousFeedbackProvider {
   getSignals(context?: AutonomousFeedbackContext): Promise<Map<string, OpportunityPerformanceSignal>>;
@@ -78,6 +78,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
     if (!this.memory) return current;
     const observedAt = this.now().toISOString();
     const observationNamespace = context.observationKey?.trim() || observedAt;
+    const historyMode = context.historyMode ?? "full";
     const entries = await Promise.all([...current.entries()].map(async ([key, signal]) => {
       const isProductSignal = isProductSignalKey(key);
       const [marketplaceId, productId] = isProductSignal ? splitSignalKey(key) : [undefined, key];
@@ -85,7 +86,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       // previous snapshot, so a second latest-row query is unnecessary whenever
       // recent history exists.
       const historySince = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const recentSnapshots = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
+      const recentSnapshots = historyMode === "full" && isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
         ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId, historySince)
         : undefined;
       const previous = isProductSignal
@@ -111,7 +112,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const recoveryAnchor = recentSnapshots
         ? (activeRecoveryEpisode(recentSnapshots, observedAt)
           ?? (previous?.anomaly === "halt" ? previous : undefined))
-        : undefined;
+        : historyMode === "latest" && previous?.anomaly === "halt" ? previous : undefined;
       const recoveryClicks = recoveryAnchor ? Math.max(0, signal.clickCount - recoveryAnchor.clickCount) : ANOMALY_RECOVERY_CLICKS;
       const recoveryEvidenceScore = windows
         ? calculateRecoveryEvidenceScore(windows, recoveryClicks, anomalyScore)
@@ -143,7 +144,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       } : undefined;
       const recoveryQuality = recoveryAnchor ? calculateRecoveryQuality(recoveryEpisodeMetrics!) : 1;
       if (recoveryEpisodeMetrics) recoveryEpisodeMetrics.qualityScore = recoveryQuality;
-      const previousEpisode = recoveryAnchor && this.memory!.previousRecoveryEpisodeAnalytics
+      const previousEpisode = historyMode === "full" && recoveryAnchor && this.memory!.previousRecoveryEpisodeAnalytics
         ? await this.memory!.previousRecoveryEpisodeAnalytics(productId, marketplaceId!, recoveryAnchor.id)
         : undefined;
       if (recoveryEpisodeMetrics && previousEpisode) { recoveryEpisodeMetrics.previousEpisodeQualityScore = previousEpisode.closingQualityScore ?? previousEpisode.averageQualityScore; recoveryEpisodeMetrics.qualityDelta = (recoveryEpisodeMetrics.qualityScore ?? 0) - recoveryEpisodeMetrics.previousEpisodeQualityScore; }
@@ -162,7 +163,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const adjustment = anomaly === "halt"
         ? 0
         : Math.round(clamp(signal.adjustment + trendAdjustment + efficiencyAdjustment + windowAdjustment, -MAX_ADJUSTMENT, MAX_ADJUSTMENT) * 100) / 100;
-      if (isProductSignal && marketplaceId) {
+      if (historyMode === "full" && isProductSignal && marketplaceId) {
         const snapshot: AutonomousFeedbackSnapshot = {
           id: crypto.randomUUID(),
           observationKey: observationNamespace + ":" + (marketplaceId ?? "unknown") + ":" + productId,
