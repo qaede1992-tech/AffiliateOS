@@ -16,6 +16,15 @@ export class PublicationOperationService {
     return this.operations.list();
   }
 
+  async findEarliestReconciliationUpdatedAt(): Promise<string | undefined> {
+    if (this.operations.findEarliestReconciliationUpdatedAt) {
+      return this.operations.findEarliestReconciliationUpdatedAt();
+    }
+    return (await this.operations.list())
+      .filter((operation) => operation.status === "accepted" || operation.status === "processing")
+      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())[0]?.updatedAt;
+  }
+
   async listByJobId(jobId: EntityId): Promise<PublicationOperation[]> {
     return this.operations.listByJobId(jobId);
   }
