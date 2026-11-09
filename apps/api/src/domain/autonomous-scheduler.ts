@@ -15,7 +15,7 @@ export type AutonomousSchedulerStatus = {
   lastCompletedAt?: string;
   lastResult?: AutonomousCycleResult;
   lastError?: string;
-  lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates";
+  lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates" | "no_publishable_candidates";
 };
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
@@ -147,7 +147,7 @@ export class AutonomousScheduler {
     this.timer = setTimeout(() => {
       this.timer = undefined;
       void this.runAndSchedule();
-    }, this.lastSkipReason === "no_runnable_candidates" ? this.idleIntervalMs : this.intervalMs);
+    }, (this.lastSkipReason === "no_runnable_candidates" || this.lastSkipReason === "no_publishable_candidates") ? this.idleIntervalMs : this.intervalMs);
   }
 
   private cycleNamespace(): string {
