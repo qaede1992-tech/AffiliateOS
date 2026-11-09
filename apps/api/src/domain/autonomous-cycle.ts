@@ -119,13 +119,13 @@ export class AutonomousCycleService {
     const startedAt = new Date().toISOString();
 
     try {
+      const publicationEnabled = input.publicationEnabled ?? true;
+      const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
       if (candidateList.length === 0) {
         this.lastSkipReason = "no_candidates";
         return undefined;
       }
-      const publicationEnabled = input.publicationEnabled ?? true;
-      const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
       // Caller-supplied IDs are not evidence of publication rights.
       // If media discovery/storage is unavailable, the final media gates stay empty.
       let videoIds: string[] = [];
