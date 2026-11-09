@@ -76,7 +76,7 @@ export class PublicationWorker {
       }
       if (job.status === "processing" && job.lockedAt) {
         const lockedAt = new Date(job.lockedAt).getTime();
-        if (Number.isFinite(lockedAt)) consider(Math.max(scheduledAt, lockedAt + PUBLICATION_JOB_LOCK_TIMEOUT_MS));
+        if (Number.isFinite(lockedAt)) consider(Math.max(scheduledAt, lockedAt + LOCK_TIMEOUT_MS));
       }
     }
 
