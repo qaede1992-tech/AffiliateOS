@@ -126,11 +126,8 @@ export const productMediaDiscoveryAttempts = pgTable("product_media_discovery_at
   fingerprint: varchar("fingerprint", { length: 64 }).notNull(),
   status: varchar("status", { length: 20 }).notNull(),
   nextRetryAt: timestamp("next_retry_at", { withTimezone: true, mode: "string" }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
-}, (table) => [
-  index("product_media_discovery_attempts_retry_idx").on(table.nextRetryAt)
-]);
+});
 
 export const productMediaCandidates = pgTable("product_media_candidates", {
   id: uuid("id").primaryKey(),
