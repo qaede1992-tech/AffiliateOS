@@ -212,6 +212,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const input = importShopeeAffiliateFeedSchema.parse(request.body);
     const result = await services.marketplace.importShopeeAffiliateFeed(input);
     for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
+    if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     return reply.status(201).send(result);
   }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
@@ -255,6 +256,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       }))
     });
     for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
+    if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
     const [products, offers, trackingLinks] = await Promise.all([
