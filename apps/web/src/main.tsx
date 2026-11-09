@@ -342,7 +342,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           <article id="offers" className="offers-workspace">
             <div className="offers-title-row">
               <div><span className="eyebrow">Komersial</span><h3>Penawaran</h3><p>Kelola penawaran internal dan produk affiliate marketplace dari area yang berbeda.</p></div>
-              <span className="badge">{data.offers.length + data.affiliateOfferVerification.length} total</span>
+              <span className="badge">{data.offers.length + (marketplaceVerificationLoaded ? data.affiliateOfferVerification.length : 0)} total</span>
             </div>
             <div className="offers-overview" aria-label="Ringkasan penawaran">
               <div><span>Penawaran internal</span><strong>{data.offers.length}</strong><small>{data.offers.filter((offer) => offer.status === "active").length} aktif</small></div>
@@ -364,7 +364,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
               ))}</div>}
             </section>
             <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading">
-              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{data.affiliateOfferVerification.length} produk</span></div>
+              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{marketplaceVerificationLoaded ? `${data.affiliateOfferVerification.length} produk` : "Belum dimuat"}</span></div>
               <p className="offers-help">Produk dan tautan affiliate yang berasal dari feed marketplace, termasuk impor CSV Shopee. Data ini berbeda dari penawaran internal di atas.</p>
               <button type="button" onClick={() => void loadMarketplaceVerification()} disabled={marketplaceVerificationLoading}>{marketplaceVerificationLoading ? "Memuat data..." : marketplaceVerificationLoaded ? "Perbarui data marketplace" : "Muat data marketplace"}</button>
               {!marketplaceVerificationLoaded ? <p className="empty">Data marketplace dimuat hanya saat bagian ini diperlukan.</p> : data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
