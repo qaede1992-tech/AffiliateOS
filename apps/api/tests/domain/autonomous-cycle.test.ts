@@ -215,7 +215,7 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { return []; },
+      async listPublishableMediaProductIds() { return [product.id]; },
       async listVideoProductIds() {
         throw new Error("Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: private-media-index-marker");
       },
@@ -631,23 +631,27 @@ describe("autonomous cycle", () => {
     const provider: AutonomousCandidateProvider = {
       async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
+    let previewSelectionCalls = 0;
     let runOnceCalls = 0;
     let explorationCalls = 0;
     let optimizationCalls = 0;
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean }) {
+        previewSelectionCalls += 1;
         return input.requirePublishableMedia
           ? { selected: [], rejected: [{ productId: product.id, score: 90, reasons: ["media missing"] }], audit: [] }
           : { selected: [{ product: product as never, offerId: "offer", score: 90 }], rejected: [], audit: [] };
       },
       async runOnce() { runOnceCalls += 1; return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
+    let videoIndexCalls = 0;
+    let readinessCalls = 0;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
       async listPublishableMediaProductIds() { return []; },
-      async listPublishableVideoProductIds() { return []; },
-      async listVideoProductIds() { return []; },
-      async listMediaReadinessScores() { return { [product.id]: 0 }; }
+      async listPublishableVideoProductIds() { videoIndexCalls += 1; return []; },
+      async listVideoProductIds() { videoIndexCalls += 1; return []; },
+      async listMediaReadinessScores() { readinessCalls += 1; return { [product.id]: 0 }; }
     };
     const exploration = { async run() { explorationCalls += 1; return undefined; } };
     const optimization = { async run() { optimizationCalls += 1; return undefined; } };
@@ -657,6 +661,9 @@ describe("autonomous cycle", () => {
 
     assert.ok(result);
     assert.equal(service.skipReason, "no_publishable_candidates");
+    assert.equal(previewSelectionCalls, 1);
+    assert.equal(videoIndexCalls, 0);
+    assert.equal(readinessCalls, 0);
     assert.equal(runOnceCalls, 0);
     assert.equal(explorationCalls, 0);
     assert.equal(optimizationCalls, 0);

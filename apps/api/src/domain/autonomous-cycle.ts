@@ -266,6 +266,39 @@ export class AutonomousCycleService {
             errorType: safeErrorType(error)
           }));
         }
+        if (mediaIds.length === 0) {
+          console.info(JSON.stringify({
+            event: "autonomous_media_discovery_summary",
+            candidateCount: candidateList.length,
+            preliminaryMinimumScore,
+            finalMinimumScore: defaultMinimumScore,
+            preliminaryMinimumDataConfidence,
+            finalMinimumDataConfidence: defaultMinimumDataConfidence,
+            preliminarySelectedCount: preliminary.selected.length,
+            discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
+            discoveryFailedCount: mediaDiscoverySummary.failedCount,
+            catalogCandidateCount: mediaDiscoverySummary.catalogCandidateCount,
+            storedImageCount: mediaDiscoverySummary.storedImageCount,
+            storedVideoCount: mediaDiscoverySummary.storedVideoCount,
+            skippedReasonCounts: mediaDiscoverySummary.skippedReasonCounts,
+            mediaReadySelectedCount: 0,
+            mediaReadyRejectedCount: candidateList.length,
+            publishableMediaProductCount: 0,
+            publishableVideoProductCount: 0
+          }));
+          this.lastSkipReason = "no_publishable_candidates";
+          console.info(JSON.stringify({
+            event: "autonomous_cycle_skipped",
+            reason: "no_publishable_candidates",
+            catalogCandidateCount: candidateList.length
+          }));
+          return {
+            startedAt,
+            completedAt: new Date().toISOString(),
+            candidateCount: candidateList.length,
+            execution: { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 }
+          };
+        }
         try {
           // Keep readiness separate from publication rights: an unverified generated video
           // must not trigger endless rendering, but it must not pass the final publish gate.
@@ -357,25 +390,6 @@ export class AutonomousCycleService {
           publishableMediaProductCount: mediaIds.length,
           publishableVideoProductCount: videoIds.length
         }));
-      }
-      // If media discovery is configured but no product has rights-verified media,
-      // there is no publication-eligible work. Do not write another full decision
-      // audit batch or run exploration/optimization against the same blocked catalog.
-      // The scheduler will re-check at its longer idle cadence so human media review
-      // and newly imported/changed products are still picked up.
-      if (this.productMediaDiscovery && mediaIds.length === 0) {
-        this.lastSkipReason = "no_publishable_candidates";
-        console.info(JSON.stringify({
-          event: "autonomous_cycle_skipped",
-          reason: "no_publishable_candidates",
-          catalogCandidateCount: candidateList.length
-        }));
-        return {
-          startedAt,
-          completedAt: new Date().toISOString(),
-          candidateCount: candidateList.length,
-          execution: { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 }
-        };
       }
       const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
       const executionInput: AutonomousExecutionInput = {
