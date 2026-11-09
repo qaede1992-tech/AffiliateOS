@@ -125,12 +125,18 @@ export class AutonomousCycleService {
 
       // An empty catalog is not autonomous work. Avoid media discovery, execution,
       // exploration, optimization analytics, and feedback-history reads entirely.
-      if (candidateList.length === 0) {
+      const runnableCandidateCount = candidateList.filter((candidate) => candidate.offers.length > 0).length;
+      if (runnableCandidateCount === 0) {
+        console.info(JSON.stringify({
+          event: "autonomous_cycle_skipped",
+          reason: "no_runnable_candidates",
+          catalogCandidateCount: candidateList.length
+        }));
         const completedAt = new Date().toISOString();
         return {
           startedAt,
           completedAt,
-          candidateCount: 0,
+          candidateCount: candidateList.length,
           execution: { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 }
         };
       }
