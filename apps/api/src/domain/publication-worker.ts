@@ -55,6 +55,40 @@ export class PublicationWorker {
     this.operations = new PublicationOperationService(operationRepository ?? new InMemoryFallbackPublicationOperationRepository());
   }
 
+  async nextWakeAt(): Promise<Date | undefined> {
+    const [jobs, operations] = await Promise.all([this.jobs.list(), this.operations.list()]);
+    let earliest = Number.POSITIVE_INFINITY;
+    const consider = (timestamp: number) => {
+      if (Number.isFinite(timestamp) && timestamp < earliest) earliest = timestamp;
+    };
+
+    for (const job of jobs) {
+      const scheduledAt = new Date(job.scheduledAt).getTime();
+      if (!Number.isFinite(scheduledAt)) continue;
+      if (job.status === "pending") {
+        consider(scheduledAt);
+        continue;
+      }
+      if (job.status === "failed" && job.attemptCount < MAX_PUBLICATION_JOB_ATTEMPTS) {
+        if (await this.shouldSkipFailedJobRetry(job)) continue;
+        consider(Math.max(scheduledAt, retryEligibleAt(job)));
+        continue;
+      }
+      if (job.status === "processing" && job.lockedAt) {
+        const lockedAt = new Date(job.lockedAt).getTime();
+        if (Number.isFinite(lockedAt)) consider(Math.max(scheduledAt, lockedAt + PUBLICATION_JOB_LOCK_TIMEOUT_MS));
+      }
+    }
+
+    for (const operation of operations) {
+      if (operation.status === "accepted" || operation.status === "processing") {
+        consider(reconciliationEligibleAt(operation));
+      }
+    }
+
+    return Number.isFinite(earliest) ? new Date(earliest) : undefined;
+  }
+
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
     const results = await this.reconcile(now);
     const candidates = this.jobs.listClaimable
