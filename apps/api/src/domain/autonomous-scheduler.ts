@@ -1,6 +1,7 @@
 import type { AutonomousCycleInput, AutonomousCycleResult, AutonomousCycleService, AutonomousCycleSkipReason } from "./autonomous-cycle.js";
 
 export type AutonomousSchedulerOptions = {
+  /** Idempotency namespace bucket only; this value never schedules recurring work. */
   intervalMs?: number;
   now?: () => Date;
   onResult?: (result: AutonomousCycleResult) => void | Promise<void>;
