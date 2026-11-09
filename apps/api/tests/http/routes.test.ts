@@ -1159,27 +1159,20 @@ test("GET TikTok creator info resolves the internal credential reference without
 test("TikTok approval confirmation wakes the publication scheduler", async () => {
   const services = createInMemoryServices();
   let triggerCalls = 0;
+  const jobId = "00000000-0000-4000-8000-000000000201";
   services.publicationScheduler.trigger = async () => {
     triggerCalls += 1;
     return [];
   };
-  const content = {
-    id: "00000000-0000-4000-8000-000000000201",
-    platform: "tiktok",
-    contentType: "affiliate-promotion",
-    status: "scheduled",
-    scheduledAt: "2026-09-21T10:00:00.000Z",
-    createdAt: "2026-09-21T09:00:00.000Z",
-    updatedAt: "2026-09-21T09:00:00.000Z"
-  } as never;
-  const job = await services.publicationJobs.enqueue(content);
-  await services.publicationJobs.claim(job.id, new Date("2026-09-21T09:00:00.000Z"));
-  await services.publicationJobs.requestApproval(job.id, new Date("2026-09-21T09:01:00.000Z"));
+  services.publicationJobs.confirmWithApproval = async () => ({
+    id: jobId,
+    status: "pending"
+  }) as never;
 
   const app = createApp(services);
   const response = await app.inject({
     method: "POST",
-    url: `/api/v1/publication-jobs/${job.id}/confirm`,
+    url: `/api/v1/publication-jobs/${jobId}/confirm`,
     payload: {
       privacyLevel: "PUBLIC_TO_EVERYONE",
       disableComment: false,
