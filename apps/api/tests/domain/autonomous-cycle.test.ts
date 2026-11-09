@@ -625,4 +625,42 @@ describe("autonomous cycle", () => {
     assert.equal(rejectedEvidence?.offerId, undefined);
   });
 
+
+  it("skips execution, audits, exploration, and optimization when no media is publishable", async () => {
+    const product = { id: "blocked-media-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
+    };
+    let runOnceCalls = 0;
+    let explorationCalls = 0;
+    let optimizationCalls = 0;
+    const execution = {
+      async previewSelection(input: { requirePublishableMedia?: boolean }) {
+        return input.requirePublishableMedia
+          ? { selected: [], rejected: [{ productId: product.id, score: 90, reasons: ["media missing"] }], audit: [] }
+          : { selected: [{ product: product as never, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+      },
+      async runOnce() { runOnceCalls += 1; return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
+      async listPublishableMediaProductIds() { return []; },
+      async listPublishableVideoProductIds() { return []; },
+      async listVideoProductIds() { return []; },
+      async listMediaReadinessScores() { return { [product.id]: 0 }; }
+    };
+    const exploration = { async run() { explorationCalls += 1; return undefined; } };
+    const optimization = { async run() { optimizationCalls += 1; return undefined; } };
+    const service = new AutonomousCycleService(provider, execution, undefined, undefined, optimization as never, exploration as never, discovery as never);
+
+    const result = await service.runOnce({ publicationEnabled: false });
+
+    assert.ok(result);
+    assert.equal(service.skipReason, "no_publishable_candidates");
+    assert.equal(runOnceCalls, 0);
+    assert.equal(explorationCalls, 0);
+    assert.equal(optimizationCalls, 0);
+    assert.deepEqual(result.execution, { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 });
+  });
+
 });
