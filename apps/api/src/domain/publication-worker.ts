@@ -56,12 +56,26 @@ export class PublicationWorker {
   }
 
   async nextWakeAt(): Promise<Date | undefined> {
-    const [jobs, operations] = await Promise.all([this.jobs.list(), this.operations.list()]);
+    const jobsWakeAt = this.jobs.nextWakeAt && this.contentService
+      ? await this.jobs.nextWakeAt(PUBLICATION_JOB_LOCK_TIMEOUT_MS)
+      : await this.nextWakeAtFromJobList();
+    const earliestOperationUpdatedAt = await this.operations.findEarliestReconciliationUpdatedAt();
+    const operationWakeAt = earliestOperationUpdatedAt
+      ? new Date(new Date(earliestOperationUpdatedAt).getTime() + ACCEPTED_RECONCILIATION_DELAY_MS)
+      : undefined;
+    const candidates = [jobsWakeAt, operationWakeAt]
+      .filter((candidate): candidate is Date => Boolean(candidate) && Number.isFinite(candidate!.getTime()));
+    return candidates.length > 0
+      ? new Date(Math.min(...candidates.map((candidate) => candidate.getTime())))
+      : undefined;
+  }
+
+  private async nextWakeAtFromJobList(): Promise<Date | undefined> {
+    const jobs = await this.jobs.list();
     let earliest = Number.POSITIVE_INFINITY;
     const consider = (timestamp: number) => {
       if (Number.isFinite(timestamp) && timestamp < earliest) earliest = timestamp;
     };
-
     for (const job of jobs) {
       const scheduledAt = new Date(job.scheduledAt).getTime();
       if (!Number.isFinite(scheduledAt)) continue;
@@ -79,13 +93,6 @@ export class PublicationWorker {
         if (Number.isFinite(lockedAt)) consider(Math.max(scheduledAt, lockedAt + PUBLICATION_JOB_LOCK_TIMEOUT_MS));
       }
     }
-
-    for (const operation of operations) {
-      if (operation.status === "accepted" || operation.status === "processing") {
-        consider(reconciliationEligibleAt(operation));
-      }
-    }
-
     return Number.isFinite(earliest) ? new Date(earliest) : undefined;
   }
 
