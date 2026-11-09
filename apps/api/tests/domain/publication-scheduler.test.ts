@@ -109,3 +109,42 @@ describe("PublicationScheduler", () => {
     assert.throws(() => new PublicationScheduler(worker, { intervalMs: Number.NaN }), /positive finite/);
   });
 });
+
+
+describe("PublicationScheduler idle polling backoff", () => {
+  it("backs off empty polls and resets when publication or reconciliation work appears", async () => {
+    const work = [{ jobId: "job-1", contentId: "content-1", status: "succeeded" as const }];
+    const results = [[], [], [], work, []];
+    const worker = { runOnce: async () => results.shift()! } as unknown as PublicationWorker;
+    const scheduler = new PublicationScheduler(worker, { intervalMs: 10_000, idleMaxIntervalMs: 40_000 });
+
+    await scheduler.runNow();
+    assert.equal(scheduler.nextIntervalMs, 10_000);
+    await scheduler.runNow();
+    assert.equal(scheduler.nextIntervalMs, 20_000);
+    await scheduler.runNow();
+    assert.equal(scheduler.nextIntervalMs, 40_000);
+    await scheduler.runNow();
+    assert.equal(scheduler.nextIntervalMs, 10_000);
+    await scheduler.runNow();
+    assert.equal(scheduler.nextIntervalMs, 10_000);
+  });
+
+  it("resets idle backoff after worker failure", async () => {
+    let calls = 0;
+    const worker = {
+      runOnce: async () => {
+        calls += 1;
+        if (calls === 3) throw new Error("temporary database failure");
+        return [];
+      }
+    } as unknown as PublicationWorker;
+    const scheduler = new PublicationScheduler(worker, { intervalMs: 10_000, idleMaxIntervalMs: 40_000 });
+
+    await scheduler.runNow();
+    await scheduler.runNow();
+    assert.equal(scheduler.nextIntervalMs, 20_000);
+    await scheduler.runNow();
+    assert.equal(scheduler.nextIntervalMs, 10_000);
+  });
+});

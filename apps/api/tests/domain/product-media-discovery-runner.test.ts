@@ -99,6 +99,33 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
 });
 
+test("never downloads Shopee-owned CDN image or video URLs supplied in a product catalog", async () => {
+  const assets: ProductMediaAsset[] = [];
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  let fetched = false;
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unexpected" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async () => { fetched = true; throw new Error("Shopee-owned CDN must not be fetched"); }) as never
+  );
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cf.shopee.co.id/file/product-image.jpg",
+    videoUrl: "https://down-id.img.susercontent.com/file/product-video.mp4"
+  }, true);
+  assert.equal(fetched, false);
+  assert.equal(result.pageFetched, false);
+  assert.equal(result.stored.length, 0);
+  const blockedShopeeMedia = result.skipped.filter((item) => /Shopee-hosted media is not fetched automatically/.test(item.reason));
+  assert.equal(blockedShopeeMedia.length, 2);
+});
+
 test("continues discovering catalog images when an existing video has unverified rights", async () => {
   const existingVideo: ProductMediaAsset = {
     id: "33333333-3333-4333-8333-333333333333",
@@ -431,4 +458,145 @@ test("counts duplicate catalog candidates as discovered without reporting them a
     globalThis.fetch = originalFetch;
     console.info = originalInfo;
   }
+});
+
+
+test("does not expose catalog persistence errors in discovery logs or skipped results", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warnings: string[] = [];
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Cat food bag.jpg",
+        imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/c/c1/cat-food.jpg",
+          thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/cat-food.jpg/800px-cat-food.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_food_bag.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC0" },
+            LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+            Artist: { value: "Example creator" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  console.warn = (message?: unknown) => { warnings.push(String(message)); };
+  try {
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      { async saveMany() { throw new Error("insert into product_media_candidates values ($1) -- private-media-index-marker"); } },
+      { fetchImpl: (async () => new Response("{}", { status: 403 })) as typeof fetch }
+    );
+    const result = await runner.discover({
+      ...product,
+      name: "cat food",
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+    assert.equal(result.candidatesFound, 0);
+    assert.ok(result.skipped.some((item) => item.reason === "catalog_persistence_failed"));
+    assert.doesNotMatch(JSON.stringify(result) + warnings.join("\n"), /insert into|private-media-index-marker|\$1/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+
+test("classifies catalog persistence failures separately and keeps provider errors sanitized", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warnings: string[] = [];
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    results: [{
+      title: "Demo product",
+      url: "https://media.openverse-demo.net/demo.jpg",
+      foreign_landing_url: "https://catalog.openverse-demo.net/demo",
+      license: "cc0",
+      source: "Openverse"
+    }]
+  }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  console.warn = (message?: unknown) => { warnings.push(String(message)); };
+
+  try {
+    const assets: ProductMediaAsset[] = [];
+    const assetRepository = {
+      async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+    };
+    const candidateRepository = {
+      async saveMany() { throw new Error('relation "product_media_candidates" does not exist'); },
+      async listPendingByProduct() { return []; }
+    };
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      assetRepository,
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      candidateRepository as never
+    );
+    const result = await runner.discover({
+      ...product,
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+    const events = warnings.map((message) => JSON.parse(message) as Record<string, unknown>);
+    assert.equal(events.some((event) => event.event === "product_media_catalog_persistence_failed"), true);
+    assert.equal(events.some((event) => event.event === "product_media_catalog_search_failed"), false);
+    assert.equal(result.skipped.some((item) => item.reason === "catalog_persistence_failed"), true);
+    assert.equal(JSON.stringify(events).includes("product_media_candidates"), false);
+    assert.equal(result.pageFetched, false);
+    assert.equal(result.hasVideo, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+
+test("persists catalog search cooldown and invalidates it when product identity changes", async () => {
+  const attempts = new Map<string, { fingerprint: string; nextRetryAt: string }>();
+  let fetchCount = 0;
+  const fetchImpl = async () => {
+    fetchCount += 1;
+    return { ok: true, json: async () => ({ results: [] }) } as Response;
+  };
+  const attemptRepository = {
+    async claim(input: { productId: string; fingerprint: string; now: string; leaseUntil: string }) {
+      const current = attempts.get(input.productId);
+      if (current && current.fingerprint === input.fingerprint && current.nextRetryAt > input.now) return false;
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.leaseUntil });
+      return true;
+    },
+    async complete(input: { productId: string; fingerprint: string; outcome: string; now: string; nextRetryAt: string }) {
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.nextRetryAt });
+    }
+  };
+  const assetRepository = {
+    async listByProduct() { return []; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "b", upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never,
+    assetRepository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    { async saveMany(records: unknown[]) { return records; } } as never,
+    { fetchImpl },
+    attemptRepository
+  );
+  const shopeeProduct = { ...product, productUrl: "https://shopee.co.id/product/123/456" };
+
+  await runner.discover(shopeeProduct, true);
+  await runner.discover(shopeeProduct, true);
+  assert.equal(fetchCount, 1, "unchanged product should not repeat an empty catalog search");
+
+  await runner.discover({ ...shopeeProduct, name: "Demo product updated" }, true);
+  assert.equal(fetchCount, 2, "changed product identity should invalidate the old cooldown");
 });

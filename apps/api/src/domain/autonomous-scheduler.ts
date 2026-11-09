@@ -2,6 +2,7 @@ import type { AutonomousCycleInput, AutonomousCycleResult, AutonomousCycleServic
 
 export type AutonomousSchedulerOptions = {
   intervalMs?: number;
+  idleIntervalMs?: number;
   now?: () => Date;
   onResult?: (result: AutonomousCycleResult) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
@@ -14,7 +15,7 @@ export type AutonomousSchedulerStatus = {
   lastCompletedAt?: string;
   lastResult?: AutonomousCycleResult;
   lastError?: string;
-  lastSkipReason?: "already_running" | "lock_busy";
+  lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates" | "no_publishable_candidates";
 };
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
@@ -23,6 +24,7 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class AutonomousScheduler {
   private readonly intervalMs: number;
+  private readonly idleIntervalMs: number;
   private readonly now: () => Date;
   private readonly onResult?: AutonomousSchedulerOptions["onResult"];
   private readonly onError?: AutonomousSchedulerOptions["onError"];
@@ -33,7 +35,7 @@ export class AutonomousScheduler {
   private lastCompletedAt?: string;
   private lastResult?: AutonomousCycleResult;
   private lastError?: string;
-  private lastSkipReason?: "already_running" | "lock_busy";
+  private lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates" | "no_publishable_candidates";
 
   constructor(
     private readonly cycle: AutonomousCycleService,
@@ -43,6 +45,10 @@ export class AutonomousScheduler {
     this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
     if (!Number.isFinite(this.intervalMs) || this.intervalMs < MIN_INTERVAL_MS) {
       throw new Error("Autonomous scheduler interval must be at least 5 minutes.");
+    }
+    this.idleIntervalMs = options.idleIntervalMs ?? Math.max(this.intervalMs, 30 * 60_000);
+    if (!Number.isFinite(this.idleIntervalMs) || this.idleIntervalMs < this.intervalMs) {
+      throw new Error("Autonomous scheduler idle interval must be at least the normal interval.");
     }
     this.now = options.now ?? (() => new Date());
     this.onResult = options.onResult;
@@ -141,7 +147,7 @@ export class AutonomousScheduler {
     this.timer = setTimeout(() => {
       this.timer = undefined;
       void this.runAndSchedule();
-    }, this.intervalMs);
+    }, (this.lastSkipReason === "no_runnable_candidates" || this.lastSkipReason === "no_publishable_candidates") ? this.idleIntervalMs : this.intervalMs);
   }
 
   private cycleNamespace(): string {

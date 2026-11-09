@@ -1,4 +1,4 @@
-import { createAutonomousRun, type AutonomousRun, type AutonomousRunRepository, type AutonomousRunStatus } from "./autonomous-run.js";
+import { createAutonomousRun, type AutonomousOpportunityIdentity, type AutonomousRun, type AutonomousRunRepository, type AutonomousRunStatus } from "./autonomous-run.js";
 import { DomainError } from "./errors.js";
 import type { EntityId } from "@affiliateos/shared";
 
@@ -25,6 +25,15 @@ export class AutonomousRunService {
   }
   async hasCompletedOpportunity(productId: EntityId, offerId: EntityId): Promise<boolean> {
     return this.runs.hasCompletedOpportunity ? this.runs.hasCompletedOpportunity(productId, offerId) : false;
+  }
+  async listCompletedOpportunityKeys(opportunities: AutonomousOpportunityIdentity[]): Promise<string[]> {
+    if (opportunities.length === 0) return [];
+    if (this.runs.listCompletedOpportunityKeys) return this.runs.listCompletedOpportunityKeys(opportunities);
+    if (!this.runs.hasCompletedOpportunity) return [];
+    const completed = await Promise.all(opportunities.map(async ({ productId, offerId }) =>
+      await this.runs.hasCompletedOpportunity!(productId, offerId) ? `${productId}:${offerId}` : undefined
+    ));
+    return completed.filter((key): key is string => key !== undefined);
   }
   async findById(id: EntityId): Promise<AutonomousRun> {
     const run = this.runs.findById ? await this.runs.findById(id) : undefined;
