@@ -441,4 +441,21 @@ describe("autonomous cycle", () => {
     assert.equal(rejectedEvidence?.offerId, undefined);
   });
 
+
+  it("skips an empty candidate scan without invoking execution", async () => {
+    let executionCalls = 0;
+    let releases = 0;
+    const service = new AutonomousCycleService(
+      { async listCandidates() { return []; } },
+      { async runOnce() { executionCalls += 1; return { selected: [], rejected: [], audit: [], outcomes: [] }; } } as unknown as AutonomousExecutionService,
+      {
+        async tryAcquire() { return true; },
+        async release() { releases += 1; }
+      } as unknown as AutonomousCycleLock
+    );
+    assert.equal(await service.runOnce(), undefined);
+    assert.equal(service.skipReason, "no_candidates");
+    assert.equal(executionCalls, 0);
+    assert.equal(releases, 1);
+  });
 });
