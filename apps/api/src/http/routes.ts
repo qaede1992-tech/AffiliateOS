@@ -30,6 +30,9 @@ const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
       hostname.endsWith(".internal") ||
       hostname.endsWith(".test") ||
       hostname.endsWith(".invalid") ||
+      hostname.endsWith(".example") ||
+      hostname.endsWith(".onion") ||
+      hostname.endsWith(".arpa") ||
       hostname.endsWith(".lan") ||
       hostname.endsWith(".home.arpa");
     return parsed.protocol === "https:" &&
