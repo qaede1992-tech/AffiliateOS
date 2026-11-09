@@ -1169,10 +1169,14 @@ test("TikTok approval confirmation wakes the publication scheduler", async () =>
     status: "pending"
   }) as never;
 
-  const app = createApp(services);
+  const token = "publication-scheduler-test-token-1234";
+  const app = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator-test", role: "operator" }
+  });
   const response = await app.inject({
     method: "POST",
     url: `/api/v1/publication-jobs/${jobId}/confirm`,
+    headers: { authorization: `Bearer ${token}` },
     payload: {
       privacyLevel: "PUBLIC_TO_EVERYONE",
       disableComment: false,
