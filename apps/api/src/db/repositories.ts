@@ -6,6 +6,7 @@ import { DrizzlePublicationJobRepository } from "./publication-job-repository.js
 import { DrizzlePublicationOperationRepository } from "./publication-operation-repository.js";
 import { DrizzleProductMediaAssetRepository } from "./product-media-asset-repository.js";
 import { DrizzleProductMediaCandidateRepository } from "./product-media-candidate-repository.js";
+import { DrizzleProductMediaDiscoveryAttemptRepository } from "./product-media-discovery-attempt-repository.js";
 import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "../domain/shopee-affiliate-link-intake.js";
 import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ContentProductRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
 
@@ -172,6 +173,7 @@ const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
   shopeeAffiliateLinkIntakes: new DrizzleShopeeAffiliateLinkIntakeRepository(db),
   productMediaAssets: new DrizzleProductMediaAssetRepository(db),
   productMediaCandidates: new DrizzleProductMediaCandidateRepository(db),
+  productMediaDiscoveryAttempts: new DrizzleProductMediaDiscoveryAttemptRepository(db),
   affiliates: new DrizzleRepository(db, affiliates, toAffiliate, (entity: Affiliate) => ({ id: entity.id, name: entity.name, email: entity.email, status: entity.status, createdAt: entity.createdAt })),
   offers: new DrizzleRepository(db, offers, toOffer, (entity: Offer) => ({ id: entity.id, name: entity.name, status: entity.status, commissionRateBps: entity.commissionRateBps, createdAt: entity.createdAt })),
   conversions: new DrizzleConversionRepository(db),
