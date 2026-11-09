@@ -137,6 +137,31 @@ describe("autonomous cycle", () => {
     assert.deepEqual(calls, ["load-candidates"]);
   });
 
+  it("idles when catalog products have no executable affiliate offers", async () => {
+    const calls: string[] = [];
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() {
+        calls.push("load-candidates");
+        return [{ product: { id: "product-without-link" } as never, offers: [] }];
+      }
+    };
+    const execution = {
+      async previewSelection() { calls.push("preview"); throw new Error("preview must not run"); },
+      async runOnce() { calls.push("execution"); throw new Error("execution must not run"); }
+    } as unknown as AutonomousExecutionService;
+    const optimization = { async run() { calls.push("optimization"); throw new Error("optimization must not run"); } };
+    const service = new AutonomousCycleService(
+      candidates, execution, undefined, "test:no-executable-offers",
+      optimization as never
+    );
+
+    const result = await service.runOnce();
+
+    assert.ok(result);
+    assert.equal(result.candidateCount, 1);
+    assert.deepEqual(calls, ["load-candidates"]);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
