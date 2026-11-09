@@ -97,6 +97,13 @@ export class AutonomousScheduler {
       let result: AutonomousCycleResult | undefined;
       while (this.started && this.triggerRequested) {
         this.triggerRequested = false;
+        // A manual run may already be active outside this trigger drain. Wait
+        // for it, then execute one follow-up for the durable event that arrived.
+        if (this.activeRun) {
+          await this.activeRun;
+          if (!this.started) break;
+          this.triggerRequested = false;
+        }
         result = await this.runNow(input);
       }
       return result;
