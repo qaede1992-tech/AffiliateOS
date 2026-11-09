@@ -174,6 +174,7 @@ export class AutonomousCycleService {
         const preliminary = await this.execution.previewSelection({
           ...input,
           idempotencyNamespace: input.idempotencyNamespace ?? "autonomous-execution",
+          feedbackHistoryMode: "latest",
           candidates: candidateList,
           policy: { ...input.policy, minimumScore: preliminaryMinimumScore, minimumDataConfidence: preliminaryMinimumDataConfidence, requirePublishableMedia: false, requirePublishableVideo: false, requireCommissionSignal: true },
           policiesByMarketplace: preliminaryPolicies,
