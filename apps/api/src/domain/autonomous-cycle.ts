@@ -122,6 +122,18 @@ export class AutonomousCycleService {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
+
+      // An empty catalog is not autonomous work. Avoid media discovery, execution,
+      // exploration, optimization analytics, and feedback-history reads entirely.
+      if (candidateList.length === 0) {
+        const completedAt = new Date().toISOString();
+        return {
+          startedAt,
+          completedAt,
+          candidateCount: 0,
+          execution: { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 }
+        };
+      }
       // Caller-supplied IDs are not evidence of publication rights.
       // If media discovery/storage is unavailable, the final media gates stay empty.
       let videoIds: string[] = [];
