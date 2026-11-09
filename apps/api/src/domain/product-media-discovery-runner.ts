@@ -214,7 +214,6 @@ export class ProductMediaDiscoveryRunner {
           }
         }
         if (shouldSearch) {
-          let candidatesFound = 0;
           let discovered: ProductMediaCatalogCandidate[] = [];
           let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
           let openverseFailure: string | undefined;
