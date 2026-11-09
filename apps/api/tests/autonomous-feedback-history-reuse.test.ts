@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AutonomousAnalyticsFeedbackProvider } from "../src/domain/autonomous-feedback.js";
+import type { AutonomousFeedbackSnapshot } from "../src/domain/autonomous-feedback-memory.js";
 
 test("loads product snapshot history once for windows and recovery analysis", async () => {
   const halt = {
@@ -103,7 +104,7 @@ test("uses one latest snapshot without loading or persisting full history for di
   const memory = {
     latestByProductAndMarketplace: async () => { latestReads += 1; return previous; },
     recentByProductAndMarketplace: async () => { historyReads += 1; return [previous]; },
-    saveIfAbsent: async () => { snapshotWrites += 1; return true; }
+    saveIfAbsent: async (snapshot: AutonomousFeedbackSnapshot) => { snapshotWrites += 1; return snapshot; }
   };
   const provider = new AutonomousAnalyticsFeedbackProvider(
     { overview: async () => ({ campaigns: [{
