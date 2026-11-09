@@ -1153,3 +1153,47 @@ test("GET TikTok creator info resolves the internal credential reference without
     await app.close();
   }
 });
+
+
+test("TikTok approval confirmation wakes the publication scheduler", async () => {
+  const services = createInMemoryServices();
+  let triggerCalls = 0;
+  services.publicationScheduler.trigger = async () => {
+    triggerCalls += 1;
+    return [];
+  };
+  const content = {
+    id: "00000000-0000-4000-8000-000000000201",
+    platform: "tiktok",
+    contentType: "affiliate-promotion",
+    status: "scheduled",
+    scheduledAt: "2026-09-21T10:00:00.000Z",
+    createdAt: "2026-09-21T09:00:00.000Z",
+    updatedAt: "2026-09-21T09:00:00.000Z"
+  } as const;
+  const job = await services.publicationJobs.enqueue(content);
+  await services.publicationJobs.claim(job.id, new Date("2026-09-21T09:00:00.000Z"));
+  await services.publicationJobs.requestApproval(job.id, new Date("2026-09-21T09:01:00.000Z"));
+
+  const app = createApp(services);
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/v1/publication-jobs/${job.id}/confirm`,
+    payload: {
+      privacyLevel: "PUBLIC_TO_EVERYONE",
+      disableComment: false,
+      disableDuet: false,
+      disableStitch: false,
+      commercialDisclosureEnabled: true,
+      brandOrganicToggle: true,
+      brandContentToggle: false,
+      musicUsageConfirmed: true,
+      previewConfirmed: true
+    }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().status, "pending");
+  assert.equal(triggerCalls, 1);
+  await app.close();
+});
