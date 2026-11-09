@@ -152,6 +152,27 @@ describe("PublicationScheduler", () => {
     await scheduler.stop();
   });
 
+  it("backs off after a worker failure even when work remains due", async () => {
+    const timers = fakeTimers();
+    const errors: unknown[] = [];
+    const scheduler = new PublicationScheduler(
+      worker(async () => { throw new Error("temporary worker failure"); }, async () => new Date("2026-09-21T09:59:00.000Z")),
+      {
+        now: () => new Date("2026-09-21T10:00:00.000Z"),
+        setTimer: timers.setTimer,
+        clearTimer: timers.clearTimer,
+        onError: (error) => errors.push(error)
+      }
+    );
+
+    scheduler.start();
+    await flush();
+    assert.equal(errors.length, 1);
+    assert.equal(timers.scheduled.length, 1);
+    assert.equal(timers.scheduled[0]?.delayMs, 30_000);
+    await scheduler.stop();
+  });
+
   it("does not reject when the error observer fails", async () => {
     const scheduler = new PublicationScheduler(
       worker(async () => { throw new Error("worker failure"); }, async () => undefined),
