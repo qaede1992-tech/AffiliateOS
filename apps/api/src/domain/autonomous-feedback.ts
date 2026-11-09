@@ -81,9 +81,16 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
     const entries = await Promise.all([...current.entries()].map(async ([key, signal]) => {
       const isProductSignal = isProductSignalKey(key);
       const [marketplaceId, productId] = isProductSignal ? splitSignalKey(key) : [undefined, key];
+      // Read the 30-day product history first. Its newest row is also the
+      // previous snapshot, so a second latest-row query is unnecessary whenever
+      // recent history exists.
+      const historySince = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const recentSnapshots = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
+        ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId, historySince)
+        : undefined;
       const previous = isProductSignal
         ? marketplaceId
-          ? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
+          ? recentSnapshots?.at(-1) ?? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
           : await this.memory!.latestByProduct(productId)
         : undefined;
       const freshness = previous ? learningFreshness(previous.observedAt, observedAt) : 0;
@@ -93,13 +100,6 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       const efficiencyAdjustment = previous && signal.clickCount >= MIN_EFFICIENCY_EVIDENCE_CLICKS
         ? calculateEfficiencyAdjustment(signal, previous) * freshness
         : 0;
-      // Read the 30-day product history once and share it across all feedback
-      // calculations. Previously windows, recovery episode detection, and
-      // recovery stability each fetched overlapping history independently.
-      const historySince = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const recentSnapshots = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
-        ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId, historySince)
-        : undefined;
       const windows = recentSnapshots
         ? buildWindows(recentSnapshots, signal, observedAt)
         : undefined;
