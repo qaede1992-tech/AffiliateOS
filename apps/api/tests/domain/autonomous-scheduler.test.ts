@@ -171,4 +171,32 @@ describe("AutonomousScheduler", () => {
     assert.equal(scheduler.status.active, false);
   });
 
+
+  it("queues an event trigger behind a manually started active run", async () => {
+    const manual = deferred<AutonomousCycleResult | undefined>();
+    let calls = 0;
+    const cycle = {
+      runOnce: async () => {
+        calls += 1;
+        return calls === 3 ? manual.promise : result();
+      }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle);
+    scheduler.start();
+    await scheduler.trigger();
+    assert.equal(calls, 2);
+
+    const manualRun = scheduler.runNow();
+    const queuedTrigger = scheduler.trigger();
+    await Promise.resolve();
+    assert.equal(calls, 3);
+    assert.equal(scheduler.status.pending, true);
+
+    manual.resolve(result());
+    await Promise.all([manualRun, queuedTrigger]);
+    assert.equal(calls, 4);
+    assert.equal(scheduler.status.pending, false);
+    await scheduler.stop();
+  });
+
 });
