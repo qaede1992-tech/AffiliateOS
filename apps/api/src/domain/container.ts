@@ -73,12 +73,12 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publicationJobs = new PublicationJobService(repositories.publicationJobs);
   const publisherRegistry = new SocialPublisherRegistry(socialPublishers);
   const publishers = publisherRegistry.list();
-  const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs);
   const affiliatePublicationEligibility = new RepositoryAffiliatePublicationEligibilityValidator(repositories.products, repositories.affiliateOffers, repositories.campaignOffers, repositories.trackingLinks);
   const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility, mediaStorage, repositories.contentProducts, repositories.productMediaAssets);
   const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver), repositories.socialAccounts, socialCredentialResolver);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
+  const distribution = new DistributionEngine(content, repositories.socialAccounts, publishers, publicationJobs, () => { void publicationScheduler.trigger(); });
   const autonomousRuns = new AutonomousRunService(autonomousRunRepository);
   const analytics = new AnalyticsService(repositories.campaigns, repositories.trackingLinks, repositories.clicks, repositories.contents, analyticsReader, repositories.conversions, repositories.commissions, attributionRepository);
   const feedback = new AutonomousAnalyticsFeedbackProvider(analytics, autonomousFeedbackMemoryRepository);
