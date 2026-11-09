@@ -79,3 +79,47 @@ test("provider event scheduler does not reject because error observer fails", as
 
   await assert.rejects(scheduler.runNow(), /worker failure/);
 });
+
+
+test("provider event scheduler backs off consecutive empty polls and resets when work appears", async () => {
+  const results = [
+    { scanned: 0, processed: 0, failed: 0 },
+    { scanned: 0, processed: 0, failed: 0 },
+    { scanned: 0, processed: 0, failed: 0 },
+    { scanned: 2, processed: 2, failed: 0 },
+    { scanned: 0, processed: 0, failed: 0 }
+  ];
+  const scheduler = new ProviderEventScheduler(
+    { runOnce: async () => results.shift()! },
+    { intervalMs: 10_000, idleMaxIntervalMs: 40_000 }
+  );
+
+  await scheduler.runNow();
+  assert.equal(scheduler.nextIntervalMs, 10_000);
+  await scheduler.runNow();
+  assert.equal(scheduler.nextIntervalMs, 20_000);
+  await scheduler.runNow();
+  assert.equal(scheduler.nextIntervalMs, 40_000);
+  await scheduler.runNow();
+  assert.equal(scheduler.nextIntervalMs, 10_000);
+  await scheduler.runNow();
+  assert.equal(scheduler.nextIntervalMs, 10_000);
+});
+
+test("provider event scheduler resets idle backoff after worker failure", async () => {
+  let calls = 0;
+  const scheduler = new ProviderEventScheduler(
+    { runOnce: async () => {
+      calls += 1;
+      if (calls === 3) throw new Error("temporary database failure");
+      return { scanned: 0, processed: 0, failed: 0 };
+    } },
+    { intervalMs: 10_000, idleMaxIntervalMs: 40_000 }
+  );
+
+  await scheduler.runNow();
+  await scheduler.runNow();
+  assert.equal(scheduler.nextIntervalMs, 20_000);
+  await assert.rejects(scheduler.runNow(), /temporary database failure/);
+  assert.equal(scheduler.nextIntervalMs, 10_000);
+});
