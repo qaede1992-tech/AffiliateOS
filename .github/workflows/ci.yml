@@ -67,6 +67,8 @@ jobs:
         run: npm run db:verify
       - name: Test Supabase-managed default ACL detection
         run: node --env-file=.env apps/api/scripts/test-public-schema-privilege-audit.mjs
+      - name: Test Supabase-managed default ACL detection
+        run: node --env-file=.env apps/api/scripts/test-public-schema-privilege-audit.mjs
       - name: Verify public-schema privileges
         run: node --env-file=.env apps/api/scripts/check-public-schema-privileges.mjs
       - name: Verify runtime-role RLS baseline

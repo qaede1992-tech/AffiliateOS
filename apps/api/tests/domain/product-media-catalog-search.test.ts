@@ -150,3 +150,91 @@ test("fails closed for non-official endpoints and invalid result URLs", async ()
   }), { status: 200 });
   assert.deepEqual(await searchOpenverseProductMedia(identity, { fetchImpl }), []);
 });
+
+
+test("classifies token endpoint 401 JSON errors without exposing response bodies", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({ error: "invalid_client", error_description: "private diagnostic text" }), {
+    status: 401, headers: { "content-type": "application/json" }
+  });
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, {
+      fetchImpl, clientId: "openverse-401-client", clientSecret: "test-secret", timeoutMs: 1000
+    }),
+    (error: unknown) => {
+      assert.match((error as Error).message, /token endpoint returned HTTP 401 \(json_error\)/);
+      assert.equal((error as Error).message.includes("private diagnostic text"), false);
+      const details = (error as { details?: Record<string, unknown> }).details;
+      assert.equal(details?.endpoint, "token");
+      assert.equal(details?.status, 401);
+      assert.equal(details?.responseKind, "json_error");
+      return true;
+    }
+  );
+});
+
+test("classifies token endpoint 403 HTML Cloudflare challenges without reading the body", async () => {
+  const fetchImpl: typeof fetch = async () => new Response("<html>challenge secret content</html>", {
+    status: 403,
+    headers: { "content-type": "text/html; charset=UTF-8", server: "cloudflare", "cf-ray": "test-ray" }
+  });
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, {
+      fetchImpl, clientId: "openverse-403-html-client", clientSecret: "test-secret", timeoutMs: 1000
+    }),
+    (error: unknown) => {
+      assert.match((error as Error).message, /token endpoint returned HTTP 403 \(cloudflare_html_challenge\)/);
+      assert.equal((error as Error).message.includes("challenge secret content"), false);
+      const details = (error as { details?: Record<string, unknown> }).details;
+      assert.equal(details?.endpoint, "token");
+      assert.equal(details?.cloudflareRayPresent, true);
+      assert.equal(details?.cloudflareRayId, "test-ray");
+      assert.equal(details?.responseKind, "cloudflare_html_challenge");
+      return true;
+    }
+  );
+});
+
+test("distinguishes image search 403 from token endpoint failures", async () => {
+  const fetchImpl: typeof fetch = async (input) => {
+    if (String(input).endsWith("/auth_tokens/token/")) {
+      return new Response(JSON.stringify({ access_token: "test-search-403-token", expires_in: 3600 }), {
+        status: 200, headers: { "content-type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({ detail: "forbidden" }), {
+      status: 403, headers: { "content-type": "application/json" }
+    });
+  };
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, {
+      fetchImpl, clientId: "openverse-search-403-client", clientSecret: "test-secret", timeoutMs: 1000
+    }),
+    (error: unknown) => {
+      const details = (error as { details?: Record<string, unknown> }).details;
+      assert.equal(details?.endpoint, "search");
+      assert.equal(details?.status, 403);
+      assert.equal(details?.responseKind, "json_error");
+      return true;
+    }
+  );
+});
+
+
+test("classifies token endpoint 403 JSON separately from Cloudflare HTML challenges", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({ error: "access_denied" }), {
+    status: 403, headers: { "content-type": "application/json" }
+  });
+  await assert.rejects(
+    () => searchOpenverseProductMedia(identity, {
+      fetchImpl, clientId: "openverse-403-json-client", clientSecret: "test-secret", timeoutMs: 1000
+    }),
+    (error: unknown) => {
+      const details = (error as { details?: Record<string, unknown> }).details;
+      assert.equal(details?.endpoint, "token");
+      assert.equal(details?.status, 403);
+      assert.equal(details?.responseKind, "json_error");
+      assert.equal(details?.cloudflareRayPresent, false);
+      return true;
+    }
+  );
+});

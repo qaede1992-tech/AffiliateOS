@@ -64,9 +64,9 @@ test("marketplace persistence recovers from concurrent unique inserts", async ()
   let accountSave = true;
   let offerSave = true;
   const uniqueViolation = () => Object.assign(new Error("duplicate key"), { code: "23505" });
-  const products = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplaceProduct() { if (productLookup) { productLookup = false; return undefined; } return racedProduct; }, async save(entity: typeof racedProduct) { if (productSave) { productSave = false; throw uniqueViolation(); } return entity; } };
+  const products = { async list() { return []; }, async listByMarketplace() { return []; }, async findById() { return undefined; }, async findByMarketplaceProduct() { if (productLookup) { productLookup = false; return undefined; } return racedProduct; }, async save(entity: typeof racedProduct) { if (productSave) { productSave = false; throw uniqueViolation(); } return entity; } };
   const accounts = { async list() { return []; }, async findById() { return undefined; }, async findByMarketplace() { if (accountLookup) { accountLookup = false; return undefined; } return racedAccount; }, async save(entity: typeof racedAccount) { if (accountSave) { accountSave = false; throw uniqueViolation(); } return entity; } };
-  const offers = { async list() { return []; }, async findById() { return undefined; }, async findByAccountOffer() { if (offerLookup) { offerLookup = false; return undefined; } return racedOffer; }, async save(entity: typeof racedOffer) { if (offerSave) { offerSave = false; throw uniqueViolation(); } return entity; } };
+  const offers = { async list() { return []; }, async listActiveByAccountAndProducts() { return []; }, async findById() { return undefined; }, async findByAccountOffer() { if (offerLookup) { offerLookup = false; return undefined; } return racedOffer; }, async save(entity: typeof racedOffer) { if (offerSave) { offerSave = false; throw uniqueViolation(); } return entity; } };
   const connections = { async list() { return [connection]; }, async findById() { return connection; }, async findBySlug() { return connection; }, async save(entity: typeof connection) { return entity; } };
   const service = new MarketplaceService(registry, connections, products, accounts, new InMemoryRepository<import("@affiliateos/shared").Affiliate>(), offers, new InMemoryRepository<import("@affiliateos/shared").Offer>());
   const result = await service.getOffers(connection.slug, "sku-race");
@@ -132,4 +132,61 @@ test("marketplace product ingestion rejects unsafe video media URLs", async () =
     assert.equal((error as { code?: string }).code, "INVALID_MARKETPLACE_PRODUCT");
     return true;
   });
+});
+
+test("Shopee CSV reimport preserves an existing category when the later row omits it", async () => {
+  const {
+    InMemoryAffiliateAccountRepository,
+    InMemoryAffiliateOfferRepository,
+    InMemoryMarketplaceConnectionRepository,
+    InMemoryProductCatalogRepository,
+    InMemoryRepository
+  } = await import("../src/domain/repository.js");
+  const affiliates = new InMemoryRepository<import("@affiliateos/shared").Affiliate>();
+  const offers = new InMemoryRepository<import("@affiliateos/shared").Offer>();
+  const products = new InMemoryProductCatalogRepository();
+  const accounts = new InMemoryAffiliateAccountRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const connections = new InMemoryMarketplaceConnectionRepository();
+  const affiliateId = "00000000-0000-4000-8000-000000000091";
+  await affiliates.save({
+    id: affiliateId,
+    name: "CSV category test affiliate",
+    email: "category-test@example.invalid",
+    status: "active",
+    createdAt: "2026-01-01T00:00:00.000Z"
+  });
+  const service = new MarketplaceService(
+    new MarketplaceProviderRegistry(),
+    connections,
+    products,
+    accounts,
+    affiliates,
+    affiliateOffers,
+    offers
+  );
+  const baseItem = {
+    externalProductId: "shopee-category-preserve-1",
+    name: "Test product",
+    priceCents: 125000,
+    currency: "IDR",
+    productUrl: "https://shopee.co.id/product/1/123",
+    affiliateUrl: "https://s.shopee.co.id/example",
+    availability: "in_stock" as const,
+    commissionRateBps: 850,
+    commissionAmountCents: 4675
+  };
+  await service.importShopeeAffiliateFeed({
+    affiliateId,
+    items: [{ ...baseItem, category: "Elektronik" }]
+  });
+  await service.importShopeeAffiliateFeed({
+    affiliateId,
+    items: [baseItem]
+  });
+  const saved = await products.findByMarketplaceProduct(
+    (await connections.findBySlug("shopee-affiliate-feed"))!.id,
+    baseItem.externalProductId
+  );
+  assert.equal(saved?.category, "Elektronik");
 });

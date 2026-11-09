@@ -160,6 +160,63 @@ interface OpenverseTokenResponse {
 }
 
 const openverseTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+export type OpenverseFailureEndpoint = "token" | "search";
+export type OpenverseFailureResponseKind =
+  | "cloudflare_html_challenge"
+  | "html_error"
+  | "json_error"
+  | "unknown";
+
+export interface OpenverseHttpFailureDetails {
+  endpoint: OpenverseFailureEndpoint;
+  status: number;
+  contentType: string | null;
+  server: string | null;
+  cloudflareRayPresent: boolean;
+  cloudflareRayId: string | null;
+  responseKind: OpenverseFailureResponseKind;
+}
+
+export class OpenverseHttpError extends Error {
+  constructor(readonly details: OpenverseHttpFailureDetails) {
+    super(`Openverse ${details.endpoint} endpoint returned HTTP ${details.status} (${details.responseKind}).`);
+    this.name = "OpenverseHttpError";
+  }
+}
+
+const classifyOpenverseHttpFailure = (
+  endpoint: OpenverseFailureEndpoint,
+  response: Response
+): OpenverseHttpFailureDetails => {
+  const contentType = response.headers.get("content-type");
+  const server = response.headers.get("server");
+  const cloudflareRayId = response.headers.get("cf-ray")?.slice(0, 100) ?? null;
+  const cloudflareRayPresent = cloudflareRayId !== null;
+  const isHtml = Boolean(contentType && /text\/html|application\/xhtml\+xml/i.test(contentType));
+  const responseKind: OpenverseFailureResponseKind = isHtml && (
+    cloudflareRayPresent || (server ?? "").toLowerCase().includes("cloudflare")
+  )
+    ? "cloudflare_html_challenge"
+    : isHtml
+      ? "html_error"
+      : (contentType ?? "").toLowerCase().includes("json")
+        ? "json_error"
+        : "unknown";
+  return {
+    endpoint,
+    status: response.status,
+    contentType: contentType?.slice(0, 120) ?? null,
+    server: server?.slice(0, 80) ?? null,
+    cloudflareRayPresent,
+    cloudflareRayId,
+    responseKind
+  };
+};
+
+export const getOpenverseHttpFailureDetails = (
+  error: unknown
+): OpenverseHttpFailureDetails | null => error instanceof OpenverseHttpError ? error.details : null;
+
 
 const getOpenverseAccessToken = async (
   clientId: string,
@@ -184,7 +241,7 @@ const getOpenverseAccessToken = async (
       body,
       signal: controller.signal
     });
-    if (!response.ok) throw new Error(`Openverse authentication failed with HTTP ${response.status}.`);
+    if (!response.ok) throw new OpenverseHttpError(classifyOpenverseHttpFailure("token", response));
     const payload = await response.json() as OpenverseTokenResponse;
     if (typeof payload.access_token !== "string" || !payload.access_token.trim()) {
       throw new Error("Openverse authentication response did not contain an access token.");
@@ -245,7 +302,7 @@ export async function searchOpenverseProductMedia(
       },
       signal: controller.signal
     });
-    if (!response.ok) throw new Error(`Openverse search failed with HTTP ${response.status}.`);
+    if (!response.ok) throw new OpenverseHttpError(classifyOpenverseHttpFailure("search", response));
     const payload = await response.json() as OpenverseResponse;
     if (!Array.isArray(payload.results)) return [];
 

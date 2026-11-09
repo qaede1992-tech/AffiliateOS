@@ -30,7 +30,11 @@ const orchestrationResult = {} as CampaignOrchestrationResult;
 
 describe("AutonomousExecutionService", () => {
   it("excludes completed opportunities from preview selection", async () => {
-    const completedRuns = { hasCompletedOpportunity: async () => true };
+    const completedRuns = {
+      hasCompletedOpportunity: async () => { throw new Error("single-opportunity lookup should not be used"); },
+      listCompletedOpportunityKeys: async (opportunities: Array<{ productId: string; offerId: string }>) =>
+        opportunities.map(({ productId, offerId }) => `${productId}:${offerId}`)
+    };
     const service = new AutonomousExecutionService(
       new AutonomousOpportunitySelector(),
       {} as CampaignOrchestrator,
@@ -412,4 +416,37 @@ describe("AutonomousExecutionService", () => {
     assert.equal(result.outcomes[0]?.status, "failed");
     assert.equal(result.outcomes[0]?.error, "Selected opportunity has no matching affiliate offer.");
   });
+
+  it("uses lightweight feedback history only when explicitly requested for a preview", async () => {
+    const historyModes: Array<string | undefined> = [];
+    const feedback = {
+      getSignals: async (context?: { observationKey?: string; historyMode?: "latest" | "full" }) => {
+        historyModes.push(context?.historyMode);
+        return new Map();
+      }
+    };
+    const service = new AutonomousExecutionService(
+      new AutonomousOpportunitySelector(),
+      {} as CampaignOrchestrator,
+      feedback
+    );
+
+    await service.previewSelection({
+      candidates: [],
+      idempotencyNamespace: "discovery-preview",
+      feedbackHistoryMode: "latest"
+    });
+    await service.previewSelection({
+      candidates: [],
+      idempotencyNamespace: "media-ready-preview",
+      feedbackHistoryMode: "full"
+    });
+    await service.previewSelection({
+      candidates: [],
+      idempotencyNamespace: "default-preview"
+    });
+
+    assert.deepEqual(historyModes, ["latest", "full", "full"]);
+  });
+
 });

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "../domain/autonomous-run.js";
+import type { AutonomousOpportunityIdentity, AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from "../domain/autonomous-run.js";
 import { autonomousRuns } from "./schema.js";
 
 type DatabaseExecutor = any;
@@ -52,6 +52,22 @@ export class DrizzleAutonomousRunRepository implements AutonomousRunRepository {
       eq(autonomousRuns.offerId, offerId)
     )).limit(1);
     return rows.length > 0;
+  }
+
+  async listCompletedOpportunityKeys(opportunities: AutonomousOpportunityIdentity[]): Promise<string[]> {
+    const unique = [...new Map(opportunities.map((item) => [`${item.productId}:${item.offerId}`, item])).values()];
+    if (unique.length === 0) return [];
+    const rows = await this.db.select({
+      productId: autonomousRuns.opportunityProductId,
+      offerId: autonomousRuns.offerId
+    }).from(autonomousRuns).where(and(
+      eq(autonomousRuns.status, "completed"),
+      or(...unique.map(({ productId, offerId }) => and(
+        eq(autonomousRuns.opportunityProductId, productId),
+        eq(autonomousRuns.offerId, offerId)
+      )))
+    ));
+    return rows.map((row: { productId: string; offerId: string }) => `${row.productId}:${row.offerId}`);
   }
 
   async findById(id: string): Promise<AutonomousRun | undefined> {

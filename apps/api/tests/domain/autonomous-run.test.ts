@@ -14,6 +14,24 @@ describe("autonomous run", () => {
     assert.equal(second.offerId, "offer-1");
   });
 
+  it("loads completed product-offer identities in one repository operation", async () => {
+    const repository = new InMemoryAutonomousRunRepository();
+    const service = new AutonomousRunService(repository);
+    const completed = await service.accept({ idempotencyKey: "completed-pair", productId: "product-1", offerId: "offer-1" });
+    await service.transition(completed.id, "processing");
+    await service.transition(completed.id, "completed");
+    await service.accept({ idempotencyKey: "pending-pair", productId: "product-2", offerId: "offer-2" });
+
+    const keys = await service.listCompletedOpportunityKeys([
+      { productId: "product-1", offerId: "offer-1" },
+      { productId: "product-2", offerId: "offer-2" },
+      { productId: "product-1", offerId: "offer-1" }
+    ]);
+
+    assert.deepEqual(keys, ["product-1:offer-1"]);
+    assert.deepEqual(await service.listCompletedOpportunityKeys([]), []);
+  });
+
   it("preserves an explicit test marker on an autonomous run", async () => {
     const repository = new InMemoryAutonomousRunRepository();
     const service = new AutonomousRunService(repository);

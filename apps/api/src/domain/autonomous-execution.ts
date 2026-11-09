@@ -15,6 +15,8 @@ export type AutonomousExecutionInput = {
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyNamespace?: string;
+  /** Use lightweight latest feedback for discovery-only previews; authoritative selection keeps full history. */
+  feedbackHistoryMode?: "latest" | "full";
   requirePublishableMedia?: boolean;
   requirePublishableVideo?: boolean;
   /** Product IDs with validated, persisted video assets discovered before final selection. */
@@ -38,17 +40,18 @@ export class AutonomousExecutionService {
 
   async previewSelection(input: Omit<AutonomousExecutionInput, "candidates"> & { candidates: OpportunityCandidateSource[] }): Promise<Pick<AutonomousExecutionResult, "selected" | "rejected" | "audit">> {
     const namespace = input.idempotencyNamespace?.trim() || "autonomous-preview";
+    const completedOpportunityKeys = this.autonomousRuns
+      ? new Set(await this.autonomousRuns.listCompletedOpportunityKeys(input.candidates.flatMap((candidate) =>
+          candidate.offers.map((candidateOffer) => ({ productId: candidate.product.id, offerId: candidateOffer.id }))
+        )))
+      : new Set<string>();
     const candidates = this.autonomousRuns
-      ? await Promise.all(input.candidates.map(async (candidate) => ({
+      ? input.candidates.map((candidate) => ({
           ...candidate,
-          offers: (await Promise.all(candidate.offers.map(async (candidateOffer) =>
-            await this.autonomousRuns!.hasCompletedOpportunity(candidate.product.id, candidateOffer.id)
-              ? undefined
-              : candidateOffer
-          ))).filter((candidateOffer): candidateOffer is AffiliateOffer => candidateOffer !== undefined)
-        })))
+          offers: candidate.offers.filter((candidateOffer) => !completedOpportunityKeys.has(`${candidate.product.id}:${candidateOffer.id}`))
+        }))
       : input.candidates;
-    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
+    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace, historyMode: input.feedbackHistoryMode ?? "full" }) : new Map();
     const adaptiveExplorationRates = this.adaptiveExploration
       ? await this.adaptiveExploration.getRates(candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
@@ -129,14 +132,17 @@ export class AutonomousExecutionService {
         }
       }
     }
-    const selectionCandidates = await Promise.all(input.candidates.map(async (candidate) => {
-      const offers = await Promise.all(candidate.offers.map(async (candidateOffer) => {
+    const completedOpportunityKeys = this.autonomousRuns
+      ? new Set(await this.autonomousRuns.listCompletedOpportunityKeys(input.candidates.flatMap((candidate) =>
+          candidate.offers.map((candidateOffer) => ({ productId: candidate.product.id, offerId: candidateOffer.id }))
+        )))
+      : new Set<string>();
+    const selectionCandidates = input.candidates.map((candidate) => ({
+      ...candidate,
+      offers: candidate.offers.filter((candidateOffer) => {
         const key = `${candidate.product.id}:${candidateOffer.id}`;
-        if (recoveredOpportunityKeys.has(key)) return undefined;
-        if (this.autonomousRuns && await this.autonomousRuns.hasCompletedOpportunity(candidate.product.id, candidateOffer.id)) return undefined;
-        return candidateOffer;
-      }));
-      return { ...candidate, offers: offers.filter((candidateOffer): candidateOffer is AffiliateOffer => candidateOffer !== undefined) };
+        return !recoveredOpportunityKeys.has(key) && !completedOpportunityKeys.has(key);
+      })
     }));
     const adaptiveExplorationRates = this.adaptiveExploration
       ? await this.adaptiveExploration.getRates(selectionCandidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
