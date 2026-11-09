@@ -2,5 +2,5 @@ export type ProductMediaDiscoveryOutcome = "success" | "no_results" | "provider_
 
 export interface ProductMediaDiscoveryAttemptRepository {
   claim(input: { productId: string; fingerprint: string; now: string; leaseUntil: string }): Promise<boolean>;
-  complete(input: { productId: string; fingerprint: string; outcome: ProductMediaDiscoveryOutcome; now: string; nextRetryAt: string }): Promise<void>;
+  complete(input: { productId: string; fingerprint: string; leaseUntil: string; outcome: ProductMediaDiscoveryOutcome; now: string; nextRetryAt: string }): Promise<void>;
 }
