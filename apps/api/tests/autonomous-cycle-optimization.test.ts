@@ -38,7 +38,7 @@ test("autonomous cycle runs optimization after execution", async () => {
     { async execute() { return actionResult; } } as never
   );
   const cycle = new AutonomousCycleService(
-    { async listCandidates() { return []; } },
+    { async listCandidates() { return [{ product: { id: "optimization-product" } as never, offers: [] }]; } },
     { async runOnce() { return { selected: [], rejected: [], outcomes: [], recoveredRunCount: 0 }; } } as never,
     undefined,
     "test:autonomous-cycle",
