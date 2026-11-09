@@ -67,10 +67,12 @@ export class AutonomousScheduler {
     };
   }
 
-  // Starting the scheduler only enables event handling. It deliberately performs
-  // no startup scan and creates no recurring timer.
+  // Preserve one initial pass for products already in the catalog, then rely
+  // on import events. This intentionally creates no recurring polling timer.
   start(): void {
+    if (this.started) return;
     this.started = true;
+    void this.trigger();
   }
 
   async stop(): Promise<void> {
