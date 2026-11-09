@@ -5,3 +5,11 @@ CREATE TABLE IF NOT EXISTS public.product_media_discovery_attempts (
   next_retry_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Match the trusted API runtime-role baseline for every application table.
+ALTER TABLE public.product_media_discovery_attempts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY affiliateos_runtime_access
+  ON public.product_media_discovery_attempts
+  FOR ALL TO affiliateos_runtime
+  USING (true)
+  WITH CHECK (true);
