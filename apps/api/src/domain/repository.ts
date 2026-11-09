@@ -7,6 +7,7 @@ import type { AutonomousRun, AutonomousRunRepository, AutonomousRunStatus } from
 import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "./shopee-affiliate-link-intake.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
+import type { ProductMediaDiscoveryAttemptRepository } from "./product-media-discovery-attempt.js";
 
 export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
 export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
@@ -157,7 +158,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   }
 }
 export interface RepositorySet {
-  shopeeAffiliateLinkIntakes?: ShopeeAffiliateLinkIntakeRepository; productMediaCandidates?: ProductMediaCandidateRepository;
+  shopeeAffiliateLinkIntakes?: ShopeeAffiliateLinkIntakeRepository; productMediaCandidates?: ProductMediaCandidateRepository; productMediaDiscoveryAttempts?: ProductMediaDiscoveryAttemptRepository;
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
