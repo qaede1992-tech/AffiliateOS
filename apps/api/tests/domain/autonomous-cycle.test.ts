@@ -217,7 +217,7 @@ describe("autonomous cycle", () => {
     let readinessCalls = 0;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { return []; },
+      async listPublishableMediaProductIds() { return [product.id]; },
       async listVideoProductIds() {
         throw new Error("Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: private-media-index-marker");
       },
@@ -646,6 +646,8 @@ describe("autonomous cycle", () => {
       },
       async runOnce() { runOnceCalls += 1; return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
+    let videoIndexCalls = 0;
+    let readinessCalls = 0;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
       async listPublishableMediaProductIds() { return []; },
