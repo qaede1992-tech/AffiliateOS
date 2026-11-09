@@ -557,3 +557,46 @@ test("classifies catalog persistence failures separately and keeps provider erro
     console.warn = originalWarn;
   }
 });
+
+
+test("persists catalog search cooldown and invalidates it when product identity changes", async () => {
+  const attempts = new Map<string, { fingerprint: string; nextRetryAt: string }>();
+  let fetchCount = 0;
+  const fetchImpl = async () => {
+    fetchCount += 1;
+    return { ok: true, json: async () => ({ results: [] }) } as Response;
+  };
+  const attemptRepository = {
+    async claim(input: { productId: string; fingerprint: string; now: string; leaseUntil: string }) {
+      const current = attempts.get(input.productId);
+      if (current && current.fingerprint === input.fingerprint && current.nextRetryAt > input.now) return false;
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.leaseUntil });
+      return true;
+    },
+    async complete(input: { productId: string; fingerprint: string; outcome: string; now: string; nextRetryAt: string }) {
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.nextRetryAt });
+    }
+  };
+  const assetRepository = {
+    async listByProduct() { return []; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "b", upload: async () => ({ bucket: "b", key: "k" }), remove: async () => {} } as never,
+    assetRepository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    { async saveMany(records: unknown[]) { return records; } } as never,
+    { fetchImpl },
+    attemptRepository
+  );
+  const shopeeProduct = { ...product, productUrl: "https://shopee.co.id/product/123/456" };
+
+  await runner.discover(shopeeProduct, true);
+  await runner.discover(shopeeProduct, true);
+  assert.equal(fetchCount, 1, "unchanged product should not repeat an empty catalog search");
+
+  await runner.discover({ ...shopeeProduct, name: "Demo product updated" }, true);
+  assert.equal(fetchCount, 2, "changed product identity should invalidate the old cooldown");
+});
