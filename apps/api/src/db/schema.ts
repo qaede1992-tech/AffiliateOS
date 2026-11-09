@@ -121,6 +121,17 @@ export const productMediaIdentityAudits = pgTable("product_media_identity_audits
   index("product_media_identity_audits_product_created_idx").on(table.productId, table.createdAt.desc())
 ]);
 
+export const productMediaDiscoveryAttempts = pgTable("product_media_discovery_attempts", {
+  productId: uuid("product_id").primaryKey().references(() => products.id, { onDelete: "cascade" }),
+  fingerprint: varchar("fingerprint", { length: 64 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  nextRetryAt: timestamp("next_retry_at", { withTimezone: true, mode: "string" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("product_media_discovery_attempts_retry_idx").on(table.nextRetryAt)
+]);
+
 export const productMediaCandidates = pgTable("product_media_candidates", {
   id: uuid("id").primaryKey(),
   productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
