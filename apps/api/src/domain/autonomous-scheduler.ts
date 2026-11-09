@@ -35,7 +35,7 @@ export class AutonomousScheduler {
   private lastCompletedAt?: string;
   private lastResult?: AutonomousCycleResult;
   private lastError?: string;
-  private lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates";
+  private lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates" | "no_publishable_candidates";
 
   constructor(
     private readonly cycle: AutonomousCycleService,
