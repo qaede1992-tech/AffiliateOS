@@ -207,7 +207,7 @@ describe("autonomous cycle", () => {
   });
 
   it("derives publication time from a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "scheduled-product" } as never, offers: [] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) {
@@ -234,7 +234,7 @@ describe("autonomous cycle", () => {
   });
 
   it("preserves an explicit publication time over a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "explicit-time-product" } as never, offers: [] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) { scheduledAt = input.scheduledAt; return { selected: [], rejected: [], outcomes: [] }; }
@@ -298,7 +298,7 @@ describe("autonomous cycle", () => {
       async tryAcquire(key) { assert.equal(key, "shared-cycle"); acquired = true; return true; },
       async release(key) { assert.equal(key, "shared-cycle"); released = true; }
     };
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "lock-product" } as never, offers: [] }]; } };
     const execution = { async runOnce() { return { selected: [], rejected: [], outcomes: [] }; } } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution, lock, "shared-cycle");
     assert.ok(await service.runOnce());
@@ -309,14 +309,14 @@ describe("autonomous cycle", () => {
   it("releases the guard when candidate loading fails", async () => {
     let attempts = 0;
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() { attempts += 1; if (attempts === 1) throw new Error("catalog unavailable"); return []; }
+      async listCandidates() { attempts += 1; if (attempts === 1) throw new Error("catalog unavailable"); return [{ product: { id: "recovered-product" } as never, offers: [] }]; }
     };
     const execution = { async runOnce() { return { selected: [], rejected: [], outcomes: [] }; } } as unknown as AutonomousExecutionService;
     const service = new AutonomousCycleService(candidates, execution);
     await assert.rejects(() => service.runOnce(), /catalog unavailable/);
     const second = await service.runOnce();
     assert.ok(second);
-    assert.equal(second.candidateCount, 0);
+    assert.equal(second.candidateCount, 1);
   });
 
   it("discovers candidates within the media score lift band without lowering final selection thresholds", async () => {
