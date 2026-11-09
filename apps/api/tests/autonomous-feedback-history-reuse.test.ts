@@ -86,3 +86,42 @@ test("falls back to the latest snapshot when no snapshot exists in the 30-day wi
   assert.equal(signal?.anomaly, "halt");
   assert.equal(signal?.recoveryEpisodeId, previous.id);
 });
+
+
+test("uses one latest snapshot without loading or persisting full history for discovery previews", async () => {
+  const previous = {
+    id: "halt-latest", observationKey: "halt-latest", productId: "p", marketplaceId: "m",
+    clickCount: 200, conversionCount: 4, attributedCommissionCents: 400,
+    commissionPerClickCents: 2, conversionRate: 0.02, adjustment: 0,
+    anomaly: "halt" as const, anomalyScore: 0.8, recoveryState: "recovering" as const,
+    recoveryClicks: 0, recoveryEvidenceScore: 0, recoveryQualityScore: 0,
+    observedAt: "2026-09-22T03:00:00.000Z"
+  };
+  let historyReads = 0;
+  let latestReads = 0;
+  let snapshotWrites = 0;
+  const memory = {
+    latestByProductAndMarketplace: async () => { latestReads += 1; return previous; },
+    recentByProductAndMarketplace: async () => { historyReads += 1; return [previous]; },
+    saveIfAbsent: async () => { snapshotWrites += 1; return true; }
+  };
+  const provider = new AutonomousAnalyticsFeedbackProvider(
+    { overview: async () => ({ campaigns: [{
+      campaignId: "c", productId: "p", marketplaceId: "m", clickCount: 250,
+      trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1,
+      scheduledContentCount: 0, attributedConversionCount: 5,
+      attributedRevenueCents: 2500, attributedCommissionCents: 500,
+      conversionRate: 0.02
+    }] }) },
+    memory,
+    () => new Date("2026-09-22T04:00:00.000Z")
+  );
+
+  const signal = (await provider.getSignals({ observationKey: "discovery-preview", historyMode: "latest" })).get("m:p");
+  assert.equal(historyReads, 0);
+  assert.equal(latestReads, 1);
+  assert.equal(snapshotWrites, 0);
+  assert.equal(signal?.windows, undefined);
+  assert.equal(signal?.anomaly, "halt");
+  assert.equal(signal?.recoveryEpisodeId, previous.id);
+});
