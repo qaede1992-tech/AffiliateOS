@@ -50,7 +50,7 @@ try {
     "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') ORDER BY c.relname"
   ].join("\n"));
   assert.ok(tableResult.rows.length > 0, "Expected application tables in public schema.");
-  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "pre_media_eligibility_evidence"]);
+  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "product_media_identity_audits", "pre_media_eligibility_evidence"]);
   assert.ok(
     tableResult.rows.some((table) => appendOnlyTables.has(table.relname)),
     "The append-only product media rights audit table must exist."
@@ -132,7 +132,7 @@ try {
     await client.query("ROLLBACK");
   }
 
-  console.log("Runtime-role security guard passed: RLS and explicit policies cover all public tables; runtime has DML but no DDL, TRUNCATE, TRIGGER, or BYPASSRLS.");
+  console.log("Runtime-role security guard passed: RLS and explicit policies cover all public tables; runtime has only table-scoped DML and no DDL, TRUNCATE, TRIGGER, or BYPASSRLS.");
 } finally {
   await client.end();
 }
