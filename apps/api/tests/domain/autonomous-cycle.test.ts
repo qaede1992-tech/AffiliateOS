@@ -213,8 +213,6 @@ describe("autonomous cycle", () => {
       async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
-    let videoIndexCalls = 0;
-    let readinessCalls = 0;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
       async listPublishableMediaProductIds() { return [product.id]; },
