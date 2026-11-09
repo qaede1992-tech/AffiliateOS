@@ -308,6 +308,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       if (matchingAssets.length !== 1) return undefined;
       const asset = matchingAssets[0];
       if (!asset || asset.kind !== kind || !hasCurrentVerifiedRights(asset)) return undefined;
+      if (asset.identityStatus !== "not_required" && asset.identityStatus !== "verified") return undefined;
       return safeUrl;
     };
     const seen = new Set<string>();
