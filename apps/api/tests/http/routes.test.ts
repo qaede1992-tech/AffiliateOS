@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp, configuredCorsOrigin } from "../../src/app.js";
+import { createInMemoryServices } from "../../src/domain/container.js";
 
 test("configured CORS origin rejects an unset production origin", () => {
   const previous = process.env.API_CORS_ORIGIN;
