@@ -10,30 +10,31 @@ export type AutonomousSchedulerOptions = {
 export type AutonomousSchedulerStatus = {
   running: boolean;
   active: boolean;
+  pending: boolean;
   lastStartedAt?: string;
   lastCompletedAt?: string;
   lastResult?: AutonomousCycleResult;
   lastError?: string;
-  lastSkipReason?: "already_running" | "lock_busy";
+  lastSkipReason?: "already_running" | "lock_busy" | "no_candidates";
 };
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
 const MIN_INTERVAL_MS = 5 * 60_000;
-type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class AutonomousScheduler {
   private readonly intervalMs: number;
   private readonly now: () => Date;
   private readonly onResult?: AutonomousSchedulerOptions["onResult"];
   private readonly onError?: AutonomousSchedulerOptions["onError"];
-  private timer?: TimerHandle;
   private activeRun?: Promise<AutonomousCycleResult | undefined>;
+  private triggerDrain?: Promise<AutonomousCycleResult | undefined>;
+  private triggerRequested = false;
   private started = false;
   private lastStartedAt?: string;
   private lastCompletedAt?: string;
   private lastResult?: AutonomousCycleResult;
   private lastError?: string;
-  private lastSkipReason?: "already_running" | "lock_busy";
+  private lastSkipReason?: "already_running" | "lock_busy" | "no_candidates";
 
   constructor(
     private readonly cycle: AutonomousCycleService,
@@ -57,6 +58,7 @@ export class AutonomousScheduler {
     return {
       running: this.started,
       active: Boolean(this.activeRun),
+      pending: this.triggerRequested,
       lastStartedAt: this.lastStartedAt,
       lastCompletedAt: this.lastCompletedAt,
       lastResult: this.lastResult,
@@ -65,23 +67,41 @@ export class AutonomousScheduler {
     };
   }
 
+  // Starting the scheduler only enables event handling. It deliberately performs
+  // no startup scan and creates no recurring timer.
   start(): void {
-    if (this.started) return;
     this.started = true;
-    void this.runAndSchedule();
   }
 
   async stop(): Promise<void> {
     this.started = false;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
+    this.triggerRequested = false;
+    await this.triggerDrain;
     await this.activeRun;
   }
 
   async previewSelection(input: AutonomousCycleInput = this.input) {
     return this.cycle.previewSelection(input);
+  }
+
+  // Called only after a product/offer import or another durable source event.
+  // Multiple events arriving during a run are coalesced into one follow-up run.
+  async trigger(input: AutonomousCycleInput = this.input): Promise<AutonomousCycleResult | undefined> {
+    if (!this.started) return undefined;
+    this.triggerRequested = true;
+    if (this.triggerDrain) return this.triggerDrain;
+
+    this.triggerDrain = (async () => {
+      let result: AutonomousCycleResult | undefined;
+      while (this.started && this.triggerRequested) {
+        this.triggerRequested = false;
+        result = await this.runNow(input);
+      }
+      return result;
+    })().finally(() => {
+      this.triggerDrain = undefined;
+    });
+    return this.triggerDrain;
   }
 
   async runNow(input: AutonomousCycleInput = this.input): Promise<AutonomousCycleResult | undefined> {
@@ -133,15 +153,6 @@ export class AutonomousScheduler {
     } catch {
       // Observer failures must not change the scheduler's execution outcome.
     }
-  }
-
-  private async runAndSchedule(): Promise<void> {
-    await this.runNow();
-    if (!this.started) return;
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      void this.runAndSchedule();
-    }, this.intervalMs);
   }
 
   private cycleNamespace(): string {
