@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp, configuredCorsOrigin } from "../../src/app.js";
+import { createInMemoryServices } from "../../src/domain/container.js";
 
 test("configured CORS origin rejects an unset production origin", () => {
   const previous = process.env.API_CORS_ORIGIN;
@@ -1149,6 +1150,79 @@ test("GET TikTok creator info resolves the internal credential reference without
     assert.equal(receivedCredentialReference, "secret://social/tiktok");
     assert.deepEqual(response.json().privacyLevelOptions, ["PUBLIC_TO_EVERYONE"]);
     assert.equal(JSON.stringify(response.json()).includes("secret://social/tiktok"), false);
+  } finally {
+    await app.close();
+  }
+});
+
+test("GET /api/v1/public/shop exposes product media only with current verified rights", async () => {
+  const services = createInMemoryServices();
+  const now = new Date().toISOString();
+  const products = [
+    {
+      id: "product-with-verified-media", referenceNumber: 1, marketplaceId: "marketplace-test",
+      externalProductId: "external-1", name: "Verified media", category: "Test",
+      priceCents: 10000, currency: "IDR", ratingMilli: 5000, reviewCount: 10, soldCount: 20,
+      imageUrl: "https://cdn.example.com/product.jpg", videoUrl: "https://cdn.example.com/product.mp4",
+      productUrl: "https://shop.example.com/product/1", status: "active" as const,
+      createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-unverified-media", referenceNumber: 2, marketplaceId: "marketplace-test",
+      externalProductId: "external-2", name: "Unverified media", category: "Test",
+      priceCents: 20000, currency: "IDR", ratingMilli: 4900, reviewCount: 5, soldCount: 8,
+      imageUrl: "https://cdn.example.com/unverified.jpg", videoUrl: "https://cdn.example.com/unverified.mp4",
+      productUrl: "https://shop.example.com/product/2", status: "active" as const,
+      createdAt: now, updatedAt: now
+    }
+  ];
+  const offers = products.map((product, index) => ({
+    id: `offer-${product.id}`, productId: product.id, status: "active",
+    affiliateLinkStatus: "active", affiliateUrl: `https://affiliate.example.com/${index}`,
+    priceCents: product.priceCents, currency: product.currency
+  }));
+  const trackingLinks = offers.map((offer, index) => ({
+    id: `tracking-${index}`, affiliateOfferId: offer.id, status: "active",
+    destinationUrl: offer.affiliateUrl, code: `track-${index}`
+  }));
+  const verifiedAt = new Date(Date.now() - 60_000).toISOString();
+  const mediaAsset = (id: string, productId: string, kind: "image" | "video", sourceUrl: string, verified: boolean) => ({
+    id, productId, kind, bucket: "affiliate-media", objectKey: `products/${productId}/${id}.bin`,
+    mimeType: kind === "image" ? "image/jpeg" : "video/mp4", byteSize: 1024, sha256: "a".repeat(64),
+    sourceUrl, sourcePublisher: verified ? "Product owner" : null,
+    rightsStatus: verified ? "verified" : "unverified",
+    rightsBasis: verified ? "user_owned" : null,
+    rightsEvidenceUrl: verified ? "https://rights.example.com/evidence" : null,
+    rightsVerifiedAt: verified ? verifiedAt : null, createdAt: verifiedAt
+  });
+  let mediaLookupCalls = 0;
+  services.marketplace.listProducts = async () => products;
+  services.marketplace.listAffiliateOffers = async () => offers as never;
+  services.tracking.list = async () => trackingLinks as never;
+  services.productMediaAssets = {
+    listByProducts: async (productIds: string[]) => {
+      mediaLookupCalls += 1;
+      assert.deepEqual(productIds, products.map((product) => product.id));
+      return [
+        mediaAsset("verified-image", products[0]!.id, "image", products[0]!.imageUrl!, true),
+        mediaAsset("verified-video", products[0]!.id, "video", products[0]!.videoUrl!, true),
+        mediaAsset("unverified-image", products[1]!.id, "image", products[1]!.imageUrl!, false),
+        mediaAsset("unverified-video", products[1]!.id, "video", products[1]!.videoUrl!, false)
+      ] as never;
+    }
+  } as never;
+
+  const app = createApp(services);
+  try {
+    const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
+    assert.equal(response.statusCode, 200);
+    const items = response.json().data;
+    assert.equal(items.length, 2);
+    assert.equal(items[0].imageUrl, products[0]!.imageUrl);
+    assert.equal(items[0].videoUrl, products[0]!.videoUrl);
+    assert.equal(Object.hasOwn(items[1], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[1], "videoUrl"), false);
+    assert.equal(mediaLookupCalls, 1);
   } finally {
     await app.close();
   }
