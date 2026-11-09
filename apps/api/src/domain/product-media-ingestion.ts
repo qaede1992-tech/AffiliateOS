@@ -35,6 +35,10 @@ export interface ProductMediaAsset {
   rightsBasis: "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization" | null;
   rightsEvidenceUrl: string | null;
   rightsVerifiedAt: string | null;
+  identityStatus?: "not_required" | "pending" | "verified" | "rejected";
+  identityReviewedBy?: string | null;
+  identityReviewedAt?: string | null;
+  identityReviewReason?: string | null;
   createdAt: string;
 }
 
