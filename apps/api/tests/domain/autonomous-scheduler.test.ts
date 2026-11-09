@@ -17,26 +17,30 @@ const deferred = <T>() => {
 };
 
 describe("AutonomousScheduler", () => {
-  it("starts without scanning or running a cycle", async () => {
+  it("runs one initial cycle on start without recurring polling", async () => {
+    const first = deferred<AutonomousCycleResult | undefined>();
     let calls = 0;
-    const cycle = { runOnce: async () => { calls += 1; return result(); } } as unknown as AutonomousCycleService;
+    const cycle = { runOnce: async () => { calls += 1; return first.promise; } } as unknown as AutonomousCycleService;
     const scheduler = new AutonomousScheduler(cycle);
     scheduler.start();
-    await Promise.resolve();
-    assert.equal(calls, 0);
+    scheduler.start();
+    assert.equal(calls, 1);
     assert.equal(scheduler.status.running, true);
-    assert.equal(scheduler.status.active, false);
+    assert.equal(scheduler.status.active, true);
+    first.resolve(result());
     await scheduler.stop();
+    assert.equal(calls, 1);
+    assert.equal(scheduler.status.active, false);
   });
 
-  it("runs only after an explicit work trigger", async () => {
+  it("runs again after an explicit work trigger", async () => {
     let calls = 0;
     const cycle = { runOnce: async () => { calls += 1; return result(); } } as unknown as AutonomousCycleService;
     const scheduler = new AutonomousScheduler(cycle);
     scheduler.start();
-    assert.equal(calls, 0);
-    const output = await scheduler.trigger();
     assert.equal(calls, 1);
+    const output = await scheduler.trigger();
+    assert.equal(calls, 2);
     assert.ok(output);
     assert.equal(scheduler.status.active, false);
     await scheduler.stop();
@@ -64,14 +68,14 @@ describe("AutonomousScheduler", () => {
     await scheduler.stop();
   });
 
-  it("does not trigger work after the scheduler has stopped", async () => {
+  it("does not trigger additional work after the scheduler has stopped", async () => {
     let calls = 0;
     const cycle = { runOnce: async () => { calls += 1; return result(); } } as unknown as AutonomousCycleService;
     const scheduler = new AutonomousScheduler(cycle);
     scheduler.start();
     await scheduler.stop();
     assert.equal(await scheduler.trigger(), undefined);
-    assert.equal(calls, 0);
+    assert.equal(calls, 1);
   });
 
   it("does not overlap manual cycle runs and returns the active result", async () => {
