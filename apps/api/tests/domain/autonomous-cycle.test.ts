@@ -261,7 +261,7 @@ describe("autonomous cycle", () => {
   });
 
   it("derives publication time from a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "scheduled-product" } as never, offers: [] }]; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "scheduled-product" } as never, offers: [{} as never] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) {
@@ -288,7 +288,7 @@ describe("autonomous cycle", () => {
   });
 
   it("preserves an explicit publication time over a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "explicit-schedule-product" } as never, offers: [] }]; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "explicit-schedule-product" } as never, offers: [{} as never] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) { scheduledAt = input.scheduledAt; return { selected: [], rejected: [], outcomes: [] }; }
