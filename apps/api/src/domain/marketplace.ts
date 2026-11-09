@@ -13,6 +13,9 @@ export class MarketplaceService {
   async listProviders(): Promise<MarketplaceProviderInfo[]> { const configured = await this.connections.list(); return this.registry.list().map((provider) => ({ slug: provider.slug, displayName: provider.displayName, connectionMode: provider.connectionMode, configured: configured.some((connection) => connection.providerSlug === provider.slug), capabilities: [...provider.capabilities], supportsConnectionTest: Boolean(provider.testConnection) })); }
   async listConnections(): Promise<MarketplaceConnectionView[]> { return (await this.connections.list()).map(this.toView); }
   async listProducts(): Promise<Product[]> { return this.products.list(); }
+  async listActiveProductsByMarketplace(marketplaceId: string, limit: number): Promise<Product[]> {
+    return this.products.listByMarketplace(marketplaceId, "active", limit);
+  }
   async updateProductMedia(productId: string, input: { imageUrl?: string | null; videoUrl?: string | null }): Promise<Product> {
     const id = productId.trim();
     if (!id) throw new DomainError("INVALID_PRODUCT_ID", "Product ID is required.", 400);
@@ -27,6 +30,10 @@ export class MarketplaceService {
     return this.products.save({ ...product, imageUrl: input.imageUrl === undefined ? product.imageUrl : input.imageUrl === null ? null as unknown as string : input.imageUrl, videoUrl: input.videoUrl === undefined ? product.videoUrl : input.videoUrl === null ? null as unknown as string : input.videoUrl, updatedAt: now() });
   }
   async listAffiliateOffers(): Promise<AffiliateOffer[]> { return this.offers.list(); }
+  async listActiveAffiliateOffersForProducts(affiliateAccountId: string, productIds: string[]): Promise<AffiliateOffer[]> {
+    if (!productIds.length) return [];
+    return this.offers.listActiveByAccountAndProducts(affiliateAccountId, productIds);
+  }
   async listAffiliateOfferVerification() {
     const offers = await this.offers.list();
     return Promise.all(offers.map(async (offer) => {
