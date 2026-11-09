@@ -6,7 +6,7 @@ import type { AutonomousExecutionService } from "../../src/domain/autonomous-exe
 
 describe("autonomous cycle", () => {
   it("renders promo videos only after final affiliate selection and verified media eligibility", async () => {
-    const candidates = ["selected-image", "media-rejected"].map((id) => ({ product: { id } as never, offers: [] }));
+    const candidates = ["selected-image", "media-rejected"].map((id) => ({ product: { id } as never, offers: [{} as never] }));
     const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
     let videoLookupCount = 0;
@@ -61,7 +61,7 @@ describe("autonomous cycle", () => {
   it("logs aggregate media discovery outcomes without logging source URLs", async () => {
     const product = { id: "media-product" };
     const provider: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean }) {
@@ -166,8 +166,8 @@ describe("autonomous cycle", () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
         return [
-          { product: { id: "product-1" } as never, offers: [] },
-          { product: { id: "product-2" } as never, offers: [] }
+          { product: { id: "product-1" } as never, offers: [{} as never] },
+          { product: { id: "product-2" } as never, offers: [{} as never] }
         ];
       }
     };
@@ -197,7 +197,7 @@ describe("autonomous cycle", () => {
   it("applies the same mandatory safety gates to preview and execution", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
-        return [{ product: { id: "product-preview" } as never, offers: [] }];
+        return [{ product: { id: "product-preview" } as never, offers: [{} as never] }];
       }
     };
     const previewCalls: unknown[] = [];
@@ -235,7 +235,7 @@ describe("autonomous cycle", () => {
 
   it("requires publishable media for draft-only cycles while keeping publication disabled", async () => {
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: { id: "draft-product" } as never, offers: [] }]; }
+      async listCandidates() { return [{ product: { id: "draft-product" } as never, offers: [{} as never] }]; }
     };
     const calls: Array<{ type: string; publicationEnabled?: boolean; scheduledAt?: string; requirePublishableMedia?: boolean }> = [];
     const execution = {
@@ -300,7 +300,7 @@ describe("autonomous cycle", () => {
 
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: { id: "product-1" } as never, offers: [] }]; }
+      async listCandidates() { return [{ product: { id: "product-1" } as never, offers: [{} as never] }]; }
     };
     const releases: Array<() => void> = [];
     let callCount = 0;
@@ -376,7 +376,7 @@ describe("autonomous cycle", () => {
   it("discovers candidates within the media score lift band without lowering final selection thresholds", async () => {
     const product = { id: "near-threshold", marketplaceId: "market-1" };
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const previews: Array<{
       policy?: { minimumScore?: number; minimumDataConfidence?: number };
@@ -446,7 +446,7 @@ describe("autonomous cycle", () => {
     const product = { id: "pre-media-product", marketplaceId: "market-1" };
     const rejectedProduct = { id: "rejected-pre-media-product", marketplaceId: "market-1" };
     const provider: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }, { product: rejectedProduct as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }, { product: rejectedProduct as never, offers: [] }]; }
     };
     const saved: Array<Record<string, unknown>> = [];
     const execution = {
