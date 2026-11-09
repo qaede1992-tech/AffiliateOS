@@ -1190,6 +1190,22 @@ test("GET /api/v1/public/shop exposes product media only with current verified r
       imageUrl: "https://cdn.example/media.jpg", videoUrl: "https://cdn.onion/media.mp4",
       productUrl: "https://shop.example.com/product/4", status: "active" as const,
       createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-pending-identity", referenceNumber: 5, marketplaceId: "marketplace-test",
+      externalProductId: "external-5", name: "Pending identity", category: "Test",
+      priceCents: 50000, currency: "IDR", ratingMilli: 4600, reviewCount: 1, soldCount: 2,
+      imageUrl: "https://cdn.example.com/pending-identity.jpg",
+      productUrl: "https://shop.example.com/product/5", status: "active" as const,
+      createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-rejected-identity", referenceNumber: 6, marketplaceId: "marketplace-test",
+      externalProductId: "external-6", name: "Rejected identity", category: "Test",
+      priceCents: 60000, currency: "IDR", ratingMilli: 4500, reviewCount: 1, soldCount: 1,
+      imageUrl: "https://cdn.example.com/rejected-identity.jpg",
+      productUrl: "https://shop.example.com/product/6", status: "active" as const,
+      createdAt: now, updatedAt: now
     }
   ];
   const offers = products.map((product, index) => ({
@@ -1202,14 +1218,17 @@ test("GET /api/v1/public/shop exposes product media only with current verified r
     destinationUrl: offer.affiliateUrl, code: `track-${index}`
   }));
   const verifiedAt = new Date(Date.now() - 60_000).toISOString();
-  const mediaAsset = (id: string, productId: string, kind: "image" | "video", sourceUrl: string, verified: boolean) => ({
+  const mediaAsset = (
+    id: string, productId: string, kind: "image" | "video", sourceUrl: string, verified: boolean,
+    identityStatus: "not_required" | "pending" | "verified" | "rejected" = "not_required"
+  ) => ({
     id, productId, kind, bucket: "affiliate-media", objectKey: `products/${productId}/${id}.bin`,
     mimeType: kind === "image" ? "image/jpeg" : "video/mp4", byteSize: 1024, sha256: "a".repeat(64),
     sourceUrl, sourcePublisher: verified ? "Product owner" : null,
     rightsStatus: verified ? "verified" : "unverified",
     rightsBasis: verified ? "user_owned" : null,
     rightsEvidenceUrl: verified ? "https://rights.example.com/evidence" : null,
-    rightsVerifiedAt: verified ? verifiedAt : null, createdAt: verifiedAt
+    rightsVerifiedAt: verified ? verifiedAt : null, identityStatus, createdAt: verifiedAt
   });
   let mediaLookupCalls = 0;
   services.marketplace.listProducts = async () => products;
@@ -1221,13 +1240,15 @@ test("GET /api/v1/public/shop exposes product media only with current verified r
       assert.deepEqual(productIds, products.map((product) => product.id));
       return [
         mediaAsset("verified-image", products[0]!.id, "image", products[0]!.imageUrl!, true),
-        mediaAsset("verified-video", products[0]!.id, "video", products[0]!.videoUrl!, true),
+        mediaAsset("verified-video", products[0]!.id, "video", products[0]!.videoUrl!, true, "verified"),
         mediaAsset("unverified-image", products[1]!.id, "image", products[1]!.imageUrl!, false),
         mediaAsset("unverified-video", products[1]!.id, "video", products[1]!.videoUrl!, false),
         mediaAsset("private-image", products[2]!.id, "image", products[2]!.imageUrl!, true),
         mediaAsset("private-video", products[2]!.id, "video", products[2]!.videoUrl!, true),
         mediaAsset("special-use-image", products[3]!.id, "image", products[3]!.imageUrl!, true),
-        mediaAsset("special-use-video", products[3]!.id, "video", products[3]!.videoUrl!, true)
+        mediaAsset("special-use-video", products[3]!.id, "video", products[3]!.videoUrl!, true),
+        mediaAsset("pending-identity-image", products[4]!.id, "image", products[4]!.imageUrl!, true, "pending"),
+        mediaAsset("rejected-identity-image", products[5]!.id, "image", products[5]!.imageUrl!, true, "rejected")
       ] as never;
     }
   } as never;
@@ -1237,7 +1258,7 @@ test("GET /api/v1/public/shop exposes product media only with current verified r
     const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
     assert.equal(response.statusCode, 200);
     const items = response.json().data;
-    assert.equal(items.length, 4);
+    assert.equal(items.length, 6);
     assert.equal(items[0].imageUrl, products[0]!.imageUrl);
     assert.equal(items[0].videoUrl, products[0]!.videoUrl);
     assert.equal(Object.hasOwn(items[1], "imageUrl"), false);
@@ -1246,6 +1267,8 @@ test("GET /api/v1/public/shop exposes product media only with current verified r
     assert.equal(Object.hasOwn(items[2], "videoUrl"), false);
     assert.equal(Object.hasOwn(items[3], "imageUrl"), false);
     assert.equal(Object.hasOwn(items[3], "videoUrl"), false);
+    assert.equal(Object.hasOwn(items[4], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[5], "imageUrl"), false);
     assert.equal(mediaLookupCalls, 1);
   } finally {
     await app.close();
