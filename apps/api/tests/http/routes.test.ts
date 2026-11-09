@@ -1171,7 +1171,7 @@ test("TikTok approval confirmation wakes the publication scheduler", async () =>
     scheduledAt: "2026-09-21T10:00:00.000Z",
     createdAt: "2026-09-21T09:00:00.000Z",
     updatedAt: "2026-09-21T09:00:00.000Z"
-  } as const;
+  } as never;
   const job = await services.publicationJobs.enqueue(content);
   await services.publicationJobs.claim(job.id, new Date("2026-09-21T09:00:00.000Z"));
   await services.publicationJobs.requestApproval(job.id, new Date("2026-09-21T09:01:00.000Z"));
