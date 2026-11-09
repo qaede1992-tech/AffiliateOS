@@ -17,7 +17,6 @@ export class DrizzleProductMediaDiscoveryAttemptRepository implements ProductMed
       fingerprint: input.fingerprint,
       status: "in_progress",
       nextRetryAt: input.leaseUntil,
-      createdAt: input.now,
       updatedAt: input.now
     }).onConflictDoUpdate({
       target: productMediaDiscoveryAttempts.productId,
