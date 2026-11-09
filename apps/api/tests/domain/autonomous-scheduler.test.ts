@@ -17,22 +17,19 @@ const deferred = <T>() => {
 };
 
 describe("AutonomousScheduler", () => {
-  it("runs one initial cycle on start without recurring polling", async () => {
-    const first = deferred<AutonomousCycleResult | undefined>();
+  it("does not run a cycle on startup without a work event", async () => {
     let calls = 0;
-    const cycle = { runOnce: async () => { calls += 1; return first.promise; } } as unknown as AutonomousCycleService;
+    const cycle = { runOnce: async () => { calls += 1; return result(); } } as unknown as AutonomousCycleService;
     const scheduler = new AutonomousScheduler(cycle);
 
     scheduler.start();
     scheduler.start();
-    assert.equal(calls, 1);
+    assert.equal(calls, 0);
     assert.equal(scheduler.status.running, true);
-    assert.equal(scheduler.status.active, true);
-
-    first.resolve(result());
-    await scheduler.stop();
-    assert.equal(calls, 1);
     assert.equal(scheduler.status.active, false);
+
+    await scheduler.stop();
+    assert.equal(calls, 0);
   });
 
   it("runs again after a new work trigger and assigns a unique event namespace", async () => {
@@ -49,9 +46,11 @@ describe("AutonomousScheduler", () => {
 
     scheduler.start();
     await scheduler.trigger();
+    await scheduler.trigger();
     assert.equal(calls, 2);
     assert.notEqual(inputs[0]?.idempotencyNamespace, inputs[1]?.idempotencyNamespace);
     assert.match(inputs[0]?.idempotencyNamespace ?? "", /^autonomous-cycle:event:/);
+    assert.match(inputs[1]?.idempotencyNamespace ?? "", /^autonomous-cycle:event:/);
     await scheduler.stop();
   });
 
@@ -109,7 +108,7 @@ describe("AutonomousScheduler", () => {
     scheduler.start();
     await scheduler.stop();
     assert.equal(await scheduler.trigger(), undefined);
-    assert.equal(calls, 1);
+    assert.equal(calls, 0);
   });
 
   it("does not overlap manual cycle runs and returns the active result", async () => {
