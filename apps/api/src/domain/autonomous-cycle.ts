@@ -33,7 +33,7 @@ export type AutonomousCycleResult = {
   explorationEvaluation?: ExplorationEvaluationRunResult;
 };
 
-export type AutonomousCycleSkipReason = "already_running" | "lock_busy";
+export type AutonomousCycleSkipReason = "already_running" | "lock_busy" | "no_runnable_candidates";
 
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
@@ -132,6 +132,7 @@ export class AutonomousCycleService {
       // exploration, optimization analytics, and feedback-history reads entirely.
       const runnableCandidateCount = candidateList.filter((candidate) => candidate.offers.length > 0).length;
       if (runnableCandidateCount === 0) {
+        this.lastSkipReason = "no_runnable_candidates";
         console.info(JSON.stringify({
           event: "autonomous_cycle_skipped",
           reason: "no_runnable_candidates",

@@ -127,4 +127,30 @@ describe("AutonomousScheduler", () => {
     const cycle = { runOnce: async () => undefined } as unknown as AutonomousCycleService;
     assert.throws(() => new AutonomousScheduler(cycle, {}, { intervalMs: 299_999 }), /at least 5 minutes/);
   });
+  it("backs off to the idle interval when there are no runnable affiliate offers", async () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    let scheduledDelay = 0;
+    const fakeTimer = { unref() {} } as unknown as ReturnType<typeof setTimeout>;
+    globalThis.setTimeout = ((callback: (...args: unknown[]) => void, delay?: number) => {
+      scheduledDelay = Number(delay ?? 0);
+      return fakeTimer;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = (() => undefined) as typeof clearTimeout;
+    const cycle = {
+      runOnce: async () => ({ ...result("idle"), candidateCount: 4 }),
+      get skipReason() { return "no_runnable_candidates" as const; }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, { intervalMs: 900_000, idleIntervalMs: 1_800_000 });
+    try {
+      scheduler.start();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(scheduledDelay, 1_800_000);
+    } finally {
+      await scheduler.stop();
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+    }
+  });
+
 });
