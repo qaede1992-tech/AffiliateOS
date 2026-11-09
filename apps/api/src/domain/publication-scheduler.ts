@@ -20,6 +20,7 @@ export class PublicationScheduler {
   private activeRun?: Promise<PublicationWorkerResult[]>;
   private triggerDrain?: Promise<PublicationWorkerResult[] | undefined>;
   private pending = false;
+  private retryAfterRunError = false;
   private readonly now: () => Date;
   private readonly retryAfterErrorMs: number;
   private readonly setTimer: NonNullable<PublicationSchedulerOptions["setTimer"]>;
@@ -89,10 +90,12 @@ export class PublicationScheduler {
     const run = Promise.resolve()
       .then(() => this.worker.runOnce(now))
       .then(async (results) => {
+        this.retryAfterRunError = false;
         if (results.length > 0) await this.notifyResults(results);
         return results;
       })
       .catch(async (error) => {
+        this.retryAfterRunError = true;
         await this.notifyError(error);
         return [];
       })
@@ -106,6 +109,11 @@ export class PublicationScheduler {
 
   private async scheduleNext(): Promise<void> {
     if (!this.started || this.timer || this.activeRun || this.triggerDrain || this.pending) return;
+    if (this.retryAfterRunError) {
+      this.retryAfterRunError = false;
+      this.scheduleRetry();
+      return;
+    }
     try {
       const nextWakeAt = await this.worker.nextWakeAt();
       if (!this.started || this.timer || this.activeRun || this.triggerDrain || this.pending || !nextWakeAt) return;
@@ -119,13 +127,17 @@ export class PublicationScheduler {
       (this.timer as SchedulerTimer & { unref?: () => void }).unref?.();
     } catch (error) {
       await this.notifyError(error);
-      if (!this.started || this.timer || this.triggerDrain || this.pending) return;
-      this.timer = this.setTimer(() => {
-        this.timer = undefined;
-        void this.trigger();
-      }, this.retryAfterErrorMs);
-      (this.timer as SchedulerTimer & { unref?: () => void }).unref?.();
+      this.scheduleRetry();
     }
+  }
+
+  private scheduleRetry(): void {
+    if (!this.started || this.timer || this.triggerDrain || this.pending) return;
+    this.timer = this.setTimer(() => {
+      this.timer = undefined;
+      void this.trigger();
+    }, this.retryAfterErrorMs);
+    (this.timer as SchedulerTimer & { unref?: () => void }).unref?.();
   }
 
   private clearScheduledTimer(): void {
