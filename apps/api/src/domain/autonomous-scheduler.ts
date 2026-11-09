@@ -68,11 +68,11 @@ export class AutonomousScheduler {
     };
   }
 
-  // Evaluate the existing catalog once on startup. Further work is event-driven.
+  // Starting the API is not a work event. Wait for an import or media/rights
+  // change before running a cycle so empty restarts do not rescan the catalog.
   start(): void {
     if (this.started) return;
     this.started = true;
-    void this.trigger();
   }
 
   async stop(): Promise<void> {
