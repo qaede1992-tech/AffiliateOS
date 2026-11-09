@@ -53,7 +53,7 @@ describe("DistributionEngine", () => {
 });
 
 
-test("notifies the publication scheduler after a publication job is enqueued", async () => {
+it("notifies the publication scheduler after a publication job is enqueued", async () => {
   const { contentService, socialAccounts, created } = await setup("instagram", [account("instagram-account", "instagram")]);
   let enqueued = 0;
   let notified = 0;
