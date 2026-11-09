@@ -84,4 +84,27 @@ describe("PublicationWorker nextWakeAt", () => {
     const worker = createWorker(jobs, operations);
     assert.equal(await worker.nextWakeAt(), undefined);
   });
+
+  it("uses bounded repository wake lookups without loading publication history", async () => {
+    const jobs = {
+      nextWakeAt: async (lockTimeoutMs: number) => {
+        assert.equal(lockTimeoutMs, 10 * 60 * 1000);
+        return new Date("2026-09-21T10:05:00.000Z");
+      },
+      list: async () => { throw new Error("unbounded publication job history read"); }
+    } as unknown as InMemoryPublicationJobRepository;
+    const operations = {
+      findEarliestReconciliationUpdatedAt: async () => "2026-09-21T10:00:00.000Z",
+      list: async () => { throw new Error("unbounded publication operation history read"); }
+    } as unknown as InMemoryPublicationOperationRepository;
+    const worker = new PublicationWorker(
+      jobs,
+      new PublicationJobService(jobs),
+      {} as PublisherExecutor,
+      {} as never,
+      operations
+    );
+
+    assert.equal((await worker.nextWakeAt())?.toISOString(), "2026-09-21T10:02:00.000Z");
+  });
 });
