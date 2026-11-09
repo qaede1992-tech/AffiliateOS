@@ -44,6 +44,47 @@ describe("autonomous marketplace candidate provider", () => {
     assert.equal(result[0].offers[0].id, "offer-1");
   });
 
+  it("loads only active products and offers scoped to the affiliate account for affiliate feeds", async () => {
+    const calls: string[] = [];
+    const p = product("feed-product");
+    const offer = {
+      id: "feed-offer",
+      productId: p.id,
+      affiliateAccountId: "account-feed",
+      externalOfferId: "external-feed-offer",
+      affiliateUrl: "https://example.invalid/affiliate",
+      affiliateLinkStatus: "active" as const,
+      status: "active" as const,
+      availability: "unknown" as const,
+      availabilityMetadata: {},
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt
+    };
+    const marketplace = {
+      listConnections: async () => [{ id: "marketplace-feed", slug: "feed", connectionMode: "affiliate_feed", enabled: true, status: "active" }],
+      getAffiliateAccount: async () => ({ id: "account-feed", affiliateId: "affiliate-feed", status: "active" }),
+      listActiveProductsByMarketplace: async (marketplaceId: string, limit: number) => {
+        calls.push("products:" + marketplaceId + ":" + limit);
+        return [p];
+      },
+      listActiveAffiliateOffersForProducts: async (accountId: string, productIds: string[]) => {
+        calls.push("offers:" + accountId + ":" + productIds.join(","));
+        return [offer];
+      },
+      listProducts: async () => { throw new Error("unscoped product list must not be called"); },
+      listAffiliateOffers: async () => { throw new Error("unscoped offer list must not be called"); }
+    } as any;
+
+    const result = await new AutonomousMarketplaceCandidateProvider(marketplace, { maxProductsPerConnection: 25 }).listCandidates();
+
+    assert.deepEqual(calls, [
+      "products:marketplace-feed:25",
+      "offers:account-feed:feed-product"
+    ]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].offers[0].id, "feed-offer");
+  });
+
   it("regenerates expired links and excludes a newly expired generated link", async () => {
     const calls: string[] = [];
     const p = product("product-expired");

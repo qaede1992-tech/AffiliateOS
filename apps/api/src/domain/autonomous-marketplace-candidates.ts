@@ -27,16 +27,14 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
         const affiliateAccount = await this.marketplace.getAffiliateAccount(connection.slug);
         if (!affiliateAccount.affiliateId || affiliateAccount.status !== "active") continue;
         const products = connection.connectionMode === "affiliate_feed"
-        ? (await this.marketplace.listProducts())
-          .filter((product) => product.marketplaceId === connection.id && product.status === "active")
-          .slice(0, this.maxProductsPerConnection)
+        ? await this.marketplace.listActiveProductsByMarketplace(connection.id, this.maxProductsPerConnection)
         : (await this.marketplace.discoverProducts(connection.slug))
           .filter((product) => product.status === "active")
           .slice(0, this.maxProductsPerConnection);
       // Affiliate-feed offers are already persisted locally. Load the catalog once
       // per connection instead of re-reading every offer for every product.
       const affiliateFeedOffers = connection.connectionMode === "affiliate_feed" && products.length > 0
-        ? await this.marketplace.listAffiliateOffers().catch(() => [])
+        ? await this.marketplace.listActiveAffiliateOffersForProducts(affiliateAccount.id, products.map((product) => product.id)).catch(() => [])
         : undefined;
       for (const product of products) {
         try {

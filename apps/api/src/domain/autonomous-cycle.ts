@@ -33,7 +33,12 @@ export type AutonomousCycleResult = {
   explorationEvaluation?: ExplorationEvaluationRunResult;
 };
 
-export type AutonomousCycleSkipReason = "already_running" | "lock_busy";
+export type AutonomousCycleSkipReason = "already_running" | "lock_busy" | "no_runnable_candidates" | "no_publishable_candidates";
+
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
 
 const classifyMediaSkipReason = (reason: string): string => {
   const normalized = reason.toLowerCase();
@@ -122,6 +127,25 @@ export class AutonomousCycleService {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
+
+      // An empty catalog is not autonomous work. Avoid media discovery, execution,
+      // exploration, optimization analytics, and feedback-history reads entirely.
+      const runnableCandidateCount = candidateList.filter((candidate) => candidate.offers.length > 0).length;
+      if (runnableCandidateCount === 0) {
+        this.lastSkipReason = "no_runnable_candidates";
+        console.info(JSON.stringify({
+          event: "autonomous_cycle_skipped",
+          reason: "no_runnable_candidates",
+          catalogCandidateCount: candidateList.length
+        }));
+        const completedAt = new Date().toISOString();
+        return {
+          startedAt,
+          completedAt,
+          candidateCount: candidateList.length,
+          execution: { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 }
+        };
+      }
       // Caller-supplied IDs are not evidence of publication rights.
       // If media discovery/storage is unavailable, the final media gates stay empty.
       let videoIds: string[] = [];
@@ -187,11 +211,16 @@ export class AutonomousCycleService {
           try {
             await this.preMediaEligibility.saveMany(evidence);
           } catch (error) {
+            // Database/ORM errors may embed the full SQL statement and bound values.
+            // Keep operational logs useful without leaking query parameters or product data.
             console.warn(JSON.stringify({
               event: "autonomous_pre_media_eligibility_persist_failed",
               evidenceCount: evidence.length,
-              reason: error instanceof Error ? error.message : "Pre-media eligibility evidence could not be persisted."
+              errorType: safeErrorType(error)
             }));
+            // The evidence is the audit record that authorizes the later admin-reviewed
+            // media-import workflow. Do not continue selection/discovery without it.
+            throw new Error("Pre-media eligibility evidence could not be persisted; autonomous cycle aborted.");
           }
         }
         const mediaDiscoverySummary = {
@@ -222,7 +251,7 @@ export class AutonomousCycleService {
             console.warn(JSON.stringify({
               event: "autonomous_product_media_discovery_failed",
               productId: candidate.product.id,
-              reason: error instanceof Error ? error.message : "Product media discovery failed."
+              errorType: safeErrorType(error)
             }));
           }
         }
@@ -234,7 +263,7 @@ export class AutonomousCycleService {
           mediaIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_media_index_failed",
-            reason: error instanceof Error ? error.message : "Product media index lookup failed."
+            errorType: safeErrorType(error)
           }));
         }
         try {
@@ -251,7 +280,7 @@ export class AutonomousCycleService {
           videoIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_video_index_failed",
-            reason: error instanceof Error ? error.message : "Product video index lookup failed."
+            errorType: safeErrorType(error)
           }));
         }
 
@@ -259,7 +288,7 @@ export class AutonomousCycleService {
           mediaReadinessScores = await this.productMediaDiscovery.listMediaReadinessScores(productIds, input.platforms);
         } catch (error) {
           mediaReadinessScores = Object.fromEntries(productIds.map((id) => [id, 0]));
-          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", reason: error instanceof Error ? error.message : "Media readiness scoring failed." }));
+          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", errorType: safeErrorType(error) }));
         }
 
         // Pass 2: final affiliate selection. It requires verified, persisted product media,
@@ -296,7 +325,7 @@ export class AutonomousCycleService {
             console.warn(JSON.stringify({
               event: "autonomous_product_promo_video_failed",
               productId: candidate.product.id,
-              reason: error instanceof Error ? error.message : "Product promo video generation failed."
+              errorType: safeErrorType(error)
             }));
           }
         }
@@ -306,7 +335,7 @@ export class AutonomousCycleService {
           videoIds = [];
           console.warn(JSON.stringify({
             event: "autonomous_product_video_index_failed",
-            reason: error instanceof Error ? error.message : "Product video index lookup failed."
+            errorType: safeErrorType(error)
           }));
         }
         console.info(JSON.stringify({
@@ -328,6 +357,25 @@ export class AutonomousCycleService {
           publishableMediaProductCount: mediaIds.length,
           publishableVideoProductCount: videoIds.length
         }));
+      }
+      // If media discovery is configured but no product has rights-verified media,
+      // there is no publication-eligible work. Do not write another full decision
+      // audit batch or run exploration/optimization against the same blocked catalog.
+      // The scheduler will re-check at its longer idle cadence so human media review
+      // and newly imported/changed products are still picked up.
+      if (this.productMediaDiscovery && mediaIds.length === 0) {
+        this.lastSkipReason = "no_publishable_candidates";
+        console.info(JSON.stringify({
+          event: "autonomous_cycle_skipped",
+          reason: "no_publishable_candidates",
+          catalogCandidateCount: candidateList.length
+        }));
+        return {
+          startedAt,
+          completedAt: new Date().toISOString(),
+          candidateCount: candidateList.length,
+          execution: { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 }
+        };
       }
       const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
       const executionInput: AutonomousExecutionInput = {

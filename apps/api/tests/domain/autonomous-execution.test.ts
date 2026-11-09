@@ -30,7 +30,11 @@ const orchestrationResult = {} as CampaignOrchestrationResult;
 
 describe("AutonomousExecutionService", () => {
   it("excludes completed opportunities from preview selection", async () => {
-    const completedRuns = { hasCompletedOpportunity: async () => true };
+    const completedRuns = {
+      hasCompletedOpportunity: async () => { throw new Error("single-opportunity lookup should not be used"); },
+      listCompletedOpportunityKeys: async (opportunities: Array<{ productId: string; offerId: string }>) =>
+        opportunities.map(({ productId, offerId }) => `${productId}:${offerId}`)
+    };
     const service = new AutonomousExecutionService(
       new AutonomousOpportunitySelector(),
       {} as CampaignOrchestrator,
