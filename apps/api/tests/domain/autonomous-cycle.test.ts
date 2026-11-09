@@ -108,6 +108,35 @@ describe("autonomous cycle", () => {
     assert.equal(logs.some((line) => line.includes("private-product-path")), false);
   });
 
+  it("idles without downstream work when no marketplace candidates exist", async () => {
+    const calls: string[] = [];
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() { calls.push("load-candidates"); return []; }
+    };
+    const execution = {
+      async previewSelection() { calls.push("preview"); throw new Error("preview must not run"); },
+      async runOnce() { calls.push("execution"); throw new Error("execution must not run"); }
+    } as unknown as AutonomousExecutionService;
+    const optimization = { async run() { calls.push("optimization"); throw new Error("optimization must not run"); } };
+    const exploration = { async run() { calls.push("exploration"); throw new Error("exploration must not run"); } };
+    const media = {
+      async discover() { calls.push("media"); throw new Error("media discovery must not run"); }
+    };
+    const service = new AutonomousCycleService(
+      candidates, execution, undefined, "test:idle-cycle",
+      optimization as never, exploration as never, media as never
+    );
+
+    const result = await service.runOnce();
+
+    assert.ok(result);
+    assert.equal(result.candidateCount, 0);
+    assert.deepEqual(result.execution, {
+      selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0
+    });
+    assert.deepEqual(calls, ["load-candidates"]);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
@@ -207,7 +236,7 @@ describe("autonomous cycle", () => {
   });
 
   it("derives publication time from a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "scheduled-product" } as never, offers: [] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) {
@@ -234,7 +263,7 @@ describe("autonomous cycle", () => {
   });
 
   it("preserves an explicit publication time over a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "explicit-schedule-product" } as never, offers: [] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) { scheduledAt = input.scheduledAt; return { selected: [], rejected: [], outcomes: [] }; }
