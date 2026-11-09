@@ -104,11 +104,19 @@ test("uses persisted products and affiliate offers for affiliate-feed connection
       getOffersCalled = true;
       return [];
     },
-    listProducts: async () => feedProducts,
-    listAffiliateOffers: async () => {
+    listActiveProductsByMarketplace: async (marketplaceId: string, limit: number) => {
+      assert.equal(marketplaceId, "feed-marketplace");
+      assert.equal(limit, 100);
+      return feedProducts;
+    },
+    listActiveAffiliateOffersForProducts: async (accountId: string, productIds: string[]) => {
+      assert.equal(accountId, "feed-account");
+      assert.deepEqual(productIds, feedProducts.map((item) => item.id));
       listAffiliateOffersCalls += 1;
       return feedOffers;
-    }
+    },
+    listProducts: async () => { throw new Error("unscoped product list must not be called"); },
+    listAffiliateOffers: async () => { throw new Error("unscoped offer list must not be called"); }
   };
 
   const provider = new AutonomousMarketplaceCandidateProvider(marketplace as any);

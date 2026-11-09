@@ -6,7 +6,7 @@ import type { AutonomousExecutionService } from "../../src/domain/autonomous-exe
 
 describe("autonomous cycle", () => {
   it("renders promo videos only after final affiliate selection and verified media eligibility", async () => {
-    const candidates = ["selected-image", "media-rejected"].map((id) => ({ product: { id } as never, offers: [] }));
+    const candidates = ["selected-image", "media-rejected"].map((id) => ({ product: { id } as never, offers: [{} as never] }));
     const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
     let videoLookupCount = 0;
@@ -61,7 +61,7 @@ describe("autonomous cycle", () => {
   it("logs aggregate media discovery outcomes without logging source URLs", async () => {
     const product = { id: "media-product" };
     const provider: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean }) {
@@ -111,7 +111,7 @@ describe("autonomous cycle", () => {
   it("aborts before media discovery and execution when preliminary eligibility evidence cannot be persisted", async () => {
     const product = { id: "pre-media-evidence-product" };
     const provider: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     let discoveryCalls = 0;
     let executionCalls = 0;
@@ -207,7 +207,7 @@ describe("autonomous cycle", () => {
   it("sanitizes database errors from media index lookups before logging", async () => {
     const product = { id: "media-index-error-product" };
     const provider: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const execution = {
       async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
@@ -238,12 +238,66 @@ describe("autonomous cycle", () => {
     assert.equal(warningLogs.some((line) => line.includes("SELECT *")), false);
   });
 
+  it("idles without downstream work when no marketplace candidates exist", async () => {
+    const calls: string[] = [];
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() { calls.push("load-candidates"); return []; }
+    };
+    const execution = {
+      async previewSelection() { calls.push("preview"); throw new Error("preview must not run"); },
+      async runOnce() { calls.push("execution"); throw new Error("execution must not run"); }
+    } as unknown as AutonomousExecutionService;
+    const optimization = { async run() { calls.push("optimization"); throw new Error("optimization must not run"); } };
+    const exploration = { async run() { calls.push("exploration"); throw new Error("exploration must not run"); } };
+    const media = {
+      async discover() { calls.push("media"); throw new Error("media discovery must not run"); }
+    };
+    const service = new AutonomousCycleService(
+      candidates, execution, undefined, "test:idle-cycle",
+      optimization as never, exploration as never, media as never
+    );
+
+    const result = await service.runOnce();
+
+    assert.ok(result);
+    assert.equal(result.candidateCount, 0);
+    assert.deepEqual(result.execution, {
+      selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0
+    });
+    assert.deepEqual(calls, ["load-candidates"]);
+  });
+
+  it("idles when catalog products have no executable affiliate offers", async () => {
+    const calls: string[] = [];
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() {
+        calls.push("load-candidates");
+        return [{ product: { id: "product-without-link" } as never, offers: [] }];
+      }
+    };
+    const execution = {
+      async previewSelection() { calls.push("preview"); throw new Error("preview must not run"); },
+      async runOnce() { calls.push("execution"); throw new Error("execution must not run"); }
+    } as unknown as AutonomousExecutionService;
+    const optimization = { async run() { calls.push("optimization"); throw new Error("optimization must not run"); } };
+    const service = new AutonomousCycleService(
+      candidates, execution, undefined, "test:no-executable-offers",
+      optimization as never
+    );
+
+    const result = await service.runOnce();
+
+    assert.ok(result);
+    assert.equal(result.candidateCount, 1);
+    assert.deepEqual(calls, ["load-candidates"]);
+  });
+
   it("loads candidates and delegates one execution pass", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
         return [
-          { product: { id: "product-1" } as never, offers: [] },
-          { product: { id: "product-2" } as never, offers: [] }
+          { product: { id: "product-1" } as never, offers: [{} as never] },
+          { product: { id: "product-2" } as never, offers: [{} as never] }
         ];
       }
     };
@@ -273,7 +327,7 @@ describe("autonomous cycle", () => {
   it("applies the same mandatory safety gates to preview and execution", async () => {
     const candidates: AutonomousCandidateProvider = {
       async listCandidates() {
-        return [{ product: { id: "product-preview" } as never, offers: [] }];
+        return [{ product: { id: "product-preview" } as never, offers: [{} as never] }];
       }
     };
     const previewCalls: unknown[] = [];
@@ -311,7 +365,7 @@ describe("autonomous cycle", () => {
 
   it("requires publishable media for draft-only cycles while keeping publication disabled", async () => {
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: { id: "draft-product" } as never, offers: [] }]; }
+      async listCandidates() { return [{ product: { id: "draft-product" } as never, offers: [{} as never] }]; }
     };
     const calls: Array<{ type: string; publicationEnabled?: boolean; scheduledAt?: string; requirePublishableMedia?: boolean }> = [];
     const execution = {
@@ -337,7 +391,7 @@ describe("autonomous cycle", () => {
   });
 
   it("derives publication time from a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "explicit-schedule-product" } as never, offers: [{} as never] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) {
@@ -364,7 +418,7 @@ describe("autonomous cycle", () => {
   });
 
   it("preserves an explicit publication time over a configured delay", async () => {
-    const candidates: AutonomousCandidateProvider = { async listCandidates() { return []; } };
+    const candidates: AutonomousCandidateProvider = { async listCandidates() { return [{ product: { id: "explicit-schedule-product" } as never, offers: [{} as never] }]; } };
     let scheduledAt: string | undefined;
     const execution = {
       async runOnce(input: { scheduledAt?: string }) { scheduledAt = input.scheduledAt; return { selected: [], rejected: [], outcomes: [] }; }
@@ -376,7 +430,7 @@ describe("autonomous cycle", () => {
 
   it("prevents overlapping cycles and releases the guard after completion", async () => {
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: { id: "product-1" } as never, offers: [] }]; }
+      async listCandidates() { return [{ product: { id: "product-1" } as never, offers: [{} as never] }]; }
     };
     const releases: Array<() => void> = [];
     let callCount = 0;
@@ -452,7 +506,7 @@ describe("autonomous cycle", () => {
   it("discovers candidates within the media score lift band without lowering final selection thresholds", async () => {
     const product = { id: "near-threshold", marketplaceId: "market-1" };
     const candidates: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const previews: Array<{
       policy?: { minimumScore?: number; minimumDataConfidence?: number };
@@ -522,7 +576,7 @@ describe("autonomous cycle", () => {
     const product = { id: "pre-media-product", marketplaceId: "market-1" };
     const rejectedProduct = { id: "rejected-pre-media-product", marketplaceId: "market-1" };
     const provider: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }, { product: rejectedProduct as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }, { product: rejectedProduct as never, offers: [] }]; }
     };
     const saved: Array<Record<string, unknown>> = [];
     const execution = {
