@@ -192,15 +192,17 @@ export class ProductMediaDiscoveryRunner {
         })).digest("hex");
         let shouldSearch = true;
         let claimed = false;
+        let leaseUntil: string | undefined;
         let catalogOutcome: ProductMediaDiscoveryOutcome = "no_results";
         if (this.discoveryAttempts) {
           const now = new Date();
+          leaseUntil = new Date(now.getTime() + 15 * 60_000).toISOString();
           try {
             claimed = await this.discoveryAttempts.claim({
               productId: product.id,
               fingerprint,
               now: now.toISOString(),
-              leaseUntil: new Date(now.getTime() + 15 * 60_000).toISOString()
+              leaseUntil
             });
             shouldSearch = claimed;
           } catch (error) {
@@ -331,7 +333,7 @@ export class ProductMediaDiscoveryRunner {
               });
             }
           }
-          if (this.discoveryAttempts && claimed) {
+          if (this.discoveryAttempts && claimed && leaseUntil) {
             const now = new Date();
             const cooldownMs = catalogOutcome === "success" ? 7 * 24 * 60 * 60_000
               : catalogOutcome === "no_results" ? 24 * 60 * 60_000
@@ -340,6 +342,7 @@ export class ProductMediaDiscoveryRunner {
               await this.discoveryAttempts.complete({
                 productId: product.id,
                 fingerprint,
+                leaseUntil,
                 outcome: catalogOutcome,
                 now: now.toISOString(),
                 nextRetryAt: new Date(now.getTime() + cooldownMs).toISOString()

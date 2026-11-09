@@ -34,14 +34,16 @@ export class DrizzleProductMediaDiscoveryAttemptRepository implements ProductMed
     return rows.length > 0;
   }
 
-  async complete(input: { productId: string; fingerprint: string; outcome: ProductMediaDiscoveryOutcome; now: string; nextRetryAt: string }): Promise<void> {
+  async complete(input: { productId: string; fingerprint: string; leaseUntil: string; outcome: ProductMediaDiscoveryOutcome; now: string; nextRetryAt: string }): Promise<void> {
     await this.db.update(productMediaDiscoveryAttempts).set({
       status: input.outcome,
       nextRetryAt: input.nextRetryAt,
       updatedAt: input.now
     }).where(and(
       eq(productMediaDiscoveryAttempts.productId, input.productId),
-      eq(productMediaDiscoveryAttempts.fingerprint, input.fingerprint)
+      eq(productMediaDiscoveryAttempts.fingerprint, input.fingerprint),
+      eq(productMediaDiscoveryAttempts.status, "in_progress"),
+      eq(productMediaDiscoveryAttempts.nextRetryAt, input.leaseUntil)
     ));
   }
 }
