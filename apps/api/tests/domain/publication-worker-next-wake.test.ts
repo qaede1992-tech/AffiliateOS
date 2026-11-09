@@ -15,7 +15,7 @@ const content = (id: string, scheduledAt: string): Content => ({
   scheduledAt,
   createdAt: "2026-09-20T00:00:00.000Z",
   updatedAt: "2026-09-20T00:00:00.000Z"
-});
+} as Content);
 
 const createWorker = (jobs: InMemoryPublicationJobRepository, operations = new InMemoryPublicationOperationRepository()) =>
   new PublicationWorker(jobs, new PublicationJobService(jobs), {} as PublisherExecutor, undefined, operations);
