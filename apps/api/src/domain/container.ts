@@ -113,7 +113,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const shopeeConversionSyncScheduler = new ShopeeConversionSyncScheduler(marketplace, shopeeConversionSync, autonomousCycleLock ?? new InMemoryAutonomousCycleLock(), { intervalMs: shopeeConversionSyncSchedulerIntervalMs, lookbackHours: shopeeConversionSyncLookbackHours });
   const candidateProvider = new AutonomousMarketplaceCandidateProvider(marketplace);
   const productMediaDiscovery = mediaStorage && repositories.productMediaAssets
-    ? new ProductMediaDiscoveryRunner(mediaStorage, repositories.productMediaAssets, { maxImageBytes: mediaUploadPolicy.maxImageBytes, maxVideoBytes: mediaUploadPolicy.maxVideoBytes }, undefined, repositories.productMediaCandidates, productMediaCatalogSearchOptions)
+    ? new ProductMediaDiscoveryRunner(mediaStorage, repositories.productMediaAssets, { maxImageBytes: mediaUploadPolicy.maxImageBytes, maxVideoBytes: mediaUploadPolicy.maxVideoBytes }, undefined, repositories.productMediaCandidates, productMediaCatalogSearchOptions, repositories.productMediaDiscoveryAttempts)
     : undefined;
   const productMediaCandidateImport = mediaStorage && repositories.productMediaAssets && repositories.productMediaCandidates?.findById && autonomousDecisionAuditRepository
     ? new ProductMediaCandidateImportService({
