@@ -670,4 +670,42 @@ describe("autonomous cycle", () => {
     assert.deepEqual(result.execution, { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 });
   });
 
+
+  it("skips an empty catalog before media discovery, feedback, or execution", async () => {
+    let candidateListCalls = 0;
+    let discoveryCalls = 0;
+    let previewSelectionCalls = 0;
+    let executionCalls = 0;
+    let eligibilityWrites = 0;
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { candidateListCalls += 1; return []; }
+    };
+    const execution = {
+      async previewSelection() { previewSelectionCalls += 1; return { selected: [], rejected: [], audit: [] }; },
+      async runOnce() { executionCalls += 1; return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() { discoveryCalls += 1; return { productId: "unused", pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
+      async listPublishableMediaProductIds() { discoveryCalls += 1; return []; },
+      async listPublishableVideoProductIds() { discoveryCalls += 1; return []; },
+      async listMediaReadinessScores() { discoveryCalls += 1; return {}; },
+      async listVideoProductIds() { discoveryCalls += 1; return []; }
+    };
+    const eligibility = {
+      async saveMany() { eligibilityWrites += 1; },
+      async listLatestByProduct() { return []; }
+    };
+    const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never, eligibility as never);
+
+    const result = await service.runOnce();
+
+    assert.equal(result, undefined);
+    assert.equal(service.skipReason, "no_candidates");
+    assert.equal(candidateListCalls, 1);
+    assert.equal(discoveryCalls, 0);
+    assert.equal(previewSelectionCalls, 0);
+    assert.equal(executionCalls, 0);
+    assert.equal(eligibilityWrites, 0);
+  });
+
 });
