@@ -33,7 +33,7 @@ export type AutonomousCycleResult = {
   explorationEvaluation?: ExplorationEvaluationRunResult;
 };
 
-export type AutonomousCycleSkipReason = "already_running" | "lock_busy" | "no_runnable_candidates" | "no_publishable_candidates";
+export type AutonomousCycleSkipReason = "already_running" | "lock_busy" | "no_candidates" | "no_runnable_candidates" | "no_publishable_candidates";
 
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
@@ -125,6 +125,11 @@ export class AutonomousCycleService {
 
     try {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
+      if (candidateList.length === 0) {
+        this.lastSkipReason = "no_candidates";
+        console.info(JSON.stringify({ event: "autonomous_cycle_skipped", reason: "no_candidates", catalogCandidateCount: 0 }));
+        return undefined;
+      }
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
 
