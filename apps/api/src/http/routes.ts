@@ -131,6 +131,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       scheduler: {
         running: scheduler.running,
         active: scheduler.active,
+        pending: scheduler.pending,
         lastStartedAt: scheduler.lastStartedAt,
         lastCompletedAt: scheduler.lastCompletedAt,
         lastError: scheduler.lastError
@@ -212,6 +213,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const input = importShopeeAffiliateFeedSchema.parse(request.body);
     const result = await services.marketplace.importShopeeAffiliateFeed(input);
     for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
+    if (result.importedProducts > 0 || result.importedOffers > 0) void services.autonomousScheduler.trigger();
     return reply.status(201).send(result);
   }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
@@ -255,6 +257,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       }))
     });
     for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
+    if (result.importedProducts > 0 || result.importedOffers > 0) void services.autonomousScheduler.trigger();
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
     const [products, offers, trackingLinks] = await Promise.all([
@@ -319,6 +322,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
     try {
       const result = await importer.importApprovedCandidate(productId, candidateId);
+      if (result.asset.rightsStatus === "verified") void services.autonomousScheduler.trigger();
       auditSecurityEvent(request.log, request, "product_media_candidate_imported", {
         productId, candidateId, assetId: result.asset.id, alreadyImported: result.alreadyImported,
         rightsStatus: result.asset.rightsStatus
@@ -398,6 +402,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       actorRole: "admin"
     });
     if (!updated) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    if (updated.rightsStatus === "verified") void services.autonomousScheduler.trigger();
     auditSecurityEvent(request.log, request, "product_media_rights_updated", { productId, assetId, status: updated.rightsStatus, rightsBasis: updated.rightsBasis ?? undefined });
     return updated;
   }); app.get("/api/v1/affiliate-offers", async () => list(await services.marketplace.listAffiliateOffers())); app.get("/api/v1/affiliate-offers/verification", async () => list(await services.marketplace.listAffiliateOfferVerification()));
@@ -408,5 +413,5 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/social-accounts", writeGuard, async () => list(await services.socialAccounts.list())); app.post("/api/v1/social-accounts", writeGuard, async (request, reply) => reply.status(201).send(await services.socialAccounts.create(createSocialAccountSchema.parse(request.body)))); app.get("/api/v1/social-accounts/:socialAccountId", writeGuard, async (request) => services.socialAccounts.get(socialAccountIdSchema.parse(request.params).socialAccountId)); app.patch("/api/v1/social-accounts/:socialAccountId", writeGuard, async (request) => services.socialAccounts.update(socialAccountIdSchema.parse(request.params).socialAccountId, updateSocialAccountSchema.parse(request.body)));
   app.post("/api/v1/social-accounts/:socialAccountId/credential/rotate", writeGuard, async (request) => { const { socialAccountId } = socialAccountIdSchema.parse(request.params); const { credentialReference } = socialCredentialRotationSchema.parse(request.body); const account = await services.socialAccounts.rotateCredential(socialAccountId, credentialReference); auditSecurityEvent(request.log, request, "social_credential_rotated", { socialAccountId }); return account; });
   app.post("/api/v1/social-accounts/:socialAccountId/credential/revoke", writeGuard, async (request) => { const { socialAccountId } = socialAccountIdSchema.parse(request.params); const account = await services.socialAccounts.revokeCredential(socialAccountId); auditSecurityEvent(request.log, request, "social_credential_revoked", { socialAccountId }); return account; });
-  app.post("/api/v1/social-accounts/oauth/start", writeGuard, async (request) => { const input = socialOAuthStartSchema.parse(request.body); return services.socialOAuth.start(input.platform, input.redirectUri); }); app.get("/api/v1/social-accounts/oauth/callback", async (request) => { const input = socialOAuthCallbackSchema.parse(request.query); const platform = input.state.slice(37); return services.socialOAuth.callback(platform, input.code, input.state); });
+  app.post("/api/v1/social-accounts/oauth/start", writeGuard, async (request) => { const input = socialOAuthStartSchema.parse(request.body); return services.socialOAuth.start(input.platform, input.redirectUri); }); app.get("/api/v1/social-accounts/oauth/callback", async (request) => { const input = socialOAuthCallbackSchema.parse(request.query); const platform = input.state.slice(37); const result = await services.socialOAuth.callback(platform, input.code, input.state); void services.autonomousScheduler.trigger(); return result; });
 }
