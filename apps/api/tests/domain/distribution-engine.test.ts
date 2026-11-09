@@ -51,3 +51,18 @@ describe("DistributionEngine", () => {
     assert.equal((await second.contentService.get(second.created.id)).status, "draft");
   });
 });
+
+
+test("notifies the publication scheduler after a publication job is enqueued", async () => {
+  const { contentService, socialAccounts, created } = await setup("instagram", [account("instagram-account", "instagram")]);
+  let enqueued = 0;
+  let notified = 0;
+  const jobs = {
+    enqueue: async () => { enqueued += 1; return {}; }
+  } as never;
+  const engine = new DistributionEngine(contentService, socialAccounts, [], jobs, () => { notified += 1; });
+
+  await engine.schedule({ content: created, scheduledAt: "2026-09-21T10:00:00.000Z" });
+  assert.equal(enqueued, 1);
+  assert.equal(notified, 1);
+});
