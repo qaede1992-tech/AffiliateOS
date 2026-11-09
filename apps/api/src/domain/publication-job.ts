@@ -23,6 +23,7 @@ export interface PublicationJob {
 
 export interface PublicationJobRepository {
   list(): Promise<PublicationJob[]>;
+  nextWakeAt?(lockTimeoutMs: number): Promise<Date | undefined>;
   listClaimable?(now: Date, lockTimeoutMs: number, limit: number): Promise<PublicationJob[]>;
   findById(id: EntityId): Promise<PublicationJob | undefined>;
   findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>;
