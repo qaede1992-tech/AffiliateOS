@@ -15,7 +15,7 @@ export type AutonomousSchedulerStatus = {
   lastCompletedAt?: string;
   lastResult?: AutonomousCycleResult;
   lastError?: string;
-  lastSkipReason?: "already_running" | "lock_busy";
+  lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates";
 };
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
@@ -35,7 +35,7 @@ export class AutonomousScheduler {
   private lastCompletedAt?: string;
   private lastResult?: AutonomousCycleResult;
   private lastError?: string;
-  private lastSkipReason?: "already_running" | "lock_busy";
+  private lastSkipReason?: "already_running" | "lock_busy" | "no_runnable_candidates";
 
   constructor(
     private readonly cycle: AutonomousCycleService,
