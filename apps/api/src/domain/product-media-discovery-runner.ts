@@ -12,6 +12,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { buildProductMediaSearchQuery, getOpenverseHttpFailureDetails, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
 import { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
+import type { ProductMediaDiscoveryAttemptRepository, ProductMediaDiscoveryOutcome } from "./product-media-discovery-attempt.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
   maxProductPageBytes?: number;
@@ -59,7 +60,8 @@ export class ProductMediaDiscoveryRunner {
     private readonly policy: ProductMediaDiscoveryPolicy,
     private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps,
     private readonly catalogCandidates?: ProductMediaCandidateRepository,
-    private readonly catalogSearchOptions: ProductMediaCatalogSearchOptions = {}
+    private readonly catalogSearchOptions: ProductMediaCatalogSearchOptions = {},
+    private readonly discoveryAttempts?: ProductMediaDiscoveryAttemptRepository
   ) {
     this.bucketName = storage.bucketName;
     this.ingestion = new ProductMediaIngestionService(storage, assets, policy, fetcher);
@@ -180,119 +182,179 @@ export class ProductMediaDiscoveryRunner {
       if (this.catalogCandidates) {
         const identity = { name: product.name, ...(product.category?.trim() ? { category: product.category } : {}) };
         const query = buildProductMediaSearchQuery(identity);
-        let discovered: ProductMediaCatalogCandidate[] = [];
-        let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
-        let openverseFailure: string | undefined;
-        let openverseFailureDetails: ReturnType<typeof getOpenverseHttpFailureDetails> = null;
-        let discoveryFailed = false;
-        try {
+        const fingerprint = createHash("sha256").update(JSON.stringify({
+          name: product.name.trim(),
+          category: product.category?.trim() ?? "",
+          productUrl: product.productUrl,
+          imageUrl: product.imageUrl ?? "",
+          videoUrl: product.videoUrl ?? "",
+          query
+        })).digest("hex");
+        let shouldSearch = true;
+        let claimed = false;
+        let catalogOutcome: ProductMediaDiscoveryOutcome = "no_results";
+        if (this.discoveryAttempts) {
+          const now = new Date();
           try {
-            discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
-          } catch (error) {
-            openverseFailure = safeErrorType(error);
-            openverseFailureDetails = getOpenverseHttpFailureDetails(error);
-            discoveryProvider = "wikimedia_commons";
-            console.warn(JSON.stringify({
-              event: "product_media_catalog_provider_fallback",
-              primaryProvider: "openverse",
-              fallbackProvider: "wikimedia_commons",
+            claimed = await this.discoveryAttempts.claim({
               productId: product.id,
-              errorType: openverseFailure,
-              ...(openverseFailureDetails ? {
-                failureDetails: {
-                  endpoint: openverseFailureDetails.endpoint,
-                  status: openverseFailureDetails.status,
-                  contentType: openverseFailureDetails.contentType,
-                  server: openverseFailureDetails.server,
-                  cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
-                  responseKind: openverseFailureDetails.responseKind
-                }
-              } : {})
+              fingerprint,
+              now: now.toISOString(),
+              leaseUntil: new Date(now.getTime() + 15 * 60_000).toISOString()
+            });
+            shouldSearch = claimed;
+          } catch (error) {
+            shouldSearch = false;
+            skipped.push({ url: product.productUrl, reason: "catalog_discovery_cooldown_unavailable" });
+            console.warn(JSON.stringify({
+              event: "product_media_discovery_cooldown_claim_failed",
+              productId: product.id,
+              errorType: safeErrorType(error)
             }));
-            discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
           }
-        } catch (error) {
-          discoveryFailed = true;
-          console.warn(JSON.stringify({
-            event: "product_media_catalog_search_failed",
-            provider: discoveryProvider,
-            productId: product.id,
-            errorType: safeErrorType(error)
-          }));
-          skipped.push({
-            url: discoveryProvider === "openverse" ? "https://api.openverse.org/v1/images/" : "https://commons.wikimedia.org/w/api.php",
-            reason: "catalog_discovery_failed"
-          });
         }
-        if (!discoveryFailed) {
-          const now = new Date().toISOString();
-          const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
-            identityStatus: "strong_match" | "review_required"
-          } => candidate.identityStatus !== "rejected");
-          const records = accepted.map((candidate) => ({
-            id: randomUUID(),
-            productId: product.id,
-            provider: candidate.provider,
-            candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
-            query: candidate.searchQuery ?? query,
-            title: candidate.title,
-            imageUrl: candidate.imageUrl,
-            landingPageUrl: candidate.landingPageUrl,
-            creator: candidate.creator,
-            creatorUrl: candidate.creatorUrl,
-            license: candidate.license,
-            licenseVersion: candidate.licenseVersion,
-            licenseUrl: candidate.licenseUrl,
-            sourcePublisher: candidate.sourcePublisher,
-            identityScore: candidate.identityScore,
-            identityStatus: candidate.identityStatus,
-            identityReasons: candidate.identityReasons,
-            reviewStatus: "pending" as const,
-            rightsStatus: "unverified" as const,
-            reviewedBy: null,
-            reviewedAt: null,
-            reviewReason: null,
-            createdAt: now,
-            updatedAt: now
-          }));
+        if (shouldSearch) {
+          let candidatesFound = 0;
+          let discovered: ProductMediaCatalogCandidate[] = [];
+          let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
+          let openverseFailure: string | undefined;
+          let openverseFailureDetails: ReturnType<typeof getOpenverseHttpFailureDetails> = null;
+          let discoveryFailed = false;
           try {
-            const saved = await this.catalogCandidates.saveMany(records);
-            candidatesFound = accepted.length;
-            const insertedCount = saved.length;
-            const alreadyPresentCount = Math.max(0, accepted.length - insertedCount);
-            console.info(JSON.stringify({
-              event: "product_media_catalog_search_completed",
-              provider: discoveryProvider,
-              fallbackReason: openverseFailure,
-              ...(openverseFailureDetails ? {
-                fallbackFailureDetails: {
-                  endpoint: openverseFailureDetails.endpoint,
-                  status: openverseFailureDetails.status,
-                  contentType: openverseFailureDetails.contentType,
-                  server: openverseFailureDetails.server,
-                  cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
-                  responseKind: openverseFailureDetails.responseKind
-                }
-              } : {}),
-              productId: product.id,
-              resultCount: discovered.length,
-              acceptedCount: accepted.length,
-              savedCount: insertedCount,
-              alreadyPresentCount
-            }));
+            try {
+              discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
+            } catch (error) {
+              openverseFailure = safeErrorType(error);
+              openverseFailureDetails = getOpenverseHttpFailureDetails(error);
+              discoveryProvider = "wikimedia_commons";
+              console.warn(JSON.stringify({
+                event: "product_media_catalog_provider_fallback",
+                primaryProvider: "openverse",
+                fallbackProvider: "wikimedia_commons",
+                productId: product.id,
+                errorType: openverseFailure,
+                ...(openverseFailureDetails ? {
+                  failureDetails: {
+                    endpoint: openverseFailureDetails.endpoint,
+                    status: openverseFailureDetails.status,
+                    contentType: openverseFailureDetails.contentType,
+                    server: openverseFailureDetails.server,
+                    cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
+                    responseKind: openverseFailureDetails.responseKind
+                  }
+                } : {})
+              }));
+              discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+            }
           } catch (error) {
+            discoveryFailed = true;
+            catalogOutcome = "provider_error";
             console.warn(JSON.stringify({
-              event: "product_media_catalog_persistence_failed",
+              event: "product_media_catalog_search_failed",
               provider: discoveryProvider,
               productId: product.id,
-              acceptedCount: accepted.length,
               errorType: safeErrorType(error)
             }));
             skipped.push({
               url: discoveryProvider === "openverse" ? "https://api.openverse.org/v1/images/" : "https://commons.wikimedia.org/w/api.php",
-              reason: "catalog_persistence_failed"
+              reason: "catalog_discovery_failed"
             });
           }
+          if (!discoveryFailed) {
+            const now = new Date().toISOString();
+            const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
+              identityStatus: "strong_match" | "review_required"
+            } => candidate.identityStatus !== "rejected");
+            const records = accepted.map((candidate) => ({
+              id: randomUUID(),
+              productId: product.id,
+              provider: candidate.provider,
+              candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
+              query: candidate.searchQuery ?? query,
+              title: candidate.title,
+              imageUrl: candidate.imageUrl,
+              landingPageUrl: candidate.landingPageUrl,
+              creator: candidate.creator,
+              creatorUrl: candidate.creatorUrl,
+              license: candidate.license,
+              licenseVersion: candidate.licenseVersion,
+              licenseUrl: candidate.licenseUrl,
+              sourcePublisher: candidate.sourcePublisher,
+              identityScore: candidate.identityScore,
+              identityStatus: candidate.identityStatus,
+              identityReasons: candidate.identityReasons,
+              reviewStatus: "pending" as const,
+              rightsStatus: "unverified" as const,
+              reviewedBy: null,
+              reviewedAt: null,
+              reviewReason: null,
+              createdAt: now,
+              updatedAt: now
+            }));
+            try {
+              const saved = await this.catalogCandidates.saveMany(records);
+              candidatesFound = accepted.length;
+              catalogOutcome = accepted.length > 0 ? "success" : "no_results";
+              const insertedCount = saved.length;
+              const alreadyPresentCount = Math.max(0, accepted.length - insertedCount);
+              console.info(JSON.stringify({
+                event: "product_media_catalog_search_completed",
+                provider: discoveryProvider,
+                fallbackReason: openverseFailure,
+                ...(openverseFailureDetails ? {
+                  fallbackFailureDetails: {
+                    endpoint: openverseFailureDetails.endpoint,
+                    status: openverseFailureDetails.status,
+                    contentType: openverseFailureDetails.contentType,
+                    server: openverseFailureDetails.server,
+                    cloudflareRayPresent: openverseFailureDetails.cloudflareRayPresent,
+                    responseKind: openverseFailureDetails.responseKind
+                  }
+                } : {}),
+                productId: product.id,
+                resultCount: discovered.length,
+                acceptedCount: accepted.length,
+                savedCount: insertedCount,
+                alreadyPresentCount
+              }));
+            } catch (error) {
+              catalogOutcome = "provider_error";
+              console.warn(JSON.stringify({
+                event: "product_media_catalog_persistence_failed",
+                provider: discoveryProvider,
+                productId: product.id,
+                acceptedCount: accepted.length,
+                errorType: safeErrorType(error)
+              }));
+              skipped.push({
+                url: discoveryProvider === "openverse" ? "https://api.openverse.org/v1/images/" : "https://commons.wikimedia.org/w/api.php",
+                reason: "catalog_persistence_failed"
+              });
+            }
+          }
+          if (this.discoveryAttempts && claimed) {
+            const now = new Date();
+            const cooldownMs = catalogOutcome === "success" ? 7 * 24 * 60 * 60_000
+              : catalogOutcome === "no_results" ? 24 * 60 * 60_000
+              : 30 * 60_000;
+            try {
+              await this.discoveryAttempts.complete({
+                productId: product.id,
+                fingerprint,
+                outcome: catalogOutcome,
+                now: now.toISOString(),
+                nextRetryAt: new Date(now.getTime() + cooldownMs).toISOString()
+              });
+            } catch (error) {
+              console.warn(JSON.stringify({
+                event: "product_media_discovery_cooldown_complete_failed",
+                productId: product.id,
+                errorType: safeErrorType(error)
+              }));
+            }
+          }
+        } else if (this.discoveryAttempts && !claimed) {
+          console.info(JSON.stringify({ event: "product_media_catalog_search_skipped_cooldown", productId: product.id }));
         }
       }
       const catalogCandidates: ProductMediaCandidate[] = [];
