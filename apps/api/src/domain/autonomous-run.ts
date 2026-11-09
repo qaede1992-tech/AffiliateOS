@@ -9,9 +9,12 @@ export interface AutonomousRun {
   status: AutonomousRunStatus; attemptCount: number; nextAttemptAt?: IsoTimestamp; lastError?: string;
   executionContext?: AutonomousRunExecutionContext; createdAt: IsoTimestamp; updatedAt: IsoTimestamp;
 }
+export type AutonomousOpportunityIdentity = { productId: EntityId; offerId: EntityId };
+
 export interface AutonomousRunRepository {
   findByIdempotencyKey(key: string): Promise<AutonomousRun | undefined>;
   hasCompletedOpportunity?(productId: EntityId, offerId: EntityId): Promise<boolean>;
+  listCompletedOpportunityKeys?(opportunities: AutonomousOpportunityIdentity[]): Promise<string[]>;
   findById?(id: EntityId): Promise<AutonomousRun | undefined>;
   save(run: AutonomousRun): Promise<AutonomousRun>;
   saveIfAbsent?(run: AutonomousRun): Promise<AutonomousRun>;
@@ -25,6 +28,12 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
   async findByIdempotencyKey(key: string) { return this.runs.get(key); }
   async hasCompletedOpportunity(productId: EntityId, offerId: EntityId) {
     return [...this.runs.values()].some((run) => run.status === "completed" && run.opportunityProductId === productId && run.offerId === offerId);
+  }
+  async listCompletedOpportunityKeys(opportunities: AutonomousOpportunityIdentity[]): Promise<string[]> {
+    const requested = new Set(opportunities.map(({ productId, offerId }) => `${productId}:${offerId}`));
+    return [...this.runs.values()]
+      .filter((run) => run.status === "completed" && requested.has(`${run.opportunityProductId}:${run.offerId}`))
+      .map((run) => `${run.opportunityProductId}:${run.offerId}`);
   }
   async findById(id: EntityId) { return [...this.runs.values()].find((run) => run.id === id); }
   async save(run: AutonomousRun) { this.runs.set(run.idempotencyKey, run); return run; }
