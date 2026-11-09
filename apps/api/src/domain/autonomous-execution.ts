@@ -15,6 +15,8 @@ export type AutonomousExecutionInput = {
   platforms?: ContentPlatform[];
   scheduledAt?: string;
   idempotencyNamespace?: string;
+  /** Use lightweight latest feedback for discovery-only previews; authoritative selection keeps full history. */
+  feedbackHistoryMode?: "latest" | "full";
   requirePublishableMedia?: boolean;
   requirePublishableVideo?: boolean;
   /** Product IDs with validated, persisted video assets discovered before final selection. */
@@ -49,7 +51,7 @@ export class AutonomousExecutionService {
           offers: candidate.offers.filter((candidateOffer) => !completedOpportunityKeys.has(`${candidate.product.id}:${candidateOffer.id}`))
         }))
       : input.candidates;
-    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace }) : new Map();
+    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace, historyMode: input.feedbackHistoryMode ?? "full" }) : new Map();
     const adaptiveExplorationRates = this.adaptiveExploration
       ? await this.adaptiveExploration.getRates(candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
