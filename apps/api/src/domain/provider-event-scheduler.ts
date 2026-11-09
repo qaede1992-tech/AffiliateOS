@@ -2,6 +2,7 @@ import type { ProviderEventWorker, ProviderEventWorkerResult } from "./provider-
 
 export type ProviderEventSchedulerOptions = {
   intervalMs?: number;
+  idleMaxIntervalMs?: number;
   now?: () => Date;
   onResult?: (result: ProviderEventWorkerResult) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
@@ -17,11 +18,15 @@ export type ProviderEventSchedulerStatus = {
 };
 
 const DEFAULT_INTERVAL_MS = 60_000;
+const DEFAULT_IDLE_MAX_INTERVAL_MS = 2 * 60_000;
 const MIN_INTERVAL_MS = 10_000;
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class ProviderEventScheduler {
   private readonly intervalMs: number;
+  private readonly idleMaxIntervalMs: number;
+  private currentIntervalMs: number;
+  private consecutiveEmptyRuns = 0;
   private readonly now: () => Date;
   private readonly onResult?: ProviderEventSchedulerOptions["onResult"];
   private readonly onError?: ProviderEventSchedulerOptions["onError"];
@@ -41,6 +46,11 @@ export class ProviderEventScheduler {
     if (!Number.isFinite(this.intervalMs) || this.intervalMs < MIN_INTERVAL_MS) {
       throw new Error("Provider event scheduler interval must be at least 10 seconds.");
     }
+    this.idleMaxIntervalMs = options.idleMaxIntervalMs ?? Math.max(this.intervalMs, DEFAULT_IDLE_MAX_INTERVAL_MS);
+    if (!Number.isFinite(this.idleMaxIntervalMs) || this.idleMaxIntervalMs < this.intervalMs || this.idleMaxIntervalMs > 60 * 60_000) {
+      throw new Error("Provider event scheduler idle maximum must be between the base interval and one hour.");
+    }
+    this.currentIntervalMs = this.intervalMs;
     this.now = options.now ?? (() => new Date());
     this.onResult = options.onResult;
     this.onError = options.onError;
@@ -48,6 +58,11 @@ export class ProviderEventScheduler {
 
   get isRunning(): boolean {
     return this.started;
+  }
+
+  /** Current delay before the next poll; exposed for health diagnostics and deterministic tests. */
+  get nextIntervalMs(): number {
+    return this.currentIntervalMs;
   }
 
   get status(): ProviderEventSchedulerStatus {
@@ -84,11 +99,13 @@ export class ProviderEventScheduler {
     this.activeRun = this.worker.runOnce()
       .then(async (result) => {
         this.lastResult = result;
+        this.updateIntervalAfterResult(result);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyResult(result);
         return result;
       })
       .catch(async (error) => {
+        this.resetInterval();
         this.lastError = error instanceof Error ? error.message : String(error);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyError(error);
@@ -99,6 +116,22 @@ export class ProviderEventScheduler {
       });
 
     return this.activeRun;
+  }
+
+  private updateIntervalAfterResult(result: ProviderEventWorkerResult): void {
+    if (result.scanned > 0) {
+      this.resetInterval();
+      return;
+    }
+    if (this.consecutiveEmptyRuns > 0) {
+      this.currentIntervalMs = Math.min(this.currentIntervalMs * 2, this.idleMaxIntervalMs);
+    }
+    this.consecutiveEmptyRuns += 1;
+  }
+
+  private resetInterval(): void {
+    this.consecutiveEmptyRuns = 0;
+    this.currentIntervalMs = this.intervalMs;
   }
 
   private async notifyResult(result: ProviderEventWorkerResult): Promise<void> {
@@ -129,6 +162,6 @@ export class ProviderEventScheduler {
     this.timer = setTimeout(() => {
       this.timer = undefined;
       void this.runAndSchedule();
-    }, this.intervalMs);
+    }, this.currentIntervalMs);
   }
 }
