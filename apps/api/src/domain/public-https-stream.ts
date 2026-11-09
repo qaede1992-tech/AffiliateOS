@@ -1,5 +1,6 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { isPublicMediaUrl } from "./media-asset.js";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { Transform, Readable } from "node:stream";
 
@@ -33,7 +34,9 @@ function isPublicAddress(address: string): boolean {
       (a === 203 && b === 0 && c === 113));
   }
   if (family !== 6) return false;
-  const normalized = address.toLowerCase();
+  // Normalize textual IPv6 forms before prefix checks so expanded answers
+  // cannot bypass special-use range detection.
+  const normalized = new URL("https://[" + address + "]/").hostname.slice(1, -1).toLowerCase();
   // Allow only global-unicast 2000::/3; reject documentation, transition,
   // benchmarking, and other special-use IPv6 ranges.
   if (!/^[23]/.test(normalized)) return false;
@@ -53,31 +56,41 @@ function isPublicAddress(address: string): boolean {
 }
 
 function validateUrl(raw: string): URL {
-  const url = new URL(raw);
-  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
-  if (url.protocol !== "https:" || url.username || url.password || !hostname ||
-      hostname === "localhost" || hostname.endsWith(".localhost") ||
-      hostname.endsWith(".local") || isIP(hostname)) {
+  // Keep URL-shape checks identical to the domain-level media policy. DNS
+  // resolution below still performs the authoritative address and redirect checks.
+  if (!isPublicMediaUrl(raw)) {
     throw new Error("TikTok media source must be a credential-free public HTTPS URL.");
   }
+  const url = new URL(raw);
   url.hash = "";
   return url;
 }
-
-async function resolvePublic(hostname: string, resolver: typeof dnsLookup): Promise<Address> {
-  const addresses = await resolver(hostname, { all: true, verbatim: true });
-  if (!addresses.length || addresses.some((entry) => !isPublicAddress(entry.address))) {
-    throw new Error("TikTok media hostname resolves to a private or special-use address.");
+async function resolvePublic(hostname: string, resolver: typeof dnsLookup, timeoutMs: number): Promise<Address> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const addresses = await Promise.race([
+      resolver(hostname, { all: true, verbatim: true }),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("TikTok media DNS lookup exceeded the configured timeout.")),
+          timeoutMs
+        );
+      })
+    ]);
+    if (!addresses.length || addresses.some((entry) => !isPublicAddress(entry.address))) {
+      throw new Error("TikTok media hostname resolves to a private or special-use address.");
+    }
+    const selected = addresses[0];
+    if (!selected) throw new Error("TikTok media hostname has no usable address.");
+    const family = isIP(selected.address);
+    if (family !== 4 && family !== 6) {
+      throw new Error("TikTok media hostname returned an invalid address.");
+    }
+    return { address: selected.address, family };
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
   }
-  const selected = addresses[0];
-  if (!selected) throw new Error("TikTok media hostname has no usable address.");
-  const family = isIP(selected.address);
-  if (family !== 4 && family !== 6) {
-    throw new Error("TikTok media hostname returned an invalid address.");
-  }
-  return { address: selected.address, family };
 }
-
 function requestOnce(
   url: URL,
   address: Address,
@@ -239,7 +252,7 @@ export async function fetchPublicHttpsStream(
   const requestImpl = options.requestImpl ?? httpsRequest;
   let current = validateUrl(rawUrl);
   for (let redirects = 0; ; redirects++) {
-    const address = await resolvePublic(current.hostname, resolver);
+    const address = await resolvePublic(current.hostname, resolver, timeoutMs);
     const result = await requestOnce(current, address, init.method, options.maxBytes, timeoutMs, requestImpl);
     if (result instanceof Response) return result;
     if (redirects >= maxRedirects) throw new Error("TikTok media redirect limit exceeded.");
