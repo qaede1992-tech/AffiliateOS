@@ -1,4 +1,4 @@
-import { desc, eq, and, gte } from "drizzle-orm";
+import { desc, eq, and, gte, sql } from "drizzle-orm";
 import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } from "../domain/autonomous-feedback-memory.js";
 import { autonomousFeedbackSnapshots } from "./schema.js";
 
@@ -107,9 +107,46 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
   }
 
   async recentByProductAndMarketplace(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]> {
-    const rows = await this.db.select().from(feedbackSnapshotsTable)
-      .where(and(eq(autonomousFeedbackSnapshots.productId, productId), eq(autonomousFeedbackSnapshots.marketplaceId, marketplaceId), gte(autonomousFeedbackSnapshots.observedAt, since)))
-      .orderBy(autonomousFeedbackSnapshots.observedAt, autonomousFeedbackSnapshots.id);
+    // Keep the full history whenever recovery evidence exists: episode detection
+    // and the three-snapshot stability gate depend on intermediate observations.
+    // In the normal path, only the first observation at each window boundary and
+    // the newest observation are needed by buildWindows() and previous-snapshot logic.
+    const result = await this.db.execute(sql`
+      WITH history AS (
+        SELECT *
+        FROM autonomous_feedback_snapshots
+        WHERE product_id = ${productId}::uuid
+          AND marketplace_id = ${marketplaceId}::uuid
+          AND observed_at >= ${since}::timestamptz
+      ),
+      recovery AS (
+        SELECT EXISTS (
+          SELECT 1
+          FROM history
+          WHERE anomaly = 'halt'
+             OR recovery_episode_id IS NOT NULL
+             OR recovery_state <> 'none'
+        ) AS has_recovery
+      ),
+      boundary_ids AS (
+        (SELECT id FROM history WHERE observed_at >= ${since}::timestamptz
+          ORDER BY observed_at ASC, id ASC LIMIT 1)
+        UNION
+        (SELECT id FROM history WHERE observed_at >= (${since}::timestamptz + interval '23 days')
+          ORDER BY observed_at ASC, id ASC LIMIT 1)
+        UNION
+        (SELECT id FROM history WHERE observed_at >= (${since}::timestamptz + interval '29 days')
+          ORDER BY observed_at ASC, id ASC LIMIT 1)
+        UNION
+        (SELECT id FROM history ORDER BY observed_at DESC, id DESC LIMIT 1)
+      )
+      SELECT history.*
+      FROM history
+      CROSS JOIN recovery
+      WHERE recovery.has_recovery OR history.id IN (SELECT id FROM boundary_ids)
+      ORDER BY history.observed_at ASC, history.id ASC
+    `);
+    const rows = Array.isArray(result) ? result : (result as { rows?: SnapshotRow[] })?.rows ?? [];
     return rows.map((row: SnapshotRow) => toDomain(row));
   }
 
