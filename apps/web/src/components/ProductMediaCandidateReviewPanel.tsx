@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
-import { api, type ProductMediaCandidateView, type ProductMediaCandidateReviewAuditView } from "../api/client";
+import { api, type ProductMediaCandidateView } from "../api/client";
 
 type CandidateStatus = "pending" | "approved";
-type AuditMap = Record<string, ProductMediaCandidateReviewAuditView[]>;
 
 export function ProductMediaCandidateReviewPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -13,7 +12,6 @@ export function ProductMediaCandidateReviewPanel() {
   const [status, setStatus] = useState<CandidateStatus>("pending");
   const [candidates, setCandidates] = useState<ProductMediaCandidateView[]>([]);
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
-  const [audits, setAudits] = useState<AuditMap>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -42,14 +40,12 @@ export function ProductMediaCandidateReviewPanel() {
     if (!selectedProductId) {
       setCandidates([]);
       setImportedIds(new Set());
-      setAudits({});
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
     setCandidates([]);
-    setAudits({});
     try {
       const [candidateResponse, assetResponse] = await Promise.all([
         api.productMediaCandidates(selectedProductId, selectedStatus),
@@ -58,19 +54,6 @@ export function ProductMediaCandidateReviewPanel() {
       if (requestId !== sequence.current) return;
       setCandidates(candidateResponse.data);
       setImportedIds(new Set(assetResponse.data.flatMap((asset) => asset.sourceCandidateId ? [asset.sourceCandidateId] : [])));
-      if (selectedStatus === "approved") {
-        const history = await Promise.all(candidateResponse.data.map(async (candidate) => {
-          try {
-            return [candidate.id, (await api.productMediaCandidateReviewAudits(selectedProductId, candidate.id)).data] as const;
-          } catch {
-            return [candidate.id, []] as const;
-          }
-        }));
-        if (requestId !== sequence.current) return;
-        setAudits(Object.fromEntries(history));
-      } else {
-        setAudits({});
-      }
     } catch (requestError) {
       if (requestId === sequence.current) setError(requestError instanceof Error ? requestError.message : "Kandidat media tidak dapat dimuat.");
     } finally {
@@ -152,7 +135,6 @@ export function ProductMediaCandidateReviewPanel() {
         <div className="product-media-candidate-list">
           {candidates.map((candidate) => {
             const alreadyImported = importedIds.has(candidate.id);
-            const latestAudit = audits[candidate.id]?.[0];
             return (
               <article className="product-media-candidate-card" key={candidate.id}>
                 <div className="product-media-candidate-preview">
@@ -172,7 +154,7 @@ export function ProductMediaCandidateReviewPanel() {
                   </div>
                   <a href={candidate.landingPageUrl} target="_blank" rel="noreferrer">Buka halaman sumber</a>
                   {candidate.licenseUrl && <a href={candidate.licenseUrl} target="_blank" rel="noreferrer">Periksa teks lisensi</a>}
-                  {latestAudit && <p className="candidate-review-audit">Review oleh {latestAudit.actorId}: {latestAudit.reason}</p>}
+                  {candidate.reviewedBy && candidate.reviewReason && <p className="candidate-review-audit">Review oleh {candidate.reviewedBy}: {candidate.reviewReason}</p>}
                   {status === "pending" ? (
                     <div className="candidate-review-actions">
                       <input
