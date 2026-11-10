@@ -1153,3 +1153,19 @@ test("GET TikTok creator info resolves the internal credential reference without
     await app.close();
   }
 });
+
+test("GET /api/v1/public/shop returns a bounded paginated catalog envelope", async () => {
+  const app = createApp();
+  const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { data: [], total: 0, page: 1, pageSize: 24 });
+  await app.close();
+});
+
+test("GET /api/v1/public/shop rejects pagination values outside the supported bounds", async () => {
+  const app = createApp();
+  const response = await app.inject({ method: "GET", url: "/api/v1/public/shop?page=0&pageSize=100" });
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().error, "VALIDATION_ERROR");
+  await app.close();
+});
