@@ -100,7 +100,8 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
     const row = rowsOf(result)[0];
     if (!row) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
     return toCampaignAnalytics(row);
-  }}
+  }
+}
 function rowsOf(result: unknown): Record<string, unknown>[] { if (Array.isArray(result)) return result as Record<string, unknown>[]; const rows = (result as { rows?: unknown[] } | undefined)?.rows; return Array.isArray(rows) ? rows as Record<string, unknown>[] : []; }
 function numberValue(value: unknown): number { return Number(value ?? 0); }
 function rate(numerator: number, denominator: number): number { return denominator === 0 ? 0 : numerator / denominator; }
