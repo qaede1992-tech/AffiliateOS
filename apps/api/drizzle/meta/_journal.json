@@ -589,6 +589,13 @@
       "when": 1794268800000,
       "tag": "0087_product_media_discovery_cooldown",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794295262000,
+      "tag": "0088_enable_drizzle_migration_ledger_rls",
+      "breakpoints": true
     }
   ]
 }
