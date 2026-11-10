@@ -54,9 +54,53 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
     return { clickCount, trackingLinkCount: numberValue(total?.tracking_link_count), campaignCount: numberValue(total?.campaign_count), contentCount: numberValue(total?.content_count), publishedContentCount: numberValue(total?.published_content_count), scheduledContentCount: numberValue(total?.scheduled_content_count), attributedConversionCount, attributedRevenueCents: numberValue(total?.attributed_revenue_cents), attributedCommissionCents: numberValue(total?.attributed_commission_cents), conversionRate: rate(attributedConversionCount, clickCount), campaigns: rowsOf(campaignResult).map(toCampaignAnalytics) };
   }
   async campaign(campaignId: EntityId): Promise<CampaignAnalytics> {
-    const row = rowsOf(result)[0]; if (!row) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return toCampaignAnalytics(row);
-  }
-}
+    const result = await this.db.execute(sql`
+      WITH link_stats AS (
+        SELECT tl.campaign_id, COUNT(DISTINCT tl.id) AS tracking_link_count, COUNT(cl.id) AS click_count
+        FROM tracking_links tl LEFT JOIN clicks cl ON cl.tracking_link_id = tl.id
+        WHERE tl.campaign_id = ${campaignId}
+        GROUP BY tl.campaign_id
+      ),
+      content_stats AS (
+        SELECT campaign_id, COUNT(*) AS content_count,
+          COUNT(*) FILTER (WHERE status = 'published') AS published_content_count,
+          COUNT(*) FILTER (WHERE status = 'scheduled') AS scheduled_content_count
+        FROM content WHERE campaign_id = ${campaignId} GROUP BY campaign_id
+      ),
+      attribution_stats AS (
+        SELECT atl.campaign_id, COUNT(*) AS attributed_conversion_count, COALESCE(SUM(cv.amount_cents),0) AS attributed_revenue_cents
+        FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id
+        JOIN tracking_links atl ON atl.id = ca.tracking_link_id
+        WHERE cv.status = 'approved' AND atl.campaign_id = ${campaignId}
+        GROUP BY atl.campaign_id
+      ),
+      commission_stats AS (
+        SELECT atl.campaign_id, COALESCE(SUM(cm.amount_cents),0) AS attributed_commission_cents
+        FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id
+        JOIN commissions cm ON cm.conversion_id = cv.id JOIN tracking_links atl ON atl.id = ca.tracking_link_id
+        WHERE cv.status = 'approved' AND cm.status IN ('approved','paid') AND atl.campaign_id = ${campaignId}
+        GROUP BY atl.campaign_id
+      )
+      SELECT c.id AS campaign_id, c.audience ->> 'productId' AS product_id,
+        p.marketplace_id, p.category, c.audience -> 'audience' AS audience_segments,
+        COALESCE(ls.tracking_link_count,0) AS tracking_link_count, COALESCE(ls.click_count,0) AS click_count,
+        COALESCE(cs.content_count,0) AS content_count, COALESCE(cs.published_content_count,0) AS published_content_count,
+        COALESCE(cs.scheduled_content_count,0) AS scheduled_content_count,
+        COALESCE(ats.attributed_conversion_count,0) AS attributed_conversion_count,
+        COALESCE(ats.attributed_revenue_cents,0) AS attributed_revenue_cents,
+        COALESCE(ms.attributed_commission_cents,0) AS attributed_commission_cents
+      FROM campaigns c
+      LEFT JOIN products p ON p.id = CASE WHEN c.audience ->> 'productId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (c.audience ->> 'productId')::uuid END
+      LEFT JOIN link_stats ls ON ls.campaign_id = c.id
+      LEFT JOIN content_stats cs ON cs.campaign_id = c.id
+      LEFT JOIN attribution_stats ats ON ats.campaign_id = c.id
+      LEFT JOIN commission_stats ms ON ms.campaign_id = c.id
+      WHERE c.id = ${campaignId}
+    `);
+    const row = rowsOf(result)[0];
+    if (!row) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
+    return toCampaignAnalytics(row);
+  }}
 function rowsOf(result: unknown): Record<string, unknown>[] { if (Array.isArray(result)) return result as Record<string, unknown>[]; const rows = (result as { rows?: unknown[] } | undefined)?.rows; return Array.isArray(rows) ? rows as Record<string, unknown>[] : []; }
 function numberValue(value: unknown): number { return Number(value ?? 0); }
 function rate(numerator: number, denominator: number): number { return denominator === 0 ? 0 : numerator / denominator; }
