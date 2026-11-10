@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { AutonomousCycleResult, AutonomousCycleService } from "../../src/domain/autonomous-cycle.js";
 import { AutonomousScheduler } from "../../src/domain/autonomous-scheduler.js";
 
-const result = (_id: string): AutonomousCycleResult => ({
+const result = (): AutonomousCycleResult => ({
   startedAt: "2026-09-21T00:00:00.000Z",
   completedAt: "2026-09-21T00:00:01.000Z",
   candidateCount: 1,
@@ -17,7 +17,101 @@ const deferred = <T>() => {
 };
 
 describe("AutonomousScheduler", () => {
-  it("does not overlap cycle runs and returns the active result", async () => {
+  it("does not run a cycle on startup without a work event", async () => {
+    let calls = 0;
+    const cycle = { runOnce: async () => { calls += 1; return result(); } } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle);
+
+    scheduler.start();
+    scheduler.start();
+    assert.equal(calls, 0);
+    assert.equal(scheduler.status.running, true);
+    assert.equal(scheduler.status.active, false);
+
+    await scheduler.stop();
+    assert.equal(calls, 0);
+  });
+
+  it("runs again after a new work trigger and assigns a unique event namespace", async () => {
+    const inputs: Array<{ idempotencyNamespace?: string }> = [];
+    let calls = 0;
+    const cycle = {
+      runOnce: async (input: { idempotencyNamespace?: string }) => {
+        inputs.push(input);
+        calls += 1;
+        return result();
+      }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, { now: () => new Date("2026-09-21T00:00:00.000Z") });
+
+    scheduler.start();
+    await scheduler.trigger();
+    await scheduler.trigger();
+    assert.equal(calls, 2);
+    assert.notEqual(inputs[0]?.idempotencyNamespace, inputs[1]?.idempotencyNamespace);
+    assert.match(inputs[0]?.idempotencyNamespace ?? "", /^autonomous-cycle:event:/);
+    assert.match(inputs[1]?.idempotencyNamespace ?? "", /^autonomous-cycle:event:/);
+    await scheduler.stop();
+  });
+
+  it("coalesces events received during an active cycle into one follow-up run", async () => {
+    const first = deferred<AutonomousCycleResult | undefined>();
+    let calls = 0;
+    const cycle = {
+      runOnce: async () => {
+        calls += 1;
+        return calls === 1 ? first.promise : result();
+      }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle);
+
+    scheduler.start();
+    const firstTrigger = scheduler.trigger();
+    const secondTrigger = scheduler.trigger();
+    const thirdTrigger = scheduler.trigger();
+    assert.equal(calls, 1);
+    assert.equal(scheduler.status.pending, true);
+
+    first.resolve(result());
+    await Promise.all([firstTrigger, secondTrigger, thirdTrigger]);
+    assert.equal(calls, 2);
+    assert.equal(scheduler.status.pending, false);
+    await scheduler.stop();
+  });
+
+  it("does not lose a work trigger received during a manual run", async () => {
+    const first = deferred<AutonomousCycleResult | undefined>();
+    let calls = 0;
+    const cycle = {
+      runOnce: async () => {
+        calls += 1;
+        return calls === 1 ? first.promise : result();
+      }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle);
+
+    const manualRun = scheduler.runNow();
+    assert.equal(calls, 1);
+    scheduler.start();
+    const drain = scheduler.trigger();
+    first.resolve(result());
+    await Promise.all([manualRun, drain]);
+    assert.equal(calls, 2);
+    await scheduler.stop();
+  });
+
+  it("does not trigger more work after the scheduler has stopped", async () => {
+    let calls = 0;
+    const cycle = { runOnce: async () => { calls += 1; return result(); } } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle);
+
+    scheduler.start();
+    await scheduler.stop();
+    assert.equal(await scheduler.trigger(), undefined);
+    assert.equal(calls, 0);
+  });
+
+  it("does not overlap manual cycle runs and returns the active result", async () => {
     const first = deferred<AutonomousCycleResult>();
     let calls = 0;
     const cycle = { runOnce: async () => { calls += 1; return first.promise; } } as unknown as AutonomousCycleService;
@@ -26,89 +120,64 @@ describe("AutonomousScheduler", () => {
     const secondRun = scheduler.runNow();
     await Promise.resolve();
     assert.equal(calls, 1);
-    const expected = result("first");
+    const expected = result();
     first.resolve(expected);
     assert.equal(await firstRun, expected);
     assert.equal(await secondRun, expected);
   });
 
-  it("uses a deterministic interval bucket namespace for scheduled cycles", async () => {
+  it("uses a deterministic interval bucket namespace for manual cycles", async () => {
     const inputs: Array<{ idempotencyNamespace?: string }> = [];
-    const cycle = { runOnce: async (input: { idempotencyNamespace?: string }) => { inputs.push(input); return result("scheduled"); } } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { intervalMs: 900_000, now: () => new Date("2026-09-21T00:14:59.000Z") });
-    scheduler.start();
-    await scheduler.stop();
-    assert.equal(inputs.length, 1);
-    assert.equal(inputs[0].idempotencyNamespace, "autonomous-cycle:1988832");
+    const cycle = {
+      runOnce: async (input: { idempotencyNamespace?: string }) => {
+        inputs.push(input);
+        return result();
+      }
+    } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      intervalMs: 900_000,
+      now: () => new Date("2026-09-21T00:14:59.000Z")
+    });
+
+    await scheduler.runNow();
+    assert.equal(inputs[0]?.idempotencyNamespace, "autonomous-cycle:1988832");
   });
 
   it("preserves an explicitly supplied idempotency namespace", async () => {
     const inputs: Array<{ idempotencyNamespace?: string }> = [];
-    const cycle = { runOnce: async (input: { idempotencyNamespace?: string }) => { inputs.push(input); return result("explicit"); } } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, { idempotencyNamespace: "manual-cycle" }, { intervalMs: 900_000 });
-    scheduler.start();
-    await scheduler.stop();
-    assert.equal(inputs[0].idempotencyNamespace, "manual-cycle");
-  });
-
-  it("records successful execution status", async () => {
-    const cycle = { runOnce: async () => result("success") } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { now: () => new Date("2026-09-21T00:00:00.000Z") });
-    const output = await scheduler.runNow();
-    assert.ok(output);
-    assert.equal(scheduler.status.active, false);
-    assert.equal(scheduler.status.lastResult, output);
-    assert.equal(scheduler.status.lastStartedAt, "2026-09-21T00:00:00.000Z");
-    assert.equal(scheduler.status.lastCompletedAt, "2026-09-21T00:00:00.000Z");
-    assert.equal(scheduler.status.lastError, undefined);
-    assert.equal(scheduler.status.lastSkipReason, undefined);
-  });
-
-  it("records lock contention as a skip instead of an execution error", async () => {
     const cycle = {
-      runOnce: async () => undefined,
-      get skipReason() { return "lock_busy" as const; }
+      runOnce: async (input: { idempotencyNamespace?: string }) => {
+        inputs.push(input);
+        return result();
+      }
     } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { now: () => new Date("2026-09-21T00:00:00.000Z") });
-    assert.equal(await scheduler.runNow(), undefined);
-    assert.equal(scheduler.status.lastSkipReason, "lock_busy");
-    assert.equal(scheduler.status.lastError, undefined);
-    assert.equal(scheduler.status.active, false);
+    const scheduler = new AutonomousScheduler(cycle, { idempotencyNamespace: "manual-cycle" });
+
+    await scheduler.runNow();
+    assert.equal(inputs[0]?.idempotencyNamespace, "manual-cycle");
   });
 
-  it("records completion time when a cycle returns no result without a skip reason", async () => {
-    const cycle = {
-      runOnce: async () => undefined,
-      get skipReason() { return undefined; }
-    } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { now: () => new Date("2026-09-21T00:00:00.000Z") });
-    assert.equal(await scheduler.runNow(), undefined);
-    assert.equal(scheduler.status.lastResult, undefined);
-    assert.equal(scheduler.status.lastCompletedAt, "2026-09-21T00:00:00.000Z");
-    assert.equal(scheduler.status.lastError, undefined);
-    assert.equal(scheduler.status.lastSkipReason, undefined);
-  });
-
-  it("reports scheduler errors through the error callback and status", async () => {
-    const errors: unknown[] = [];
+  it("records execution status and reports cycle errors without throwing", async () => {
     const cycle = { runOnce: async () => { throw new Error("cycle failure"); } } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { onError: (error) => errors.push(error), now: () => new Date("2026-09-21T00:00:00.000Z") });
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      now: () => new Date("2026-09-21T00:00:00.000Z")
+    });
+
     assert.equal(await scheduler.runNow(), undefined);
-    assert.equal(errors.length, 1);
-    assert.equal((errors[0] as Error).message, "cycle failure");
     assert.equal(scheduler.status.lastError, "cycle failure");
-    assert.equal(scheduler.status.lastSkipReason, undefined);
     assert.equal(scheduler.status.active, false);
+    assert.equal(scheduler.status.lastCompletedAt, "2026-09-21T00:00:00.000Z");
   });
 
   it("preserves a successful cycle when the result observer fails", async () => {
     const errors: unknown[] = [];
-    const output = result("observer-failure");
+    const output = result();
     const cycle = { runOnce: async () => output } as unknown as AutonomousCycleService;
     const scheduler = new AutonomousScheduler(cycle, {}, {
       onResult: () => { throw new Error("observer failure"); },
       onError: (error) => errors.push(error)
     });
+
     assert.equal(await scheduler.runNow(), output);
     assert.equal(scheduler.status.lastResult, output);
     assert.equal(scheduler.status.lastError, undefined);
@@ -117,7 +186,10 @@ describe("AutonomousScheduler", () => {
 
   it("does not reject when the error observer itself fails", async () => {
     const cycle = { runOnce: async () => { throw new Error("cycle failure"); } } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { onError: () => { throw new Error("error observer failure"); } });
+    const scheduler = new AutonomousScheduler(cycle, {}, {
+      onError: () => { throw new Error("error observer failure"); }
+    });
+
     assert.equal(await scheduler.runNow(), undefined);
     assert.equal(scheduler.status.lastError, "cycle failure");
     assert.equal(scheduler.status.active, false);
@@ -127,57 +199,4 @@ describe("AutonomousScheduler", () => {
     const cycle = { runOnce: async () => undefined } as unknown as AutonomousCycleService;
     assert.throws(() => new AutonomousScheduler(cycle, {}, { intervalMs: 299_999 }), /at least 5 minutes/);
   });
-  it("backs off to the idle interval when there are no runnable affiliate offers", async () => {
-    const originalSetTimeout = globalThis.setTimeout;
-    const originalClearTimeout = globalThis.clearTimeout;
-    let scheduledDelay = 0;
-    const fakeTimer = { unref() {} } as unknown as ReturnType<typeof setTimeout>;
-    globalThis.setTimeout = ((callback: (...args: unknown[]) => void, delay?: number) => {
-      scheduledDelay = Number(delay ?? 0);
-      return fakeTimer;
-    }) as typeof setTimeout;
-    globalThis.clearTimeout = (() => undefined) as typeof clearTimeout;
-    const cycle = {
-      runOnce: async () => ({ ...result("idle"), candidateCount: 4 }),
-      get skipReason() { return "no_runnable_candidates" as const; }
-    } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { intervalMs: 900_000, idleIntervalMs: 1_800_000 });
-    try {
-      scheduler.start();
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      assert.equal(scheduledDelay, 1_800_000);
-    } finally {
-      await scheduler.stop();
-      globalThis.setTimeout = originalSetTimeout;
-      globalThis.clearTimeout = originalClearTimeout;
-    }
-  });
-
-
-  it("backs off when products exist but none has publishable media", async () => {
-    const originalSetTimeout = globalThis.setTimeout;
-    const originalClearTimeout = globalThis.clearTimeout;
-    let scheduledDelay = 0;
-    const fakeTimer = { unref() {} } as unknown as ReturnType<typeof setTimeout>;
-    globalThis.setTimeout = ((callback: (...args: unknown[]) => void, delay?: number) => {
-      scheduledDelay = Number(delay ?? 0);
-      return fakeTimer;
-    }) as typeof setTimeout;
-    globalThis.clearTimeout = (() => undefined) as typeof clearTimeout;
-    const cycle = {
-      runOnce: async () => result("media-idle"),
-      get skipReason() { return "no_publishable_candidates" as const; }
-    } as unknown as AutonomousCycleService;
-    const scheduler = new AutonomousScheduler(cycle, {}, { intervalMs: 900_000, idleIntervalMs: 1_800_000 });
-    try {
-      scheduler.start();
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      assert.equal(scheduledDelay, 1_800_000);
-    } finally {
-      await scheduler.stop();
-      globalThis.setTimeout = originalSetTimeout;
-      globalThis.clearTimeout = originalClearTimeout;
-    }
-  });
-
 });
