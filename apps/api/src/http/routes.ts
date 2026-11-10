@@ -4,10 +4,12 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, generateProductImageSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, reviewProductMediaIdentitySchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { ProductMediaCandidateImportError } from "../domain/product-media-candidate-import.js";
+import { ProductMediaUploadError } from "../domain/product-media-upload-service.js";
+import { ProductImageGenerationError } from "../domain/product-image-generation.js";
 import { requireAdmin, requireOperator } from "./auth.js";
 import { buildPerformanceIndex } from "../domain/performance-index.js";
 import { determineAutonomousHealthStatus } from "../domain/autonomous-health-status.js";
@@ -19,6 +21,19 @@ import { hasCurrentVerifiedRights } from "../domain/product-media-publication-ri
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const writeGuard = { preHandler: requireOperator };
 const adminGuard = { preHandler: requireAdmin };
+const isMissingProductMediaCandidatesTable = (error: unknown): boolean => {
+  let current: unknown = error;
+  const visited = new Set<object>();
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+    if (visited.has(current)) break;
+    visited.add(current);
+    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown };
+    if (candidate.code === "42P01" && typeof candidate.message === "string" &&
+      /product_media_candidates/i.test(candidate.message)) return true;
+    current = candidate.cause;
+  }
+  return false;
+};
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
   app.register(async (mediaApp) => {
@@ -27,7 +42,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       done(null, payload);
     });
     mediaApp.addHook("onRequest", async (request, reply) => {
-      if (request.url.split("?", 1)[0] !== "/api/v1/content/media-upload") return;
+      const pathname = request.url.split("?", 1)[0] ?? "";
+      if (pathname !== "/api/v1/content/media-upload" && !/^\/api\/v1\/products\/[^/]+\/media-upload$/.test(pathname)) return;
       const role = request.auth?.role;
       if (role !== "admin" && role !== "operator") {
         auditSecurityEvent(request.log, request, "authorization_denied", { reason: "media_upload_requires_operator" });
@@ -84,6 +100,102 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       } finally {
         request.raw.removeListener("aborted", abortUpload);
         reply.raw.removeListener("close", onResponseClose);
+      }
+    });
+
+    mediaApp.post<{ Params: { productId: string }; Querystring: { kind?: string }; Body: unknown }>("/api/v1/products/:productId/media-upload", { bodyLimit: 45 * 1024 * 1024 }, async (request, reply) => {
+      if (!services.productMediaUpload) return reply.status(503).send({ error: "PRODUCT_MEDIA_UPLOAD_UNAVAILABLE", message: "Product media upload is not configured." });
+      const kind = request.query.kind;
+      if (kind !== "image" && kind !== "video") {
+        return reply.status(400).send({ error: "INVALID_MEDIA_KIND", message: "Product media kind must be image or video." });
+      }
+      const mimeType = request.headers["content-type"];
+      if (typeof mimeType !== "string" || mimeType.trim().toLowerCase() !== "application/octet-stream") {
+        return reply.status(415).send({ error: "UNSUPPORTED_MEDIA_TYPE", message: "Send the file as application/octet-stream and declare its media type with X-Media-Mime-Type." });
+      }
+      const declaredMimeType = request.headers["x-media-mime-type"];
+      if (typeof declaredMimeType !== "string") {
+        return reply.status(400).send({ error: "MEDIA_MIME_TYPE_REQUIRED", message: "X-Media-Mime-Type is required." });
+      }
+      const headerLength = request.headers["content-length"] ?? request.raw.headers["content-length"];
+      const rawLength = Array.isArray(headerLength) ? headerLength[0] : headerLength;
+      const contentLength = typeof rawLength === "number"
+        ? rawLength
+        : typeof rawLength === "string" && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+      if (!Number.isSafeInteger(contentLength) || contentLength <= 0) {
+        return reply.status(411).send({ error: "CONTENT_LENGTH_REQUIRED", message: "A valid Content-Length header is required." });
+      }
+      if (!(request.body instanceof Readable)) {
+        return reply.status(400).send({ error: "MEDIA_STREAM_UNAVAILABLE", message: "The request body could not be streamed." });
+      }
+      const body = Readable.toWeb(request.body) as ReadableStream<Uint8Array>;
+      const abortController = new AbortController();
+      const abortUpload = () => abortController.abort(new Error("Product media upload client disconnected."));
+      const onResponseClose = () => { if (!reply.raw.writableEnded) abortUpload(); };
+      request.raw.once("aborted", abortUpload);
+      reply.raw.once("close", onResponseClose);
+      try {
+        const asset = await services.productMediaUpload.uploadStream({
+          productId: request.params.productId,
+          kind,
+          mimeType: declaredMimeType.trim().toLowerCase(),
+          body,
+          contentLength,
+          signal: abortController.signal
+        });
+        return reply.status(201).send(asset);
+      } catch (error) {
+        request.log.warn({ errorName: error instanceof Error ? error.name : "UnknownError" }, "product media upload rejected");
+        if (error instanceof ProductMediaUploadError) {
+          if (error.code === "PRODUCT_NOT_FOUND") return reply.status(404).send({ error: error.code, message: "The target product does not exist." });
+          if (error.code === "UPLOAD_CANCELLED") return reply.status(400).send({ error: error.code, message: "The product media upload was cancelled." });
+          return reply.status(400).send({ error: error.code, message: "The product media upload failed validation." });
+        }
+        return reply.status(502).send({ error: "PRODUCT_MEDIA_UPLOAD_FAILED", message: "The product media upload could not be completed." });
+      } finally {
+        request.raw.removeListener("aborted", abortUpload);
+        reply.raw.removeListener("close", onResponseClose);
+      }
+    });
+
+    mediaApp.post<{ Params: { productId: string }; Body: unknown }>("/api/v1/products/:productId/media-generate", { preHandler: requireOperator }, async (request, reply) => {
+      if (!services.productImageGeneration) {
+        return reply.status(503).send({ error: "PRODUCT_IMAGE_GENERATION_UNAVAILABLE", message: "AI product image generation is not enabled or configured." });
+      }
+      const params = productMediaParamsSchema.parse(request.params);
+      const input = generateProductImageSchema.parse(request.body);
+      try {
+        const result = await services.productImageGeneration.generate({
+          productId: params.productId,
+          referenceAssetId: input.referenceAssetId,
+          style: input.style
+        });
+        if (!result.asset) return reply.status(502).send({ error: "PRODUCT_IMAGE_GENERATION_FAILED", message: "The generated image could not be stored." });
+        auditSecurityEvent(request.log, request, "product_ai_image_generated", {
+          productId: params.productId,
+          referenceAssetId: input.referenceAssetId,
+          generatedAssetId: result.asset.id,
+          style: input.style,
+          rightsStatus: result.asset.rightsStatus
+        });
+        return reply.status(result.generated ? 201 : 200).send(result);
+      } catch (error) {
+        if (error instanceof ProductImageGenerationError) {
+          request.log.warn({ code: error.code }, "AI product image generation rejected");
+          if (error.code === "PRODUCT_NOT_FOUND" || error.code === "REFERENCE_NOT_FOUND") {
+            return reply.status(404).send({ error: error.code, message: "The product or reference image was not found." });
+          }
+          if (error.code === "REFERENCE_NOT_ELIGIBLE") {
+            return reply.status(409).send({ error: error.code, message: "A private, rights-verified, user-owned reference image is required." });
+          }
+          if (error.code === "AI_PROVIDER_UNAVAILABLE") {
+            return reply.status(503).send({ error: error.code, message: "The AI image provider is temporarily unavailable." });
+          }
+          return reply.status(error.code.startsWith("AI_PROVIDER") || error.code === "GENERATED_IMAGE_INVALID" ? 502 : 400)
+            .send({ error: error.code, message: "AI product image generation could not be completed." });
+        }
+        request.log.error({ errorName: error instanceof Error ? error.name : "UnknownError" }, "AI product image generation failed");
+        return reply.status(502).send({ error: "PRODUCT_IMAGE_GENERATION_FAILED", message: "AI product image generation could not be completed." });
       }
     });
   });
@@ -211,7 +323,11 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/marketplaces/providers", async () => list(await services.marketplace.listProviders())); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateFeedSchema.parse(request.body);
     const result = await services.marketplace.importShopeeAffiliateFeed(input);
-    for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
+    try {
+      for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
+    } finally {
+      if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
+    }
     return reply.status(201).send(result);
   }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
     const input = importShopeeAffiliateCsvSchema.parse(request.body);
@@ -227,6 +343,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         externalProductId: row.externalProductId,
         externalOfferId: `feed:${row.externalProductId}`,
         name: row.name,
+        ...(row.category ? { category: row.category } : {}),
         priceCents: row.priceRupiah * 100,
         currency: "IDR",
         productUrl: row.productUrl,
@@ -254,7 +371,11 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         }
       }))
     });
-    for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
+    try {
+      for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
+    } finally {
+      if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
+    }
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
     const [products, offers, trackingLinks] = await Promise.all([
@@ -263,16 +384,18 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       services.tracking.list()
     ]);
     const productsById = new Map(products.map((product) => [product.id, product]));
+    const trackingLinksByOfferAndDestination = new Map<string, (typeof trackingLinks)[number]>();
+    for (const trackingLink of trackingLinks) {
+      if (trackingLink.status !== "active") continue;
+      const key = `${trackingLink.affiliateOfferId}\u0000${trackingLink.destinationUrl}`;
+      if (!trackingLinksByOfferAndDestination.has(key)) trackingLinksByOfferAndDestination.set(key, trackingLink);
+    }
     const seen = new Set<string>();
     const items = offers.flatMap((offer) => {
       if (offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return [];
       if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) return [];
       const product = productsById.get(offer.productId);
-      const trackingLink = trackingLinks.find((link) =>
-        link.affiliateOfferId === offer.id &&
-        link.status === "active" &&
-        link.destinationUrl === offer.affiliateUrl
-      );
+      const trackingLink = trackingLinksByOfferAndDestination.get(`${offer.id}\u0000${offer.affiliateUrl}`);
       if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
       seen.add(product.id);
       return [{
@@ -289,13 +412,31 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     });
     return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
   });
-  app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => { const { productId } = productMediaParamsSchema.parse(request.params); return services.marketplace.updateProductMedia(productId, updateProductMediaSchema.parse(request.body)); });
+  app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    const input = updateProductMediaSchema.parse(request.body);
+    const product = await services.marketplace.updateProductMedia(productId, input);
+    if (input.imageUrl || input.videoUrl) void services.autonomousScheduler.trigger();
+    return product;
+  });
   app.get("/api/v1/products/:productId/media-candidates", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     const query = productMediaCandidateListQuerySchema.parse(request.query);
     const repository = services.productMediaCandidates;
     if (!repository) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATES_UNAVAILABLE", message: "Product media candidate storage is not configured." });
-    if (!query.status || query.status === "pending") return list(await repository.listPendingByProduct(productId, 50));
+    if (!query.status || query.status === "pending") {
+      try {
+        return list(await repository.listPendingByProduct(productId, 50));
+      } catch (error) {
+        if (isMissingProductMediaCandidatesTable(error)) {
+          return reply.status(503).send({
+            error: "PRODUCT_MEDIA_CANDIDATES_SCHEMA_NOT_READY",
+            message: "Product media candidates are unavailable until migration 0076 is applied."
+          });
+        }
+        throw error;
+      }
+    }
     if (!repository.listByProductAndReviewStatus) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATE_STATUS_QUERY_UNAVAILABLE", message: "Reviewed candidate listing is not configured." });
     return list(await repository.listByProductAndReviewStatus(productId, query.status, 50));
   });
@@ -399,9 +540,49 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     });
     if (!updated) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
     auditSecurityEvent(request.log, request, "product_media_rights_updated", { productId, assetId, status: updated.rightsStatus, rightsBasis: updated.rightsBasis ?? undefined });
+    if (input.status === "verified" && updated.rightsStatus === "verified") void services.autonomousScheduler.trigger();
     return updated;
-  }); app.get("/api/v1/affiliate-offers", async () => list(await services.marketplace.listAffiliateOffers())); app.get("/api/v1/affiliate-offers/verification", async () => list(await services.marketplace.listAffiliateOfferVerification()));
-  app.post("/api/v1/marketplaces", writeGuard, async (request, reply) => { const connection = await services.marketplace.createConnection(createMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_created", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return reply.status(201).send(connection); }); app.get("/api/v1/marketplaces/:connectionSlug", async (request) => services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug)); app.patch("/api/v1/marketplaces/:connectionSlug", writeGuard, async (request) => { const connection = await services.marketplace.updateConnection(marketplaceSlugSchema.parse(request.params).connectionSlug, updateMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_updated", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return connection; }); app.put("/api/v1/marketplaces/:connectionSlug/enabled", writeGuard, async (request, reply) => { const input = marketplaceEnableSchema.parse(request.body); const connection = await services.marketplace.setEnabled(marketplaceSlugSchema.parse(request.params).connectionSlug, input.enabled, "confirmation" in input ? input.confirmation : undefined); auditSecurityEvent(request.log, request, "marketplace_connection_enabled_changed", { connectionSlug: connection.slug, enabled: connection.enabled }); return connection; }); app.put("/api/v1/marketplaces/:connectionSlug/affiliate-account", writeGuard, async (request) => services.marketplace.bindAffiliateAccount(marketplaceSlugSchema.parse(request.params).connectionSlug, bindAffiliateAccountSchema.parse(request.body).affiliateId)); app.post("/api/v1/marketplaces/:connectionSlug/conversions/sync", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); const { since } = marketplaceConversionSyncSchema.parse(request.body); return services.shopeeConversionSync.sync(connectionSlug, since); }); app.post("/api/v1/marketplaces/:connectionSlug/reports/shopee/commission/reconcile", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); return services.shopeeCommissionReportReconciliation.reconcile(connectionSlug, shopeeCommissionReportSchema.parse(request.body)); }); app.post("/api/v1/marketplaces/:connectionSlug/test", writeGuard, async (request) => { const connection = await services.marketplace.testConnection(marketplaceSlugSchema.parse(request.params).connectionSlug); request.log.info({ event: "marketplace_connection_tested", connectionSlug: connection.slug, healthStatus: connection.healthStatus }); return connection; }); app.get("/api/v1/marketplaces/:connectionSlug/health", async (request) => { const connection = await services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug); return { status: connection.healthStatus, error: connection.healthStatus === "unhealthy" ? "Marketplace connection is unhealthy." : undefined, lastCheckedAt: connection.lastCheckedAt, lastSuccessfulCheckAt: connection.lastSuccessfulCheckAt, lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt }; }); app.post("/api/v1/marketplaces/:connectionSlug/products/discover", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); return list(await services.marketplace.discoverProducts(connectionSlug)); }); app.get("/api/v1/marketplaces/:connectionSlug/products/search", async (request) => { const { connectionSlug, query } = marketplaceSearchSchema.parse({ ...(request.params as object), ...(request.query as object) }); return list(await services.marketplace.searchProducts(connectionSlug, query)); }); app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return services.marketplace.getProduct(connectionSlug, externalProductId); }); app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return list(await services.marketplace.getOffers(connectionSlug, externalProductId)); }); app.post("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers/:externalOfferId/affiliate-link", writeGuard, async (request) => { const input = marketplaceLinkSchema.parse(request.params); return services.marketplace.generateAffiliateLink(input.connectionSlug, input.externalProductId, input.externalOfferId); });
+  });
+  app.get("/api/v1/products/:productId/media-assets/:assetId/identity-audits", adminGuard, async (request, reply) => {
+    const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
+    const repository = services.productMediaAssets;
+    if (!repository?.listIdentityAudits) return reply.status(503).send({ error: "PRODUCT_MEDIA_IDENTITY_AUDIT_UNAVAILABLE", message: "Product media identity audit history is not configured." });
+    const asset = (await repository.listByProduct(productId)).find((item) => item.id === assetId);
+    if (!asset) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    if (asset.sourceProvider !== "openai" || !asset.sourceUrl.startsWith("generated:openai-image-edit:")) {
+      return reply.status(409).send({ error: "PRODUCT_MEDIA_IDENTITY_REVIEW_NOT_APPLICABLE", message: "Identity review is only available for AI-edited product images." });
+    }
+    return list(await repository.listIdentityAudits(productId, assetId));
+  });
+  app.patch("/api/v1/products/:productId/media-assets/:assetId/identity-review", adminGuard, async (request, reply) => {
+    const { productId, assetId } = productMediaRightsParamsSchema.parse(request.params);
+    const input = reviewProductMediaIdentitySchema.parse(request.body);
+    const repository = services.productMediaAssets;
+    const reviewIdentity = repository?.reviewIdentity;
+    if (!repository || !reviewIdentity) return reply.status(503).send({ error: "PRODUCT_MEDIA_IDENTITY_REVIEW_UNAVAILABLE", message: "Atomic product identity review and audit storage are not configured." });
+    const asset = (await repository.listByProduct(productId)).find((item) => item.id === assetId);
+    if (!asset) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    if (asset.sourceProvider !== "openai" || !asset.sourceUrl.startsWith("generated:openai-image-edit:")) {
+      return reply.status(409).send({ error: "PRODUCT_MEDIA_IDENTITY_REVIEW_NOT_APPLICABLE", message: "Identity review is only available for AI-edited product images." });
+    }
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    const updated = await reviewIdentity.call(repository, assetId, productId, {
+      ...input,
+      actorId,
+      actorRole: "admin"
+    });
+    if (!updated) return reply.status(404).send({ error: "PRODUCT_MEDIA_ASSET_NOT_FOUND", message: "Product media asset was not found." });
+    auditSecurityEvent(request.log, request, "product_media_identity_reviewed", {
+      productId, assetId, identityStatus: updated.identityStatus ?? "unknown"
+    });
+    if (input.status === "verified" && updated.identityStatus === "verified") {
+      void services.autonomousScheduler.trigger();
+    }
+    return updated;
+  });
+  app.get("/api/v1/affiliate-offers", async () => list(await services.marketplace.listAffiliateOffers())); app.get("/api/v1/affiliate-offers/verification", async () => list(await services.marketplace.listAffiliateOfferVerification()));
+  app.post("/api/v1/marketplaces", writeGuard, async (request, reply) => { const connection = await services.marketplace.createConnection(createMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_created", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return reply.status(201).send(connection); }); app.get("/api/v1/marketplaces/:connectionSlug", async (request) => services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug)); app.patch("/api/v1/marketplaces/:connectionSlug", writeGuard, async (request) => { const connection = await services.marketplace.updateConnection(marketplaceSlugSchema.parse(request.params).connectionSlug, updateMarketplaceConnectionSchema.parse(request.body)); request.log.info({ event: "marketplace_connection_updated", connectionSlug: connection.slug, providerSlug: connection.providerSlug }); return connection; }); app.put("/api/v1/marketplaces/:connectionSlug/enabled", writeGuard, async (request, reply) => { const input = marketplaceEnableSchema.parse(request.body); const connection = await services.marketplace.setEnabled(marketplaceSlugSchema.parse(request.params).connectionSlug, input.enabled, "confirmation" in input ? input.confirmation : undefined); auditSecurityEvent(request.log, request, "marketplace_connection_enabled_changed", { connectionSlug: connection.slug, enabled: connection.enabled }); if (connection.enabled && connection.status === "active") void services.autonomousScheduler.trigger(); return connection; }); app.put("/api/v1/marketplaces/:connectionSlug/affiliate-account", writeGuard, async (request) => { const account = await services.marketplace.bindAffiliateAccount(marketplaceSlugSchema.parse(request.params).connectionSlug, bindAffiliateAccountSchema.parse(request.body).affiliateId); void services.autonomousScheduler.trigger(); return account; }); app.post("/api/v1/marketplaces/:connectionSlug/conversions/sync", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); const { since } = marketplaceConversionSyncSchema.parse(request.body); return services.shopeeConversionSync.sync(connectionSlug, since); }); app.post("/api/v1/marketplaces/:connectionSlug/reports/shopee/commission/reconcile", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); return services.shopeeCommissionReportReconciliation.reconcile(connectionSlug, shopeeCommissionReportSchema.parse(request.body)); }); app.post("/api/v1/marketplaces/:connectionSlug/test", writeGuard, async (request) => { const connection = await services.marketplace.testConnection(marketplaceSlugSchema.parse(request.params).connectionSlug); request.log.info({ event: "marketplace_connection_tested", connectionSlug: connection.slug, healthStatus: connection.healthStatus }); return connection; }); app.get("/api/v1/marketplaces/:connectionSlug/health", async (request) => { const connection = await services.marketplace.getConnection(marketplaceSlugSchema.parse(request.params).connectionSlug); return { status: connection.healthStatus, error: connection.healthStatus === "unhealthy" ? "Marketplace connection is unhealthy." : undefined, lastCheckedAt: connection.lastCheckedAt, lastSuccessfulCheckAt: connection.lastSuccessfulCheckAt, lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt }; }); app.post("/api/v1/marketplaces/:connectionSlug/products/discover", writeGuard, async (request) => { const { connectionSlug } = marketplaceSlugSchema.parse(request.params); return list(await services.marketplace.discoverProducts(connectionSlug)); }); app.get("/api/v1/marketplaces/:connectionSlug/products/search", async (request) => { const { connectionSlug, query } = marketplaceSearchSchema.parse({ ...(request.params as object), ...(request.query as object) }); return list(await services.marketplace.searchProducts(connectionSlug, query)); }); app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return services.marketplace.getProduct(connectionSlug, externalProductId); }); app.get("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers", async (request) => { const { connectionSlug, externalProductId } = marketplaceProductParamsSchema.parse(request.params); return list(await services.marketplace.getOffers(connectionSlug, externalProductId)); }); app.post("/api/v1/marketplaces/:connectionSlug/products/:externalProductId/offers/:externalOfferId/affiliate-link", writeGuard, async (request) => { const input = marketplaceLinkSchema.parse(request.params); const offer = await services.marketplace.generateAffiliateLink(input.connectionSlug, input.externalProductId, input.externalOfferId); if (offer.status === "active" && offer.affiliateLinkStatus === "active") void services.autonomousScheduler.trigger(); return offer; });
   app.get("/api/v1/campaigns", async () => list(await services.campaigns.list())); app.post("/api/v1/campaigns", writeGuard, async (request, reply) => reply.status(201).send(await services.campaigns.create(createCampaignSchema.parse(request.body)))); app.get("/api/v1/campaigns/:campaignId", async (request) => services.campaigns.get(campaignIdSchema.parse(request.params).campaignId)); app.patch("/api/v1/campaigns/:campaignId", writeGuard, async (request) => services.campaigns.update(campaignIdSchema.parse(request.params).campaignId, updateCampaignSchema.parse(request.body))); app.get("/api/v1/campaigns/:campaignId/offers", async (request) => list(await services.campaigns.listOffers(campaignIdSchema.parse(request.params).campaignId))); app.post("/api/v1/campaigns/:campaignId/offers/:affiliateOfferId", writeGuard, async (request, reply) => { const params = campaignOfferParamsSchema.parse(request.params); return reply.status(201).send(await services.campaigns.attachOffer(params.campaignId, params.affiliateOfferId)); }); app.delete("/api/v1/campaigns/:campaignId/offers/:affiliateOfferId", writeGuard, async (request) => { const params = campaignOfferParamsSchema.parse(request.params); await services.campaigns.removeOffer(params.campaignId, params.affiliateOfferId); return { status: "removed" }; });
   app.get("/api/v1/tracking-links", async (request) => { const { campaignId } = trackingLinkQuerySchema.parse(request.query); return list(await services.tracking.list(campaignId)); }); app.post("/api/v1/tracking-links", writeGuard, async (request, reply) => reply.status(201).send(await services.tracking.create(createTrackingLinkSchema.parse(request.body)))); app.get("/api/v1/tracking-links/:trackingLinkId", async (request) => services.tracking.get(trackingLinkIdSchema.parse(request.params).trackingLinkId)); app.post("/api/v1/tracking-links/:trackingLinkId/clicks", writeGuard, async (request) => services.tracking.recordClick(trackingLinkIdSchema.parse(request.params).trackingLinkId, recordClickSchema.parse(request.body))); app.get("/api/v1/tracking-links/:trackingLinkId/stats", async (request) => services.tracking.stats(trackingLinkIdSchema.parse(request.params).trackingLinkId));
   app.get("/api/v1/analytics/overview", async () => services.analytics.overview()); app.get("/api/v1/autonomous/performance-index", writeGuard, async () => ({ data: buildPerformanceIndex(await services.analytics.overview()) })); app.get("/api/v1/analytics/campaigns/:campaignId", async (request) => services.analytics.campaign(campaignIdSchema.parse(request.params).campaignId)); app.get("/api/v1/content", async (request) => { const { campaignId } = contentQuerySchema.parse(request.query); return list(await services.content.list(campaignId)); }); app.post("/api/v1/content", writeGuard, async (request, reply) => reply.status(201).send(await services.content.create(createContentSchema.parse(request.body)))); app.post("/api/v1/content/:contentId/product-media", writeGuard, async (request) => { const { contentId } = contentIdSchema.parse(request.params); const { kinds } = attachProductMediaSchema.parse(request.body); return services.content.attachProductMedia(contentId, kinds); }); app.get("/api/v1/content/:contentId", async (request) => services.content.get(contentIdSchema.parse(request.params).contentId)); app.get("/api/v1/content/:contentId/story", async (request) => services.contentStory.get(contentIdSchema.parse(request.params).contentId)); app.put("/api/v1/content/:contentId/story/products", writeGuard, async (request) => services.contentStory.replaceProducts(contentIdSchema.parse(request.params).contentId, contentStoryProductsSchema.parse(request.body).products)); app.patch("/api/v1/content/:contentId", writeGuard, async (request) => services.content.update(contentIdSchema.parse(request.params).contentId, updateContentSchema.parse(request.body))); app.post("/api/v1/content/:contentId/schedule", writeGuard, async (request, reply) => { const { contentId } = contentIdSchema.parse(request.params); const input = scheduleContentSchema.parse(request.body); const content = await services.content.get(contentId); const supportedPublishers = services.distribution.listPublishers(content.platform).filter((publisher) => publisher.supportsContent?.(content) ?? true); if (supportedPublishers.length === 0) return reply.status(409).send({ error: "PUBLISHER_UNAVAILABLE", message: "No configured publisher supports this content format." }); const plan = await services.distribution.schedule({ content, scheduledAt: input.scheduledAt, ...(input.accountId ? { accountId: input.accountId } : {}) }); auditSecurityEvent(request.log, request, "content_scheduled_for_distribution", { contentId, platform: content.platform, socialAccountId: plan.account.id, publishable: plan.publishable }); return reply.status(202).send({ content: plan.content, account: { id: plan.account.id, platform: plan.account.platform, status: plan.account.status, accountReference: plan.account.accountReference }, scheduledAt: plan.scheduledAt, publishable: plan.publishable }); });
