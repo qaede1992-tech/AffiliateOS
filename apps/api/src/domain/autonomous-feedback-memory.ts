@@ -28,7 +28,8 @@ export interface AutonomousFeedbackMemoryRepository {
   saveIfAbsent?(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot>;
   latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
   latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
-  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;\n  relevantByProductAndMarketplace?(productId: string, marketplaceId: string, since: string, observedAt: string): Promise<AutonomousFeedbackSnapshot[]>;
+  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;
+  relevantByProductAndMarketplace?(productId: string, marketplaceId: string, since: string, observedAt: string): Promise<AutonomousFeedbackSnapshot[]>;
   recoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
   previousRecoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
 }
