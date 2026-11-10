@@ -174,7 +174,8 @@ class DrizzlePublicShopCatalogRepository {
   async listPage(input: { query: string; page: number; pageSize: number }) {
     const offset = (input.page - 1) * input.pageSize;
     const query = input.query.trim();
-    const numeric = /^\d+$/.test(query) && Number.isSafeInteger(Number(query)) ? Number(query) : null;
+    const numericValue = /^\d+$/.test(query) ? Number(query) : Number.NaN;
+    const numeric = Number.isSafeInteger(numericValue) && numericValue <= 2_147_483_647 ? numericValue : null;
     const pattern = `%${query.replace(/[\\%_]/g, (value) => `\\${value}`)}%`;
     const result = await this.db.execute(sql`
       WITH eligible AS (
