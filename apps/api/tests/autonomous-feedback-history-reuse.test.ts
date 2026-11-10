@@ -31,7 +31,7 @@ test("loads product snapshot history once for windows and recovery analysis", as
   let latestReads = 0;
   const memory = {
     latestByProductAndMarketplace: async () => { latestReads += 1; return halt; },
-    recentByProductAndMarketplace: async () => { historyReads += 1; return snapshots; },
+    relevantByProductAndMarketplace: async () => { historyReads += 1; return snapshots; },
     saveIfAbsent: async (snapshot: unknown) => snapshot
   };
   const provider = new AutonomousAnalyticsFeedbackProvider(
@@ -66,7 +66,7 @@ test("falls back to the latest snapshot when no snapshot exists in the 30-day wi
   let latestReads = 0;
   const memory = {
     latestByProductAndMarketplace: async () => { latestReads += 1; return previous; },
-    recentByProductAndMarketplace: async () => { historyReads += 1; return []; },
+    relevantByProductAndMarketplace: async () => { historyReads += 1; return []; },
     saveIfAbsent: async (snapshot: unknown) => snapshot
   };
   const provider = new AutonomousAnalyticsFeedbackProvider(
