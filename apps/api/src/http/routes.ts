@@ -4,7 +4,7 @@ import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateC
 import type { Services } from "../domain/container.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
+import { createAffiliateSchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, shopeeCommissionReportSchema, publicShopQuerySchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { ProductMediaCandidateImportError } from "../domain/product-media-candidate-import.js";
@@ -256,40 +256,27 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     });
     for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
-  }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
-    const [products, offers, trackingLinks] = await Promise.all([
-      services.marketplace.listProducts(),
-      services.marketplace.listAffiliateOffers(),
-      services.tracking.list()
-    ]);
+  }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get<{ Querystring: { query?: string; page?: string | number; pageSize?: string | number } }>("/api/v1/public/shop", async (request) => {
+    const query = publicShopQuerySchema.parse(request.query);
+    if (services.publicShopCatalog) return services.publicShopCatalog.listPage(query);
+    const [products, offers, trackingLinks] = await Promise.all([services.marketplace.listProducts(), services.marketplace.listAffiliateOffers(), services.tracking.list()]);
     const productsById = new Map(products.map((product) => [product.id, product]));
     const seen = new Set<string>();
+    const normalized = query.query.toLocaleLowerCase("id-ID");
+    const numeric = /^\d+$/.test(normalized) ? Number(normalized) : null;
     const items = offers.flatMap((offer) => {
       if (offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return [];
       if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) return [];
       const product = productsById.get(offer.productId);
-      const trackingLink = trackingLinks.find((link) =>
-        link.affiliateOfferId === offer.id &&
-        link.status === "active" &&
-        link.destinationUrl === offer.affiliateUrl
-      );
+      const trackingLink = trackingLinks.find((link) => link.affiliateOfferId === offer.id && link.status === "active" && link.destinationUrl === offer.affiliateUrl);
       if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
+      if (normalized && (numeric !== null ? product.referenceNumber !== numeric : !product.name.toLocaleLowerCase("id-ID").includes(normalized))) return [];
       seen.add(product.id);
-      return [{
-        id: product.id,
-        referenceNumber: product.referenceNumber,
-        name: product.name,
-        category: product.category,
-        priceCents: offer.priceCents ?? product.priceCents,
-        currency: offer.currency ?? product.currency,
-        ratingMilli: product.ratingMilli,
-        reviewCount: product.reviewCount,
-        trackingCode: trackingLink.code
-      }];
-    });
-    return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
-  });
-  app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => { const { productId } = productMediaParamsSchema.parse(request.params); return services.marketplace.updateProductMedia(productId, updateProductMediaSchema.parse(request.body)); });
+      return [{ id: product.id, referenceNumber: product.referenceNumber, name: product.name, category: product.category, priceCents: offer.priceCents ?? product.priceCents, currency: offer.currency ?? product.currency, ratingMilli: product.ratingMilli, reviewCount: product.reviewCount, trackingCode: trackingLink.code }];
+    }).sort((left, right) => (left.referenceNumber ?? 0) - (right.referenceNumber ?? 0));
+    const total = items.length, offset = (query.page - 1) * query.pageSize;
+    return { data: items.slice(offset, offset + query.pageSize), total, page: query.page, pageSize: query.pageSize };
+  });app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => { const { productId } = productMediaParamsSchema.parse(request.params); return services.marketplace.updateProductMedia(productId, updateProductMediaSchema.parse(request.body)); });
   app.get("/api/v1/products/:productId/media-candidates", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     const query = productMediaCandidateListQuerySchema.parse(request.query);

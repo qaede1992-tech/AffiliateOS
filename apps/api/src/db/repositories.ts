@@ -169,7 +169,49 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
   }
 }
 
+class DrizzlePublicShopCatalogRepository {
+  constructor(private readonly db: DatabaseExecutor) {}
+  async listPage(input: { query: string; page: number; pageSize: number }) {
+    const offset = (input.page - 1) * input.pageSize;
+    const query = input.query.trim();
+    const numeric = /^\d+$/.test(query) && Number.isSafeInteger(Number(query)) ? Number(query) : null;
+    const pattern = `%${query.replace(/[\\%_]/g, (value) => `\\${value}`)}%`;
+    const result = await this.db.execute(sql`
+      WITH eligible AS (
+        SELECT DISTINCT ON (p.id) p.id, p.reference_number, p.name, p.category,
+          COALESCE(ao.price_cents, p.price_cents) AS price_cents,
+          COALESCE(ao.currency, p.currency) AS currency, p.rating_milli, p.review_count, tl.code AS tracking_code
+        FROM products p
+        JOIN affiliate_offers ao ON ao.product_id = p.id
+        JOIN LATERAL (
+          SELECT t.code FROM tracking_links t
+          WHERE t.affiliate_offer_id = ao.id AND t.status = 'active' AND t.destination_url = ao.affiliate_url
+          ORDER BY t.created_at DESC, t.id DESC LIMIT 1
+        ) tl ON true
+        WHERE p.status = 'active' AND ao.status = 'active'
+          AND ao.affiliate_link_status = 'active' AND ao.affiliate_url IS NOT NULL
+          AND (ao.affiliate_link_expires_at IS NULL OR ao.affiliate_link_expires_at > now())
+          AND (${query} = '' OR (${numeric}::integer IS NOT NULL AND p.reference_number = ${numeric})
+            OR (${numeric}::integer IS NULL AND p.name ILIKE ${pattern} ESCAPE E'\\'))
+        ORDER BY p.id, ao.created_at DESC, ao.id DESC
+      ),
+      counted AS (SELECT count(*)::integer AS total FROM eligible),
+      page_rows AS (SELECT * FROM eligible ORDER BY reference_number ASC NULLS LAST, id ASC LIMIT ${input.pageSize} OFFSET ${offset})
+      SELECT page_rows.*, counted.total FROM counted LEFT JOIN page_rows ON true
+    `);
+    const rows = Array.isArray(result) ? result : (result as { rows?: Record<string, unknown>[] }).rows ?? [];
+    const total = Number(rows[0]?.total ?? 0);
+    const data = rows.filter((row: Record<string, unknown>) => row.id != null).map((row: Record<string, unknown>) => ({
+      id: String(row.id), referenceNumber: Number(row.reference_number), name: String(row.name),
+      category: row.category == null ? null : String(row.category), priceCents: row.price_cents == null ? null : Number(row.price_cents),
+      currency: row.currency == null ? null : String(row.currency), ratingMilli: row.rating_milli == null ? null : Number(row.rating_milli),
+      reviewCount: row.review_count == null ? null : Number(row.review_count), trackingCode: String(row.tracking_code)
+    }));
+    return { data, total, page: input.page, pageSize: input.pageSize };
+  }
+}
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
+  publicShopCatalog: new DrizzlePublicShopCatalogRepository(db),
   shopeeAffiliateLinkIntakes: new DrizzleShopeeAffiliateLinkIntakeRepository(db),
   productMediaAssets: new DrizzleProductMediaAssetRepository(db),
   productMediaCandidates: new DrizzleProductMediaCandidateRepository(db),

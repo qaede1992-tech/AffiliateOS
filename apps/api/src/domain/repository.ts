@@ -157,7 +157,9 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     return next;
   }
 }
+export interface PublicShopCatalogRepository { listPage(input: { query: string; page: number; pageSize: number }): Promise<{ data: Array<{ id: string; referenceNumber: number; name: string; category?: string | null; priceCents?: number | null; currency?: string | null; ratingMilli?: number | null; reviewCount?: number | null; trackingCode: string }>; total: number; page: number; pageSize: number }>; }
 export interface RepositorySet {
+  publicShopCatalog?: PublicShopCatalogRepository;
   shopeeAffiliateLinkIntakes?: ShopeeAffiliateLinkIntakeRepository; productMediaCandidates?: ProductMediaCandidateRepository; productMediaDiscoveryAttempts?: ProductMediaDiscoveryAttemptRepository;
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
