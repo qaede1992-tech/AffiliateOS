@@ -1,5 +1,10 @@
 import type { AutonomousCycleInput, AutonomousCycleResult, AutonomousCycleService } from "./autonomous-cycle.js";
 
+export const safeAutonomousErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 export type AutonomousSchedulerOptions = {
   intervalMs?: number;
   idleIntervalMs?: number;
@@ -111,7 +116,7 @@ export class AutonomousScheduler {
       })
       .catch(async (error) => {
         this.lastSkipReason = undefined;
-        this.lastError = error instanceof Error ? error.message : String(error);
+        this.lastError = safeAutonomousErrorType(error);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyError(error);
         return undefined;
