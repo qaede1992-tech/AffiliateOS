@@ -35,6 +35,18 @@ export class MarketplaceService {
     return this.offers.listActiveByAccountAndProducts(affiliateAccountId, productIds);
   }
   async listAffiliateOfferVerification() {
+    if (this.offers.listForVerification) {
+      return (await this.offers.listForVerification()).map((row) => ({
+        ...row.offer,
+        affiliateId: row.affiliateId,
+        affiliateName: row.affiliateName,
+        affiliateAccountName: row.affiliateAccountName,
+        marketplaceSlug: row.marketplaceSlug,
+        productExternalId: row.productExternalId,
+        productName: row.productName,
+        productUrl: row.productUrl
+      }));
+    }
     const offers = await this.offers.list();
     return Promise.all(offers.map(async (offer) => {
       const account = await this.accounts.findById(offer.affiliateAccountId);
