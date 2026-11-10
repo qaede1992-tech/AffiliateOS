@@ -58,6 +58,8 @@ function App() {
   const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
   const [marketplaceVerificationLoaded, setMarketplaceVerificationLoaded] = useState(false);
   const [marketplaceVerificationLoading, setMarketplaceVerificationLoading] = useState(false);
+  const [marketplaceVerificationCursor, setMarketplaceVerificationCursor] = useState<string | null>(null);
+  const [marketplaceVerificationHasMore, setMarketplaceVerificationHasMore] = useState(false);
 
   const loadDashboard = async () => {
     const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, analytics, autonomous] = await Promise.all([
@@ -83,12 +85,15 @@ function App() {
     setAutonomousStatus(autonomous);
   };
 
-  const loadMarketplaceVerification = async () => {
+  const loadMarketplaceVerification = async (append = false) => {
+    if (marketplaceVerificationLoading) return;
     setMarketplaceVerificationLoading(true);
     setError(null);
     try {
-      const result = await api.affiliateOfferVerification();
-      setData((current) => current ? { ...current, affiliateOfferVerification: result.data } : current);
+      const result = await api.affiliateOfferVerification({ limit: 25, cursor: append ? marketplaceVerificationCursor ?? undefined : undefined });
+      setData((current) => current ? { ...current, affiliateOfferVerification: append ? [...current.affiliateOfferVerification, ...result.data.filter((row) => !current.affiliateOfferVerification.some((existing) => existing.id === row.id))] : result.data } : current);
+      setMarketplaceVerificationCursor(result.nextCursor);
+      setMarketplaceVerificationHasMore(result.hasMore);
       setMarketplaceVerificationLoaded(true);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Data verifikasi marketplace belum dapat dimuat.");
