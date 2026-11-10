@@ -61,6 +61,7 @@ export interface AutonomousDecisionAuditQuery {
 
 export interface AutonomousDecisionAuditReader {
   list(query?: AutonomousDecisionAuditQuery): Promise<AutonomousDecisionAudit[]>;
+  listPendingExplorationEvaluations?(limit?: number): Promise<AutonomousDecisionAudit[]>;
 }
 
 export interface AutonomousDecisionAuditRepository extends AutonomousDecisionAuditReader {
