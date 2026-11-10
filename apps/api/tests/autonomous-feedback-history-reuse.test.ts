@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AutonomousAnalyticsFeedbackProvider } from "../src/domain/autonomous-feedback.js";
-import type { AutonomousFeedbackSnapshot } from "../src/domain/autonomous-feedback-memory.js";
+import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackSnapshot } from "../src/domain/autonomous-feedback-memory.js";
 
 test("loads product snapshot history once for windows and recovery analysis", async () => {
   const halt = {
@@ -125,4 +125,63 @@ test("uses one latest snapshot without loading or persisting full history for di
   assert.equal(signal?.windows, undefined);
   assert.equal(signal?.anomaly, "halt");
   assert.equal(signal?.recoveryEpisodeId, previous.id);
+});
+
+
+test("in-memory relevant feedback history mirrors the bounded SQL selection", async () => {
+  const memory = new InMemoryAutonomousFeedbackMemoryRepository();
+  const observedAt = new Date("2026-10-30T12:00:00.000Z");
+  const snapshot = (id: string, daysAgo: number, overrides: Partial<AutonomousFeedbackSnapshot> = {}): AutonomousFeedbackSnapshot => ({
+    id,
+    observationKey: id,
+    productId: "product-1",
+    marketplaceId: "marketplace-1",
+    clickCount: 100 + daysAgo,
+    conversionCount: 2,
+    attributedCommissionCents: 200,
+    commissionPerClickCents: 2,
+    conversionRate: 0.02,
+    adjustment: 0,
+    anomaly: "none",
+    anomalyScore: 0,
+    recoveryState: "none",
+    recoveryClicks: 0,
+    recoveryEvidenceScore: 0,
+    recoveryQualityScore: 0,
+    observedAt: new Date(observedAt.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
+    ...overrides
+  });
+
+  const rows: AutonomousFeedbackSnapshot[] = [];
+  for (let day = 30; day >= 0; day -= 1) {
+    const id = `day-${day}`;
+    rows.push(snapshot(id, day, day === 6 ? { anomaly: "halt", recoveryState: "recovering" } : {}));
+  }
+  rows.push(snapshot("recovered-early", 5, {
+    recoveryEpisodeId: "day-6",
+    recoveryState: "recovered",
+    anomaly: "none"
+  }));
+  rows.push(snapshot("recent-half-day", 0.5));
+  for (const row of rows) await memory.save(row);
+
+  const selected = await memory.relevantByProductAndMarketplace(
+    "product-1",
+    "marketplace-1",
+    new Date(observedAt.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    observedAt.toISOString()
+  );
+  const ids = selected.map((row) => row.id);
+
+  assert.ok(selected.length < rows.length, "must not return the entire 30-day history");
+  assert.ok(selected.length <= 9, "must stay within the SQL query's maximum selected-row bound");
+  assert.ok(ids.includes("day-30"), "must retain the earliest 30-day anchor");
+  assert.ok(ids.includes("day-6"), "must retain the latest halt");
+  assert.ok(ids.includes("recovered-early"), "must retain recovery evidence even outside the latest three snapshots");
+  assert.ok(ids.includes("recent-half-day"), "must retain the 24-hour anchor");
+  assert.equal(new Set(ids).size, ids.length, "must deduplicate snapshots selected by multiple windows");
+  assert.deepEqual(
+    selected.map((row) => row.observedAt),
+    [...selected].map((row) => row.observedAt).sort()
+  );
 });
