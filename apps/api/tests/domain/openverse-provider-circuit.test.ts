@@ -47,8 +47,12 @@ test("does not pause Openverse for non-403 failures", () => {
   assert.doesNotThrow(() => assertOpenverseAvailable());
 });
 
-test("a successful Openverse request clears an active provider pause", () => {
+test("an in-flight success cannot clear a provider-wide 403 cooldown", () => {
   resetOpenverseCircuitForTests();
+  const requestStartedAt = Date.UTC(2026, 10, 10, 0, 0, 0);
+
+  // One search passed the gate before a concurrent search received HTTP 403.
+  assert.doesNotThrow(() => assertOpenverseAvailable(requestStartedAt));
   recordOpenverseFailure({
     endpoint: "token",
     status: 403,
@@ -57,8 +61,16 @@ test("a successful Openverse request clears an active provider pause", () => {
     cloudflareRayPresent: false,
     cloudflareRayId: null,
     responseKind: "json_error"
-  });
-  assert.throws(() => assertOpenverseAvailable());
-  recordOpenverseSuccess();
-  assert.doesNotThrow(() => assertOpenverseAvailable());
+  }, requestStartedAt + 1);
+
+  // The earlier search succeeds after the circuit has already opened.
+  recordOpenverseSuccess(requestStartedAt + 2);
+  assert.throws(
+    () => assertOpenverseAvailable(requestStartedAt + 3),
+    (error: unknown) => error instanceof OpenverseCircuitOpenError
+  );
+
+  // A new request may probe again after the full cooldown expires.
+  assert.doesNotThrow(() => assertOpenverseAvailable(requestStartedAt + 6 * 60 * 60_000));
+  resetOpenverseCircuitForTests();
 });
