@@ -56,16 +56,17 @@ function App() {
   const [togglingMarketplaceSlug, setTogglingMarketplaceSlug] = useState<string | null>(null);
   const [autonomousStatus, setAutonomousStatus] = useState<{ running: boolean; active: boolean; lastStartedAt?: string; lastCompletedAt?: string; lastError?: string } | null>(null);
   const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
+  const [marketplaceVerificationLoaded, setMarketplaceVerificationLoaded] = useState(false);
+  const [marketplaceVerificationLoading, setMarketplaceVerificationLoading] = useState(false);
 
   const loadDashboard = async () => {
-    const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, affiliateOfferVerification, analytics, autonomous] = await Promise.all([
+    const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, analytics, autonomous] = await Promise.all([
       api.affiliates(),
       api.offers(),
       api.conversions(),
       api.commissions(),
       api.marketplaceProviders(),
       api.marketplaceConnections(),
-      api.affiliateOfferVerification(),
       api.analyticsOverview(),
       api.autonomousStatus()
     ]);
@@ -76,10 +77,24 @@ function App() {
       commissions: commissions.data,
       marketplaceProviders: marketplaceProviders.data,
       marketplaceConnections: marketplaceConnections.data,
-      affiliateOfferVerification: affiliateOfferVerification.data,
+      affiliateOfferVerification: data?.affiliateOfferVerification ?? [],
       analytics
     });
     setAutonomousStatus(autonomous);
+  };
+
+  const loadMarketplaceVerification = async () => {
+    setMarketplaceVerificationLoading(true);
+    setError(null);
+    try {
+      const result = await api.affiliateOfferVerification();
+      setData((current) => current ? { ...current, affiliateOfferVerification: result.data } : current);
+      setMarketplaceVerificationLoaded(true);
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Data verifikasi marketplace belum dapat dimuat.");
+    } finally {
+      setMarketplaceVerificationLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -327,11 +342,11 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           <article id="offers" className="offers-workspace">
             <div className="offers-title-row">
               <div><span className="eyebrow">Komersial</span><h3>Penawaran</h3><p>Kelola penawaran internal dan produk affiliate marketplace dari area yang berbeda.</p></div>
-              <span className="badge">{data.offers.length + data.affiliateOfferVerification.length} total</span>
+              <span className="badge">{data.offers.length + (marketplaceVerificationLoaded ? data.affiliateOfferVerification.length : 0)} total</span>
             </div>
             <div className="offers-overview" aria-label="Ringkasan penawaran">
               <div><span>Penawaran internal</span><strong>{data.offers.length}</strong><small>{data.offers.filter((offer) => offer.status === "active").length} aktif</small></div>
-              <div><span>Produk marketplace</span><strong>{data.affiliateOfferVerification.length}</strong><small>Diimpor dari akun affiliate</small></div>
+              <div><span>Produk marketplace</span><strong>{marketplaceVerificationLoaded ? data.affiliateOfferVerification.length : "—"}</strong><small>{marketplaceVerificationLoaded ? "Diimpor dari akun affiliate" : "Muat saat diperlukan"}</small></div>
             </div>
             <section className="offers-subsection" aria-labelledby="internal-offers-heading">
               <div className="offers-subsection-heading"><div><p className="eyebrow">Program</p><h4 id="internal-offers-heading">Penawaran internal</h4></div><span className="badge">{data.offers.length} data</span></div>
@@ -349,9 +364,10 @@ This will allow AffiliateOS to use this marketplace connection for operational w
               ))}</div>}
             </section>
             <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading">
-              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{data.affiliateOfferVerification.length} produk</span></div>
+              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{marketplaceVerificationLoaded ? `${data.affiliateOfferVerification.length} produk` : "Belum dimuat"}</span></div>
               <p className="offers-help">Produk dan tautan affiliate yang berasal dari feed marketplace, termasuk impor CSV Shopee. Data ini berbeda dari penawaran internal di atas.</p>
-              {data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
+              <button type="button" onClick={() => void loadMarketplaceVerification()} disabled={marketplaceVerificationLoading}>{marketplaceVerificationLoading ? "Memuat data..." : marketplaceVerificationLoaded ? "Perbarui data marketplace" : "Muat data marketplace"}</button>
+              {!marketplaceVerificationLoaded ? <p className="empty">Data marketplace dimuat hanya saat bagian ini diperlukan.</p> : data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
                 <div className="offer-visibility-card marketplace-offer-card" key={offer.id}>
                   <div className="offer-visibility-header"><div><strong>{offer.productName ?? "Produk marketplace"}</strong><small>{offer.marketplaceSlug ?? "Marketplace tidak diketahui"} · ID produk: {offer.productExternalId ?? "—"}</small></div><span className={`badge ${offer.status}`}>{offer.status}</span></div>
                   <div className="offer-visibility-details">
