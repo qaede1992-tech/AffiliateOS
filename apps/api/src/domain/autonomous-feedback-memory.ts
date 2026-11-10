@@ -28,7 +28,7 @@ export interface AutonomousFeedbackMemoryRepository {
   saveIfAbsent?(snapshot: AutonomousFeedbackSnapshot): Promise<AutonomousFeedbackSnapshot>;
   latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
   latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
-  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;
+  recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;\n  relevantByProductAndMarketplace?(productId: string, marketplaceId: string, since: string, observedAt: string): Promise<AutonomousFeedbackSnapshot[]>;
   recoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
   previousRecoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
 }
@@ -58,6 +58,12 @@ export class InMemoryAutonomousFeedbackMemoryRepository implements AutonomousFee
   async recentByProductAndMarketplace(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]> {
     return [...this.snapshots.values()]
       .filter((snapshot) => snapshot.productId === productId && snapshot.marketplaceId === marketplaceId && snapshot.observedAt >= since)
+      .sort((left, right) => left.observedAt.localeCompare(right.observedAt) || left.id.localeCompare(right.id));
+  }
+
+  async relevantByProductAndMarketplace(productId: string, marketplaceId: string, since: string, observedAt: string): Promise<AutonomousFeedbackSnapshot[]> {
+    return [...this.snapshots.values()]
+      .filter((snapshot) => snapshot.productId === productId && snapshot.marketplaceId === marketplaceId && snapshot.observedAt >= since && snapshot.observedAt <= observedAt)
       .sort((left, right) => left.observedAt.localeCompare(right.observedAt) || left.id.localeCompare(right.id));
   }
 

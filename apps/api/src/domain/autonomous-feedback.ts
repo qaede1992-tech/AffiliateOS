@@ -86,8 +86,12 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       // Preliminary discovery can use one latest snapshot without transferring
       // the complete 30-day history.
       const historySince = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const recentSnapshots = historyMode === "full" && isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
-        ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId, historySince)
+      const recentSnapshots = historyMode === "full" && isProductSignal && marketplaceId
+        ? this.memory!.relevantByProductAndMarketplace
+          ? await this.memory!.relevantByProductAndMarketplace(productId, marketplaceId, historySince, observedAt)
+          : this.memory!.recentByProductAndMarketplace
+            ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId, historySince)
+            : undefined
         : undefined;
       const previous = isProductSignal
         ? marketplaceId
