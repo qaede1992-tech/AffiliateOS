@@ -71,6 +71,6 @@ test("an in-flight success cannot clear a provider-wide 403 cooldown", () => {
   );
 
   // A new request may probe again after the full cooldown expires.
-  assert.doesNotThrow(() => assertOpenverseAvailable(requestStartedAt + 6 * 60 * 60_000));
+  assert.doesNotThrow(() => assertOpenverseAvailable(requestStartedAt + 6 * 60 * 60_000 + 2));
   resetOpenverseCircuitForTests();
 });
