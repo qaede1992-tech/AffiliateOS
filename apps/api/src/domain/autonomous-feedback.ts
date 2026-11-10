@@ -44,7 +44,7 @@ function calculateRecoveryQuality(metrics: RecoveryEpisodeMetrics): number {
   );
 }
 
-export type AutonomousFeedbackContext = { observationKey?: string; };
+export type AutonomousFeedbackContext = { observationKey?: string; historyMode?: "full" | "latest"; };
 
 export interface AutonomousFeedbackProvider {
   getSignals(context?: AutonomousFeedbackContext): Promise<Map<string, OpportunityPerformanceSignal>>;
@@ -81,6 +81,25 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
     const entries = await Promise.all([...current.entries()].map(async ([key, signal]) => {
       const isProductSignal = isProductSignalKey(key);
       const [marketplaceId, productId] = isProductSignal ? splitSignalKey(key) : [undefined, key];
+      if (context.historyMode === "latest") {
+        const previous = isProductSignal
+          ? marketplaceId
+            ? await this.memory!.latestByProductAndMarketplace(productId, marketplaceId)
+            : await this.memory!.latestByProduct(productId)
+          : undefined;
+        return [key, {
+          ...signal,
+          anomaly: previous?.anomaly ?? "none",
+          anomalyScore: previous?.anomalyScore ?? 0,
+          anomalyRecovery: previous?.recoveryState === "recovering"
+            ? "recovering"
+            : previous?.recoveryState === "recovered" ? "recovered" : "none",
+          recoveryClicks: previous?.recoveryClicks ?? 0,
+          recoveryEvidenceScore: previous?.recoveryEvidenceScore ?? 0,
+          recoveryEpisodeId: previous?.recoveryEpisodeId,
+          recoveryPolicy: previous?.recoveryPolicy
+        }] as const;
+      }
       // Read the 30-day product history first. Its newest row is also the
       // previous snapshot, so a second latest-row query is unnecessary whenever
       // recent history exists.
