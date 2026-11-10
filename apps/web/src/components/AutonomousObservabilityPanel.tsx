@@ -62,25 +62,40 @@ export function AutonomousObservabilityPanel() {
   const [selectedFilter, setSelectedFilter] = useState<"all" | "selected" | "rejected">("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productsLoaded, setProductsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
-      const [auditResponse, productResponse, autonomousStatus] = await Promise.all([
+      const [auditResponse, autonomousStatus] = await Promise.all([
         api.autonomousDecisionAudits(100),
-        api.products(),
         api.autonomousStatus()
       ]);
       setAudits(auditResponse.data);
-      setProducts(productResponse.data);
       setStatus(autonomousStatus);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load autonomous observability.");
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const loadProducts = async () => {
+    if (productsLoaded || loadingProducts) return;
+    setLoadingProducts(true);
+    setError(null);
+    try {
+      const response = await api.products();
+      setProducts(response.data);
+      setProductsLoaded(true);
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to load product names.");
+    } finally {
+      setLoadingProducts(false);
     }
   };
 
@@ -115,6 +130,7 @@ export function AutonomousObservabilityPanel() {
         </div>
         <div className="affiliate-meta">
           <span className={`badge ${status?.active ? "active" : "inactive"}`}>{status?.active ? "cycle active" : "idle"}</span>
+          <button type="button" onClick={() => void loadProducts()} disabled={loadingProducts || productsLoaded}>{productsLoaded ? "Product names loaded" : loadingProducts ? "Loading product names..." : "Load product names"}</button>
           <button type="button" onClick={() => void load(true)} disabled={refreshing}>{refreshing ? "Refreshing..." : "Refresh"}</button>
         </div>
       </div>
