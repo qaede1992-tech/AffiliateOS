@@ -82,6 +82,47 @@ function App() {
     setAutonomousStatus(autonomous);
   };
 
+  const refreshAffiliates = async () => {
+    const result = await api.affiliates();
+    setData((current) => current ? { ...current, affiliates: result.data } : current);
+  };
+
+  const refreshOffers = async () => {
+    const result = await api.offers();
+    setData((current) => current ? { ...current, offers: result.data } : current);
+  };
+
+  const refreshConversionsAndAnalytics = async () => {
+    const [conversions, commissions, analytics] = await Promise.all([
+      api.conversions(),
+      api.commissions(),
+      api.analyticsOverview()
+    ]);
+    setData((current) => current ? {
+      ...current,
+      conversions: conversions.data,
+      commissions: commissions.data,
+      analytics
+    } : current);
+  };
+
+  const refreshMarketplaceCatalog = async () => {
+    const [offers, affiliateOfferVerification] = await Promise.all([
+      api.offers(),
+      api.affiliateOfferVerification()
+    ]);
+    setData((current) => current ? {
+      ...current,
+      offers: offers.data,
+      affiliateOfferVerification: affiliateOfferVerification.data
+    } : current);
+  };
+
+  const refreshMarketplaceConnections = async () => {
+    const result = await api.marketplaceConnections();
+    setData((current) => current ? { ...current, marketplaceConnections: result.data } : current);
+  };
+
   useEffect(() => {
     loadDashboard().catch((requestError: unknown) => {
       setError(requestError instanceof Error ? requestError.message : "Unable to load dashboard data.");
@@ -96,7 +137,7 @@ function App() {
       await api.createAffiliate({ name: affiliateName.trim(), email: affiliateEmail.trim() });
       setAffiliateName("");
       setAffiliateEmail("");
-      await loadDashboard();
+      await refreshAffiliates();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create affiliate.");
     } finally {
@@ -116,7 +157,7 @@ function App() {
       });
       setOfferName("");
       setOfferRate("");
-      await loadDashboard();
+      await refreshOffers();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create offer.");
     } finally {
@@ -137,7 +178,7 @@ function App() {
       setConversionAffiliateId("");
       setConversionOfferId("");
       setConversionAmount("");
-      await loadDashboard();
+      await refreshConversionsAndAnalytics();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create conversion.");
     } finally {
@@ -158,7 +199,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     setError(null);
     try {
       await api.marketplaceSetEnabled(connection.slug, enable);
-      await loadDashboard();
+      await refreshMarketplaceConnections();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to change marketplace connection state.");
     } finally {
@@ -283,7 +324,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
         <IntegrationSetupPanel />
 
         <section className="workspace-grid">
-          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={loadDashboard} />
+          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={refreshMarketplaceCatalog} />
           <ProductMediaIntakePanel />
         </section>
 
