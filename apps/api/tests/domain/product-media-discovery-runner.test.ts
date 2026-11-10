@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Product } from "@affiliateos/shared";
 import { ProductMediaDiscoveryRunner } from "../../src/domain/product-media-discovery-runner.js";
+import { resetOpenverseCircuitForTests } from "../../src/domain/openverse-provider-circuit.js";
 import type { ProductMediaAsset } from "../../src/domain/product-media-ingestion.js";
 
 const product: Product = {
@@ -560,6 +561,7 @@ test("classifies catalog persistence failures separately and keeps provider erro
 
 
 test("persists catalog search cooldown and invalidates it when product identity changes", async () => {
+  resetOpenverseCircuitForTests();
   const attempts = new Map<string, { fingerprint: string; nextRetryAt: string }>();
   let fetchCount = 0;
   const fetchImpl = async () => {
@@ -599,4 +601,5 @@ test("persists catalog search cooldown and invalidates it when product identity 
 
   await runner.discover({ ...shopeeProduct, name: "Demo product updated" }, true);
   assert.equal(fetchCount, 2, "changed product identity should invalidate the old cooldown");
+  resetOpenverseCircuitForTests();
 });
