@@ -21,6 +21,8 @@ export function ProductMediaRightsPanel() {
   const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [audits, setAudits] = useState<Record<string, ProductMediaRightsAuditView[]>>({});
+  const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
+  const [auditLoading, setAuditLoading] = useState<Record<string, boolean>>({});
   const [forms, setForms] = useState<Record<string, ReviewForm>>({});
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -57,23 +59,43 @@ export function ProductMediaRightsPanel() {
       const response = await api.productMediaAssets(selectedProductId);
       if (requestId !== requestSequence.current) return;
       setAssets(response.data);
-      const [signed, history] = await Promise.all([
-        Promise.all(response.data.map(async (asset) => {
-          try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
-          catch { return [asset.id, ""] as const; }
-        })),
-        Promise.all(response.data.map(async (asset) => {
-          try { return [asset.id, (await api.productMediaRightsAudits(selectedProductId, asset.id)).data] as const; }
-          catch { return [asset.id, []] as const; }
-        }))
-      ]);
-      if (requestId !== requestSequence.current) return;
-      setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
-      setAudits(Object.fromEntries(history));
+      // Signed preview URLs and audit histories are loaded only when the admin asks to view them.
+      // This avoids N+N requests when a product contains many media assets.
     } catch (requestError) {
       if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
+    }
+  };
+
+  const loadPreview = async (assetId: string) => {
+    if (previews[assetId] || previewLoading[assetId]) return;
+    const selectedProductId = productId;
+    const requestId = requestSequence.current;
+    setPreviewLoading((current) => ({ ...current, [assetId]: true }));
+    try {
+      const response = await api.productMediaPreview(selectedProductId, assetId);
+      if (requestId === requestSequence.current) setPreviews((current) => ({ ...current, [assetId]: response.url }));
+    } catch {
+      if (requestId === requestSequence.current) setError("Preview privat tidak dapat dimuat. Coba lagi.");
+    } finally {
+      if (requestId === requestSequence.current) setPreviewLoading((current) => ({ ...current, [assetId]: false }));
+    }
+  };
+
+  const loadAudit = async (assetId: string) => {
+    if (Object.prototype.hasOwnProperty.call(audits, assetId) || auditLoading[assetId]) return;
+    const selectedProductId = productId;
+    const requestId = requestSequence.current;
+    setAuditLoading((current) => ({ ...current, [assetId]: true }));
+    try {
+      const response = await api.productMediaRightsAudits(selectedProductId, assetId);
+      if (requestId === requestSequence.current) setAudits((current) => ({ ...current, [assetId]: response.data }));
+    } catch {
+      if (requestId === requestSequence.current) setAudits((current) => ({ ...current, [assetId]: [] }));
+      if (requestId === requestSequence.current) setError("Riwayat audit tidak dapat dimuat. Buka kembali bagian riwayat untuk mencoba lagi.");
+    } finally {
+      if (requestId === requestSequence.current) setAuditLoading((current) => ({ ...current, [assetId]: false }));
     }
   };
 
@@ -164,7 +186,7 @@ export function ProductMediaRightsPanel() {
                 {preview ? asset.kind === "video"
                   ? <video src={preview} controls preload="metadata" />
                   : <img src={preview} alt={`Media produk ${asset.productId}`} />
-                  : <span>Preview privat tidak tersedia</span>}
+                  : <div><span>Preview privat belum dimuat</span><button type="button" onClick={() => void loadPreview(asset.id)} disabled={Boolean(previewLoading[asset.id])}>{previewLoading[asset.id] ? "Memuat preview…" : "Muat preview privat"}</button></div>}
               </div>
               <div className="product-media-rights-details">
                 <div className="panel-heading">
@@ -193,8 +215,8 @@ export function ProductMediaRightsPanel() {
                 <small className="analytics-note">Penilaian ini hanya preflight teknis berdasarkan metadata tersimpan. Ini bukan persetujuan hak media atau izin publikasi; codec, frame rate, dan batas akun tertentu mungkin masih perlu diperiksa.</small>
                 {asset.rightsStatus === "verified" && <p className="analytics-note">Dasar: {asset.rightsBasis} · Penerbit: {asset.sourcePublisher} · Diverifikasi: {asset.rightsVerifiedAt ? new Date(asset.rightsVerifiedAt).toLocaleString("id-ID") : "—"}</p>}
                 {safeEvidenceUrl(asset.rightsEvidenceUrl) && <p><a href={safeEvidenceUrl(asset.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
-                <details className="product-media-rights-history">
-                  <summary>Riwayat pemeriksaan ({(audits[asset.id] ?? []).length})</summary>
+                <details className="product-media-rights-history" onToggle={(event) => { if (event.currentTarget.open) void loadAudit(asset.id); }}>
+                  <summary>Riwayat pemeriksaan {auditLoading[asset.id] ? "(memuat…)" : Object.prototype.hasOwnProperty.call(audits, asset.id) ? `(${(audits[asset.id] ?? []).length})` : "(belum dimuat)"}</summary>
                   {(audits[asset.id] ?? []).length === 0
                     ? <p className="analytics-note">Belum ada catatan perubahan hak.</p>
                     : <ol>
