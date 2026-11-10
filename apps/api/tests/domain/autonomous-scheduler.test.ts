@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AutonomousCycleResult, AutonomousCycleService } from "../../src/domain/autonomous-cycle.js";
-import { AutonomousScheduler } from "../../src/domain/autonomous-scheduler.js";
+import { AutonomousScheduler, safeAutonomousErrorType } from "../../src/domain/autonomous-scheduler.js";
 
 const result = (_id: string): AutonomousCycleResult => ({
   startedAt: "2026-09-21T00:00:00.000Z",
@@ -96,9 +96,23 @@ describe("AutonomousScheduler", () => {
     assert.equal(await scheduler.runNow(), undefined);
     assert.equal(errors.length, 1);
     assert.equal((errors[0] as Error).message, "cycle failure");
-    assert.equal(scheduler.status.lastError, "cycle failure");
+    assert.equal(scheduler.status.lastError, "Error");
     assert.equal(scheduler.status.lastSkipReason, undefined);
     assert.equal(scheduler.status.active, false);
+  });
+
+  it("does not expose SQL details or untrusted error names in scheduler status", async () => {
+    const failure = new Error("Failed query: INSERT INTO private_table VALUES ($1); params: private-secret-marker");
+    failure.name = "Error; SELECT * FROM private_credentials";
+    const cycle = { runOnce: async () => { throw failure; } } as unknown as AutonomousCycleService;
+    const scheduler = new AutonomousScheduler(cycle);
+
+    assert.equal(await scheduler.runNow(), undefined);
+    assert.equal(scheduler.status.lastError, "UnknownError");
+    assert.equal(JSON.stringify(scheduler.status).includes("private-secret-marker"), false);
+    assert.equal(JSON.stringify(scheduler.status).includes("private_credentials"), false);
+    assert.equal(safeAutonomousErrorType(new Error("ordinary failure")), "Error");
+    assert.equal(safeAutonomousErrorType("untrusted failure"), "UnknownError");
   });
 
   it("preserves a successful cycle when the result observer fails", async () => {
@@ -119,7 +133,7 @@ describe("AutonomousScheduler", () => {
     const cycle = { runOnce: async () => { throw new Error("cycle failure"); } } as unknown as AutonomousCycleService;
     const scheduler = new AutonomousScheduler(cycle, {}, { onError: () => { throw new Error("error observer failure"); } });
     assert.equal(await scheduler.runNow(), undefined);
-    assert.equal(scheduler.status.lastError, "cycle failure");
+    assert.equal(scheduler.status.lastError, "Error");
     assert.equal(scheduler.status.active, false);
   });
 
