@@ -35,22 +35,14 @@ export class MarketplaceService {
     return this.offers.listActiveByAccountAndProducts(affiliateAccountId, productIds);
   }
   async listAffiliateOfferVerification() {
+    if (this.offers.listVerificationRows) return this.offers.listVerificationRows();
     const offers = await this.offers.list();
     return Promise.all(offers.map(async (offer) => {
       const account = await this.accounts.findById(offer.affiliateAccountId);
       const affiliate = account?.affiliateId ? await this.affiliates.findById(account.affiliateId) : undefined;
       const product = await this.products.findById(offer.productId);
       const connection = account ? await this.connections.findById(account.marketplaceId) : undefined;
-      return {
-        ...offer,
-        affiliateId: affiliate?.id,
-        affiliateName: affiliate?.name,
-        affiliateAccountName: account?.name,
-        marketplaceSlug: connection?.slug,
-        productExternalId: product?.externalProductId,
-        productName: product?.name,
-        productUrl: product?.productUrl
-      };
+      return { ...offer, affiliateId: affiliate?.id, affiliateName: affiliate?.name, affiliateAccountName: account?.name, marketplaceSlug: connection?.slug, productExternalId: product?.externalProductId, productName: product?.name, productUrl: product?.productUrl };
     }));
   }
   async getConnection(slug: string): Promise<MarketplaceConnectionView> { return this.toView(await this.connectionFor(slug)); }
