@@ -150,7 +150,7 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
       COALESCE(ct.scheduled_content_count, 0) AS scheduled_content_count,
       COALESCE(ast.attributed_conversion_count, 0) AS attributed_conversion_count,
       COALESCE(ast.attributed_revenue_cents, 0) AS attributed_revenue_cents,
-      COALESCE(ast.attributed_commission_cents, 0) AS attributed_commission_cents
+      COALESCE(ms.attributed_commission_cents, 0) AS attributed_commission_cents
     FROM campaign_scope c
     LEFT JOIN products p ON p.id = CASE
       WHEN c.audience ->> 'productId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
