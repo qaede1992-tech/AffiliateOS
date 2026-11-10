@@ -23,14 +23,19 @@ const campaignAnalyticsSql = sql`WITH link_stats AS (
 ), attribution_stats AS (
   SELECT atl.campaign_id,
     COUNT(*) FILTER (WHERE cv.status = 'approved') AS attributed_conversion_count,
-    COALESCE(SUM(cv.amount_cents) FILTER (WHERE cv.status = 'approved'), 0) AS attributed_revenue_cents,
-    COALESCE(SUM(cm.amount_cents) FILTER (
-      WHERE cv.status = 'approved' AND cm.status IN ('approved', 'paid')
-    ), 0) AS attributed_commission_cents
+    COALESCE(SUM(cv.amount_cents) FILTER (WHERE cv.status = 'approved'), 0) AS attributed_revenue_cents
   FROM conversion_attributions ca
   JOIN conversions cv ON cv.id = ca.conversion_id
   JOIN tracking_links atl ON atl.id = ca.tracking_link_id
-  LEFT JOIN commissions cm ON cm.conversion_id = cv.id
+  GROUP BY atl.campaign_id
+), commission_stats AS (
+  SELECT atl.campaign_id,
+    COALESCE(SUM(cm.amount_cents), 0) AS attributed_commission_cents
+  FROM conversion_attributions ca
+  JOIN conversions cv ON cv.id = ca.conversion_id
+  JOIN commissions cm ON cm.conversion_id = cv.id
+  JOIN tracking_links atl ON atl.id = ca.tracking_link_id
+  WHERE cv.status = 'approved' AND cm.status IN ('approved', 'paid')
   GROUP BY atl.campaign_id
 )
 SELECT c.id AS campaign_id,
@@ -45,7 +50,7 @@ SELECT c.id AS campaign_id,
   COALESCE(ct.scheduled_content_count, 0) AS scheduled_content_count,
   COALESCE(ast.attributed_conversion_count, 0) AS attributed_conversion_count,
   COALESCE(ast.attributed_revenue_cents, 0) AS attributed_revenue_cents,
-  COALESCE(ast.attributed_commission_cents, 0) AS attributed_commission_cents
+  COALESCE(ms.attributed_commission_cents, 0) AS attributed_commission_cents
 FROM campaigns c
 LEFT JOIN products p ON p.id = CASE
   WHEN c.audience ->> 'productId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -54,7 +59,8 @@ END
 LEFT JOIN link_stats ls ON ls.campaign_id = c.id
 LEFT JOIN click_stats cs ON cs.campaign_id = c.id
 LEFT JOIN content_stats ct ON ct.campaign_id = c.id
-LEFT JOIN attribution_stats ast ON ast.campaign_id = c.id`;
+LEFT JOIN attribution_stats ast ON ast.campaign_id = c.id
+LEFT JOIN commission_stats ms ON ms.campaign_id = c.id`;
 
 export class DrizzleAnalyticsReader implements AnalyticsReader {
   constructor(private readonly db: any) {}
@@ -115,15 +121,21 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
     ), attribution_stats AS (
       SELECT atl.campaign_id,
         COUNT(*) FILTER (WHERE cv.status = 'approved') AS attributed_conversion_count,
-        COALESCE(SUM(cv.amount_cents) FILTER (WHERE cv.status = 'approved'), 0) AS attributed_revenue_cents,
-        COALESCE(SUM(cm.amount_cents) FILTER (
-          WHERE cv.status = 'approved' AND cm.status IN ('approved', 'paid')
-        ), 0) AS attributed_commission_cents
+        COALESCE(SUM(cv.amount_cents) FILTER (WHERE cv.status = 'approved'), 0) AS attributed_revenue_cents
       FROM conversion_attributions ca
       JOIN conversions cv ON cv.id = ca.conversion_id
       JOIN tracking_links atl ON atl.id = ca.tracking_link_id
       JOIN campaign_scope c ON c.id = atl.campaign_id
-      LEFT JOIN commissions cm ON cm.conversion_id = cv.id
+      GROUP BY atl.campaign_id
+    ), commission_stats AS (
+      SELECT atl.campaign_id,
+        COALESCE(SUM(cm.amount_cents), 0) AS attributed_commission_cents
+      FROM conversion_attributions ca
+      JOIN conversions cv ON cv.id = ca.conversion_id
+      JOIN commissions cm ON cm.conversion_id = cv.id
+      JOIN tracking_links atl ON atl.id = ca.tracking_link_id
+      JOIN campaign_scope c ON c.id = atl.campaign_id
+      WHERE cv.status = 'approved' AND cm.status IN ('approved', 'paid')
       GROUP BY atl.campaign_id
     )
     SELECT c.id AS campaign_id,
@@ -147,7 +159,8 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
     LEFT JOIN link_stats ls ON ls.campaign_id = c.id
     LEFT JOIN click_stats cs ON cs.campaign_id = c.id
     LEFT JOIN content_stats ct ON ct.campaign_id = c.id
-    LEFT JOIN attribution_stats ast ON ast.campaign_id = c.id`);
+    LEFT JOIN attribution_stats ast ON ast.campaign_id = c.id
+    LEFT JOIN commission_stats ms ON ms.campaign_id = c.id`);
 
     const row = rowsOf(result)[0];
     if (!row) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404);
