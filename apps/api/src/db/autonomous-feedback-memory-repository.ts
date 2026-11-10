@@ -130,7 +130,10 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
     const boundary7d = new Date(observedMs - 7 * 24 * 60 * 60 * 1000).toISOString();
     const result = await this.db.execute(sql`
       WITH latest_halt AS (
-        SELECT id, observed_at
+        SELECT id, observation_key, product_id, marketplace_id, click_count, conversion_count,
+               attributed_commission_cents, commission_per_click_cents, conversion_rate, adjustment,
+               anomaly, anomaly_score, recovery_state, recovery_clicks, recovery_evidence_score,
+               recovery_quality_score, recovery_episode_id, observed_at
         FROM autonomous_feedback_snapshots
         WHERE product_id = ${productId}::uuid
           AND marketplace_id = ${marketplaceId}::uuid
@@ -140,6 +143,12 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
         ORDER BY observed_at DESC, id DESC
         LIMIT 1
       ), selected AS (
+        (SELECT id, observation_key, product_id, marketplace_id, click_count, conversion_count,
+                attributed_commission_cents, commission_per_click_cents, conversion_rate, adjustment,
+                anomaly, anomaly_score, recovery_state, recovery_clicks, recovery_evidence_score,
+                recovery_quality_score, recovery_episode_id, observed_at
+         FROM latest_halt)
+        UNION ALL
         (SELECT id, observation_key, product_id, marketplace_id, click_count, conversion_count,
                 attributed_commission_cents, commission_per_click_cents, conversion_rate, adjustment,
                 anomaly, anomaly_score, recovery_state, recovery_clicks, recovery_evidence_score,
