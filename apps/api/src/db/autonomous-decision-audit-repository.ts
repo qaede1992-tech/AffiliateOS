@@ -1,6 +1,6 @@
 import type { AutonomousDecisionAudit, AutonomousDecisionAuditRepository, AutonomousDecisionAuditQuery, AutonomousDecisionAuditReader, AutonomousDecisionOutcome, AutonomousDecisionOutcomeAnalytics } from "../domain/autonomous-decision-audit.js";
 import { autonomousDecisionAudits } from "./schema.js";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 type DatabaseExecutor = any;
 
@@ -82,6 +82,70 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
             explorationEvaluation: row.explorationEvaluation ?? undefined
           }
         : undefined
+    }));
+  }
+
+  async listPendingExplorationEvaluations(limit = 100): Promise<AutonomousDecisionAudit[]> {
+    const boundedLimit = Math.min(Math.max(1, limit), 100);
+    const rows = await this.db.select().from(autonomousDecisionAudits)
+      .where(and(
+        eq(autonomousDecisionAudits.selected, true),
+        eq(autonomousDecisionAudits.selectionMode, "exploration"),
+        isNotNull(autonomousDecisionAudits.outcomeCampaignId),
+        isNull(autonomousDecisionAudits.explorationEvaluation)
+      ))
+      .orderBy(desc(autonomousDecisionAudits.createdAt))
+      .limit(boundedLimit);
+
+    if (!rows.length) return [];
+    const campaignIds = [...new Set(rows
+      .map((row: any) => row.outcomeCampaignId)
+      .filter((id: unknown): id is string => typeof id === "string"))];
+    const result = await this.db.execute(sql`
+      SELECT
+        campaigns.id AS campaign_id,
+        (SELECT COUNT(*) FROM clicks cl JOIN tracking_links tl ON tl.id = cl.tracking_link_id WHERE tl.campaign_id = campaigns.id) AS click_count,
+        (SELECT COUNT(*) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_conversion_count,
+        (SELECT COALESCE(SUM(cv.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_revenue_cents,
+        (SELECT COALESCE(SUM(cm.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN commissions cm ON cm.conversion_id = cv.id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_commission_cents
+      FROM campaigns
+      WHERE campaigns.id IN (${sql.join(campaignIds.map((id: string) => sql`${id}::uuid`), sql`, `)})
+    `);
+    const analyticsByCampaign = new Map<string, AutonomousDecisionOutcomeAnalytics>();
+    for (const row of rowsOf(result)) {
+      const clickCount = Number(row.click_count ?? 0);
+      const attributedConversionCount = Number(row.attributed_conversion_count ?? 0);
+      analyticsByCampaign.set(String(row.campaign_id), {
+        clickCount,
+        attributedConversionCount,
+        attributedRevenueCents: Number(row.attributed_revenue_cents ?? 0),
+        attributedCommissionCents: Number(row.attributed_commission_cents ?? 0),
+        conversionRate: clickCount === 0 ? 0 : attributedConversionCount / clickCount
+      });
+    }
+    return rows.map((row: any) => ({
+      cycleId: row.cycleId,
+      auditId: row.id,
+      productId: row.productId,
+      marketplaceId: row.marketplaceId,
+      selected: row.selected,
+      selectionMode: row.selectionMode ?? undefined,
+      score: row.score,
+      policy: row.policy,
+      reasons: row.reasons,
+      category: row.category ?? undefined,
+      audienceSegments: row.audienceSegments ?? undefined,
+      createdAt: row.createdAt,
+      recovery: row.recovery ?? undefined,
+      outcome: row.outcomeStatus ? {
+        offerId: row.outcomeOfferId ?? undefined,
+        status: row.outcomeStatus,
+        campaignId: row.outcomeCampaignId ?? undefined,
+        error: row.outcomeError ?? undefined,
+        observedAt: row.outcomeObservedAt,
+        analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined,
+        explorationEvaluation: row.explorationEvaluation ?? undefined
+      } : undefined
     }));
   }
 
