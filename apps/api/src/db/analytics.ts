@@ -25,13 +25,20 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
         ),
         attribution_stats AS (
           SELECT atl.campaign_id, COUNT(*) AS attributed_conversion_count,
-                 COALESCE(SUM(cv.amount_cents), 0) AS attributed_revenue_cents,
-                 COALESCE(SUM(cm.amount_cents) FILTER (WHERE cm.status IN ('approved', 'paid')), 0) AS attributed_commission_cents
+                 COALESCE(SUM(cv.amount_cents), 0) AS attributed_revenue_cents
           FROM conversion_attributions ca
           JOIN conversions cv ON cv.id = ca.conversion_id
           JOIN tracking_links atl ON atl.id = ca.tracking_link_id
-          LEFT JOIN commissions cm ON cm.conversion_id = cv.id
           WHERE cv.status = 'approved'
+          GROUP BY atl.campaign_id
+        ),
+        commission_stats AS (
+          SELECT atl.campaign_id, COALESCE(SUM(cm.amount_cents), 0) AS attributed_commission_cents
+          FROM conversion_attributions ca
+          JOIN conversions cv ON cv.id = ca.conversion_id
+          JOIN commissions cm ON cm.conversion_id = cv.id
+          JOIN tracking_links atl ON atl.id = ca.tracking_link_id
+          WHERE cv.status = 'approved' AND cm.status IN ('approved', 'paid')
           GROUP BY atl.campaign_id
         )
         SELECT c.id AS campaign_id, c.audience ->> 'productId' AS product_id,
@@ -44,7 +51,7 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
                COALESCE(cs.scheduled_content_count, 0) AS scheduled_content_count,
                COALESCE(ats.attributed_conversion_count, 0) AS attributed_conversion_count,
                COALESCE(ats.attributed_revenue_cents, 0) AS attributed_revenue_cents,
-               COALESCE(ats.attributed_commission_cents, 0) AS attributed_commission_cents
+               COALESCE(ms.attributed_commission_cents, 0) AS attributed_commission_cents
         FROM campaigns c
         LEFT JOIN products p ON p.id = CASE
           WHEN c.audience ->> 'productId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
@@ -69,13 +76,20 @@ export class DrizzleAnalyticsReader implements AnalyticsReader {
         ),
         attribution_stats AS (
           SELECT atl.campaign_id, COUNT(*) AS attributed_conversion_count,
-                 COALESCE(SUM(cv.amount_cents), 0) AS attributed_revenue_cents,
-                 COALESCE(SUM(cm.amount_cents) FILTER (WHERE cm.status IN ('approved', 'paid')), 0) AS attributed_commission_cents
+                 COALESCE(SUM(cv.amount_cents), 0) AS attributed_revenue_cents
           FROM conversion_attributions ca
           JOIN conversions cv ON cv.id = ca.conversion_id
           JOIN tracking_links atl ON atl.id = ca.tracking_link_id
-          LEFT JOIN commissions cm ON cm.conversion_id = cv.id
           WHERE cv.status = 'approved'
+          GROUP BY atl.campaign_id
+        ),
+        commission_stats AS (
+          SELECT atl.campaign_id, COALESCE(SUM(cm.amount_cents), 0) AS attributed_commission_cents
+          FROM conversion_attributions ca
+          JOIN conversions cv ON cv.id = ca.conversion_id
+          JOIN commissions cm ON cm.conversion_id = cv.id
+          JOIN tracking_links atl ON atl.id = ca.tracking_link_id
+          WHERE cv.status = 'approved' AND cm.status IN ('approved', 'paid')
           GROUP BY atl.campaign_id
         )
         SELECT c.id AS campaign_id, c.audience ->> 'productId' AS product_id,
@@ -104,6 +118,7 @@ function toCampaignAnalytics(row: Record<string, unknown>): CampaignAnalytics { 
         LEFT JOIN link_stats ls ON ls.campaign_id = c.id
         LEFT JOIN content_stats cs ON cs.campaign_id = c.id
         LEFT JOIN attribution_stats ats ON ats.campaign_id = c.id
+        LEFT JOIN commission_stats ms ON ms.campaign_id = c.id
         ORDER BY c.created_at ASC, c.id ASC
       `)
     ]);
