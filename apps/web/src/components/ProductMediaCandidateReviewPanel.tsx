@@ -9,6 +9,8 @@ export function ProductMediaCandidateReviewPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingRole, setCheckingRole] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsLoaded, setProductsLoaded] = useState(false);
   const [productId, setProductId] = useState("");
   const [status, setStatus] = useState<CandidateStatus>("pending");
   const [candidates, setCandidates] = useState<ProductMediaCandidateView[]>([]);
@@ -27,15 +29,27 @@ export function ProductMediaCandidateReviewPanel() {
       if (!active) return;
       if (user.role !== "admin") return;
       setIsAdmin(true);
-      const response = await api.products();
-      if (!active) return;
-      setProducts(response.data);
-      setProductId(response.data[0]?.id ?? "");
     }).catch((requestError: unknown) => {
       if (active) setError(requestError instanceof Error ? requestError.message : "Hak akses admin tidak dapat diverifikasi.");
     }).finally(() => { if (active) setCheckingRole(false); });
     return () => { active = false; };
   }, []);
+
+  const loadProducts = async () => {
+    if (productsLoaded || productsLoading) return;
+    setProductsLoading(true);
+    setError(null);
+    try {
+      const response = await api.products();
+      setProducts(response.data);
+      setProductsLoaded(true);
+      setProductId((current) => current || response.data[0]?.id || "");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Daftar produk tidak dapat dimuat.");
+    } finally {
+      setProductsLoading(false);
+    }
+  };
 
   const loadCandidates = async (selectedProductId: string, selectedStatus: CandidateStatus) => {
     const requestId = ++sequence.current;
@@ -134,11 +148,12 @@ export function ProductMediaCandidateReviewPanel() {
       <div className="product-media-candidate-toolbar">
         <label>
           Produk
-          <select aria-label="Pilih produk untuk review media" value={productId} onChange={(event) => setProductId(event.target.value)}>
-            <option value="">Pilih produk</option>
+          <select aria-label="Pilih produk untuk review media" value={productId} onFocus={() => void loadProducts()} onChange={(event) => setProductId(event.target.value)} disabled={!productsLoaded && productsLoading}>
+            <option value="">{productsLoaded ? "Pilih produk" : "Muat daftar produk terlebih dahulu"}</option>
             {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
           </select>
         </label>
+        {!productsLoaded && <button type="button" onClick={() => void loadProducts()} disabled={productsLoading}>{productsLoading ? "Memuat produk…" : "Muat daftar produk"}</button>}
         <div className="product-media-candidate-tabs" role="tablist" aria-label="Status kandidat media">
           <button type="button" role="tab" aria-selected={status === "pending"} className={status === "pending" ? "active" : ""} onClick={() => setStatus("pending")}>Menunggu review</button>
           <button type="button" role="tab" aria-selected={status === "approved"} className={status === "approved" ? "active" : ""} onClick={() => setStatus("approved")}>Disetujui</button>
