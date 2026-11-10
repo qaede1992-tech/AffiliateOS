@@ -1258,3 +1258,50 @@ test("verified product media rights trigger autonomous evaluation but revocation
   assert.equal(triggerCalls, 1);
   await app.close();
 });
+
+test("verified AI product identity review triggers autonomous evaluation but rejection does not", async () => {
+  const services = createInMemoryServices();
+  let triggerCalls = 0;
+  services.autonomousScheduler.trigger = async () => {
+    triggerCalls += 1;
+    return undefined;
+  };
+  const productId = "00000000-0000-4000-8000-000000000201";
+  const assetId = "00000000-0000-4000-8000-000000000202";
+  services.productMediaAssets = {
+    listByProduct: async () => [{
+      id: assetId,
+      productId,
+      sourceProvider: "openai",
+      sourceUrl: "generated:openai-image-edit:identity-review-test"
+    }],
+    reviewIdentity: async (_assetId: string, _productId: string, input: { status: "verified" | "rejected" }) => ({
+      id: assetId,
+      productId,
+      identityStatus: input.status
+    })
+  } as never;
+  const app = createApp(services, {
+    auth: { enabled: true, token: "media-identity-test-token", operatorId: "admin-test", role: "admin" }
+  });
+  const headers = { authorization: "Bearer media-identity-test-token" };
+
+  const verified = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/products/${productId}/media-assets/${assetId}/identity-review`,
+    headers,
+    payload: { status: "verified", reason: "The product identity was reviewed and confirmed." }
+  });
+  assert.equal(verified.statusCode, 200);
+  assert.equal(triggerCalls, 1);
+
+  const rejected = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/products/${productId}/media-assets/${assetId}/identity-review`,
+    headers,
+    payload: { status: "rejected", reason: "The generated image does not preserve product identity." }
+  });
+  assert.equal(rejected.statusCode, 200);
+  assert.equal(triggerCalls, 1);
+  await app.close();
+});

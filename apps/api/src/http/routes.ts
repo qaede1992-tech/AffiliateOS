@@ -576,6 +576,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     auditSecurityEvent(request.log, request, "product_media_identity_reviewed", {
       productId, assetId, identityStatus: updated.identityStatus ?? "unknown"
     });
+    if (input.status === "verified" && updated.identityStatus === "verified") {
+      void services.autonomousScheduler.trigger();
+    }
     return updated;
   });
   app.get("/api/v1/affiliate-offers", async () => list(await services.marketplace.listAffiliateOffers())); app.get("/api/v1/affiliate-offers/verification", async () => list(await services.marketplace.listAffiliateOfferVerification()));
