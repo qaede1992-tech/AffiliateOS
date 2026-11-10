@@ -52,6 +52,8 @@ export function ProductMediaRightsPanel() {
     setAssets([]);
     setPreviews({});
     setAudits({});
+    setPreviewLoading({});
+    setAuditLoading({});
     if (!selectedProductId) { setLoading(false); return; }
     setLoading(true);
     setError(null);
@@ -92,7 +94,6 @@ export function ProductMediaRightsPanel() {
       const response = await api.productMediaRightsAudits(selectedProductId, assetId);
       if (requestId === requestSequence.current) setAudits((current) => ({ ...current, [assetId]: response.data }));
     } catch {
-      if (requestId === requestSequence.current) setAudits((current) => ({ ...current, [assetId]: [] }));
       if (requestId === requestSequence.current) setError("Riwayat audit tidak dapat dimuat. Buka kembali bagian riwayat untuk mencoba lagi.");
     } finally {
       if (requestId === requestSequence.current) setAuditLoading((current) => ({ ...current, [assetId]: false }));
@@ -105,6 +106,8 @@ export function ProductMediaRightsPanel() {
     setAssets([]);
     setPreviews({});
     setAudits({});
+    setPreviewLoading({});
+    setAuditLoading({});
     setBusyAssetId(null);
     setError(null);
     setNotice(null);
