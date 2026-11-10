@@ -125,7 +125,7 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
         gte(autonomousFeedbackSnapshots.observedAt, since)
       ))
       .orderBy(autonomousFeedbackSnapshots.observedAt, autonomousFeedbackSnapshots.id);
-    const episode = rows.map((row: SnapshotRow) => toDomain(row));
+    const episode: AutonomousFeedbackSnapshot[] = rows.map((row: SnapshotRow) => toDomain(row));
     const start=episode[0];
     if(!start) return undefined;
     const end=episode.find(s=>s.recoveryState==="recovered");
