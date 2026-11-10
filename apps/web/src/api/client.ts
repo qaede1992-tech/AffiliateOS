@@ -82,6 +82,8 @@ export interface ProductMediaRightsAuditView {
   action: "verify" | "revoke"; reason: string; previousRightsStatus: string; newRightsStatus: string;
   rightsBasis: ProductMediaRightsBasis | null; rightsEvidenceUrl: string | null; sourcePublisher: string | null; createdAt: string;
 }
+export interface AffiliateOfferVerificationPage { data: AffiliateOfferVerification[]; nextCursor: string | null; hasMore: boolean }
+
 export interface AffiliateOfferVerification extends AffiliateOffer {
   affiliateId?: string;
   affiliateName?: string;
