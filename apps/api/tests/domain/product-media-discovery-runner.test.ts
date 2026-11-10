@@ -673,7 +673,7 @@ test("stops repeating an Openverse 403 across products while retaining Wikimedia
       ...product,
       id: "22222222-2222-4222-8222-222222222222",
       externalProductId: "external-2",
-      name: "dog food",
+      name: "cat food",
       productUrl: "https://shopee.co.id/product/123/457"
     }, true);
 
