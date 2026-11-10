@@ -190,3 +190,43 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   );
   assert.equal(saved?.category, "Elektronik");
 });
+
+
+test("marketplace offer verification uses stable keyset pages without gaps", async () => {
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const affiliates = new InMemoryRepository<any>();
+  const offers = new InMemoryRepository<any>();
+  const accounts = new InMemoryAffiliateAccountRepository();
+  const connections = new InMemoryMarketplaceConnectionRepository();
+  const products = new InMemoryProductCatalogRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), connections, products, accounts, affiliates, affiliateOffers, offers);
+  const createdAt = "2026-02-01T00:00:00.000Z";
+  for (const id of [
+    "00000000-0000-4000-8000-000000000101",
+    "00000000-0000-4000-8000-000000000102",
+    "00000000-0000-4000-8000-000000000103"
+  ]) {
+    await affiliateOffers.save({ id, affiliateAccountId: "00000000-0000-4000-8000-000000000111", productId: "00000000-0000-4000-8000-000000000121", status: "active", createdAt, updatedAt: createdAt } as any);
+  }
+  const first = await service.listAffiliateOfferVerification({ limit: 2 });
+  assert.deepEqual(first.items.map((row) => row.id), [
+    "00000000-0000-4000-8000-000000000101",
+    "00000000-0000-4000-8000-000000000102"
+  ]);
+  assert.equal(first.hasMore, true);
+  assert.ok(first.nextCursor);
+  const second = await service.listAffiliateOfferVerification({ limit: 2, cursor: first.nextCursor! });
+  assert.deepEqual(second.items.map((row) => row.id), ["00000000-0000-4000-8000-000000000103"]);
+  assert.equal(second.hasMore, false);
+  assert.equal(second.nextCursor, null);
+});
+
+test("marketplace offer verification rejects malformed cursors", async () => {
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), new InMemoryMarketplaceConnectionRepository(), new InMemoryProductCatalogRepository(), new InMemoryAffiliateAccountRepository(), new InMemoryRepository<any>(), new InMemoryAffiliateOfferRepository(), new InMemoryRepository<any>());
+  await assert.rejects(
+    () => service.listAffiliateOfferVerification({ limit: 25, cursor: "not-a-valid-cursor" }),
+    (error: any) => error?.code === "INVALID_AFFILIATE_OFFER_VERIFICATION_CURSOR" && error?.statusCode === 400
+  );
+});
