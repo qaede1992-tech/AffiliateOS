@@ -190,3 +190,41 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   );
   assert.equal(saved?.category, "Elektronik");
 });
+
+
+test("affiliate offer verification uses the joined repository reader when available", async () => {
+  const expected = {
+    id: "offer-joined",
+    productId: "product-joined",
+    affiliateAccountId: "account-joined",
+    status: "active",
+    availability: "in_stock",
+    affiliateId: "affiliate-joined",
+    affiliateName: "Affiliate",
+    affiliateAccountName: "Shopee account",
+    marketplaceSlug: "shopee-affiliate-feed",
+    productExternalId: "sku-joined",
+    productName: "Joined product",
+    productUrl: "https://shopee.co.id/product/sku-joined"
+  };
+  let joinedReads = 0;
+  const offers = {
+    listForVerification: async () => { joinedReads += 1; return [{ offer: { ...expected, affiliateId: undefined, affiliateName: undefined, affiliateAccountName: undefined, marketplaceSlug: undefined, productExternalId: undefined, productName: undefined, productUrl: undefined }, ...expected }]; },
+    list: async () => { throw new Error("full offer list must not be used"); }
+  };
+  const fail = async () => { throw new Error("per-row repository lookup must not be used"); };
+  const service = new MarketplaceService(
+    new MarketplaceProviderRegistry(),
+    { list: fail, findById: fail, findBySlug: fail, save: fail } as any,
+    { list: fail, findById: fail, save: fail, listByMarketplace: fail, findByMarketplaceProduct: fail } as any,
+    { list: fail, findById: fail, save: fail, findByMarketplace: fail } as any,
+    { list: fail, findById: fail, save: fail } as any,
+    offers as any,
+    { list: fail, findById: fail, save: fail } as any
+  );
+  const result = await service.listAffiliateOfferVerification();
+  assert.equal(joinedReads, 1);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].affiliateName, "Affiliate");
+  assert.equal(result[0].productName, "Joined product");
+});
