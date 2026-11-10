@@ -24,7 +24,10 @@ export interface DatabasePersistence {
 }
 
 export function createDatabasePersistence(connectionString: string): DatabasePersistence {
-  const pool = new Pool({ connectionString });
+  // Keep the single idle session warm across the API's periodic background work.
+  // node-postgres defaults to 10s, which causes repeated Supavisor reconnects
+  // when jobs run roughly once per minute.
+  const pool = new Pool({ connectionString, idleTimeoutMillis: 120_000 });
   const db = drizzle(pool);
   return {
     repositories: createPostgresRepositories(db),
