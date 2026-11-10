@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
 
 export function ProductMediaIntakePanel() {
+  const panelRef = useRef<HTMLElement | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
@@ -32,7 +33,22 @@ export function ProductMediaIntakePanel() {
     }
   };
 
-  useEffect(() => { void loadProducts(); }, []);
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (typeof IntersectionObserver === "undefined") {
+      void loadProducts();
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        observer.disconnect();
+        void loadProducts();
+      }
+    }, { rootMargin: "240px 0px" });
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
 
   const selectedProduct = products.find((product) => product.id === selectedId);
   const missingMediaCount = products.filter((product) => !product.imageUrl && !product.videoUrl).length;
@@ -121,7 +137,7 @@ export function ProductMediaIntakePanel() {
   };
 
   return (
-    <article className="panel shopee-import-panel" id="product-media-intake">
+    <article ref={panelRef} className="panel shopee-import-panel" id="product-media-intake">
       <div className="panel-heading">
         <div><p className="eyebrow">Kelengkapan katalog</p><h3>Media Produk</h3></div>
         <span className="badge">{missingMediaCount} tanpa media</span>
