@@ -28,8 +28,15 @@ export const recordOpenverseFailure = (
   }
 };
 
-export const recordOpenverseSuccess = (): void => {
-  forbiddenUntil = 0;
+/**
+ * A success may belong to a request that was already in flight when another
+ * request received a provider-wide 403. Do not let that late success cancel
+ * the cooldown; the next request is allowed to probe again after expiry.
+ */
+export const recordOpenverseSuccess = (now = Date.now()): void => {
+  if (forbiddenUntil <= now) {
+    forbiddenUntil = 0;
+  }
 };
 
 /** Test-only reset hook; production callers should use success/failure events. */
