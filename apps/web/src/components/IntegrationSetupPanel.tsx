@@ -35,19 +35,34 @@ export function IntegrationSetupPanel() {
 
   useEffect(() => {
     let disposed = false;
-    const refreshReadiness = () => {
+    let readinessRequestPending = false;
+    const loadInitialData = () => {
       void load().catch((e: unknown) => {
         if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
       });
     };
-    refreshReadiness();
+    const refreshReadiness = () => {
+      if (disposed || document.visibilityState !== "visible" || readinessRequestPending) return;
+      readinessRequestPending = true;
+      void api.publisherReadiness()
+        .then((response) => {
+          if (!disposed) setReadiness(response.data);
+        })
+        .catch((e: unknown) => {
+          if (!disposed) setError(e instanceof Error ? e.message : "Unable to refresh publisher readiness.");
+        })
+        .finally(() => {
+          readinessRequestPending = false;
+        });
+    };
+    loadInitialData();
     const handleFocus = () => refreshReadiness();
     const handleVisibility = () => {
       if (document.visibilityState === "visible") refreshReadiness();
     };
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibility);
-    const intervalId = window.setInterval(refreshReadiness, 30_000);
+    const intervalId = window.setInterval(refreshReadiness, 60_000);
     return () => {
       disposed = true;
       window.removeEventListener("focus", handleFocus);
