@@ -174,7 +174,8 @@ class DrizzlePublicShopCatalogRepository {
   async listPage(input: { query: string; page: number; pageSize: number }) {
     const offset = (input.page - 1) * input.pageSize;
     const query = input.query.trim();
-    const numericValue = /^\d+$/.test(query) ? Number(query) : Number.NaN;
+    const numericQuery = /^\\d+$/.test(query);
+    const numericValue = numericQuery ? Number(query) : Number.NaN;
     const numeric = Number.isSafeInteger(numericValue) && numericValue <= 2_147_483_647 ? numericValue : null;
     const pattern = `%${query.replace(/[\\%_]/g, (value) => `\\${value}`)}%`;
     const result = await this.db.execute(sql`
@@ -192,8 +193,8 @@ class DrizzlePublicShopCatalogRepository {
         WHERE p.status = 'active' AND ao.status = 'active'
           AND ao.affiliate_link_status = 'active' AND ao.affiliate_url IS NOT NULL
           AND (ao.affiliate_link_expires_at IS NULL OR ao.affiliate_link_expires_at > now())
-          AND (${query} = '' OR (${numeric}::integer IS NOT NULL AND p.reference_number = ${numeric})
-            OR (${numeric}::integer IS NULL AND p.name ILIKE ${pattern} ESCAPE E'\\'))
+          AND (${query} = '' OR (${numericQuery} AND ${numeric}::integer IS NOT NULL AND p.reference_number = ${numeric})
+            OR (NOT ${numericQuery} AND p.name ILIKE ${pattern} ESCAPE E'\\\\'))
         ORDER BY p.id, ao.created_at DESC, ao.id DESC
       ),
       counted AS (SELECT count(*)::integer AS total FROM eligible),
