@@ -41,7 +41,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
           (SELECT COALESCE(SUM(cv.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_revenue_cents,
           (SELECT COALESCE(SUM(cm.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN commissions cm ON cm.conversion_id = cv.id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_commission_cents
         FROM campaigns
-        WHERE campaigns.id IN (${sql.join(campaignIds.map((id: string) => sql`${id}::uuid`), sql`, `)})
+        WHERE campaigns.id IN (${sql.join(campaignIds.map((id) => sql`${id}::uuid`), sql`, `)})
       `);
 
       for (const row of rowsOf(result)) {
@@ -98,7 +98,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
       .limit(boundedLimit);
 
     if (!rows.length) return [];
-    const campaignIds = [...new Set(rows
+    const campaignIds: string[] = [...new Set<string>(rows
       .map((row: any) => row.outcomeCampaignId)
       .filter((id: unknown): id is string => typeof id === "string"))];
     const result = await this.db.execute(sql`
