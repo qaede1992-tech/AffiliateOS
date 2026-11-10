@@ -2,7 +2,6 @@ import type { AutonomousCycleInput, AutonomousCycleResult, AutonomousCycleServic
 
 export type AutonomousSchedulerOptions = {
   intervalMs?: number;
-  idleIntervalMs?: number;
   now?: () => Date;
   onResult?: (result: AutonomousCycleResult) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
@@ -11,6 +10,7 @@ export type AutonomousSchedulerOptions = {
 export type AutonomousSchedulerStatus = {
   running: boolean;
   active: boolean;
+  pending: boolean;
   lastStartedAt?: string;
   lastCompletedAt?: string;
   lastResult?: AutonomousCycleResult;
@@ -20,16 +20,16 @@ export type AutonomousSchedulerStatus = {
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
 const MIN_INTERVAL_MS = 5 * 60_000;
-type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class AutonomousScheduler {
   private readonly intervalMs: number;
-  private readonly idleIntervalMs: number;
   private readonly now: () => Date;
   private readonly onResult?: AutonomousSchedulerOptions["onResult"];
   private readonly onError?: AutonomousSchedulerOptions["onError"];
-  private timer?: TimerHandle;
   private activeRun?: Promise<AutonomousCycleResult | undefined>;
+  private triggerDrain?: Promise<AutonomousCycleResult | undefined>;
+  private triggerRequested = false;
+  private triggerSequence = 0;
   private started = false;
   private lastStartedAt?: string;
   private lastCompletedAt?: string;
@@ -46,10 +46,6 @@ export class AutonomousScheduler {
     if (!Number.isFinite(this.intervalMs) || this.intervalMs < MIN_INTERVAL_MS) {
       throw new Error("Autonomous scheduler interval must be at least 5 minutes.");
     }
-    this.idleIntervalMs = options.idleIntervalMs ?? Math.max(this.intervalMs, 30 * 60_000);
-    if (!Number.isFinite(this.idleIntervalMs) || this.idleIntervalMs < this.intervalMs) {
-      throw new Error("Autonomous scheduler idle interval must be at least the normal interval.");
-    }
     this.now = options.now ?? (() => new Date());
     this.onResult = options.onResult;
     this.onError = options.onError;
@@ -63,6 +59,7 @@ export class AutonomousScheduler {
     return {
       running: this.started,
       active: Boolean(this.activeRun),
+      pending: this.triggerRequested,
       lastStartedAt: this.lastStartedAt,
       lastCompletedAt: this.lastCompletedAt,
       lastResult: this.lastResult,
@@ -71,23 +68,56 @@ export class AutonomousScheduler {
     };
   }
 
+  // Starting the API is not a work event. Wait for an import or media/rights
+  // change before running a cycle so empty restarts do not rescan the catalog.
   start(): void {
     if (this.started) return;
     this.started = true;
-    void this.runAndSchedule();
   }
 
   async stop(): Promise<void> {
     this.started = false;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
+    this.triggerRequested = false;
+    await this.triggerDrain;
     await this.activeRun;
   }
 
   async previewSelection(input: AutonomousCycleInput = this.input) {
     return this.cycle.previewSelection(input);
+  }
+
+  // Called after a successful catalog import or a change that makes media publishable.
+  // Events received during an active run are coalesced into one follow-up cycle.
+  async trigger(input: AutonomousCycleInput = this.input): Promise<AutonomousCycleResult | undefined> {
+    if (!this.started) return undefined;
+    this.triggerRequested = true;
+    if (this.triggerDrain) return this.triggerDrain;
+
+    this.triggerDrain = (async () => {
+      let result: AutonomousCycleResult | undefined;
+      while (this.started && this.triggerRequested) {
+        // A manual run may already be active. Preserve the pending event and run
+        // one follow-up after that work finishes instead of silently consuming it.
+        if (this.activeRun) {
+          await this.activeRun;
+          if (!this.started) break;
+        }
+        if (!this.triggerRequested) continue;
+        this.triggerRequested = false;
+        const eventInput: AutonomousCycleInput = {
+          ...input,
+          idempotencyNamespace: input.idempotencyNamespace ?? this.nextTriggerNamespace()
+        };
+        result = await this.runNow(eventInput);
+      }
+      return result;
+    })().finally(() => {
+      this.triggerDrain = undefined;
+      // Close the narrow completion race if an event arrived while the drain
+      // was settling. The request is still coalesced into one new drain.
+      if (this.started && this.triggerRequested) void this.trigger(input);
+    });
+    return this.triggerDrain;
   }
 
   async runNow(input: AutonomousCycleInput = this.input): Promise<AutonomousCycleResult | undefined> {
@@ -141,17 +171,13 @@ export class AutonomousScheduler {
     }
   }
 
-  private async runAndSchedule(): Promise<void> {
-    await this.runNow();
-    if (!this.started) return;
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      void this.runAndSchedule();
-    }, (this.lastSkipReason === "no_runnable_candidates" || this.lastSkipReason === "no_publishable_candidates") ? this.idleIntervalMs : this.intervalMs);
-  }
-
   private cycleNamespace(): string {
     const bucket = Math.floor(this.now().getTime() / this.intervalMs);
     return `autonomous-cycle:${bucket}`;
+  }
+
+  private nextTriggerNamespace(): string {
+    this.triggerSequence += 1;
+    return `autonomous-cycle:event:${this.now().getTime()}:${this.triggerSequence}`;
   }
 }

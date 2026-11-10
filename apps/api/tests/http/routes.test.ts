@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp, configuredCorsOrigin } from "../../src/app.js";
+import { createInMemoryServices } from "../../src/domain/container.js";
 
 test("configured CORS origin rejects an unset production origin", () => {
   const previous = process.env.API_CORS_ORIGIN;
@@ -1152,4 +1153,155 @@ test("GET TikTok creator info resolves the internal credential reference without
   } finally {
     await app.close();
   }
+});
+
+
+test("successful Shopee feed and CSV imports trigger one autonomous cycle each", async () => {
+  const services = createInMemoryServices();
+  let triggerCalls = 0;
+  services.autonomousScheduler.trigger = async () => {
+    triggerCalls += 1;
+    return undefined;
+  };
+  const app = createApp(services);
+  const affiliateResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/affiliates",
+    payload: { name: "Demand Trigger Partner", email: "demand-trigger@example.com" }
+  });
+  assert.equal(affiliateResponse.statusCode, 201);
+  const affiliate = affiliateResponse.json();
+
+  const feedImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import",
+    payload: {
+      affiliateId: affiliate.id,
+      items: [{
+        externalProductId: "demand-trigger-101",
+        externalOfferId: "feed:demand-trigger-101",
+        name: "Produk Pemicu Feed",
+        priceCents: 100000,
+        currency: "IDR",
+        productUrl: "https://shopee.co.id/product/1/101",
+        affiliateUrl: "https://s.shopee.co.id/demand101",
+        availability: "unknown",
+        commissionRateBps: 500
+      }]
+    }
+  });
+  assert.equal(feedImport.statusCode, 201);
+  assert.equal(feedImport.json().importedProducts, 1);
+  assert.equal(feedImport.json().importedOffers, 1);
+  assert.equal(triggerCalls, 1);
+
+  const csv = [
+    "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
+    '102,"Produk Pemicu CSV","10RB","12","Toko Uji","5%","Rp500","https://shopee.co.id/product/1/102","https://s.shopee.co.id/demand102"'
+  ].join("\n");
+  const csvImport = await app.inject({
+    method: "POST",
+    url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+    payload: { affiliateId: affiliate.id, csv, sourceReference: "demand-trigger.csv" }
+  });
+  assert.equal(csvImport.statusCode, 201);
+  assert.equal(csvImport.json().importedProducts, 1);
+  assert.equal(csvImport.json().importedOffers, 1);
+  assert.equal(triggerCalls, 2);
+  await app.close();
+});
+
+test("verified product media rights trigger autonomous evaluation but revocation does not", async () => {
+  const services = createInMemoryServices();
+  let triggerCalls = 0;
+  services.autonomousScheduler.trigger = async () => {
+    triggerCalls += 1;
+    return undefined;
+  };
+  services.productMediaAssets = {
+    reviewRights: async (assetId: string, productId: string, input: { status: "verified" | "revoked" }) => ({
+      id: assetId,
+      productId,
+      rightsStatus: input.status,
+      ...(input.status === "verified" ? { rightsBasis: "user_owned" } : {})
+    })
+  } as never;
+  const app = createApp(services, {
+    auth: { enabled: true, token: "media-rights-test-token", operatorId: "admin-test", role: "admin" }
+  });
+  const headers = { authorization: "Bearer media-rights-test-token" };
+  const productId = "00000000-0000-4000-8000-000000000101";
+  const assetId = "00000000-0000-4000-8000-000000000102";
+
+  const verified = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
+    headers,
+    payload: {
+      status: "verified",
+      rightsBasis: "user_owned",
+      rightsEvidenceUrl: "https://example.com/rights-proof",
+      sourcePublisher: "Product owner",
+      reason: "The product owner confirmed permission to use this media."
+    }
+  });
+  assert.equal(verified.statusCode, 200);
+  assert.equal(triggerCalls, 1);
+
+  const revoked = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/products/${productId}/media-assets/${assetId}/rights`,
+    headers,
+    payload: { status: "revoked", reason: "The media permission has been withdrawn." }
+  });
+  assert.equal(revoked.statusCode, 200);
+  assert.equal(triggerCalls, 1);
+  await app.close();
+});
+
+test("verified AI product identity review triggers autonomous evaluation but rejection does not", async () => {
+  const services = createInMemoryServices();
+  let triggerCalls = 0;
+  services.autonomousScheduler.trigger = async () => {
+    triggerCalls += 1;
+    return undefined;
+  };
+  const productId = "00000000-0000-4000-8000-000000000201";
+  const assetId = "00000000-0000-4000-8000-000000000202";
+  services.productMediaAssets = {
+    listByProduct: async () => [{
+      id: assetId,
+      productId,
+      sourceProvider: "openai",
+      sourceUrl: "generated:openai-image-edit:identity-review-test"
+    }],
+    reviewIdentity: async (_assetId: string, _productId: string, input: { status: "verified" | "rejected" }) => ({
+      id: assetId,
+      productId,
+      identityStatus: input.status
+    })
+  } as never;
+  const app = createApp(services, {
+    auth: { enabled: true, token: "media-identity-test-token", operatorId: "admin-test", role: "admin" }
+  });
+  const headers = { authorization: "Bearer media-identity-test-token" };
+
+  const verified = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/products/${productId}/media-assets/${assetId}/identity-review`,
+    headers,
+    payload: { status: "verified", reason: "The product identity was reviewed and confirmed." }
+  });
+  assert.equal(verified.statusCode, 200);
+  assert.equal(triggerCalls, 1);
+
+  const rejected = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/products/${productId}/media-assets/${assetId}/identity-review`,
+    headers,
+    payload: { status: "rejected", reason: "The generated image does not preserve product identity." }
+  });
+  assert.equal(rejected.statusCode, 200);
+  assert.equal(triggerCalls, 1);
+  await app.close();
 });
