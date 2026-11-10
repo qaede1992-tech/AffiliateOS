@@ -114,8 +114,18 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
   }
 
   async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<import("../domain/autonomous-feedback-memory.js").RecoveryEpisodeAnalytics | undefined> {
-    const snapshots = await this.recentByProductAndMarketplace(productId, marketplaceId, new Date(Date.now()-30*24*60*60*1000).toISOString());
-    const episode = snapshots.filter(s=>s.recoveryEpisodeId===episodeId);
+    const since = new Date(Date.now()-30*24*60*60*1000).toISOString();
+    // Apply the episode filter in PostgreSQL instead of loading every product
+    // snapshot from the last 30 days into the API process.
+    const rows = await this.db.select().from(feedbackSnapshotsTable)
+      .where(and(
+        eq(autonomousFeedbackSnapshots.productId, productId),
+        eq(autonomousFeedbackSnapshots.marketplaceId, marketplaceId),
+        eq(autonomousFeedbackSnapshots.recoveryEpisodeId, episodeId),
+        gte(autonomousFeedbackSnapshots.observedAt, since)
+      ))
+      .orderBy(autonomousFeedbackSnapshots.observedAt, autonomousFeedbackSnapshots.id);
+    const episode = rows.map((row: SnapshotRow) => toDomain(row));
     const start=episode[0];
     if(!start) return undefined;
     const end=episode.find(s=>s.recoveryState==="recovered");
