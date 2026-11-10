@@ -151,12 +151,14 @@ function ShopPage() {
     if (!apiOrigin) { setError("Tautan katalog belum dikonfigurasi."); setLoading(false); return () => controller.abort(); }
     setLoading(true); setError(null);
     const params = new URLSearchParams({ query: searchQuery.trim(), page: String(page), pageSize: String(pageSize) });
+    const debounce = window.setTimeout(() => {
     fetch(`${apiOrigin}/api/v1/public/shop?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => { if (!response.ok) throw new Error("Katalog produk belum dapat dimuat."); return response.json() as Promise<{ data: PublicShopItem[]; total: number }>; })
       .then((payload) => { setItems(payload.data ?? []); setTotal(Number(payload.total ?? 0)); })
       .catch((cause: unknown) => { if (cause instanceof DOMException && cause.name === "AbortError") return; setError(cause instanceof Error ? cause.message : "Terjadi kesalahan saat memuat katalog."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    }, 250);
+    return () => { window.clearTimeout(debounce); controller.abort(); };
   }, [searchQuery, page]);
   const money = (item: PublicShopItem) => typeof item.priceCents !== "number" ? "Lihat harga di marketplace" : new Intl.NumberFormat("id-ID", { style: "currency", currency: item.currency || "IDR", maximumFractionDigits: 0 }).format(item.priceCents / 100);
   return (
