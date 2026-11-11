@@ -560,7 +560,7 @@ test("classifies catalog persistence failures separately and keeps provider erro
 
 
 test("persists catalog search cooldown and invalidates it when product identity changes", async () => {
-  const attempts = new Map<string, { fingerprint: string; nextRetryAt: string }>();
+  const attempts = new Map<string, { fingerprint: string; nextRetryAt: string; outcome?: string }>();
   let fetchCount = 0;
   const fetchImpl = async () => {
     fetchCount += 1;
@@ -574,7 +574,7 @@ test("persists catalog search cooldown and invalidates it when product identity 
       return true;
     },
     async complete(input: { productId: string; fingerprint: string; outcome: string; now: string; nextRetryAt: string }) {
-      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.nextRetryAt });
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.nextRetryAt, outcome: input.outcome });
     }
   };
   const assetRepository = {
@@ -644,7 +644,8 @@ test("applies a persistent cooldown to empty generic product-page discovery and 
   assert.equal(second.pageFetched, false);
   assert.match(second.skipped[0]?.reason ?? "", /cooldown_active/);
   assert.equal(fetchCount, 1);
-  assert.equal(attempts.get(product.id)?.nextRetryAt, first.pageFetched ? attempts.get(product.id)?.nextRetryAt : undefined);
+  assert.equal(attempts.get(product.id)?.outcome, "no_results");
+  assert.ok(Date.parse(attempts.get(product.id)?.nextRetryAt ?? "") > Date.now());
 
   const changed = await runner.discover({ ...product, name: "Demo product updated" }, true);
   assert.equal(changed.pageFetched, true);
