@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type {
   Affiliate,
@@ -56,36 +56,77 @@ function App() {
   const [togglingMarketplaceSlug, setTogglingMarketplaceSlug] = useState<string | null>(null);
   const [autonomousStatus, setAutonomousStatus] = useState<{ running: boolean; active: boolean; lastStartedAt?: string; lastCompletedAt?: string; lastError?: string } | null>(null);
   const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const activitySectionRef = useRef<HTMLElement | null>(null);
+  const activityLoadedRef = useRef(false);
+  const activityRequestRef = useRef<Promise<void> | null>(null);
 
   const loadDashboard = async () => {
-    const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, affiliateOfferVerification, analytics, autonomous] = await Promise.all([
+    const [affiliates, offers, marketplaceProviders, marketplaceConnections, affiliateOfferVerification, analytics, autonomous] = await Promise.all([
       api.affiliates(),
       api.offers(),
-      api.conversions(),
-      api.commissions(),
       api.marketplaceProviders(),
       api.marketplaceConnections(),
       api.affiliateOfferVerification(),
       api.analyticsOverview(),
       api.autonomousStatus()
     ]);
-    setData({
+    setData((previous) => ({
       affiliates: affiliates.data,
       offers: offers.data,
-      conversions: conversions.data,
-      commissions: commissions.data,
+      conversions: previous?.conversions ?? [],
+      commissions: previous?.commissions ?? [],
       marketplaceProviders: marketplaceProviders.data,
       marketplaceConnections: marketplaceConnections.data,
       affiliateOfferVerification: affiliateOfferVerification.data,
       analytics
-    });
+    }));
     setAutonomousStatus(autonomous);
+  };
+
+  const loadActivityData = () => {
+    if (activityLoadedRef.current) return Promise.resolve();
+    if (activityRequestRef.current) return activityRequestRef.current;
+    setActivityLoading(true);
+    setActivityError(null);
+    const request = Promise.all([api.conversions(), api.commissions()])
+      .then(([conversions, commissions]) => {
+        setData((previous) => previous ? { ...previous, conversions: conversions.data, commissions: commissions.data } : previous);
+        activityLoadedRef.current = true;
+      })
+      .catch((requestError: unknown) => {
+        setActivityError(requestError instanceof Error ? requestError.message : "Unable to load conversion activity.");
+        throw requestError;
+      })
+      .finally(() => {
+        activityRequestRef.current = null;
+        setActivityLoading(false);
+      });
+    activityRequestRef.current = request;
+    return request;
   };
 
   useEffect(() => {
     loadDashboard().catch((requestError: unknown) => {
       setError(requestError instanceof Error ? requestError.message : "Unable to load dashboard data.");
     });
+  }, []);
+
+  useEffect(() => {
+    const section = activitySectionRef.current;
+    if (!section) return;
+    if (typeof IntersectionObserver === "undefined") {
+      void loadActivityData().catch(() => undefined);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      void loadActivityData().catch(() => undefined);
+    }, { rootMargin: "160px" });
+    observer.observe(section);
+    return () => observer.disconnect();
   }, []);
 
   const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -137,7 +178,11 @@ function App() {
       setConversionAffiliateId("");
       setConversionOfferId("");
       setConversionAmount("");
-      await loadDashboard();
+      activityLoadedRef.current = false;
+      await Promise.all([
+        loadActivityData(),
+        api.analyticsOverview().then((analytics) => setData((previous) => previous ? { ...previous, analytics } : previous))
+      ]);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create conversion.");
     } finally {
@@ -288,7 +333,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
         </section>
 
         <section className="workspace-grid">
-          <article className="panel" id="conversions">
+          <article className="panel" id="conversions" ref={activitySectionRef} aria-busy={activityLoading}>
             <div className="panel-heading"><div><p className="eyebrow">Activity</p><h3>Recent conversions</h3></div><span>{data.conversions.length} total</span></div>
             <form className="affiliate-form" onSubmit={handleCreateConversion}>
               <select aria-label="Affiliate" value={conversionAffiliateId} onChange={(event) => setConversionAffiliateId(event.target.value)} required>
@@ -302,7 +347,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
               <input aria-label="Nilai konversi dalam rupiah" type="number" min="0.01" step="0.01" placeholder="Nilai konversi (IDR)" value={conversionAmount} onChange={(event) => setConversionAmount(event.target.value)} required />
               <button type="submit" disabled={isCreatingConversion || data.affiliates.length === 0 || !data.offers.some((offer) => offer.status === "active")}>{isCreatingConversion ? "Menyimpan..." : "Catat konversi"}</button>
             </form>
-            {data.conversions.length === 0 ? <p className="empty">No conversions recorded yet.</p> : <div className="record-list">{data.conversions.slice(0, 5).map((conversion) => <div className="record" key={conversion.id}><div><strong>{money(conversion.amountCents)}</strong><small>{conversion.id.slice(0, 8)}</small></div><span className={`badge ${conversion.status}`}>{conversion.status}</span></div>)}</div>}
+            {activityError ? <div><p className="error-message">{activityError}</p><button type="button" onClick={() => void loadActivityData().catch(() => undefined)}>Retry activity</button></div> : activityLoading ? <p className="empty">Loading activity...</p> : !activityLoadedRef.current ? <p className="empty">Activity loads when this section is near the screen.</p> : data.conversions.length === 0 ? <p className="empty">No conversions recorded yet.</p> : <div className="record-list">{data.conversions.slice(0, 5).map((conversion) => <div className="record" key={conversion.id}><div><strong>{money(conversion.amountCents)}</strong><small>{conversion.id.slice(0, 8)}</small></div><span className={`badge ${conversion.status}`}>{conversion.status}</span></div>)}</div>}
           </article>
           <article className="panel" id="commissions">
             <div className="panel-heading"><div><p className="eyebrow">Earnings</p><h3>Commissions</h3></div><span>{data.commissions.length} total</span></div>
