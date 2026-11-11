@@ -79,6 +79,84 @@ export class ProductMediaDiscoveryRunner {
     return (await this.assets.listByProduct(productId)).some((asset) => asset.bucket === this.bucketName && asset.kind === "video");
   }
 
+  /**
+   * Reads product media rows once and derives all autonomous publication
+   * gates/readiness signals from the same persisted snapshot.
+   */
+  async getPublicationReadinessSnapshot(
+    productIds: string[],
+    platforms: ContentPlatform[] = ["instagram", "tiktok"]
+  ): Promise<{
+    publishableMediaProductIds: string[];
+    publishableVideoProductIds: string[];
+    storedVideoProductIds: string[];
+    mediaReadinessScores: Record<string, number>;
+  }> {
+    const uniqueProductIds = [...new Set(productIds)];
+    const mediaReadinessScores: Record<string, number> = {};
+    if (uniqueProductIds.length === 0) {
+      return {
+        publishableMediaProductIds: [],
+        publishableVideoProductIds: [],
+        storedVideoProductIds: [],
+        mediaReadinessScores
+      };
+    }
+
+    const assets = this.assets.listByProducts
+      ? await this.assets.listByProducts(uniqueProductIds)
+      : (await Promise.all(uniqueProductIds.map((productId) => this.assets.listByProduct(productId)))).flat();
+    const uniquePlatforms = [...new Set(platforms.filter((platform) => platform === "instagram" || platform === "tiktok"))];
+    const publishableMedia = new Set<string>();
+    const publishableVideos = new Set<string>();
+    const storedVideos = new Set<string>();
+
+    for (const asset of assets) {
+      if (!uniqueProductIds.includes(asset.productId) || asset.bucket !== this.bucketName) continue;
+      const verified = hasCurrentVerifiedRights(asset);
+      if ((asset.kind === "image" || asset.kind === "video") && verified) {
+        publishableMedia.add(asset.productId);
+      }
+      if (asset.kind === "video") {
+        storedVideos.add(asset.productId);
+        if (verified) publishableVideos.add(asset.productId);
+      }
+    }
+
+    for (const productId of uniqueProductIds) {
+      const verifiedAssets = assets.filter((asset) =>
+        asset.productId === productId &&
+        asset.bucket === this.bucketName &&
+        (asset.kind === "image" || asset.kind === "video") &&
+        hasCurrentVerifiedRights(asset)
+      );
+      if (verifiedAssets.length === 0 || uniquePlatforms.length === 0) {
+        mediaReadinessScores[productId] = 0;
+        continue;
+      }
+      const platformScores = uniquePlatforms.map((platform) => {
+        const assetScores = verifiedAssets.map((asset) => {
+          const readiness = evaluateProductMediaAssetReadiness(platform, asset);
+          if (readiness.checks.length === 0) return 0;
+          const points = readiness.checks.reduce((sum, item) =>
+            sum + (item.status === "pass" ? 1 : item.status === "unknown" ? 0.35 : 0), 0);
+          return (points / readiness.checks.length) * 100;
+        });
+        return Math.max(...assetScores);
+      });
+      mediaReadinessScores[productId] = Math.round(
+        (platformScores.reduce((sum, score) => sum + score, 0) / platformScores.length) * 100
+      ) / 100;
+    }
+
+    return {
+      publishableMediaProductIds: uniqueProductIds.filter((id) => publishableMedia.has(id)),
+      publishableVideoProductIds: uniqueProductIds.filter((id) => publishableVideos.has(id)),
+      storedVideoProductIds: uniqueProductIds.filter((id) => storedVideos.has(id)),
+      mediaReadinessScores
+    };
+  }
+
   async listPublishableMediaProductIds(productIds: string[]): Promise<string[]> {
     const uniqueProductIds = [...new Set(productIds)];
     if (uniqueProductIds.length === 0) return [];
