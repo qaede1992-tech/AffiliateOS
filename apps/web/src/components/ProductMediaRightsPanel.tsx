@@ -17,13 +17,15 @@ function ProductMediaAssetPreview({ productId, asset }: { productId: string; ass
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  const startedRef = useRef(false);
 
   useEffect(() => {
     const element = containerRef.current;
-    if (!element || attempted) return;
+    if (!element || startedRef.current) return;
     let active = true;
     const load = () => {
-      if (!active) return;
+      if (!active || startedRef.current) return;
+      startedRef.current = true;
       setAttempted(true);
       void api.productMediaPreview(productId, asset.id)
         .then((response) => { if (active) setPreviewUrl(response.url); })
@@ -41,7 +43,7 @@ function ProductMediaAssetPreview({ productId, asset }: { productId: string; ass
     }, { rootMargin: "160px" });
     observer.observe(element);
     return () => { active = false; observer.disconnect(); };
-  }, [productId, asset.id, attempted]);
+  }, [productId, asset.id]);
 
   return (
     <div className="product-media-rights-preview" ref={containerRef}>
