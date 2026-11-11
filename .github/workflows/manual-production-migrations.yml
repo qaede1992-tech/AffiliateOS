@@ -67,43 +67,8 @@ jobs:
           printf 'DATABASE_URL=%s\n' "$PRODUCTION_DATABASE_URL" > .env
           chmod 600 .env
 
-      - name: Verify expected pre-migration state (read-only)
-        env:
-          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
-          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
-        run: |
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import { readFile } from "node:fs/promises";
-          import { Client } from "pg";
-
-          const journal = JSON.parse(await readFile("apps/api/drizzle/meta/_journal.json", "utf8"));
-          const reconciliation = journal.entries.find((entry) => entry.tag === "0059_reconcile_missing_tiktok_and_content_products");
-          const target = journal.entries.find((entry) => entry.tag === "0060_test_data_retention_markers");
-          assert.ok(reconciliation, "Expected reconciliation migration 0059 in the checked-out journal");
-          assert.ok(target, "Expected target migration 0060 in the checked-out journal");
-
-          const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
-          await client.connect();
-          try {
-            await client.query("SET default_transaction_read_only = on");
-            const identity = await client.query("SELECT current_database() AS database");
-            assert.equal(identity.rows[0].database, process.env.PRODUCTION_DATABASE_NAME, "Connected database name differs from the protected production database name; refusing migration");
-            const { rows } = await client.query(
-              'SELECT created_at FROM "drizzle"."__drizzle_migrations" ORDER BY created_at ASC'
-            );
-            const timestamps = rows.map((row) => Number(row.created_at));
-            assert.ok(timestamps.includes(Number(reconciliation.when)), "Migration 0059 is not recorded; refusing automatic migration");
-            assert.ok(!timestamps.includes(Number(target.when)), "Migration 0060 is already recorded; refusing an unexpected state");
-            assert.equal(Math.max(...timestamps), Number(reconciliation.when), "Unexpected pending/history state; manual investigation required");
-            console.log("Pre-migration ledger state is exactly as expected: 0059 recorded, 0060 absent, no later ledger entry.");
-          } finally {
-            await client.end();
-          }
-          NODE
-
-      - name: Check migration files and journal
-        run: npm run db:check
+      - name: Verify current production schema and migration ledger (read-only)
+        run: npm run db:verify:applied
 
       - name: Apply pending migrations
         run: npm run db:migrate
