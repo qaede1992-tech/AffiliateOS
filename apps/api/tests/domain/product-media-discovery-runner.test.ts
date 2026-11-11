@@ -74,9 +74,10 @@ test("never fetches Shopee product HTML for media extraction", async () => {
 
 test("ingests explicitly supplied Shopee catalog images without fetching product HTML", async () => {
   const assets: ProductMediaAsset[] = [];
+  let listCalls = 0;
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
   const repository = {
-    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProduct(id: string) { listCalls += 1; return assets.filter((asset) => asset.productId === id); },
     async findByProductAndHash(id: string, hash: string) { return assets.find((asset) => asset.productId === id && asset.sha256 === hash); },
     async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
   };
@@ -97,6 +98,7 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   assert.equal(result.stored.length, 1);
   assert.equal(result.stored[0]?.kind, "image");
   assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
+  assert.equal(listCalls, 1, "discovery should reuse the initial asset snapshot instead of re-reading storage metadata");
 });
 
 test("never downloads Shopee-owned CDN image or video URLs supplied in a product catalog", async () => {
