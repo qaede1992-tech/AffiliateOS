@@ -229,7 +229,6 @@ export function ProductMediaRightsPanel() {
       <div className="product-media-rights-list">
         {assets.map((asset) => {
           const form = forms[asset.id] ?? initialForm();
-          const preview = previews[asset.id];
           return (
             <article className="product-media-rights-item" key={asset.id}>
               <ProductMediaAssetPreview productId={productId} asset={asset} />
