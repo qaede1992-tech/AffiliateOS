@@ -61,7 +61,7 @@ export function ProductMediaCandidateReviewPanel() {
       if (selectedStatus === "approved") {
         const history = await Promise.all(candidateResponse.data.map(async (candidate) => {
           try {
-            return [candidate.id, (await api.productMediaCandidateReviewAudits(selectedProductId, candidate.id)).data] as const;
+            return [candidate.id, (await api.productMediaCandidateReviewAudits(selectedProductId, candidate.id, 1)).data] as const;
           } catch {
             return [candidate.id, []] as const;
           }
