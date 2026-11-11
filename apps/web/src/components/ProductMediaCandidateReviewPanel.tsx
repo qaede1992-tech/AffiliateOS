@@ -7,6 +7,8 @@ type AuditMap = Record<string, ProductMediaCandidateReviewAuditView[]>;
 
 export function ProductMediaCandidateReviewPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [panelVisible, setPanelVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
@@ -22,6 +24,18 @@ export function ProductMediaCandidateReviewPanel() {
   const sequence = useRef(0);
 
   useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setPanelVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!panelVisible) return;
     let active = true;
     api.me().then(async (user) => {
       if (!active) return;
@@ -35,7 +49,7 @@ export function ProductMediaCandidateReviewPanel() {
       if (active) setError(requestError instanceof Error ? requestError.message : "Hak akses admin tidak dapat diverifikasi.");
     }).finally(() => { if (active) setCheckingRole(false); });
     return () => { active = false; };
-  }, []);
+  }, [panelVisible]);
 
   const loadCandidates = async (selectedProductId: string, selectedStatus: CandidateStatus) => {
     const requestId = ++sequence.current;
@@ -79,8 +93,8 @@ export function ProductMediaCandidateReviewPanel() {
   };
 
   useEffect(() => {
-    if (isAdmin && productId) void loadCandidates(productId, status);
-  }, [isAdmin, productId, status]);
+    if (panelVisible && isAdmin && productId) void loadCandidates(productId, status);
+  }, [panelVisible, isAdmin, productId, status]);
 
   const reviewCandidate = async (candidate: ProductMediaCandidateView, decision: "approved" | "rejected") => {
     const reason = reasons[candidate.id]?.trim() ?? "";
@@ -121,7 +135,7 @@ export function ProductMediaCandidateReviewPanel() {
     }
   };
 
-  if (checkingRole) return <section className="panel"><p>Memeriksa akses administrator…</p></section>;
+  if (checkingRole) return <section className="panel" ref={panelRef}><p>Memeriksa akses administrator…</p></section>;
   if (!isAdmin) return null;
 
   return (
