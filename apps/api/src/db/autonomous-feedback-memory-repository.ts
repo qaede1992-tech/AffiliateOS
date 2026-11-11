@@ -180,9 +180,9 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
           LIMIT 3
         )
       )
-      SELECT DISTINCT ON (id) *
+      SELECT DISTINCT *
       FROM selected
-      ORDER BY id, "observedAt" ASC
+      ORDER BY "observedAt" ASC, id ASC
     `);
     return result.rows.map((row: SnapshotRow) => toDomain(row));
   }
