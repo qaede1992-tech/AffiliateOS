@@ -58,6 +58,23 @@ const listProducts = (): Promise<ListResponse<Product>> => {
   return promise;
 };
 
+// Rights and candidate-review panels can request the same product asset list
+// during dashboard startup. Share in-flight reads and cache metadata briefly;
+// never cache signed preview URLs or audit histories.
+const productMediaAssetsCache = new Map<string, { expiresAt: number; promise: Promise<ListResponse<ProductMediaAssetView>> }>();
+const invalidateProductMediaAssetsCache = (productId: string) => { productMediaAssetsCache.delete(productId); };
+const listProductMediaAssets = (productId: string): Promise<ListResponse<ProductMediaAssetView>> => {
+  const cached = productMediaAssetsCache.get(productId);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+  const promise = get<ListResponse<ProductMediaAssetView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets`);
+  const entry = { expiresAt: Date.now() + 10_000, promise };
+  productMediaAssetsCache.set(productId, entry);
+  void promise.catch(() => {
+    if (productMediaAssetsCache.get(productId) === entry) productMediaAssetsCache.delete(productId);
+  });
+  return promise;
+};
+
 export type ProductMediaRightsBasis = "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization";
 export type MediaTechnicalReadinessStatus = "ready" | "review_required" | "not_ready";
 export interface MediaTechnicalReadinessCheck { key: string; status: "pass" | "fail" | "unknown"; detail: string }
@@ -114,15 +131,15 @@ export const api = {
   affiliates: () => get<ListResponse<Affiliate>>("/api/v1/affiliates"), createAffiliate: (input: CreateAffiliateRequest) => post<Affiliate>("/api/v1/affiliates", input),
   offers: () => get<ListResponse<Offer>>("/api/v1/offers"), createOffer: (input: CreateOfferRequest) => post<Offer>("/api/v1/offers", input),
   conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"), createConversion: (input: CreateConversionRequest) => post<Conversion>("/api/v1/conversions", input), commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),
-  productMediaAssets: (productId: string) => get<ListResponse<ProductMediaAssetView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets`),
-  uploadProductMedia: (productId: string, file: File, kind: "image" | "video") => request<Omit<ProductMediaAssetView, "technicalReadiness">>(`/api/v1/products/${encodeURIComponent(productId)}/media-upload?kind=${kind}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Media-Mime-Type": file.type }, body: file }),
+  productMediaAssets: (productId: string) => listProductMediaAssets(productId),
+  uploadProductMedia: async (productId: string, file: File, kind: "image" | "video") => { const asset = await request<Omit<ProductMediaAssetView, "technicalReadiness">>(`/api/v1/products/${encodeURIComponent(productId)}/media-upload?kind=${kind}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Media-Mime-Type": file.type }, body: file }); invalidateProductMediaAssetsCache(productId); return asset; },
   productMediaCandidates: (productId: string, status: "pending" | "approved" | "rejected" = "pending") => get<ListResponse<ProductMediaCandidateView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates?status=${encodeURIComponent(status)}`),
   reviewProductMediaCandidate: (productId: string, candidateId: string, input: { status: "approved" | "rejected"; reason: string }) => patch<ProductMediaCandidateView>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/review`, input),
   productMediaCandidateReviewAudits: (productId: string, candidateId: string) => get<ListResponse<ProductMediaCandidateReviewAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/review-audits`),
-  importProductMediaCandidate: (productId: string, candidateId: string) => post<{ asset: Omit<ProductMediaAssetView, "technicalReadiness">; alreadyImported: boolean }>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/import`, {}),
+  importProductMediaCandidate: async (productId: string, candidateId: string) => { const result = await post<{ asset: Omit<ProductMediaAssetView, "technicalReadiness">; alreadyImported: boolean }>(`/api/v1/products/${encodeURIComponent(productId)}/media-candidates/${encodeURIComponent(candidateId)}/import`, {}); invalidateProductMediaAssetsCache(productId); return result; },
   productMediaRightsAudits: (productId: string, assetId: string) => get<ListResponse<ProductMediaRightsAuditView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights-audits`),
   productMediaPreview: (productId: string, assetId: string) => get<{ url: string; expiresInSeconds: number }>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/preview`),
-  reviewProductMediaRights: (productId: string, assetId: string, input: ProductMediaRightsReviewInput) => patch<ProductMediaAssetView>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights`, input),
+  reviewProductMediaRights: async (productId: string, assetId: string, input: ProductMediaRightsReviewInput) => { const asset = await patch<ProductMediaAssetView>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets/${encodeURIComponent(assetId)}/rights`, input); invalidateProductMediaAssetsCache(productId); return asset; },
   marketplaceProviders: () => get<ListResponse<MarketplaceProviderInfo>>("/api/v1/marketplaces/providers"), marketplaceConnections: () => get<ListResponse<MarketplaceConnectionView>>("/api/v1/marketplaces"), marketplaceSetEnabled: (connectionSlug: string, enabled: boolean) => put<MarketplaceConnectionView>(`/api/v1/marketplaces/${encodeURIComponent(connectionSlug)}/enabled`, enabled ? { enabled: true, confirmation: "CONFIRM_MARKETPLACE_CONNECTION" } : { enabled: false }), products: () => listProducts(), updateProductMedia: async (productId: string, input: { imageUrl?: string; videoUrl?: string }) => { const updated = await patch<Product>(`/api/v1/products/${encodeURIComponent(productId)}/media`, input); invalidateProductsCache(); return updated; }, affiliateOffers: () => get<ListResponse<AffiliateOffer>>("/api/v1/affiliate-offers"), affiliateOfferVerification: () => get<ListResponse<AffiliateOfferVerification>>("/api/v1/affiliate-offers/verification"),
   campaigns: () => get<ListResponse<Campaign>>("/api/v1/campaigns"), campaign: (campaignId: string) => get<Campaign>(`/api/v1/campaigns/${campaignId}`), createCampaign: (input: CreateCampaignRequest) => post<Campaign>("/api/v1/campaigns", input), updateCampaign: (campaignId: string, input: UpdateCampaignRequest) => patch<Campaign>(`/api/v1/campaigns/${campaignId}`, input),
   campaignOffers: (campaignId: string) => get<ListResponse<CampaignOffer>>(`/api/v1/campaigns/${campaignId}/offers`), attachCampaignOffer: (campaignId: string, affiliateOfferId: string) => post<CampaignOffer>(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`, {}), detachCampaignOffer: (campaignId: string, affiliateOfferId: string) => remove(`/api/v1/campaigns/${campaignId}/offers/${affiliateOfferId}`),
