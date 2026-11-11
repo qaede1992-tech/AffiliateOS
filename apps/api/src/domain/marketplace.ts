@@ -42,9 +42,41 @@ export class MarketplaceService {
     if (!productIds.length) return [];
     return this.offers.listActiveByAccountAndProducts(affiliateAccountId, productIds);
   }
-  async listAffiliateOfferVerification() {
-    if (this.offers.listVerificationRows) return this.offers.listVerificationRows();
-    const offers = await this.offers.list();
+  async listAffiliateOfferVerification(input: { limit?: number; cursor?: string } = {}) {
+    const requestedLimit = Number.isFinite(input.limit) ? Math.trunc(input.limit as number) : 25;
+    const limit = Math.max(1, Math.min(50, requestedLimit));
+    let after: { createdAt: string; id: string } | undefined;
+    if (input.cursor) {
+      try {
+        const decoded = Buffer.from(input.cursor, "base64url").toString("utf8");
+        if (Buffer.from(decoded, "utf8").toString("base64url") !== input.cursor) throw new Error("Invalid cursor encoding");
+        const parsed = JSON.parse(decoded) as { createdAt?: unknown; id?: unknown };
+        if (typeof parsed.createdAt !== "string" || !Number.isFinite(Date.parse(parsed.createdAt)) ||
+          typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.id)) {
+          throw new Error("Invalid cursor payload");
+        }
+        after = { createdAt: new Date(parsed.createdAt).toISOString(), id: parsed.id };
+      } catch {
+        throw new DomainError("INVALID_AFFILIATE_OFFER_VERIFICATION_CURSOR", "Cursor pagination value is invalid.", 400);
+      }
+    }
+    const rows = this.offers.listVerificationRows
+      ? await this.offers.listVerificationRows({ after, limit: limit + 1 })
+      : await this.listAffiliateOfferVerificationInMemory(after, limit + 1);
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit);
+    const last = items.at(-1);
+    const nextCursor = hasMore && last
+      ? Buffer.from(JSON.stringify({ createdAt: last.createdAt, id: last.id }), "utf8").toString("base64url")
+      : null;
+    return { items, nextCursor, hasMore };
+  }
+
+  private async listAffiliateOfferVerificationInMemory(after: { createdAt: string; id: string } | undefined, limit: number) {
+    const offers = (await this.offers.list())
+      .filter((offer) => !after || offer.createdAt > after.createdAt || (offer.createdAt === after.createdAt && offer.id > after.id))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .slice(0, limit);
     return Promise.all(offers.map(async (offer) => {
       const account = await this.accounts.findById(offer.affiliateAccountId);
       const affiliate = account?.affiliateId ? await this.affiliates.findById(account.affiliateId) : undefined;
