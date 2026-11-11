@@ -399,6 +399,72 @@ export class ProductMediaDiscoveryRunner {
       return { productId: product.id, pageFetched: false, hasVideo: false, stored: existing, skipped, candidatesFound };
     }
 
+    // Persist a per-product cooldown for generic product-page discovery as well as
+    // the Shopee catalog-search cooldown above. This prevents repeated external
+    // page fetches when a product has no usable media, while changed product identity
+    // invalidates the cooldown through the fingerprint.
+    const pageFingerprint = createHash("sha256").update(JSON.stringify({
+      name: product.name.trim(),
+      category: product.category?.trim() ?? "",
+      productUrl: pageUrl.toString(),
+      imageUrl: product.imageUrl ?? "",
+      videoUrl: product.videoUrl ?? ""
+    })).digest("hex");
+    let pageLeaseUntil: string | undefined;
+    let pageClaimed = false;
+    if (this.discoveryAttempts) {
+      const now = new Date();
+      pageLeaseUntil = new Date(now.getTime() + 15 * 60_000).toISOString();
+      try {
+        pageClaimed = await this.discoveryAttempts.claim({
+          productId: product.id,
+          fingerprint: pageFingerprint,
+          now: now.toISOString(),
+          leaseUntil: pageLeaseUntil
+        });
+      } catch (error) {
+        skipped.push({ url: product.productUrl, reason: "product_page_discovery_cooldown_unavailable" });
+        console.warn(JSON.stringify({
+          event: "product_media_page_discovery_cooldown_claim_failed",
+          productId: product.id,
+          errorType: safeErrorType(error)
+        }));
+        return { productId: product.id, pageFetched: false, hasVideo: false, stored: existing, skipped };
+      }
+      if (!pageClaimed) {
+        skipped.push({ url: product.productUrl, reason: "product_page_discovery_cooldown_active" });
+        console.info(JSON.stringify({
+          event: "product_media_page_discovery_skipped_cooldown",
+          productId: product.id
+        }));
+        return { productId: product.id, pageFetched: false, hasVideo: false, stored: existing, skipped };
+      }
+    }
+    const completePageAttempt = async (outcome: ProductMediaDiscoveryOutcome): Promise<void> => {
+      if (!this.discoveryAttempts || !pageLeaseUntil || !pageClaimed) return;
+      const now = new Date();
+      const cooldownMs = outcome === "success" ? 7 * 24 * 60 * 60_000
+        : outcome === "no_results" ? 24 * 60 * 60_000
+        : 30 * 60_000;
+      try {
+        await this.discoveryAttempts.complete({
+          productId: product.id,
+          fingerprint: pageFingerprint,
+          leaseUntil: pageLeaseUntil,
+          outcome,
+          now: now.toISOString(),
+          nextRetryAt: new Date(now.getTime() + cooldownMs).toISOString()
+        });
+      } catch (error) {
+        console.warn(JSON.stringify({
+          event: "product_media_page_discovery_cooldown_complete_failed",
+          productId: product.id,
+          errorType: safeErrorType(error)
+        }));
+      }
+    };
+
+    let pageOutcome: ProductMediaDiscoveryOutcome = "provider_error";
     try {
       const page = await this.fetcher(pageUrl.toString(), {
         maxBytes: this.policy.maxProductPageBytes ?? 2_000_000,
@@ -408,6 +474,8 @@ export class ProductMediaDiscoveryRunner {
       });
       const contentType = String(page.headers["content-type"] ?? "").toLowerCase();
       if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+        pageOutcome = "no_results";
+        await completePageAttempt(pageOutcome);
         return { productId: product.id, pageFetched: true, hasVideo: false, stored: existing, skipped: [{ url: page.url, reason: "Product page response is not HTML." }] };
       }
       const html = new TextDecoder().decode(page.bytes);
@@ -427,14 +495,18 @@ export class ProductMediaDiscoveryRunner {
       }
       const ingested = await this.ingestion.ingest({ productId: product.id, nonMediaEligibilityPassed: true, candidates });
       const stored = await this.assets.listByProduct(product.id);
+      pageOutcome = candidates.length > 0 ? "success" : "no_results";
+      await completePageAttempt(pageOutcome);
       return { productId: product.id, pageFetched: true, hasVideo: stored.some((asset) => asset.kind === "video"), stored: ingested.stored, skipped: [...skipped, ...ingested.skipped] };
     } catch (error) {
       skipped.push({ url: pageUrl.toString(), reason: "product_page_discovery_failed:" + safeErrorType(error) });
+      let fallbackStoredCount = 0;
       if (product.videoUrl) {
         try {
           const videoUrl = new URL(product.videoUrl);
           if (videoUrl.protocol === "https:" && !videoUrl.username && !videoUrl.password) {
             const fallback = await this.ingestion.ingest({ productId: product.id, nonMediaEligibilityPassed: true, candidates: [{ kind: "video", url: videoUrl.toString(), source: "html" }] });
+            fallbackStoredCount = fallback.stored.length;
             skipped.push(...fallback.skipped);
           }
         } catch (fallbackError) {
@@ -442,6 +514,8 @@ export class ProductMediaDiscoveryRunner {
         }
       }
       const stored = await this.assets.listByProduct(product.id);
+      pageOutcome = fallbackStoredCount > 0 ? "success" : "provider_error";
+      await completePageAttempt(pageOutcome);
       return { productId: product.id, pageFetched: false, hasVideo: stored.some((asset) => asset.kind === "video"), stored, skipped };
     }
   }
