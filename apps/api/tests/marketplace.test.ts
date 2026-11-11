@@ -19,6 +19,8 @@ test("marketplace endpoints normalize products, persist offers, and generate moc
   const repos = { affiliates: new InMemoryRepository<any>(), offers: new InMemoryRepository<any>(), conversions: new InMemoryRepository<any>(), commissions: new InMemoryRepository<any>(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository() };
   await repos.marketplaceConnections.save(connection);
   const configured = createServices(repos, { run: (work) => work({ conversions: repos.conversions, commissions: repos.commissions }) }, registry);
+  let autonomousTriggerCalls = 0;
+  configured.autonomousScheduler.trigger = async () => { autonomousTriggerCalls += 1; return undefined; };
   const app = createApp(configured);
   const discover = await app.inject({ method: "POST", url: "/api/v1/marketplaces/test-catalog/products/discover" });
   assert.equal(discover.statusCode, 200);
@@ -29,13 +31,16 @@ test("marketplace endpoints normalize products, persist offers, and generate moc
   assert.equal(mediaUpdate.json().imageUrl, "https://cdn.example.test/product.jpg");
   assert.equal(mediaUpdate.json().videoUrl, "https://cdn.example.test/product.mp4");
   assert.equal(mediaUpdate.json().productUrl, discoveredProduct.productUrl);
+  assert.equal(autonomousTriggerCalls, 1);
   const unchangedMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://cdn.example.test/product.jpg", videoUrl: "https://cdn.example.test/product.mp4" } });
   assert.equal(unchangedMediaUpdate.statusCode, 200);
   assert.equal(unchangedMediaUpdate.json().updatedAt, mediaUpdate.json().updatedAt);
+  assert.equal(autonomousTriggerCalls, 1);
   const clearMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: null } });
   assert.equal(clearMediaUpdate.statusCode, 200);
   assert.equal(clearMediaUpdate.json().imageUrl ?? null, null);
   assert.equal(clearMediaUpdate.json().videoUrl, "https://cdn.example.test/product.mp4");
+  assert.equal(autonomousTriggerCalls, 1);
   const invalidMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "http://not-secure.example.test/product.jpg" } });
   assert.equal(invalidMediaUpdate.statusCode, 400);
 
