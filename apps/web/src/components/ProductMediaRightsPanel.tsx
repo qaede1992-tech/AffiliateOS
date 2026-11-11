@@ -13,6 +13,50 @@ const basisOptions: Array<{ value: ProductMediaRightsBasis; label: string }> = [
 const initialForm = (): ReviewForm => ({ rightsBasis: "explicit_permission", rightsEvidenceUrl: "", sourcePublisher: "", reason: "" });
 const safeEvidenceUrl = (value: string | null): string | undefined => { try { const url = new URL(value ?? ""); return url.protocol === "https:" && !url.username && !url.password ? url.toString() : undefined; } catch { return undefined; } };
 
+function ProductMediaAssetPreview({ productId, asset }: { productId: string; asset: ProductMediaAssetView }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element || startedRef.current) return;
+    let active = true;
+    const load = () => {
+      if (!active || startedRef.current) return;
+      startedRef.current = true;
+      setAttempted(true);
+      void api.productMediaPreview(productId, asset.id)
+        .then((response) => { if (active) setPreviewUrl(response.url); })
+        .catch(() => { if (active) setPreviewUrl(""); });
+    };
+    if (typeof IntersectionObserver === "undefined") {
+      load();
+      return () => { active = false; };
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        observer.disconnect();
+        load();
+      }
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => { active = false; observer.disconnect(); };
+  }, [productId, asset.id, retryCount]);
+
+  return (
+    <div className="product-media-rights-preview" ref={containerRef}>
+      {!attempted ? <span>Preview dimuat saat mendekati layar</span>
+        : previewUrl === null ? <span>Memuat preview privat…</span>
+        : previewUrl === "" ? <><span>Preview privat tidak tersedia.</span><button type="button" onClick={() => { startedRef.current = false; setPreviewUrl(null); setAttempted(false); setRetryCount((count) => count + 1); }}>Coba lagi</button></>
+        : asset.kind === "video" ? <video src={previewUrl} controls preload="metadata" />
+        : <img src={previewUrl} alt={`Media produk ${asset.productId}`} loading="lazy" />}
+    </div>
+  );
+}
+
 export function ProductMediaRightsPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
@@ -21,7 +65,6 @@ export function ProductMediaRightsPanel() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
   const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
-  const [previews, setPreviews] = useState<Record<string, string>>({});
   const [audits, setAudits] = useState<Record<string, ProductMediaRightsAuditView[]>>({});
   const [loadedAuditIds, setLoadedAuditIds] = useState<Set<string>>(new Set());
   const [loadingAuditIds, setLoadingAuditIds] = useState<Set<string>>(new Set());
@@ -65,7 +108,6 @@ export function ProductMediaRightsPanel() {
   const loadAssets = async (selectedProductId: string) => {
     const requestId = ++requestSequence.current;
     setAssets([]);
-    setPreviews({});
     setAudits({});
     setLoadedAuditIds(new Set());
     setLoadingAuditIds(new Set());
@@ -77,12 +119,7 @@ export function ProductMediaRightsPanel() {
       const response = await api.productMediaAssets(selectedProductId);
       if (requestId !== requestSequence.current) return;
       setAssets(response.data);
-      const signed = await Promise.all(response.data.map(async (asset) => {
-        try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
-        catch { return [asset.id, ""] as const; }
-      }));
       if (requestId !== requestSequence.current) return;
-      setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
     } catch (requestError) {
       if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
@@ -94,7 +131,6 @@ export function ProductMediaRightsPanel() {
     productSelectionSequence.current += 1;
     requestSequence.current += 1;
     setAssets([]);
-    setPreviews({});
     setAudits({});
     setLoadedAuditIds(new Set());
     setLoadingAuditIds(new Set());
@@ -195,15 +231,9 @@ export function ProductMediaRightsPanel() {
       <div className="product-media-rights-list">
         {assets.map((asset) => {
           const form = forms[asset.id] ?? initialForm();
-          const preview = previews[asset.id];
           return (
             <article className="product-media-rights-item" key={asset.id}>
-              <div className="product-media-rights-preview">
-                {preview ? asset.kind === "video"
-                  ? <video src={preview} controls preload="metadata" />
-                  : <img src={preview} alt={`Media produk ${asset.productId}`} />
-                  : <span>Preview privat tidak tersedia</span>}
-              </div>
+              <ProductMediaAssetPreview productId={productId} asset={asset} />
               <div className="product-media-rights-details">
                 <div className="panel-heading">
                   <div><p className="eyebrow">{asset.kind} · {asset.mimeType}</p><h3>{asset.id.slice(0, 8)}</h3></div>
