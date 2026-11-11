@@ -101,7 +101,7 @@ export function ProductMediaCandidateReviewPanel() {
     setLoadingAuditIds((current) => new Set(current).add(candidateId));
     setAuditErrors((current) => ({ ...current, [candidateId]: "" }));
     try {
-      const response = await api.productMediaCandidateReviewAudits(requestedProductId, candidateId);
+      const response = await api.productMediaCandidateReviewAudits(requestedProductId, candidateId, 1);
       if (requestId !== sequence.current) return;
       setAudits((current) => ({ ...current, [candidateId]: response.data }));
       setLoadedAuditIds((current) => new Set(current).add(candidateId));
