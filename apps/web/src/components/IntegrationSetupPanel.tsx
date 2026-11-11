@@ -4,10 +4,14 @@ import { api, socialOAuthRedirectUri } from "../api/client";
 
 type Readiness = { platform: string; status: string; reason?: string };
 
-export function IntegrationSetupPanel() {
-  const [providers, setProviders] = useState<MarketplaceProviderInfo[]>([]);
-  const [connections, setConnections] = useState<MarketplaceConnectionView[]>([]);
-  const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
+export function IntegrationSetupPanel({ initialProviders, initialConnections, initialAffiliates }: {
+  initialProviders?: MarketplaceProviderInfo[];
+  initialConnections?: MarketplaceConnectionView[];
+  initialAffiliates?: Affiliate[];
+} = {}) {
+  const [providers, setProviders] = useState<MarketplaceProviderInfo[]>(initialProviders ?? []);
+  const [connections, setConnections] = useState<MarketplaceConnectionView[]>(initialConnections ?? []);
+  const [affiliates, setAffiliates] = useState<Affiliate[]>(initialAffiliates ?? []);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountView[]>([]);
   const [readiness, setReadiness] = useState<Readiness[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -31,28 +35,61 @@ export function IntegrationSetupPanel() {
   const lastLoadedAtRef = useRef(0);
   const refreshCooldownMs = 15_000;
 
-  const load = (force = false): Promise<void> => {
-    if (loadInFlightRef.current) return loadInFlightRef.current;
-    if (!force && Date.now() - lastLoadedAtRef.current < refreshCooldownMs) return Promise.resolve();
-    const request = Promise.all([
-      api.marketplaceProviders(), api.marketplaceConnections(), api.affiliates(),
-      api.socialAccounts(), api.publisherReadiness()
-    ]).then(([p, c, a, s, r]) => {
-      setProviders(p.data); setConnections(c.data); setAffiliates(a.data); setSocialAccounts(s.data); setReadiness(r.data);
-      setHasLoaded(true);
+  const hasInitialData = initialProviders !== undefined && initialConnections !== undefined && initialAffiliates !== undefined;
+  const hasLoadedRef = useRef(false);
+  const readinessInFlightRef = useRef<Promise<void> | null>(null);
+
+  const loadReadiness = (): Promise<void> => {
+    if (readinessInFlightRef.current) return readinessInFlightRef.current;
+    const request = api.publisherReadiness().then((response) => {
+      setReadiness(response.data);
       lastLoadedAtRef.current = Date.now();
     }).finally(() => {
-      if (loadInFlightRef.current === request) loadInFlightRef.current = null;
+      if (readinessInFlightRef.current === request) readinessInFlightRef.current = null;
     });
+    readinessInFlightRef.current = request;
+    return request;
+  };
+
+  const load = (force = false): Promise<void> => {
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+    if (!force && hasLoadedRef.current && Date.now() - lastLoadedAtRef.current < refreshCooldownMs) return Promise.resolve();
+    const coreRequest = force || !hasInitialData
+      ? Promise.all([api.marketplaceProviders(), api.marketplaceConnections(), api.affiliates()])
+        .then(([p, c, a]) => ({ providers: p.data, connections: c.data, affiliates: a.data }))
+      : Promise.resolve({
+        providers: initialProviders ?? [],
+        connections: initialConnections ?? [],
+        affiliates: initialAffiliates ?? []
+      });
+    const request = Promise.all([coreRequest, api.socialAccounts(), api.publisherReadiness()])
+      .then(([core, s, r]) => {
+        setProviders(core.providers);
+        setConnections(core.connections);
+        setAffiliates(core.affiliates);
+        setSocialAccounts(s.data);
+        setReadiness(r.data);
+        hasLoadedRef.current = true;
+        setHasLoaded(true);
+        lastLoadedAtRef.current = Date.now();
+      }).finally(() => {
+        if (loadInFlightRef.current === request) loadInFlightRef.current = null;
+      });
     loadInFlightRef.current = request;
     return request;
   };
 
   useEffect(() => {
+    if (initialProviders) setProviders(initialProviders);
+    if (initialConnections) setConnections(initialConnections);
+    if (initialAffiliates) setAffiliates(initialAffiliates);
+  }, [initialProviders, initialConnections, initialAffiliates]);
+
+  useEffect(() => {
     let disposed = false;
     const refreshIfVisible = () => {
       if (!isNearViewportRef.current || document.visibilityState !== "visible") return;
-      void load().catch((e: unknown) => {
+      void (hasLoadedRef.current ? loadReadiness() : load()).catch((e: unknown) => {
         if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
       });
     };
