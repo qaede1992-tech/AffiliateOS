@@ -14,6 +14,7 @@ export function ProductMediaCandidateReviewPanel() {
   const [candidates, setCandidates] = useState<ProductMediaCandidateView[]>([]);
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [audits, setAudits] = useState<AuditMap>({});
+  const [auditLoadingIds, setAuditLoadingIds] = useState<Set<string>>(new Set());
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -58,19 +59,11 @@ export function ProductMediaCandidateReviewPanel() {
       if (requestId !== sequence.current) return;
       setCandidates(candidateResponse.data);
       setImportedIds(new Set(assetResponse.data.flatMap((asset) => asset.sourceCandidateId ? [asset.sourceCandidateId] : [])));
-      if (selectedStatus === "approved") {
-        const history = await Promise.all(candidateResponse.data.map(async (candidate) => {
-          try {
-            return [candidate.id, (await api.productMediaCandidateReviewAudits(selectedProductId, candidate.id)).data] as const;
-          } catch {
-            return [candidate.id, []] as const;
-          }
-        }));
-        if (requestId !== sequence.current) return;
-        setAudits(Object.fromEntries(history));
-      } else {
-        setAudits({});
-      }
+      // Candidate audit histories are loaded on demand when an approved
+      // candidate's history is expanded, rather than issuing one request per
+      // candidate when switching the tab.
+      setAudits({});
+      setAuditLoadingIds(new Set());
     } catch (requestError) {
       if (requestId === sequence.current) setError(requestError instanceof Error ? requestError.message : "Kandidat media tidak dapat dimuat.");
     } finally {
@@ -81,6 +74,24 @@ export function ProductMediaCandidateReviewPanel() {
   useEffect(() => {
     if (isAdmin && productId) void loadCandidates(productId, status);
   }, [isAdmin, productId, status]);
+
+  const loadCandidateAudit = async (candidate: ProductMediaCandidateView) => {
+    if (Object.prototype.hasOwnProperty.call(audits, candidate.id) || auditLoadingIds.has(candidate.id)) return;
+    const selectedProductId = productId;
+    const requestId = sequence.current;
+    setAuditLoadingIds((current) => new Set(current).add(candidate.id));
+    try {
+      const response = await api.productMediaCandidateReviewAudits(selectedProductId, candidate.id);
+      if (requestId !== sequence.current) return;
+      setAudits((current) => ({ ...current, [candidate.id]: response.data }));
+    } catch {
+      if (requestId === sequence.current) setAudits((current) => ({ ...current, [candidate.id]: [] }));
+    } finally {
+      if (requestId === sequence.current) {
+        setAuditLoadingIds((current) => { const next = new Set(current); next.delete(candidate.id); return next; });
+      }
+    }
+  };
 
   const reviewCandidate = async (candidate: ProductMediaCandidateView, decision: "approved" | "rejected") => {
     const reason = reasons[candidate.id]?.trim() ?? "";
@@ -172,7 +183,16 @@ export function ProductMediaCandidateReviewPanel() {
                   </div>
                   <a href={candidate.landingPageUrl} target="_blank" rel="noreferrer">Buka halaman sumber</a>
                   {candidate.licenseUrl && <a href={candidate.licenseUrl} target="_blank" rel="noreferrer">Periksa teks lisensi</a>}
-                  {latestAudit && <p className="candidate-review-audit">Review oleh {latestAudit.actorId}: {latestAudit.reason}</p>}
+                  {status === "approved" && <details className="product-media-candidate-history" onToggle={(event) => {
+                    if (event.currentTarget.open) void loadCandidateAudit(candidate);
+                  }}>
+                    <summary>Riwayat review{Object.prototype.hasOwnProperty.call(audits, candidate.id) ? ` (${audits[candidate.id].length})` : ""}</summary>
+                    {auditLoadingIds.has(candidate.id) ? <p className="analytics-note">Memuat riwayat review…</p>
+                      : !Object.prototype.hasOwnProperty.call(audits, candidate.id) ? <p className="analytics-note">Buka bagian ini untuk memuat riwayat review.</p>
+                      : audits[candidate.id].length === 0 ? <p className="analytics-note">Belum ada catatan review.</p>
+                      : audits[candidate.id].map((audit) => <p className="candidate-review-audit" key={audit.id}>Review oleh {audit.actorId}: {audit.reason}</p>)}
+                  </details>}
+                  {status === "pending" && latestAudit && <p className="candidate-review-audit">Review oleh {latestAudit.actorId}: {latestAudit.reason}</p>}
                   {status === "pending" ? (
                     <div className="candidate-review-actions">
                       <input
