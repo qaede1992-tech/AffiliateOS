@@ -1,4 +1,4 @@
-import { desc, eq, and, gte } from "drizzle-orm";
+import { desc, eq, and, sql } from "drizzle-orm";
 import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } from "../domain/autonomous-feedback-memory.js";
 import { autonomousFeedbackSnapshots } from "./schema.js";
 
@@ -9,6 +9,12 @@ type SnapshotRow = typeof autonomousFeedbackSnapshots.$inferSelect & {
 };
 
 const feedbackSnapshotsTable = autonomousFeedbackSnapshots as any;
+
+function rowsOf(result: unknown): Record<string, unknown>[] {
+  if (Array.isArray(result)) return result as Record<string, unknown>[];
+  const rows = (result as { rows?: unknown[] } | undefined)?.rows;
+  return Array.isArray(rows) ? rows as Record<string, unknown>[] : [];
+}
 
 const toDomain = (row: SnapshotRow): AutonomousFeedbackSnapshot => ({
   id: row.id,
@@ -107,10 +113,101 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
   }
 
   async recentByProductAndMarketplace(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]> {
-    const rows = await this.db.select().from(feedbackSnapshotsTable)
-      .where(and(eq(autonomousFeedbackSnapshots.productId, productId), eq(autonomousFeedbackSnapshots.marketplaceId, marketplaceId), gte(autonomousFeedbackSnapshots.observedAt, since)))
-      .orderBy(autonomousFeedbackSnapshots.observedAt, autonomousFeedbackSnapshots.id);
-    return rows.map((row: SnapshotRow) => toDomain(row));
+    // The feedback provider only needs the first observation at each window cutoff,
+    // the latest observation, and (during an active recovery) the halt anchor plus
+    // the last three post-halt observations. Returning the entire 30-day history
+    // repeatedly caused thousands of redundant rows to cross the database boundary.
+    const sinceMillis = Date.parse(since);
+    if (!Number.isFinite(sinceMillis)) throw new Error("Feedback history cutoff must be a valid timestamp.");
+    const since7d = new Date(sinceMillis + 23 * 24 * 60 * 60_000).toISOString();
+    const since24h = new Date(sinceMillis + 29 * 24 * 60 * 60_000).toISOString();
+    const result = await this.db.execute(sql`
+      WITH latest AS MATERIALIZED (
+        SELECT *
+        FROM autonomous_feedback_snapshots
+        WHERE product_id = ${productId}::uuid
+          AND marketplace_id = ${marketplaceId}::uuid
+        ORDER BY observed_at DESC, id DESC
+        LIMIT 1
+      ),
+      halt_anchor AS MATERIALIZED (
+        SELECT halt.*
+        FROM autonomous_feedback_snapshots halt
+        CROSS JOIN latest current_snapshot
+        WHERE halt.id = CASE
+          WHEN current_snapshot.anomaly = 'halt' THEN current_snapshot.id
+          WHEN current_snapshot.recovery_state = 'recovering' THEN current_snapshot.recovery_episode_id
+          ELSE NULL
+        END
+      ),
+      anchors AS (
+        (
+          SELECT * FROM autonomous_feedback_snapshots
+          WHERE product_id = ${productId}::uuid
+            AND marketplace_id = ${marketplaceId}::uuid
+            AND observed_at >= ${since24h}::timestamptz
+          ORDER BY observed_at, id
+          LIMIT 1
+        )
+        UNION
+        (
+          SELECT * FROM autonomous_feedback_snapshots
+          WHERE product_id = ${productId}::uuid
+            AND marketplace_id = ${marketplaceId}::uuid
+            AND observed_at >= ${since7d}::timestamptz
+          ORDER BY observed_at, id
+          LIMIT 1
+        )
+        UNION
+        (
+          SELECT * FROM autonomous_feedback_snapshots
+          WHERE product_id = ${productId}::uuid
+            AND marketplace_id = ${marketplaceId}::uuid
+            AND observed_at >= ${since}::timestamptz
+          ORDER BY observed_at, id
+          LIMIT 1
+        )
+        UNION
+        (SELECT * FROM latest)
+        UNION
+        (
+          SELECT recent.*
+          FROM halt_anchor
+          CROSS JOIN LATERAL (
+            SELECT snapshot.*
+            FROM autonomous_feedback_snapshots snapshot
+            WHERE snapshot.product_id = ${productId}::uuid
+              AND snapshot.marketplace_id = ${marketplaceId}::uuid
+              AND snapshot.observed_at > halt_anchor.observed_at
+            ORDER BY snapshot.observed_at DESC, snapshot.id DESC
+            LIMIT 3
+          ) recent
+        )
+      )
+      SELECT
+        id,
+        observation_key AS "observationKey",
+        product_id AS "productId",
+        marketplace_id AS "marketplaceId",
+        click_count AS "clickCount",
+        conversion_count AS "conversionCount",
+        attributed_commission_cents AS "attributedCommissionCents",
+        commission_per_click_cents AS "commissionPerClickCents",
+        conversion_rate AS "conversionRate",
+        adjustment,
+        anomaly,
+        anomaly_score AS "anomalyScore",
+        recovery_state AS "recoveryState",
+        recovery_clicks AS "recoveryClicks",
+        recovery_evidence_score AS "recoveryEvidenceScore",
+        recovery_quality_score AS "recoveryQualityScore",
+        recovery_policy AS "recoveryPolicy",
+        recovery_episode_id AS "recoveryEpisodeId",
+        observed_at AS "observedAt"
+      FROM anchors
+      ORDER BY observed_at, id
+    `);
+    return rowsOf(result).map((row) => toDomain(row as SnapshotRow));
   }
 
   async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<import("../domain/autonomous-feedback-memory.js").RecoveryEpisodeAnalytics | undefined> {
