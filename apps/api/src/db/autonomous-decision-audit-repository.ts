@@ -75,7 +75,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
         LEFT JOIN click_analytics clicks ON clicks.campaign_id = tc.id
         LEFT JOIN conversion_analytics conversions ON conversions.campaign_id = tc.id
         LEFT JOIN commission_analytics commissions ON commissions.campaign_id = tc.id
-      `););
+      `);
 
       for (const row of rowsOf(result)) {
         const clickCount = Number(row.click_count ?? 0);
