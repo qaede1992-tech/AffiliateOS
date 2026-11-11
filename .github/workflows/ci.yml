@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - deploy/blitz-api-mainline
+      - deploy/web-staging-mainline
   pull_request:
 
 permissions:
@@ -106,6 +109,9 @@ jobs:
         run: docker build --file apps/api/Dockerfile --tag affiliateos-api:ci .
       - name: Build web image
         run: docker build --file apps/web/Dockerfile --build-arg VITE_API_URL=http://localhost:3001 --tag affiliateos-web:ci .
+      - name: Build staging web image
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/deploy/web-staging-mainline'
+        run: docker build --file apps/web/Dockerfile.staging --tag affiliateos-web-staging:ci .
       - name: Smoke test API container
         run: |
           set -euo pipefail
