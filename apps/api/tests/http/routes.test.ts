@@ -1342,3 +1342,44 @@ test("public shop uses the filtered joined listing when the repository supports 
   }] });
   await app.close();
 });
+
+
+test("TikTok approval confirmation wakes the publication scheduler", async () => {
+  const services = createInMemoryServices();
+  let triggerCalls = 0;
+  const jobId = "00000000-0000-4000-8000-000000000201";
+  services.publicationScheduler.trigger = async () => {
+    triggerCalls += 1;
+    return [];
+  };
+  services.publicationJobs.confirmWithApproval = async () => ({
+    id: jobId,
+    status: "pending"
+  }) as never;
+
+  const token = "publication-scheduler-test-token-1234";
+  const app = createApp(services, {
+    auth: { enabled: true, token, operatorId: "operator-test", role: "operator" }
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/v1/publication-jobs/${jobId}/confirm`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      privacyLevel: "PUBLIC_TO_EVERYONE",
+      disableComment: false,
+      disableDuet: false,
+      disableStitch: false,
+      commercialDisclosureEnabled: true,
+      brandOrganicToggle: true,
+      brandContentToggle: false,
+      musicUsageConfirmed: true,
+      previewConfirmed: true
+    }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().status, "pending");
+  assert.equal(triggerCalls, 1);
+  await app.close();
+});
