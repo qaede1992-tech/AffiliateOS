@@ -663,4 +663,47 @@ describe("autonomous cycle", () => {
     assert.deepEqual(result.execution, { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 });
   });
 
+  it("skips external media discovery when a preliminary candidate already has verified publishable media", async () => {
+    const product = { id: "existing-publishable-media-product" };
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
+    };
+    let discoveryCalls = 0;
+    let mediaIndexCalls = 0;
+    const execution = {
+      async previewSelection(input: { requirePublishableMedia?: boolean }) {
+        return input.requirePublishableMedia
+          ? { selected: [], rejected: [], audit: [] }
+          : { selected: [{ product: product as never, offerId: "offer-1", score: 90 }], rejected: [], audit: [] };
+      },
+      async runOnce() {
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() {
+        discoveryCalls += 1;
+        throw new Error("Discovery must not run for an already publishable product.");
+      },
+      async listPublishableMediaProductIds() {
+        mediaIndexCalls += 1;
+        return [product.id];
+      },
+      async listVideoProductIds() { return []; },
+      async listPublishableVideoProductIds() { return []; },
+      async listMediaReadinessScores() { return { [product.id]: 90 }; },
+      async generatePromoVideo() { throw new Error("No media-ready selection should require video generation."); }
+    };
+    const service = new AutonomousCycleService(
+      candidates, execution, undefined, undefined, undefined, undefined, discovery as never
+    );
+
+    const result = await service.runOnce({ publicationEnabled: false });
+
+    assert.ok(result);
+    assert.equal(discoveryCalls, 0);
+    assert.equal(mediaIndexCalls, 2);
+    assert.equal(service.skipReason, undefined);
+  });
+
 });
