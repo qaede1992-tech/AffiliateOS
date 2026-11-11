@@ -163,6 +163,11 @@ export class TrackingService {
     }
   }
   async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
+  async statsMany(ids: string[]): Promise<TrackingLinkStats[]> {
+    const uniqueIds = [...new Set(ids)].slice(0, 8);
+    const counts = await this.clicks.countByTrackingLinks(uniqueIds);
+    return uniqueIds.map((linkId) => ({ linkId, clickCount: counts[linkId] ?? 0 }));
+  }
 }
 
 function decorateShopeeDestination(value: string, trackingCode: string): string {
