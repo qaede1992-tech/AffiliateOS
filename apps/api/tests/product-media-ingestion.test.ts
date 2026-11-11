@@ -426,7 +426,7 @@ test("reuses a previously ingested provider candidate without downloading or upl
     sourceUrl: "https://upload.wikimedia.org/existing.mp4",
     sourcePublisher: "Wikimedia Commons",
     sourceProvider: "wikimedia_commons",
-    sourceCandidateId: "commons-file-123",
+    sourceCandidateId: "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071",
     sourceLandingPageUrl: "https://commons.wikimedia.org/wiki/File:Existing.mp4",
     rightsStatus: "unverified" as const,
     rightsBasis: null,
@@ -440,7 +440,7 @@ test("reuses a previously ingested provider candidate without downloading or upl
   const repository = {
     findBySourceCandidateId: async (candidateId: string) => {
       candidateLookups += 1;
-      assert.equal(candidateId, "commons-file-123");
+      assert.equal(candidateId, "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071");
       return existing;
     },
     findByProductAndHash: async () => undefined,
@@ -463,7 +463,7 @@ test("reuses a previously ingested provider candidate without downloading or upl
       source: "catalog",
       provenance: {
         provider: "wikimedia_commons",
-        candidateId: "commons-file-123",
+        candidateId: "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071",
         landingPageUrl: "https://commons.wikimedia.org/wiki/File:Existing.mp4",
         title: "Existing media",
         query: "existing product",
