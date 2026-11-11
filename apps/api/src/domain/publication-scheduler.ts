@@ -1,126 +1,166 @@
 import type { PublicationWorker, PublicationWorkerResult } from "./publication-worker.js";
 
+type SchedulerTimer = ReturnType<typeof setTimeout>;
+
 export type PublicationSchedulerOptions = {
-  intervalMs?: number;
-  idleMaxIntervalMs?: number;
   now?: () => Date;
+  retryAfterErrorMs?: number;
+  setTimer?: (callback: () => void, delayMs: number) => SchedulerTimer;
+  clearTimer?: (timer: SchedulerTimer) => void;
   onResults?: (results: PublicationWorkerResult[]) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
 };
 
-const DEFAULT_INTERVAL_MS = 30_000;
-const DEFAULT_IDLE_MAX_INTERVAL_MS = 2 * 60_000;
-
-type TimerHandle = ReturnType<typeof setTimeout>;
+const DEFAULT_ERROR_RETRY_MS = 30_000;
+const MAX_TIMER_DELAY_MS = 2_147_000_000;
 
 export class PublicationScheduler {
-  private readonly intervalMs: number;
-  private readonly idleMaxIntervalMs: number;
-  private currentIntervalMs: number;
-  private consecutiveEmptyRuns = 0;
-  private readonly now: () => Date;
-  private readonly onResults?: PublicationSchedulerOptions["onResults"];
-  private readonly onError?: PublicationSchedulerOptions["onError"];
-  private timer?: TimerHandle;
-  private activeRun?: Promise<void>;
   private started = false;
+  private timer?: SchedulerTimer;
+  private activeRun?: Promise<PublicationWorkerResult[]>;
+  private triggerDrain?: Promise<PublicationWorkerResult[] | undefined>;
+  private pending = false;
+  private retryAfterRunError = false;
+  private readonly now: () => Date;
+  private readonly retryAfterErrorMs: number;
+  private readonly setTimer: NonNullable<PublicationSchedulerOptions["setTimer"]>;
+  private readonly clearTimer: NonNullable<PublicationSchedulerOptions["clearTimer"]>;
 
-  constructor(private readonly worker: PublicationWorker, options: PublicationSchedulerOptions = {}) {
-    this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
-    if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) {
-      throw new Error("Publication scheduler interval must be a positive finite number.");
-    }
-    this.idleMaxIntervalMs = options.idleMaxIntervalMs ?? Math.max(this.intervalMs, DEFAULT_IDLE_MAX_INTERVAL_MS);
-    if (!Number.isFinite(this.idleMaxIntervalMs) || this.idleMaxIntervalMs < this.intervalMs || this.idleMaxIntervalMs > 60 * 60_000) {
-      throw new Error("Publication scheduler idle maximum must be between the base interval and one hour.");
-    }
-    this.currentIntervalMs = this.intervalMs;
+  constructor(
+    private readonly worker: PublicationWorker,
+    private readonly options: PublicationSchedulerOptions = {}
+  ) {
     this.now = options.now ?? (() => new Date());
-    this.onResults = options.onResults;
-    this.onError = options.onError;
+    this.retryAfterErrorMs = options.retryAfterErrorMs ?? DEFAULT_ERROR_RETRY_MS;
+    if (!Number.isFinite(this.retryAfterErrorMs) || this.retryAfterErrorMs < 1_000) {
+      throw new Error("Publication scheduler error retry interval must be at least one second.");
+    }
+    this.setTimer = options.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+    this.clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
   }
 
   get isRunning(): boolean {
     return this.started;
   }
 
-  /** Current delay before the next poll; exposed for health diagnostics and deterministic tests. */
-  get nextIntervalMs(): number {
-    return this.currentIntervalMs;
-  }
-
   start(): void {
     if (this.started) return;
     this.started = true;
-    void this.runAndSchedule();
+    void this.trigger();
   }
 
   async stop(): Promise<void> {
     this.started = false;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
+    this.pending = false;
+    this.clearScheduledTimer();
+    await this.triggerDrain;
     await this.activeRun;
   }
 
-  async runNow(now = this.now()): Promise<void> {
+  // New publication jobs and explicit approvals call this method. Future jobs are
+  // scheduled at their exact due time by nextWakeAt(), so an empty queue has no poll.
+  async trigger(): Promise<PublicationWorkerResult[] | undefined> {
+    if (!this.started) return undefined;
+    this.pending = true;
+    this.clearScheduledTimer();
+    if (this.triggerDrain) return this.triggerDrain;
+
+    this.triggerDrain = (async () => {
+      let results: PublicationWorkerResult[] | undefined;
+      while (this.started && this.pending) {
+        if (this.activeRun) {
+          await this.activeRun;
+          if (!this.started) break;
+        }
+        if (!this.pending) continue;
+        this.pending = false;
+        results = await this.runNow(this.now());
+      }
+      return results;
+    })().finally(() => {
+      this.triggerDrain = undefined;
+      if (this.started && this.pending) void this.trigger();
+      else if (this.started) void this.scheduleNext();
+    });
+    return this.triggerDrain;
+  }
+
+  async runNow(now = this.now()): Promise<PublicationWorkerResult[]> {
     if (this.activeRun) return this.activeRun;
-    this.activeRun = this.worker.runOnce(now)
+    const run = Promise.resolve()
+      .then(() => this.worker.runOnce(now))
       .then(async (results) => {
-        this.updateIntervalAfterResults(results);
+        this.retryAfterRunError = false;
         if (results.length > 0) await this.notifyResults(results);
+        return results;
       })
       .catch(async (error) => {
-        this.resetInterval();
+        this.retryAfterRunError = true;
         await this.notifyError(error);
+        return [];
       })
       .finally(() => {
         this.activeRun = undefined;
+        if (this.started && !this.triggerDrain && !this.pending) void this.scheduleNext();
       });
-    return this.activeRun;
+    this.activeRun = run;
+    return run;
   }
 
-  private updateIntervalAfterResults(results: PublicationWorkerResult[]): void {
-    if (results.length > 0) {
-      this.resetInterval();
+  private async scheduleNext(): Promise<void> {
+    if (!this.started || this.timer || this.activeRun || this.triggerDrain || this.pending) return;
+    if (this.retryAfterRunError) {
+      this.retryAfterRunError = false;
+      this.scheduleRetry();
       return;
     }
-    if (this.consecutiveEmptyRuns > 0) {
-      this.currentIntervalMs = Math.min(this.currentIntervalMs * 2, this.idleMaxIntervalMs);
+    try {
+      const nextWakeAt = await this.worker.nextWakeAt();
+      if (!this.started || this.timer || this.activeRun || this.triggerDrain || this.pending || !nextWakeAt) return;
+      const nextTime = nextWakeAt.getTime();
+      if (!Number.isFinite(nextTime)) return;
+      const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, nextTime - this.now().getTime()));
+      this.timer = this.setTimer(() => {
+        this.timer = undefined;
+        void this.trigger();
+      }, delayMs);
+      (this.timer as SchedulerTimer & { unref?: () => void }).unref?.();
+    } catch (error) {
+      await this.notifyError(error);
+      this.scheduleRetry();
     }
-    this.consecutiveEmptyRuns += 1;
   }
 
-  private resetInterval(): void {
-    this.consecutiveEmptyRuns = 0;
-    this.currentIntervalMs = this.intervalMs;
+  private scheduleRetry(): void {
+    if (!this.started || this.timer || this.triggerDrain || this.pending) return;
+    this.timer = this.setTimer(() => {
+      this.timer = undefined;
+      void this.trigger();
+    }, this.retryAfterErrorMs);
+    (this.timer as SchedulerTimer & { unref?: () => void }).unref?.();
+  }
+
+  private clearScheduledTimer(): void {
+    if (!this.timer) return;
+    this.clearTimer(this.timer);
+    this.timer = undefined;
   }
 
   private async notifyResults(results: PublicationWorkerResult[]): Promise<void> {
-    if (!this.onResults) return;
+    if (!this.options.onResults) return;
     try {
-      await this.onResults(results);
+      await this.options.onResults(results);
     } catch (error) {
       await this.notifyError(error);
     }
   }
 
   private async notifyError(error: unknown): Promise<void> {
-    if (!this.onError) return;
+    if (!this.options.onError) return;
     try {
-      await this.onError(error);
+      await this.options.onError(error);
     } catch {
-      // Observer failures must not escape the scheduler lifecycle.
+      // Observer failures must not change the worker's execution outcome.
     }
-  }
-
-  private async runAndSchedule(): Promise<void> {
-    await this.runNow();
-    if (!this.started) return;
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      void this.runAndSchedule();
-    }, this.currentIntervalMs);
   }
 }
