@@ -67,6 +67,31 @@ jobs:
           printf 'DATABASE_URL=%s\n' "$PRODUCTION_DATABASE_URL" > .env
           chmod 600 .env
 
+      - name: Verify connected production database identity (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          PRODUCTION_DATABASE_NAME: ${{ vars.PRODUCTION_DATABASE_NAME }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { Client } from "pg";
+
+          const client = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10000 });
+          await client.connect();
+          try {
+            await client.query("SET default_transaction_read_only = on");
+            const { rows } = await client.query("SELECT current_database() AS database");
+            assert.equal(
+              rows[0]?.database,
+              process.env.PRODUCTION_DATABASE_NAME,
+              "Connected database name differs from the protected production database name; refusing migration"
+            );
+            console.log("Connected database identity matches the protected production database name.");
+          } finally {
+            await client.end();
+          }
+          NODE
+
       - name: Verify current production schema and migration ledger (read-only)
         run: npm run db:verify:applied
 
