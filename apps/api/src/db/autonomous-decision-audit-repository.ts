@@ -124,24 +124,42 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
         [audit.productId, audit.marketplaceId] as const
       ])).values()];
       const result = await this.db.execute(sql`
-        SELECT DISTINCT ON (product_id, marketplace_id)
-          id AS "auditId",
-          product_id AS "productId",
-          marketplace_id AS "marketplaceId",
-          selected,
-          selection_mode AS "selectionMode",
-          score,
-          policy,
-          reasons,
-          category,
-          audience_segments AS "audienceSegments",
-          recovery
-        FROM autonomous_decision_audits
-        WHERE (product_id, marketplace_id) IN (${sql.join(
+        SELECT
+          latest."auditId",
+          latest."productId",
+          latest."marketplaceId",
+          latest.selected,
+          latest."selectionMode",
+          latest.score,
+          latest.policy,
+          latest.reasons,
+          latest.category,
+          latest."audienceSegments",
+          latest.recovery
+        FROM (VALUES ${sql.join(
           pairs.map(([productId, marketplaceId]) => sql`(${productId}::uuid, ${marketplaceId}::uuid)`),
           sql`, `
-        )})
-        ORDER BY product_id, marketplace_id, created_at DESC
+        )}) AS requested(product_id, marketplace_id)
+        LEFT JOIN LATERAL (
+          SELECT
+            a.id AS "auditId",
+            a.product_id AS "productId",
+            a.marketplace_id AS "marketplaceId",
+            a.selected,
+            a.selection_mode AS "selectionMode",
+            a.score,
+            a.policy,
+            a.reasons,
+            a.category,
+            a.audience_segments AS "audienceSegments",
+            a.recovery
+          FROM autonomous_decision_audits a
+          WHERE a.product_id = requested.product_id
+            AND a.marketplace_id = requested.marketplace_id
+          ORDER BY a.created_at DESC, a.id DESC
+          LIMIT 1
+        ) latest ON TRUE
+        WHERE latest."auditId" IS NOT NULL
       `);
       for (const row of rowsOf(result)) {
         previousByPair.set(`${String(row.productId)}:${String(row.marketplaceId)}`, row);
