@@ -17,7 +17,7 @@ export function WorkflowPanel() {
     setPublicationJobs(publicationResponse.data);
   };
   const refreshSocialAccounts = async () => { const response = await api.socialAccounts(); setSocialAccounts(response.data); };
-  const refreshTrackingLinks = async () => { const response = await api.trackingLinks(); setTrackingLinks(response.data); setTrackingStatsLoaded(false); };
+  const refreshTrackingLinks = async () => { const response = await api.trackingLinks(); setTrackingLinks(response.data); setTrackingStats({}); setTrackingStatsLoading({}); };
   const refreshSelectedCampaignOffers = async () => {
     const selectedCampaignId = attachCampaignId || trackingCampaignId;
     if (!selectedCampaignId) { setCampaignOffers([]); return; }
