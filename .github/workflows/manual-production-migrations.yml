@@ -92,8 +92,8 @@ jobs:
           }
           NODE
 
-      - name: Verify current production schema and migration ledger (read-only)
-        run: npm run db:verify:applied
+      - name: Verify current production migration ledger and pending suffix (read-only)
+        run: npm run db:verify:pre-migrate
 
       - name: Apply pending migrations
         run: npm run db:migrate
