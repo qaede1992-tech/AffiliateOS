@@ -40,7 +40,7 @@ export function ProductMediaRightsPanel() {
     }, { rootMargin: "160px" });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [checkingRole]);
 
   useEffect(() => {
     if (!panelVisible) return;
@@ -152,7 +152,7 @@ export function ProductMediaRightsPanel() {
   if (!isAdmin) return null;
 
   return (
-    <section className="analytics-section" id="product-media-rights">
+    <section className="analytics-section" id="product-media-rights" ref={panelRef}>
       <div className="section-heading">
         <div><p className="eyebrow">Kontrol hak penggunaan</p><h2>Review media produk</h2></div>
         <span>Khusus admin</span>
