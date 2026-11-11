@@ -10,6 +10,7 @@ describe("autonomous cycle", () => {
     const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
     let videoLookupCount = 0;
+    let mediaListCount = 0;
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean; requirePublishableVideo?: boolean }) {
         if (input.requirePublishableMedia === true) {
@@ -29,7 +30,11 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const discovery = {
       async discover(product: { id: string }) { calls.push("discover:" + product.id); return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { calls.push("list-media"); return ["selected-image", "media-rejected"]; },
+      async listPublishableMediaProductIds() {
+        calls.push("list-media");
+        mediaListCount += 1;
+        return mediaListCount === 1 ? [] : ["selected-image", "media-rejected"];
+      },
       async listMediaReadinessScores() { calls.push("media-readiness"); return { "selected-image": 85, "media-rejected": 20 }; },
       async listVideoProductIds() {
         calls.push("list-videos");
@@ -44,6 +49,7 @@ describe("autonomous cycle", () => {
     assert.ok(result);
     assert.deepEqual(calls, [
       "preliminary-selection",
+      "list-media",
       "discover:selected-image",
       "discover:media-rejected",
       "list-media",
@@ -71,6 +77,7 @@ describe("autonomous cycle", () => {
       },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
+    let mediaListCount = 0;
     const discovery = {
       async discover() {
         return {
@@ -84,7 +91,10 @@ describe("autonomous cycle", () => {
           }]
         };
       },
-      async listPublishableMediaProductIds() { return [product.id]; },
+      async listPublishableMediaProductIds() {
+        mediaListCount += 1;
+        return mediaListCount === 1 ? [] : [product.id];
+      },
       async listVideoProductIds() { return []; },
       async generatePromoVideo() { return { generated: false }; }
     };
@@ -534,12 +544,16 @@ describe("autonomous cycle", () => {
       }
     } as unknown as AutonomousExecutionService;
     let discoveryCount = 0;
+    let mediaListCount = 0;
     const discovery = {
       async discover() {
         discoveryCount += 1;
         return { productId: product.id, pageFetched: false, hasVideo: true, stored: [], skipped: [] };
       },
-      async listPublishableMediaProductIds() { return [product.id]; },
+      async listPublishableMediaProductIds() {
+        mediaListCount += 1;
+        return mediaListCount === 1 ? [] : [product.id];
+      },
       async listVideoProductIds() { return [product.id]; },
       async listPublishableVideoProductIds() { return [product.id]; },
       async listMediaReadinessScores() { return { [product.id]: 100 }; },
