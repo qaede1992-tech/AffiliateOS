@@ -82,6 +82,37 @@ function App() {
     setAutonomousStatus(autonomous);
   };
 
+  // Refresh only the resources affected by a mutation to avoid repeating unrelated Supabase reads.
+  const refreshAffiliates = async () => {
+    const result = await api.affiliates();
+    setData((current) => current ? { ...current, affiliates: result.data } : current);
+  };
+
+  const refreshOffers = async () => {
+    const result = await api.offers();
+    setData((current) => current ? { ...current, offers: result.data } : current);
+  };
+
+  const refreshConversionsAndEarnings = async () => {
+    const [conversions, commissions, analytics] = await Promise.all([
+      api.conversions(),
+      api.commissions(),
+      api.analyticsOverview()
+    ]);
+    setData((current) => current ? { ...current, conversions: conversions.data, commissions: commissions.data, analytics } : current);
+  };
+
+  const refreshMarketplaceConnections = async () => {
+    const result = await api.marketplaceConnections();
+    setData((current) => current ? { ...current, marketplaceConnections: result.data } : current);
+  };
+
+  const refreshAutonomousSummary = async () => {
+    const [analytics, autonomous] = await Promise.all([api.analyticsOverview(), api.autonomousStatus()]);
+    setData((current) => current ? { ...current, analytics } : current);
+    setAutonomousStatus(autonomous);
+  };
+
   useEffect(() => {
     loadDashboard().catch((requestError: unknown) => {
       setError(requestError instanceof Error ? requestError.message : "Unable to load dashboard data.");
@@ -96,7 +127,7 @@ function App() {
       await api.createAffiliate({ name: affiliateName.trim(), email: affiliateEmail.trim() });
       setAffiliateName("");
       setAffiliateEmail("");
-      await loadDashboard();
+      await refreshAffiliates();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create affiliate.");
     } finally {
@@ -116,7 +147,7 @@ function App() {
       });
       setOfferName("");
       setOfferRate("");
-      await loadDashboard();
+      await refreshOffers();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create offer.");
     } finally {
@@ -137,7 +168,7 @@ function App() {
       setConversionAffiliateId("");
       setConversionOfferId("");
       setConversionAmount("");
-      await loadDashboard();
+      await refreshConversionsAndEarnings();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create conversion.");
     } finally {
@@ -158,7 +189,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     setError(null);
     try {
       await api.marketplaceSetEnabled(connection.slug, enable);
-      await loadDashboard();
+      await refreshMarketplaceConnections();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to change marketplace connection state.");
     } finally {
@@ -172,7 +203,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     try {
       const response = await api.runAutonomousCycle();
       if (response.status === "failed") throw new Error(response.error ?? "Autonomous cycle failed.");
-      await loadDashboard();
+      await refreshAutonomousSummary();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to run autonomous cycle.");
     } finally {
@@ -249,7 +280,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           </article>
         </section>
 
-        <AutonomousObservabilityPanel />
+        <AutonomousObservabilityPanel initialStatus={autonomousStatus} />
 
         <section className="analytics-section" id="analytics">
           <div className="section-heading"><div><p className="eyebrow">Performance</p><h2>Campaign analytics</h2></div><span>{data.analytics.campaignCount} campaigns</span></div>
