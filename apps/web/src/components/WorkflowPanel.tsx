@@ -23,7 +23,17 @@ export function WorkflowPanel() {
     const response = await api.campaignOffers(selectedCampaignId);
     setCampaignOffers(response.data);
   };
-  useEffect(() => {\n    const element = workflowSectionRef.current;\n    if (!element) return;\n    if (typeof IntersectionObserver === "undefined") { setWorkflowSectionVisible(true); return; }\n    const observer = new IntersectionObserver((entries) => {\n      if (entries.some((entry) => entry.isIntersecting)) setWorkflowSectionVisible(true);\n    }, { rootMargin: "160px" });\n    observer.observe(element);\n    return () => observer.disconnect();\n  }, []);\n  useEffect(() => {\n    if (!workflowSectionVisible || workflowDataRequestStarted.current) return;\n    workflowDataRequestStarted.current = true;\n    refresh().catch((requestError: unknown) => setError(requestError instanceof Error ? requestError.message : "Unable to load workflow data."));\n  }, [workflowSectionVisible]);
+  useEffect(() => {
+    const element = workflowSectionRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setWorkflowSectionVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setWorkflowSectionVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {\n    if (!workflowSectionVisible || workflowDataRequestStarted.current) return;\n    workflowDataRequestStarted.current = true;\n    refresh().catch((requestError: unknown) => setError(requestError instanceof Error ? requestError.message : "Unable to load workflow data."));\n  }, [workflowSectionVisible]);
   useEffect(() => {
     const element = trackingLinksSectionRef.current;
     if (!element) return;
