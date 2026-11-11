@@ -385,11 +385,11 @@ export class ProductMediaDiscoveryRunner {
           nonMediaEligibilityPassed: true,
           candidates: catalogCandidates
         });
-        const stored = await this.assets.listByProduct(product.id);
+        const stored = mergeStoredAssets(existing, ingested.stored);
         return {
           productId: product.id,
           pageFetched: false,
-          hasVideo: stored.some((asset) => asset.kind === "video"),
+          hasVideo: stored.some((asset) => asset.bucket === this.bucketName && asset.kind === "video"),
           stored,
           skipped: [...skipped, ...ingested.skipped],
           candidatesFound
@@ -426,8 +426,8 @@ export class ProductMediaDiscoveryRunner {
         skipped.push({ url: page.url, reason: "No public video candidate was found in product page metadata." });
       }
       const ingested = await this.ingestion.ingest({ productId: product.id, nonMediaEligibilityPassed: true, candidates });
-      const stored = await this.assets.listByProduct(product.id);
-      return { productId: product.id, pageFetched: true, hasVideo: stored.some((asset) => asset.kind === "video"), stored: ingested.stored, skipped: [...skipped, ...ingested.skipped] };
+      const stored = mergeStoredAssets(existing, ingested.stored);
+      return { productId: product.id, pageFetched: true, hasVideo: stored.some((asset) => asset.bucket === this.bucketName && asset.kind === "video"), stored, skipped: [...skipped, ...ingested.skipped] };
     } catch (error) {
       skipped.push({ url: pageUrl.toString(), reason: "product_page_discovery_failed:" + safeErrorType(error) });
       if (product.videoUrl) {
@@ -445,4 +445,11 @@ export class ProductMediaDiscoveryRunner {
       return { productId: product.id, pageFetched: false, hasVideo: stored.some((asset) => asset.kind === "video"), stored, skipped };
     }
   }
+}
+
+
+function mergeStoredAssets(existing: ProductMediaAsset[], discovered: ProductMediaAsset[]): ProductMediaAsset[] {
+  const byId = new Map<string, ProductMediaAsset>();
+  for (const asset of [...existing, ...discovered]) byId.set(asset.id, asset);
+  return [...byId.values()];
 }
