@@ -74,3 +74,42 @@ test("feedback history rejects an invalid cutoff rather than issuing an unbounde
   );
   assert.equal(executed, false);
 });
+
+test("recovery episode analytics aggregates episode rows without loading the snapshot history", async () => {
+  let statement: unknown;
+  const db = {
+    async execute(query: unknown) {
+      statement = query;
+      return { rows: [{
+        snapshot_count: 4,
+        started_at: "2026-11-01T00:00:00.000Z",
+        ended_at: "2026-11-02T00:00:00.000Z",
+        average_quality_score: 0.75,
+        start_conversion_count: 2,
+        start_commission_cents: 100,
+        recovered_clicks: 30,
+        recovered_conversion_count: 4,
+        recovered_commission_cents: 300,
+        closing_quality_score: 0.9,
+        latest_clicks: 30,
+        latest_conversion_count: 4,
+        latest_commission_cents: 300
+      }] };
+    }
+  };
+  const repository = new DrizzleAutonomousFeedbackMemoryRepository(db);
+  const analytics = await repository.recoveryEpisodeAnalytics(productId, marketplaceId, "00000000-0000-4000-8000-000000000004");
+
+  assert.equal(analytics?.snapshotCount, 4);
+  assert.equal(analytics?.closed, true);
+  assert.equal(analytics?.recoveryClicks, 30);
+  assert.equal(analytics?.conversionDelta, 2);
+  assert.equal(analytics?.commissionDeltaCents, 200);
+  assert.equal(analytics?.averageQualityScore, 0.75);
+  assert.equal(analytics?.closingQualityScore, 0.9);
+
+  const query = new PgDialect().sqlToQuery(statement as never);
+  assert.match(query.sql, /COUNT\(\*\)/);
+  assert.match(query.sql, /ARRAY_AGG/);
+  assert.match(query.sql, /recovery_episode_id/);
+});
