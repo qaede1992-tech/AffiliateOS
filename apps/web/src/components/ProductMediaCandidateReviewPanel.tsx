@@ -163,7 +163,9 @@ export function ProductMediaCandidateReviewPanel() {
         <div className="product-media-candidate-list">
           {candidates.map((candidate) => {
             const alreadyImported = importedIds.has(candidate.id);
-            const latestAudit = audits[candidate.id]?.[0];
+            const candidateAudits = audits[candidate.id] ?? [];
+            const hasLoadedAudits = Object.prototype.hasOwnProperty.call(audits, candidate.id);
+            const latestAudit = candidateAudits[0];
             return (
               <article className="product-media-candidate-card" key={candidate.id}>
                 <div className="product-media-candidate-preview">
@@ -186,11 +188,11 @@ export function ProductMediaCandidateReviewPanel() {
                   {status === "approved" && <details className="product-media-candidate-history" onToggle={(event) => {
                     if (event.currentTarget.open) void loadCandidateAudit(candidate);
                   }}>
-                    <summary>Riwayat review{Object.prototype.hasOwnProperty.call(audits, candidate.id) ? ` (${audits[candidate.id].length})` : ""}</summary>
+                    <summary>Riwayat review{hasLoadedAudits ? ` (${candidateAudits.length})` : ""}</summary>
                     {auditLoadingIds.has(candidate.id) ? <p className="analytics-note">Memuat riwayat review…</p>
-                      : !Object.prototype.hasOwnProperty.call(audits, candidate.id) ? <p className="analytics-note">Buka bagian ini untuk memuat riwayat review.</p>
-                      : audits[candidate.id].length === 0 ? <p className="analytics-note">Belum ada catatan review.</p>
-                      : audits[candidate.id].map((audit) => <p className="candidate-review-audit" key={audit.id}>Review oleh {audit.actorId}: {audit.reason}</p>)}
+                      : !hasLoadedAudits ? <p className="analytics-note">Buka bagian ini untuk memuat riwayat review.</p>
+                      : candidateAudits.length === 0 ? <p className="analytics-note">Belum ada catatan review.</p>
+                      : candidateAudits.map((audit) => <p className="candidate-review-audit" key={audit.id}>Review oleh {audit.actorId}: {audit.reason}</p>)}
                   </details>}
                   {status === "pending" && latestAudit && <p className="candidate-review-audit">Review oleh {latestAudit.actorId}: {latestAudit.reason}</p>}
                   {status === "pending" ? (
