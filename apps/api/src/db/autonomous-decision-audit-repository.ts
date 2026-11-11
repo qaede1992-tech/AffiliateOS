@@ -34,15 +34,48 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
 
     if (campaignIds.length) {
       const result = await this.db.execute(sql`
-        SELECT
-          campaigns.id AS campaign_id,
-          (SELECT COUNT(*) FROM clicks cl JOIN tracking_links tl ON tl.id = cl.tracking_link_id WHERE tl.campaign_id = campaigns.id) AS click_count,
-          (SELECT COUNT(*) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_conversion_count,
-          (SELECT COALESCE(SUM(cv.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_revenue_cents,
-          (SELECT COALESCE(SUM(cm.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN commissions cm ON cm.conversion_id = cv.id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_commission_cents
-        FROM campaigns
-        WHERE campaigns.id IN (${sql.join(campaignIds.map((id: string) => sql`${id}::uuid`), sql`, `)})
-      `);
+        WITH target_campaigns AS (
+          SELECT id
+          FROM campaigns
+          WHERE id IN (${sql.join(campaignIds.map((id: string) => sql`${id}::uuid`), sql`, `)})
+        ),
+        click_analytics AS (
+          SELECT tl.campaign_id, COUNT(*) AS click_count
+          FROM target_campaigns tc
+          JOIN tracking_links tl ON tl.campaign_id = tc.id
+          JOIN clicks cl ON cl.tracking_link_id = tl.id
+          GROUP BY tl.campaign_id
+        ),
+        conversion_analytics AS (
+          SELECT tl.campaign_id, COUNT(*) AS attributed_conversion_count,
+            COALESCE(SUM(cv.amount_cents), 0) AS attributed_revenue_cents
+          FROM target_campaigns tc
+          JOIN tracking_links tl ON tl.campaign_id = tc.id
+          JOIN conversion_attributions ca ON ca.tracking_link_id = tl.id
+          JOIN conversions cv ON cv.id = ca.conversion_id
+          WHERE cv.status <> 'rejected'
+          GROUP BY tl.campaign_id
+        ),
+        commission_analytics AS (
+          SELECT tl.campaign_id, COALESCE(SUM(cm.amount_cents), 0) AS attributed_commission_cents
+          FROM target_campaigns tc
+          JOIN tracking_links tl ON tl.campaign_id = tc.id
+          JOIN conversion_attributions ca ON ca.tracking_link_id = tl.id
+          JOIN conversions cv ON cv.id = ca.conversion_id
+          JOIN commissions cm ON cm.conversion_id = cv.id
+          WHERE cv.status <> 'rejected'
+          GROUP BY tl.campaign_id
+        )
+        SELECT tc.id AS campaign_id,
+          COALESCE(clicks.click_count, 0) AS click_count,
+          COALESCE(conversions.attributed_conversion_count, 0) AS attributed_conversion_count,
+          COALESCE(conversions.attributed_revenue_cents, 0) AS attributed_revenue_cents,
+          COALESCE(commissions.attributed_commission_cents, 0) AS attributed_commission_cents
+        FROM target_campaigns tc
+        LEFT JOIN click_analytics clicks ON clicks.campaign_id = tc.id
+        LEFT JOIN conversion_analytics conversions ON conversions.campaign_id = tc.id
+        LEFT JOIN commission_analytics commissions ON commissions.campaign_id = tc.id
+      `););
 
       for (const row of rowsOf(result)) {
         const clickCount = Number(row.click_count ?? 0);
