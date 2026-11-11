@@ -51,6 +51,7 @@ export function ProductMediaCandidateReviewPanel() {
     setError(null);
     setCandidates([]);
     setAudits({});
+    setAuditLoadingIds(new Set());
     try {
       const [candidateResponse, assetResponse] = await Promise.all([
         api.productMediaCandidates(selectedProductId, selectedStatus),
@@ -84,8 +85,12 @@ export function ProductMediaCandidateReviewPanel() {
       const response = await api.productMediaCandidateReviewAudits(selectedProductId, candidate.id);
       if (requestId !== sequence.current) return;
       setAudits((current) => ({ ...current, [candidate.id]: response.data }));
-    } catch {
-      if (requestId === sequence.current) setAudits((current) => ({ ...current, [candidate.id]: [] }));
+    } catch (requestError) {
+      // Do not cache a failed request as an empty history; reopening the
+      // disclosure should be able to retry the audit read.
+      if (requestId === sequence.current) {
+        setError(requestError instanceof Error ? requestError.message : "Riwayat review kandidat tidak dapat dimuat.");
+      }
     } finally {
       if (requestId === sequence.current) {
         setAuditLoadingIds((current) => { const next = new Set(current); next.delete(candidate.id); return next; });
