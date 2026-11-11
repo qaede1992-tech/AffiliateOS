@@ -58,17 +58,21 @@ function App() {
   const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
+  const [marketplaceOffersLoading, setMarketplaceOffersLoading] = useState(false);
+  const [marketplaceOffersError, setMarketplaceOffersError] = useState<string | null>(null);
   const activitySectionRef = useRef<HTMLElement | null>(null);
   const activityLoadedRef = useRef(false);
   const activityRequestRef = useRef<Promise<void> | null>(null);
+  const marketplaceOffersSectionRef = useRef<HTMLElement | null>(null);
+  const marketplaceOffersLoadedRef = useRef(false);
+  const marketplaceOffersRequestRef = useRef<Promise<void> | null>(null);
 
   const loadDashboard = async () => {
-    const [affiliates, offers, marketplaceProviders, marketplaceConnections, affiliateOfferVerification, analytics, autonomous] = await Promise.all([
+    const [affiliates, offers, marketplaceProviders, marketplaceConnections, analytics, autonomous] = await Promise.all([
       api.affiliates(),
       api.offers(),
       api.marketplaceProviders(),
       api.marketplaceConnections(),
-      api.affiliateOfferVerification(),
       api.analyticsOverview(),
       api.autonomousStatus()
     ]);
@@ -79,10 +83,38 @@ function App() {
       commissions: previous?.commissions ?? [],
       marketplaceProviders: marketplaceProviders.data,
       marketplaceConnections: marketplaceConnections.data,
-      affiliateOfferVerification: affiliateOfferVerification.data,
+      affiliateOfferVerification: previous?.affiliateOfferVerification ?? [],
       analytics
     }));
     setAutonomousStatus(autonomous);
+  };
+
+  const loadMarketplaceOfferVerification = () => {
+    if (marketplaceOffersLoadedRef.current) return Promise.resolve();
+    if (marketplaceOffersRequestRef.current) return marketplaceOffersRequestRef.current;
+    setMarketplaceOffersLoading(true);
+    setMarketplaceOffersError(null);
+    const request = api.affiliateOfferVerification()
+      .then((response) => {
+        setData((previous) => previous ? { ...previous, affiliateOfferVerification: response.data } : previous);
+        marketplaceOffersLoadedRef.current = true;
+      })
+      .catch((requestError: unknown) => {
+        setMarketplaceOffersError(requestError instanceof Error ? requestError.message : "Unable to load marketplace offers.");
+        throw requestError;
+      })
+      .finally(() => {
+        marketplaceOffersRequestRef.current = null;
+        setMarketplaceOffersLoading(false);
+      });
+    marketplaceOffersRequestRef.current = request;
+    return request;
+  };
+
+  const handleMarketplaceImport = async () => {
+    const wasLoaded = marketplaceOffersLoadedRef.current;
+    marketplaceOffersLoadedRef.current = false;
+    if (wasLoaded) await loadMarketplaceOfferVerification();
   };
 
   const loadActivityData = () => {
@@ -124,6 +156,22 @@ function App() {
       if (!entries.some((entry) => entry.isIntersecting)) return;
       observer.disconnect();
       void loadActivityData().catch(() => undefined);
+    }, { rootMargin: "160px" });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const section = marketplaceOffersSectionRef.current;
+    if (!section) return;
+    if (typeof IntersectionObserver === "undefined") {
+      void loadMarketplaceOfferVerification().catch(() => undefined);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      void loadMarketplaceOfferVerification().catch(() => undefined);
     }, { rootMargin: "160px" });
     observer.observe(section);
     return () => observer.disconnect();
@@ -328,7 +376,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
         <IntegrationSetupPanel />
 
         <section className="workspace-grid">
-          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={loadDashboard} />
+          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={handleMarketplaceImport} />
           <ProductMediaIntakePanel />
         </section>
 
@@ -393,10 +441,10 @@ This will allow AffiliateOS to use this marketplace connection for operational w
                 </div>
               ))}</div>}
             </section>
-            <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading">
-              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{data.affiliateOfferVerification.length} produk</span></div>
+            <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading" ref={marketplaceOffersSectionRef}>
+              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{marketplaceOffersLoadedRef.current ? `${data.affiliateOfferVerification.length} produk` : "Marketplace"}</span></div>
               <p className="offers-help">Produk dan tautan affiliate yang berasal dari feed marketplace, termasuk impor CSV Shopee. Data ini berbeda dari penawaran internal di atas.</p>
-              {data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
+              {marketplaceOffersError ? <div><p className="error-message">{marketplaceOffersError}</p><button type="button" onClick={() => void loadMarketplaceOfferVerification().catch(() => undefined)}>Coba lagi</button></div> : marketplaceOffersLoading ? <p className="empty">Memuat produk marketplace...</p> : !marketplaceOffersLoadedRef.current ? <p className="empty">Produk marketplace dimuat saat bagian ini mendekati layar.</p> : data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
                 <div className="offer-visibility-card marketplace-offer-card" key={offer.id}>
                   <div className="offer-visibility-header"><div><strong>{offer.productName ?? "Produk marketplace"}</strong><small>{offer.marketplaceSlug ?? "Marketplace tidak diketahui"} · ID produk: {offer.productExternalId ?? "—"}</small></div><span className={`badge ${offer.status}`}>{offer.status}</span></div>
                   <div className="offer-visibility-details">
