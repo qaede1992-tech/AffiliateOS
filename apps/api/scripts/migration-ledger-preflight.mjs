@@ -84,3 +84,27 @@ export function findCompensatedHistoricalMigrationGaps({
 
   return compensated;
 }
+
+
+export function getPendingMigrationSchemaExemptions(pendingMigrationTags) {
+  const columns = new Set();
+  const indexes = new Set();
+  const exemptions = {
+    // Migration 0060 is intentionally pending in the production-like CI
+    // preflight simulation. Only its own schema objects may be absent before
+    // the migrator runs; every other existing schema contract remains checked.
+    "0060_test_data_retention_markers": {
+      columns: ["campaigns.is_test", "autonomous_runs.is_test"],
+      indexes: ["campaigns_test_created_idx", "autonomous_runs_test_created_idx"]
+    }
+  };
+
+  for (const tag of pendingMigrationTags ?? []) {
+    const exemption = exemptions[tag];
+    if (!exemption) continue;
+    for (const column of exemption.columns) columns.add(column);
+    for (const index of exemption.indexes) indexes.add(index);
+  }
+
+  return { columns, indexes };
+}
