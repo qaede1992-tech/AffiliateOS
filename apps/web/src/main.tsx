@@ -59,6 +59,8 @@ function App() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [marketplaceOffersLoading, setMarketplaceOffersLoading] = useState(false);
+  const [marketplaceOffersCursor, setMarketplaceOffersCursor] = useState<string | null>(null);
+  const [marketplaceOffersHasMore, setMarketplaceOffersHasMore] = useState(false);
   const [marketplaceOffersError, setMarketplaceOffersError] = useState<string | null>(null);
   const activitySectionRef = useRef<HTMLElement | null>(null);
   const activityLoadedRef = useRef(false);
@@ -89,14 +91,27 @@ function App() {
     setAutonomousStatus(autonomous);
   };
 
-  const loadMarketplaceOfferVerification = () => {
-    if (marketplaceOffersLoadedRef.current) return Promise.resolve();
+  const loadMarketplaceOfferVerification = (append = false) => {
+    if (!append && marketplaceOffersLoadedRef.current) return Promise.resolve();
     if (marketplaceOffersRequestRef.current) return marketplaceOffersRequestRef.current;
     setMarketplaceOffersLoading(true);
     setMarketplaceOffersError(null);
-    const request = api.affiliateOfferVerification()
+    const request = api.affiliateOfferVerification({
+      limit: 25,
+      cursor: append ? marketplaceOffersCursor ?? undefined : undefined
+    })
       .then((response) => {
-        setData((previous) => previous ? { ...previous, affiliateOfferVerification: response.data } : previous);
+        setData((previous) => previous ? {
+          ...previous,
+          affiliateOfferVerification: append
+            ? [
+                ...previous.affiliateOfferVerification,
+                ...response.data.filter((row) => !previous.affiliateOfferVerification.some((existing) => existing.id === row.id))
+              ]
+            : response.data
+        } : previous);
+        setMarketplaceOffersCursor(response.nextCursor);
+        setMarketplaceOffersHasMore(response.hasMore);
         marketplaceOffersLoadedRef.current = true;
       })
       .catch((requestError: unknown) => {
@@ -115,6 +130,8 @@ function App() {
     const hadLoadedData = marketplaceOffersLoadedRef.current;
     const pendingRequest = marketplaceOffersRequestRef.current;
     marketplaceOffersLoadedRef.current = false;
+    setMarketplaceOffersCursor(null);
+    setMarketplaceOffersHasMore(false);
     if (hadLoadedData || pendingRequest) {
       if (pendingRequest) await pendingRequest.catch(() => undefined);
       marketplaceOffersLoadedRef.current = false;
@@ -469,11 +486,14 @@ This will allow AffiliateOS to use this marketplace connection for operational w
               ))}</div>}
             </section>
             <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading" ref={marketplaceOffersSectionRef}>
-              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{marketplaceOffersLoadedRef.current ? `${data.affiliateOfferVerification.length} produk` : "Marketplace"}</span></div>
+              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{marketplaceOffersLoadedRef.current ? `${data.affiliateOfferVerification.length} dimuat` : "Marketplace"}</span></div>
               <p className="offers-help">Produk dan tautan affiliate yang berasal dari feed marketplace, termasuk impor CSV Shopee. Data ini berbeda dari penawaran internal di atas.</p>
-              {marketplaceOffersError ? <div><p className="error-message">{marketplaceOffersError}</p><button type="button" onClick={() => void loadMarketplaceOfferVerification().catch(() => undefined)}>Coba lagi</button></div> : marketplaceOffersLoading ? <p className="empty">Memuat produk marketplace...</p> : !marketplaceOffersLoadedRef.current ? <p className="empty">Produk marketplace dimuat saat bagian ini mendekati layar.</p> : data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
+              {marketplaceOffersError && <div><p className="error-message">{marketplaceOffersError}</p><button type="button" onClick={() => void loadMarketplaceOfferVerification(marketplaceOffersLoadedRef.current).catch(() => undefined)}>Coba lagi</button></div>}
+              {!marketplaceOffersLoadedRef.current && (marketplaceOffersLoading ? <p className="empty">Memuat produk marketplace...</p> : !marketplaceOffersError ? <p className="empty">Produk marketplace dimuat saat bagian ini mendekati layar.</p> : null)}
+              {marketplaceOffersLoadedRef.current && data.affiliateOfferVerification.length === 0 && <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p>}
+              {marketplaceOffersLoadedRef.current && data.affiliateOfferVerification.length > 0 && <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
                 <div className="offer-visibility-card marketplace-offer-card" key={offer.id}>
-                  <div className="offer-visibility-header"><div><strong>{offer.productName ?? "Produk marketplace"}</strong><small>{offer.marketplaceSlug ?? "Marketplace tidak diketahui"} · ID produk: {offer.productExternalId ?? "—"}</small></div><span className={`badge ${offer.status}`}>{offer.status}</span></div>
+                  <div className="offer-visibility-header"><div><strong>{offer.productName ?? "Produk marketplace"}</strong><small>{offer.marketplaceSlug ?? "Marketplace tidak diketahui"} · ID: {offer.productExternalId ?? "—"}</small></div><span className={`badge ${offer.status}`}>{offer.status}</span></div>
                   <div className="offer-visibility-details">
                     <div><span>Akun affiliate</span><strong>{offer.affiliateAccountName ?? offer.affiliateAccountId.slice(0, 8)}</strong><small>{offer.affiliateName ?? "Affiliate belum terikat"}</small></div>
                     <div><span>Komisi</span><strong>{offer.commissionRateBps !== undefined ? `${(offer.commissionRateBps / 100).toLocaleString("id-ID")}%` : "—"}</strong></div>
@@ -481,7 +501,13 @@ This will allow AffiliateOS to use this marketplace connection for operational w
                   <div className="marketplace-offer-link"><span>Status tautan: <strong>{offer.affiliateLinkStatus}</strong></span><span className="marketplace-url-label">Tautan affiliate</span>{offer.affiliateUrl ? <a href={offer.affiliateUrl} target="_blank" rel="noreferrer">{offer.affiliateUrl}</a> : <small>Tautan affiliate belum tersedia.</small>}</div>
                 </div>
               ))}</div>}
+              {marketplaceOffersLoadedRef.current && <div className="affiliate-form">
+                <button type="button" onClick={() => { marketplaceOffersLoadedRef.current = false; setMarketplaceOffersCursor(null); setMarketplaceOffersHasMore(false); void loadMarketplaceOfferVerification(false).catch(() => undefined); }} disabled={marketplaceOffersLoading}>Perbarui halaman pertama</button>
+                {marketplaceOffersHasMore && <button type="button" onClick={() => void loadMarketplaceOfferVerification(true).catch(() => undefined)} disabled={marketplaceOffersLoading}>{marketplaceOffersLoading ? "Memuat…" : "Muat 25 berikutnya"}</button>}
+                {marketplaceOffersLoading && <small>Memuat halaman berikutnya…</small>}
+              </div>}
             </section>
+
           </article>
         </section>
       </main>
