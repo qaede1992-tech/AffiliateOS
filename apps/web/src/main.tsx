@@ -112,9 +112,14 @@ function App() {
   };
 
   const handleMarketplaceImport = async () => {
-    const wasLoaded = marketplaceOffersLoadedRef.current;
+    const hadLoadedData = marketplaceOffersLoadedRef.current;
+    const pendingRequest = marketplaceOffersRequestRef.current;
     marketplaceOffersLoadedRef.current = false;
-    if (wasLoaded) await loadMarketplaceOfferVerification();
+    if (hadLoadedData || pendingRequest) {
+      if (pendingRequest) await pendingRequest.catch(() => undefined);
+      marketplaceOffersLoadedRef.current = false;
+      await loadMarketplaceOfferVerification();
+    }
   };
 
   const loadActivityData = () => {
@@ -159,7 +164,7 @@ function App() {
     }, { rootMargin: "160px" });
     observer.observe(section);
     return () => observer.disconnect();
-  }, []);
+  }, [data !== null]);
 
   useEffect(() => {
     const section = marketplaceOffersSectionRef.current;
@@ -175,7 +180,7 @@ function App() {
     }, { rootMargin: "160px" });
     observer.observe(section);
     return () => observer.disconnect();
-  }, []);
+  }, [data !== null]);
 
   const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -420,11 +425,11 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           <article id="offers" className="offers-workspace">
             <div className="offers-title-row">
               <div><span className="eyebrow">Komersial</span><h3>Penawaran</h3><p>Kelola penawaran internal dan produk affiliate marketplace dari area yang berbeda.</p></div>
-              <span className="badge">{data.offers.length + data.affiliateOfferVerification.length} total</span>
+              <span className="badge">{marketplaceOffersLoadedRef.current ? `${data.offers.length + data.affiliateOfferVerification.length} total` : `${data.offers.length} internal`}</span>
             </div>
             <div className="offers-overview" aria-label="Ringkasan penawaran">
               <div><span>Penawaran internal</span><strong>{data.offers.length}</strong><small>{data.offers.filter((offer) => offer.status === "active").length} aktif</small></div>
-              <div><span>Produk marketplace</span><strong>{data.affiliateOfferVerification.length}</strong><small>Diimpor dari akun affiliate</small></div>
+              <div><span>Produk marketplace</span><strong>{marketplaceOffersLoadedRef.current ? data.affiliateOfferVerification.length : "—"}</strong><small>Diimpor dari akun affiliate</small></div>
             </div>
             <section className="offers-subsection" aria-labelledby="internal-offers-heading">
               <div className="offers-subsection-heading"><div><p className="eyebrow">Program</p><h4 id="internal-offers-heading">Penawaran internal</h4></div><span className="badge">{data.offers.length} data</span></div>
