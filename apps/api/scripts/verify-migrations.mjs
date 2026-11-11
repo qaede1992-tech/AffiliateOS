@@ -171,6 +171,9 @@ const expectedColumns = [
 
 await client.connect();
 try {
+  // This verifier is also used as the production migration preflight. Keep every
+  // catalog/ledger inspection read-only so a failed preflight cannot mutate data.
+  await client.query("SET default_transaction_read_only = on");
   const { rows: tableRows } = await client.query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1::text[])",
     [expectedTables]
