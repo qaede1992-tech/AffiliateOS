@@ -67,6 +67,11 @@ const ANOMALY_RECOVERY_MIN_COMMISSION_DELTA_CENTS = 0;
 const LEARNING_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackProvider {
+  private readonly observationCache = new Map<string, {
+    expiresAt: number;
+    result: Promise<Map<string, OpportunityPerformanceSignal>>;
+  }>();
+
   constructor(
     private readonly analytics: { overview(): Promise<AnalyticsOverview> },
     private readonly memory?: AutonomousFeedbackMemoryRepository,
@@ -74,6 +79,45 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
   ) {}
 
   async getSignals(context: AutonomousFeedbackContext = {}): Promise<Map<string, OpportunityPerformanceSignal>> {
+    const observationKey = context.observationKey?.trim();
+    // A cycle performs preliminary, media-ready, and final selection with the same
+    // observation namespace. Reuse one immutable feedback snapshot across those
+    // passes instead of rereading the same 30-day history each time.
+    if (!observationKey?.startsWith("autonomous-cycle:")) return this.loadSignals(context);
+
+    const now = this.now().getTime();
+    for (const [key, entry] of this.observationCache) {
+      if (entry.expiresAt <= now) this.observationCache.delete(key);
+    }
+    const cached = this.observationCache.get(observationKey);
+    if (cached && cached.expiresAt > now) {
+      this.observationCache.delete(observationKey);
+      this.observationCache.set(observationKey, cached);
+      return cached.result;
+    }
+
+    const entry = {
+      expiresAt: Number.POSITIVE_INFINITY,
+      result: this.loadSignals(context)
+    };
+    this.observationCache.set(observationKey, entry);
+    while (this.observationCache.size > 32) {
+      const oldestKey = this.observationCache.keys().next().value as string | undefined;
+      if (!oldestKey || oldestKey === observationKey) break;
+      this.observationCache.delete(oldestKey);
+    }
+
+    try {
+      const result = await entry.result;
+      entry.expiresAt = this.now().getTime() + 20 * 60_000;
+      return result;
+    } catch (error) {
+      if (this.observationCache.get(observationKey) === entry) this.observationCache.delete(observationKey);
+      throw error;
+    }
+  }
+
+  private async loadSignals(context: AutonomousFeedbackContext): Promise<Map<string, OpportunityPerformanceSignal>> {
     const current = buildSignals(await this.analytics.overview());
     if (!this.memory) return current;
     const observedAt = this.now().toISOString();
