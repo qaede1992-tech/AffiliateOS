@@ -15,6 +15,7 @@
     "db:check": "node scripts/check-migrations.mjs",
     "db:verify": "npm run db:check && npm run db:migrate && node --env-file=../../.env scripts/verify-migrations.mjs",
     "db:verify:applied": "npm run db:check && node --env-file=../../.env scripts/verify-migrations.mjs",
+    "db:verify:pre-migrate": "npm run db:check && node --env-file=../../.env scripts/verify-migrations-preflight.mjs",
     "production:preflight": "node scripts/check-production-env.mjs",
     "test-data:retention:preview": "node scripts/preview-test-data-retention.mjs"
   },
