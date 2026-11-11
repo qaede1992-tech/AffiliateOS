@@ -411,3 +411,137 @@ test("links candidate provenance to a matching existing unverified asset without
   assert.equal(result.stored[0]?.rightsStatus, "unverified");
   assert.equal(attached?.sourceUrl, "https://cdn.example.com/candidate.png");
 });
+
+
+test("reuses a previously ingested provider candidate without downloading or uploading it again", async () => {
+  const existing = {
+    id: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001",
+    productId,
+    kind: "video" as const,
+    bucket: "affiliate-media",
+    objectKey: `products/${productId}/existing.mp4`,
+    mimeType: "video/mp4" as const,
+    byteSize: 256,
+    sha256: "a".repeat(64),
+    sourceUrl: "https://upload.wikimedia.org/existing.mp4",
+    sourcePublisher: "Wikimedia Commons",
+    sourceProvider: "wikimedia_commons",
+    sourceCandidateId: "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071",
+    sourceLandingPageUrl: "https://commons.wikimedia.org/wiki/File:Existing.mp4",
+    rightsStatus: "unverified" as const,
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    createdAt: "2026-11-11T00:00:00.000Z"
+  };
+  let candidateLookups = 0;
+  let downloads = 0;
+  let uploads = 0;
+  const repository = {
+    findBySourceCandidateId: async (candidateId: string) => {
+      candidateLookups += 1;
+      assert.equal(candidateId, "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071");
+      return existing;
+    },
+    findByProductAndHash: async () => undefined,
+    save: async (asset: unknown) => asset
+  } as never;
+  const storage = {
+    upload: async () => { uploads += 1; throw new Error("existing candidate must not upload"); }
+  } as never;
+  const fetcher = (async () => { downloads += 1; throw new Error("existing candidate must not download"); }) as never;
+  const service = new ProductMediaIngestionService(
+    storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher
+  );
+
+  const result = await service.ingest({
+    productId,
+    nonMediaEligibilityPassed: true,
+    candidates: [{
+      kind: "video",
+      url: "https://upload.wikimedia.org/existing.mp4",
+      source: "catalog",
+      provenance: {
+        provider: "wikimedia_commons",
+        candidateId: "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071",
+        landingPageUrl: "https://commons.wikimedia.org/wiki/File:Existing.mp4",
+        title: "Existing media",
+        query: "existing product",
+        creator: null,
+        creatorUrl: null,
+        license: null,
+        licenseVersion: null,
+        licenseUrl: null,
+        sourcePublisher: "Wikimedia Commons"
+      }
+    }]
+  });
+
+  assert.deepEqual(result, { stored: [existing], skipped: [] });
+  assert.equal(candidateLookups, 1);
+  assert.equal(downloads, 0);
+  assert.equal(uploads, 0);
+});
+
+test("does not reuse a provider candidate asset attached to a different product", async () => {
+  const otherProductId = "0a7e5d6c-2f31-4b8a-9c10-123456789abc";
+  const candidateId = "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071";
+  const url = "https://upload.wikimedia.org/existing.mp4";
+  const existing = {
+    id: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001",
+    productId: otherProductId
+  } as never;
+  let lookups = 0;
+  let downloads = 0;
+  let uploads = 0;
+  const repository = {
+    findBySourceCandidateId: async (id: string) => {
+      lookups += 1;
+      assert.equal(id, candidateId);
+      return existing;
+    },
+    findByProductAndHash: async () => undefined,
+    save: async () => { throw new Error("mismatched candidate must not be saved"); }
+  } as never;
+  const storage = {
+    upload: async () => { uploads += 1; throw new Error("mismatched candidate must not upload"); }
+  } as never;
+  const fetcher = (async () => {
+    downloads += 1;
+    throw new Error("mismatched candidate must not be downloaded");
+  }) as never;
+  const service = new ProductMediaIngestionService(
+    storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher
+  );
+
+  const result = await service.ingest({
+    productId,
+    nonMediaEligibilityPassed: true,
+    candidates: [{
+      kind: "video",
+      url,
+      source: "catalog",
+      provenance: {
+        provider: "wikimedia_commons",
+        candidateId,
+        landingPageUrl: "https://commons.wikimedia.org/wiki/File:Existing.mp4",
+        title: "Existing media",
+        query: "existing product",
+        creator: null,
+        creatorUrl: null,
+        license: null,
+        licenseVersion: null,
+        licenseUrl: null,
+        sourcePublisher: "Wikimedia Commons"
+      }
+    }]
+  });
+
+  assert.deepEqual(result, {
+    stored: [],
+    skipped: [{ url, reason: "candidate_asset_product_mismatch" }]
+  });
+  assert.equal(lookups, 1);
+  assert.equal(downloads, 0);
+  assert.equal(uploads, 0);
+});

@@ -163,6 +163,22 @@ export class ProductMediaIngestionService {
     );
     for (const candidate of orderedCandidates) {
       try {
+        // A previously ingested provider candidate is immutable for this candidate ID.
+        // Reuse its persisted asset before downloading bytes again; this avoids repeated
+        // source-network transfer and unnecessary Supabase Storage writes on later cycles.
+        if (candidate.provenance && this.assets.findBySourceCandidateId) {
+          const existingCandidateAsset = await this.assets.findBySourceCandidateId(candidate.provenance.candidateId);
+          if (existingCandidateAsset) {
+            // A provider candidate is product-scoped. Never let a stale or mismatched
+            // provenance reference make another product's asset appear reusable here.
+            if (existingCandidateAsset.productId !== input.productId) {
+              skipped.push({ url: candidate.url, reason: "candidate_asset_product_mismatch" });
+              continue;
+            }
+            stored.push(existingCandidateAsset);
+            continue;
+          }
+        }
         const limit = candidate.kind === "video" ? this.policy.maxVideoBytes : this.policy.maxImageBytes;
         const response = await this.fetcher(candidate.url, {
           maxBytes: limit,
