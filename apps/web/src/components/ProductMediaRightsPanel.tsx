@@ -17,6 +17,7 @@ function ProductMediaAssetPreview({ productId, asset }: { productId: string; ass
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -43,12 +44,13 @@ function ProductMediaAssetPreview({ productId, asset }: { productId: string; ass
     }, { rootMargin: "160px" });
     observer.observe(element);
     return () => { active = false; observer.disconnect(); };
-  }, [productId, asset.id]);
+  }, [productId, asset.id, retryCount]);
 
   return (
     <div className="product-media-rights-preview" ref={containerRef}>
       {!attempted ? <span>Preview dimuat saat mendekati layar</span>
-        : !previewUrl ? <span>Preview privat tidak tersedia</span>
+        : previewUrl === null ? <span>Memuat preview privat…</span>
+        : previewUrl === "" ? <><span>Preview privat tidak tersedia.</span><button type="button" onClick={() => { startedRef.current = false; setPreviewUrl(null); setAttempted(false); setRetryCount((count) => count + 1); }}>Coba lagi</button></>
         : asset.kind === "video" ? <video src={previewUrl} controls preload="metadata" />
         : <img src={previewUrl} alt={`Media produk ${asset.productId}`} loading="lazy" />}
     </div>
