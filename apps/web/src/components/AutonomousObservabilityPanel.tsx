@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
 
 type DecisionAudit = {
@@ -53,7 +52,6 @@ const formatDate = (value?: string) => value ? new Date(value).toLocaleString() 
 
 export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus: AutonomousStatus | null }) {
   const [audits, setAudits] = useState<DecisionAudit[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [status, setStatus] = useState<AutonomousStatus | null>(initialStatus);
   const [selectedFilter, setSelectedFilter] = useState<"all" | "selected" | "rejected">("all");
   const [loading, setLoading] = useState(true);
@@ -66,13 +64,11 @@ export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus:
     if (background) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
-      const [auditResponse, productResponse, autonomousStatus] = await Promise.all([
+      const [auditResponse, autonomousStatus] = await Promise.all([
         api.autonomousDecisionAudits(100),
-        api.products(),
         background ? api.autonomousStatus() : Promise.resolve(null)
       ]);
       setAudits(auditResponse.data);
-      setProducts(productResponse.data);
       if (autonomousStatus) setStatus(autonomousStatus);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load autonomous observability.");
@@ -97,7 +93,6 @@ export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus:
     if (sectionVisible) void load();
   }, [sectionVisible]);
 
-  const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const filtered = useMemo(
     () => audits.filter((audit) => selectedFilter === "all" || (selectedFilter === "selected" ? audit.selected : !audit.selected)),
     [audits, selectedFilter]
@@ -158,14 +153,13 @@ export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus:
       ) : (
         <div className="autonomous-audit-list">
           {filtered.map((audit) => {
-            const product = productById.get(audit.productId);
             const dataConfidence = audit.reasons.find((reason) => reason.startsWith("Data confidence:"))?.replace("Data confidence:", "").trim() ?? "unavailable";
             return (
               <article className="autonomous-audit-card" key={audit.auditId}>
                 <div className="autonomous-audit-header">
                   <div>
-                    <strong>{product?.name ?? `Product ${shortId(audit.productId)}`}</strong>
-                    <small>{product?.category ?? "Category unavailable"} · marketplace {shortId(audit.marketplaceId)} · cycle {shortId(audit.cycleId)}</small>
+                    <strong>{`Product ${shortId(audit.productId)}`}</strong>
+                    <small>marketplace {shortId(audit.marketplaceId)} · cycle {shortId(audit.cycleId)}</small>
                   </div>
                   <div className="affiliate-meta">
                     <span className={`badge ${audit.selected ? "active" : "inactive"}`}>{audit.selected ? "selected" : "rejected"}</span>
