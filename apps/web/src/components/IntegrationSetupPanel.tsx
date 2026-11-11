@@ -29,6 +29,11 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
   const [testImageUrl, setTestImageUrl] = useState("");
   const [testCommissionPercent, setTestCommissionPercent] = useState("");
 
+  const loadReadiness = async () => {
+    const response = await api.publisherReadiness();
+    setReadiness(response.data);
+  };
+
   const load = async () => {
     const [p, c, a, s, r] = await Promise.all([
       api.marketplaceProviders(), api.marketplaceConnections(), api.affiliates(),
@@ -39,10 +44,17 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
 
   useEffect(() => {
     let disposed = false;
+    let requestInFlight = false;
     const refreshReadiness = () => {
-      void load().catch((e: unknown) => {
-        if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
-      });
+      if (disposed || document.visibilityState !== "visible" || requestInFlight) return;
+      requestInFlight = true;
+      void loadReadiness()
+        .catch((e: unknown) => {
+          if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
+        })
+        .finally(() => {
+          requestInFlight = false;
+        });
     };
     refreshReadiness();
     const handleFocus = () => refreshReadiness();
