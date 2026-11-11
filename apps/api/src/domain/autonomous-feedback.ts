@@ -85,8 +85,9 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       // previous snapshot, so a second latest-row query is unnecessary whenever
       // recent history exists.
       const historySince = new Date(Date.parse(observedAt) - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const recentSnapshots = isProductSignal && marketplaceId && this.memory!.recentByProductAndMarketplace
-        ? await this.memory!.recentByProductAndMarketplace(productId, marketplaceId, historySince)
+      const historyReader = this.memory!.feedbackEvaluationHistory ?? this.memory!.recentByProductAndMarketplace;
+      const recentSnapshots = isProductSignal && marketplaceId && historyReader
+        ? await historyReader.call(this.memory, productId, marketplaceId, historySince)
         : undefined;
       const previous = isProductSignal
         ? marketplaceId
