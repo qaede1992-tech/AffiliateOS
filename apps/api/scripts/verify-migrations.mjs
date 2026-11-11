@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { findDuplicateSupabaseMigrationNames } from "./supabase-migration-ledger-audit.mjs";
-import { classifyMigrationLedger } from "./migration-ledger-preflight.mjs";
+import { classifyMigrationLedger, getPendingMigrationSchemaExemptions } from "./migration-ledger-preflight.mjs";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -19,6 +19,11 @@ if (!Array.isArray(trackedMigrations) || trackedMigrations.length === 0) {
 const errors = [];
 const allowPendingSuffix = process.argv.includes("--allow-pending-suffix");
 let pendingSuffixTags = [];
+const pendingMigrationTags = allowPendingSuffix
+  ? new Set((process.env.MIGRATION_PREFLIGHT_PENDING_TAGS ?? "").split(",").map((tag) => tag.trim()).filter(Boolean))
+  : new Set();
+const { columns: pendingSchemaColumns, indexes: pendingSchemaIndexes } =
+  getPendingMigrationSchemaExemptions(pendingMigrationTags);
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
@@ -187,12 +192,13 @@ try {
     errors.push(`Missing expected tables: ${missingTables.join(", ")}.`);
   }
 
+  const expectedIndexesToCheck = expectedIndexes.filter((index) => !pendingSchemaIndexes.has(index));
   const { rows: indexRows } = await client.query(
     "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = ANY($1::text[])",
-    [expectedIndexes]
+    [expectedIndexesToCheck]
   );
   const actualIndexes = new Set(indexRows.map((row) => row.indexname));
-  const missingIndexes = expectedIndexes.filter((index) => !actualIndexes.has(index));
+  const missingIndexes = expectedIndexesToCheck.filter((index) => !actualIndexes.has(index));
   if (missingIndexes.length > 0) {
     errors.push(`Missing expected indexes: ${missingIndexes.join(", ")}.`);
   }
@@ -203,7 +209,7 @@ try {
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns
     .map(([table, column]) => `${table}.${column}`)
-    .filter((column) => !actualColumns.has(column));
+    .filter((column) => !pendingSchemaColumns.has(column) && !actualColumns.has(column));
   if (missingColumns.length > 0) {
     errors.push(`Missing expected columns: ${missingColumns.join(", ")}.`);
   }
@@ -232,6 +238,7 @@ try {
     ["autonomous_runs.is_test", { data_type: "boolean", udt_name: "bool", is_nullable: "NO" }],
     ["autonomous_action_outcomes.recovery_quality_score", { data_type: "real", udt_name: "float4", is_nullable: "NO" }]
   ]) {
+    if (pendingSchemaColumns.has(key)) continue;
     const actual = repairedColumns.get(key);
     if (!actual) {
       errors.push(`Missing required column definition: ${key}.`);
@@ -384,6 +391,7 @@ try {
     ["campaigns_test_created_idx", "campaigns"],
     ["autonomous_runs_test_created_idx", "autonomous_runs"]
   ]) {
+    if (pendingSchemaIndexes.has(name)) continue;
     const definition = testDataIndexDefs.get(name);
     if (!definition || !definition.includes(`on public.${table} using btree (is_test, created_at)`)) {
       errors.push(`Missing or incompatible index definition for ${name}; expected public.${table}(is_test, created_at).`);
@@ -434,6 +442,13 @@ try {
       appliedTimestamps
     });
     pendingSuffixTags = pendingMigrations.map((migration) => migration.tag);
+    if (allowPendingSuffix && process.env.MIGRATION_PREFLIGHT_PENDING_TAGS !== undefined) {
+      const suppliedTags = [...pendingMigrationTags].sort();
+      const classifiedTags = [...pendingSuffixTags].sort();
+      if (JSON.stringify(suppliedTags) !== JSON.stringify(classifiedTags)) {
+        errors.push("Preflight pending migration tag handoff does not match the checked-out journal and live ledger.");
+      }
+    }
 
     // Production's audited ledger has historical gaps for 0056/0057. Accept
     // those two exact gaps only when the forward-only 0059 reconciliation is
