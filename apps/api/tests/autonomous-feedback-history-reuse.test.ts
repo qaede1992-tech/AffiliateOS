@@ -27,10 +27,12 @@ test("loads product snapshot history once for windows and recovery analysis", as
     }))
   ];
   let historyReads = 0;
+  let legacyHistoryReads = 0;
   let latestReads = 0;
   const memory = {
     latestByProductAndMarketplace: async () => { latestReads += 1; return halt; },
-    recentByProductAndMarketplace: async () => { historyReads += 1; return snapshots; },
+    feedbackEvaluationHistory: async () => { historyReads += 1; return snapshots; },
+    recentByProductAndMarketplace: async () => { legacyHistoryReads += 1; return snapshots; },
     saveIfAbsent: async (snapshot: unknown) => snapshot
   };
   const provider = new AutonomousAnalyticsFeedbackProvider(
@@ -47,6 +49,7 @@ test("loads product snapshot history once for windows and recovery analysis", as
 
   const signal = (await provider.getSignals()).get("m:p");
   assert.equal(historyReads, 1);
+  assert.equal(legacyHistoryReads, 0);
   assert.equal(latestReads, 0);
   assert.ok(signal?.windows);
   assert.equal(signal?.recoveryEpisodeId, halt.id);
