@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Affiliate, ImportShopeeAffiliateFeedRequest, MarketplaceConnectionView, MarketplaceProviderInfo, SocialAccountView } from "@affiliateos/shared";
 import { api, socialOAuthRedirectUri } from "../api/client";
 
@@ -28,6 +28,8 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
   const [testAffiliateUrl, setTestAffiliateUrl] = useState("");
   const [testImageUrl, setTestImageUrl] = useState("");
   const [testCommissionPercent, setTestCommissionPercent] = useState("");
+  const [panelVisible, setPanelVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
 
   const loadReadiness = async () => {
     const response = await api.publisherReadiness();
@@ -43,6 +45,21 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
   };
 
   useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setPanelVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+    }, { rootMargin: "120px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!panelVisible) return;
     let disposed = false;
     let requestInFlight = false;
     const refreshReadiness = () => {
@@ -70,7 +87,7 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
       document.removeEventListener("visibilitychange", handleVisibility);
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [panelVisible]);
 
   const run = async (key: string, action: () => Promise<unknown>, success: string) => {
     setBusy(key); setError(null); setMessage(null);
@@ -137,7 +154,7 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
   };
 
   return (
-    <section className="workspace-grid" id="integrations">
+    <section className="workspace-grid" id="integrations" ref={panelRef}>
       <article className="panel">
         <div className="panel-heading"><div><p className="eyebrow">Production setup</p><h3>Marketplace & social integrations</h3></div></div>
         <p>Connect only through configured official providers. AffiliateOS never asks this dashboard to store marketplace or social secrets.</p>
