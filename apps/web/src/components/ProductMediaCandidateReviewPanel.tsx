@@ -7,6 +7,8 @@ type AuditMap = Record<string, ProductMediaCandidateReviewAuditView[]>;
 
 export function ProductMediaCandidateReviewPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [panelVisible, setPanelVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
@@ -14,6 +16,9 @@ export function ProductMediaCandidateReviewPanel() {
   const [candidates, setCandidates] = useState<ProductMediaCandidateView[]>([]);
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
   const [audits, setAudits] = useState<AuditMap>({});
+  const [loadedAuditIds, setLoadedAuditIds] = useState<Set<string>>(new Set());
+  const [loadingAuditIds, setLoadingAuditIds] = useState<Set<string>>(new Set());
+  const [auditErrors, setAuditErrors] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -22,6 +27,18 @@ export function ProductMediaCandidateReviewPanel() {
   const sequence = useRef(0);
 
   useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setPanelVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [checkingRole]);
+
+  useEffect(() => {
+    if (!panelVisible) return;
     let active = true;
     api.me().then(async (user) => {
       if (!active) return;
@@ -35,7 +52,7 @@ export function ProductMediaCandidateReviewPanel() {
       if (active) setError(requestError instanceof Error ? requestError.message : "Hak akses admin tidak dapat diverifikasi.");
     }).finally(() => { if (active) setCheckingRole(false); });
     return () => { active = false; };
-  }, []);
+  }, [panelVisible]);
 
   const loadCandidates = async (selectedProductId: string, selectedStatus: CandidateStatus) => {
     const requestId = ++sequence.current;
@@ -43,6 +60,9 @@ export function ProductMediaCandidateReviewPanel() {
       setCandidates([]);
       setImportedIds(new Set());
       setAudits({});
+      setLoadedAuditIds(new Set());
+      setLoadingAuditIds(new Set());
+      setAuditErrors({});
       setLoading(false);
       return;
     }
@@ -50,6 +70,9 @@ export function ProductMediaCandidateReviewPanel() {
     setError(null);
     setCandidates([]);
     setAudits({});
+    setLoadedAuditIds(new Set());
+    setLoadingAuditIds(new Set());
+    setAuditErrors({});
     try {
       const [candidateResponse, assetResponse] = await Promise.all([
         api.productMediaCandidates(selectedProductId, selectedStatus),
@@ -58,19 +81,8 @@ export function ProductMediaCandidateReviewPanel() {
       if (requestId !== sequence.current) return;
       setCandidates(candidateResponse.data);
       setImportedIds(new Set(assetResponse.data.flatMap((asset) => asset.sourceCandidateId ? [asset.sourceCandidateId] : [])));
-      if (selectedStatus === "approved") {
-        const history = await Promise.all(candidateResponse.data.map(async (candidate) => {
-          try {
-            return [candidate.id, (await api.productMediaCandidateReviewAudits(selectedProductId, candidate.id)).data] as const;
-          } catch {
-            return [candidate.id, []] as const;
-          }
-        }));
-        if (requestId !== sequence.current) return;
-        setAudits(Object.fromEntries(history));
-      } else {
-        setAudits({});
-      }
+      // Fetch audit history only when a reviewer opens an approved candidate's history.
+      if (selectedStatus !== "approved") setAudits({});
     } catch (requestError) {
       if (requestId === sequence.current) setError(requestError instanceof Error ? requestError.message : "Kandidat media tidak dapat dimuat.");
     } finally {
@@ -79,8 +91,26 @@ export function ProductMediaCandidateReviewPanel() {
   };
 
   useEffect(() => {
-    if (isAdmin && productId) void loadCandidates(productId, status);
-  }, [isAdmin, productId, status]);
+    if (panelVisible && isAdmin && productId) void loadCandidates(productId, status);
+  }, [panelVisible, isAdmin, productId, status]);
+
+  const loadCandidateAudits = async (candidateId: string) => {
+    if (loadedAuditIds.has(candidateId) || loadingAuditIds.has(candidateId)) return;
+    const requestId = sequence.current;
+    const requestedProductId = productId;
+    setLoadingAuditIds((current) => new Set(current).add(candidateId));
+    setAuditErrors((current) => ({ ...current, [candidateId]: "" }));
+    try {
+      const response = await api.productMediaCandidateReviewAudits(requestedProductId, candidateId);
+      if (requestId !== sequence.current) return;
+      setAudits((current) => ({ ...current, [candidateId]: response.data }));
+      setLoadedAuditIds((current) => new Set(current).add(candidateId));
+    } catch (requestError) {
+      if (requestId === sequence.current) setAuditErrors((current) => ({ ...current, [candidateId]: requestError instanceof Error ? requestError.message : "Riwayat review tidak dapat dimuat." }));
+    } finally {
+      if (requestId === sequence.current) setLoadingAuditIds((current) => { const next = new Set(current); next.delete(candidateId); return next; });
+    }
+  };
 
   const reviewCandidate = async (candidate: ProductMediaCandidateView, decision: "approved" | "rejected") => {
     const reason = reasons[candidate.id]?.trim() ?? "";
@@ -121,11 +151,11 @@ export function ProductMediaCandidateReviewPanel() {
     }
   };
 
-  if (checkingRole) return <section className="panel"><p>Memeriksa akses administrator…</p></section>;
+  if (checkingRole) return <section className="panel" ref={panelRef}><p>Memeriksa akses administrator…</p></section>;
   if (!isAdmin) return null;
 
   return (
-    <section className="panel product-media-candidate-panel">
+    <section className="panel product-media-candidate-panel" ref={panelRef}>
       <div className="panel-heading">
         <div><p className="eyebrow">Product media governance</p><h3>Review kandidat media</h3></div>
         <span>{candidates.length} kandidat</span>
@@ -152,7 +182,7 @@ export function ProductMediaCandidateReviewPanel() {
         <div className="product-media-candidate-list">
           {candidates.map((candidate) => {
             const alreadyImported = importedIds.has(candidate.id);
-            const latestAudit = audits[candidate.id]?.[0];
+            const candidateAudits = audits[candidate.id] ?? [];
             return (
               <article className="product-media-candidate-card" key={candidate.id}>
                 <div className="product-media-candidate-preview">
@@ -172,7 +202,15 @@ export function ProductMediaCandidateReviewPanel() {
                   </div>
                   <a href={candidate.landingPageUrl} target="_blank" rel="noreferrer">Buka halaman sumber</a>
                   {candidate.licenseUrl && <a href={candidate.licenseUrl} target="_blank" rel="noreferrer">Periksa teks lisensi</a>}
-                  {latestAudit && <p className="candidate-review-audit">Review oleh {latestAudit.actorId}: {latestAudit.reason}</p>}
+                  {status === "approved" && <details onToggle={(event) => {
+                    if (event.currentTarget.open) void loadCandidateAudits(candidate.id);
+                  }}>
+                    <summary>Riwayat review{loadedAuditIds.has(candidate.id) ? ` (${candidateAudits.length})` : ""}</summary>
+                    {loadingAuditIds.has(candidate.id) ? <p className="analytics-note">Memuat riwayat…</p>
+                      : auditErrors[candidate.id] ? <p className="error-message">{auditErrors[candidate.id]}</p>
+                      : candidateAudits[0] ? <p className="candidate-review-audit">Review oleh {candidateAudits[0].actorId}: {candidateAudits[0].reason}</p>
+                      : loadedAuditIds.has(candidate.id) ? <p className="analytics-note">Belum ada catatan review.</p> : null}
+                  </details>}
                   {status === "pending" ? (
                     <div className="candidate-review-actions">
                       <input
