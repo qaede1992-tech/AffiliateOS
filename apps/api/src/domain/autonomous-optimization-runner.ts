@@ -42,7 +42,7 @@ export class AutonomousOptimizationRunner {
     }
 
     const recommendations = this.engine.recommend(overview.campaigns, state, now);
-    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: "autonomous-optimization-actions" }) : undefined;
+    const performance = this.feedback ? await this.feedback.getSignals({ observationKey: "autonomous-optimization-actions", historyMode: "latest" }) : undefined;
     const guardedRecommendations = recommendations.map((recommendation) => guardRecommendation(recommendation, overview.campaigns, performance));
     const actions: AutonomousCampaignActionResult[] = [];
     if (options.allowMutations !== false) {

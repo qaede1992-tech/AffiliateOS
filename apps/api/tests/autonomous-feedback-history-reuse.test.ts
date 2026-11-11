@@ -86,3 +86,43 @@ test("falls back to the latest snapshot when no snapshot exists in the 30-day wi
   assert.equal(signal?.anomaly, "halt");
   assert.equal(signal?.recoveryEpisodeId, previous.id);
 });
+
+
+test("latest-only feedback reads one snapshot and skips full history and snapshot writes", async () => {
+  const previous = {
+    id: "latest-halt", observationKey: "latest-halt", productId: "p", marketplaceId: "m",
+    clickCount: 200, conversionCount: 4, attributedCommissionCents: 400,
+    commissionPerClickCents: 2, conversionRate: 0.02, adjustment: 0,
+    anomaly: "halt" as const, anomalyScore: 0.8, recoveryState: "recovering" as const,
+    recoveryClicks: 12, recoveryEvidenceScore: 0.6, recoveryQualityScore: 0.7,
+    recoveryEpisodeId: "episode-1", observedAt: "2026-09-22T03:00:00.000Z"
+  };
+  let historyReads = 0;
+  let latestReads = 0;
+  let writes = 0;
+  const memory = {
+    latestByProductAndMarketplace: async () => { latestReads += 1; return previous; },
+    recentByProductAndMarketplace: async () => { historyReads += 1; return [previous]; },
+    saveIfAbsent: async (snapshot: unknown) => { writes += 1; return snapshot; }
+  };
+  const provider = new AutonomousAnalyticsFeedbackProvider(
+    { overview: async () => ({ campaigns: [{
+      campaignId: "c", productId: "p", marketplaceId: "m", clickCount: 250,
+      trackingLinkCount: 1, contentCount: 1, publishedContentCount: 1,
+      scheduledContentCount: 0, attributedConversionCount: 5,
+      attributedRevenueCents: 2500, attributedCommissionCents: 500,
+      conversionRate: 0.02
+    }] }) },
+    memory,
+    () => new Date("2026-09-22T04:00:00.000Z")
+  );
+
+  const signal = (await provider.getSignals({ observationKey: "optimization", historyMode: "latest" })).get("m:p");
+
+  assert.equal(latestReads, 1);
+  assert.equal(historyReads, 0);
+  assert.equal(writes, 0);
+  assert.equal(signal?.anomaly, "halt");
+  assert.equal(signal?.anomalyRecovery, "recovering");
+  assert.equal(signal?.recoveryEpisodeId, "episode-1");
+});
