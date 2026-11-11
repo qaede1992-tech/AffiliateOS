@@ -73,6 +73,7 @@ function makeApp(
   const services = createInMemoryServices();
   services.productMediaAssets = repository;
   let reviewedCandidate = { ...candidate };
+  let lastCandidateAuditLimit = 50;
   const candidateReviewAudits: Array<{ id: string; candidateId: string; productId: string; actorId: string; actorRole: "admin"; action: "approve" | "reject"; reason: string; previousStatus: "pending"; newStatus: "approved" | "rejected"; createdAt: string }> = [];
   const candidateRepository: ProductMediaCandidateRepository = {
     async saveMany(rows) { return rows; },
@@ -84,7 +85,10 @@ function makeApp(
       candidateReviewAudits.unshift({ id: "77777777-7777-4777-8777-777777777777", candidateId: candidate.id, productId, actorId: command.actorId, actorRole: "admin", action: command.status === "approved" ? "approve" : "reject", reason: command.reason, previousStatus: "pending", newStatus: command.status, createdAt: reviewedAt });
       return reviewedCandidate;
     },
-    async listReviewAudits(ownerProductId, id) { return ownerProductId === productId && id === candidate.id ? [...candidateReviewAudits] : []; }
+    async listReviewAudits(ownerProductId, id, limit = 50) {
+      lastCandidateAuditLimit = limit;
+      return ownerProductId === productId && id === candidate.id ? candidateReviewAudits.slice(0, limit) : [];
+    }
   };
   services.productMediaCandidates = candidateRepository;
   if (importer) services.productMediaCandidateImport = importer as never;
@@ -93,7 +97,7 @@ function makeApp(
     auth: { enabled: false, operatorId: "reviewer-test", role },
     rateLimit: { enabled: false, limit: 100, windowMs: 60_000 }
   });
-  return { app, getAsset: () => asset, getReview: () => lastReview };
+  return { app, getAsset: () => asset, getReview: () => lastReview, getCandidateAuditLimit: () => lastCandidateAuditLimit };
 }
 
 test("admin can list pending product media candidates with provenance and unverified rights", async () => {
@@ -111,7 +115,7 @@ test("admin can list pending product media candidates with provenance and unveri
 });
 
 test("admin review records an auditable identity decision without verifying publication rights", async () => {
-  const { app } = makeApp();
+  const { app, getCandidateAuditLimit } = makeApp();
   try {
     const response = await app.inject({
       method: "PATCH",
@@ -126,6 +130,35 @@ test("admin review records an auditable identity decision without verifying publ
     assert.equal(audits.statusCode, 200);
     assert.equal(audits.json().data[0].action, "approve");
     assert.equal(audits.json().data[0].reason, "Visual identity and source page manually checked.");
+    assert.equal(getCandidateAuditLimit(), 50);
+  } finally {
+    await app.close();
+  }
+});
+
+test("candidate review audit endpoint clamps requested limits", async () => {
+  const { app, getCandidateAuditLimit } = makeApp();
+  try {
+    const oversized = await app.inject({
+      method: "GET",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review-audits?limit=500`
+    });
+    assert.equal(oversized.statusCode, 200);
+    assert.equal(getCandidateAuditLimit(), 50);
+
+    const belowMinimum = await app.inject({
+      method: "GET",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review-audits?limit=0`
+    });
+    assert.equal(belowMinimum.statusCode, 200);
+    assert.equal(getCandidateAuditLimit(), 1);
+
+    const invalid = await app.inject({
+      method: "GET",
+      url: `/api/v1/products/${productId}/media-candidates/${candidate.id}/review-audits?limit=invalid`
+    });
+    assert.equal(invalid.statusCode, 200);
+    assert.equal(getCandidateAuditLimit(), 50);
   } finally {
     await app.close();
   }
