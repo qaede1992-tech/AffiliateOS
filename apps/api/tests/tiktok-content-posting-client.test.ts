@@ -95,6 +95,62 @@ test("TikTok client uses FILE_UPLOAD by default and uploads the media sequential
   assert.equal(calls[3]?.body?.byteLength, video.byteLength);
 });
 
+test("TikTok FILE_UPLOAD rejects an oversized source before sending an out-of-range chunk", async () => {
+  const oversizedVideo = new Uint8Array(asset.byteSize + 1).fill(7);
+  const uploadedRanges: string[] = [];
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        return new Response(JSON.stringify({ data: { publish_id: "publish-oversized", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(oversizedVideo, { status: 200, headers: { "content-length": String(oversizedVideo.byteLength) } });
+      }
+      uploadedRanges.push(new Headers(init?.headers).get("content-range") ?? "");
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-oversized" }),
+    /received at least 4194305/
+  );
+  assert.deepEqual(uploadedRanges, []);
+});
+
+test("TikTok FILE_UPLOAD rejects a truncated source before sending a partial final chunk", async () => {
+  const truncatedVideo = new Uint8Array(asset.byteSize - 1).fill(7);
+  const uploadedRanges: string[] = [];
+  const client = new TikTokContentPostingClient({
+    accessTokenResolver: async () => "secret-token",
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      if (url.includes("creator_info")) {
+        return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
+      }
+      if (url.includes("/video/init/")) {
+        return new Response(JSON.stringify({ data: { publish_id: "publish-truncated", upload_url: "https://upload.example.test/video" } }), { status: 200 });
+      }
+      if (init?.method === "GET") {
+        return new Response(truncatedVideo, { status: 200, headers: { "content-length": String(truncatedVideo.byteLength) } });
+      }
+      uploadedRanges.push(new Headers(init?.headers).get("content-range") ?? "");
+      return new Response(null, { status: 201 });
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-truncated" }),
+    /received 4194303/
+  );
+  assert.deepEqual(uploadedRanges, []);
+});
+
 test("TikTok client retains PULL_FROM_URL as an explicit compatibility mode", async () => {
   const calls: string[] = [];
   const client = new TikTokContentPostingClient({
