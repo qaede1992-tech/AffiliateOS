@@ -1,7 +1,7 @@
 import type { ContentPlatform, Product } from "@affiliateos/shared";
 import { extractProductMediaCandidates, type ProductMediaCandidate } from "./product-media-discovery.js";
 import { fetchPublicHttps } from "./public-https-fetch.js";
-import type { ProductMediaIngestionPolicy, ProductMediaIngestionResult } from "./product-media-ingestion.js";
+import type { ProductMediaAsset, ProductMediaIngestionPolicy, ProductMediaIngestionResult } from "./product-media-ingestion.js";
 import { ProductMediaIngestionService } from "./product-media-ingestion.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
