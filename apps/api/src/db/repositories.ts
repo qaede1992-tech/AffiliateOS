@@ -37,7 +37,13 @@ class DrizzleMarketplaceConnectionRepository extends DrizzleRepository<Marketpla
 class DrizzleProductCatalogRepository extends DrizzleRepository<Product, typeof products.$inferSelect> implements ProductCatalogRepository { constructor(db: DatabaseExecutor) { super(db, products, toProduct, (entity) => ({ ...entity, ratingMilli: entity.ratingMilli ?? null } as any)); } async listByMarketplace(marketplaceId: string, status: Product["status"], limit: number) { const rows = await this.db.select().from(products).where(and(eq(products.marketplaceId, marketplaceId), eq(products.status, status))).limit(Math.max(1, Math.min(500, limit))); return rows.map(toProduct); } async findByMarketplaceProduct(marketplaceId: string, externalProductId: string) { const rows = await this.db.select().from(products).where(and(eq(products.marketplaceId, marketplaceId), eq(products.externalProductId, externalProductId))).limit(1); return rows[0] ? toProduct(rows[0]) : undefined; } override async save(entity: Product) { const row = this.toRow(entity); const update = { ...row } as any; delete update.id; const rows = await this.db.insert(products).values(row).onConflictDoUpdate({ target: products.id, set: update }).returning(); return rows[0] ? toProduct(rows[0]) : entity; } async upsertManyByMarketplaceProduct(entities: Product[]) { if (!entities.length) return []; const values = entities.map((entity) => this.toRow(entity)); const rows = await this.db.insert(products).values(values).onConflictDoUpdate({ target: [products.marketplaceId, products.externalProductId], set: { name: sql.raw("excluded.name"), description: sql.raw("COALESCE(excluded.description, products.description)"), category: sql.raw("COALESCE(excluded.category, products.category)"), priceCents: sql.raw("excluded.price_cents"), originalPriceCents: sql.raw("COALESCE(excluded.original_price_cents, products.original_price_cents)"), currency: sql.raw("excluded.currency"), ratingMilli: sql.raw("excluded.rating_milli"), reviewCount: sql.raw("excluded.review_count"), soldCount: sql.raw("excluded.sold_count"), discoverySignals: sql.raw("COALESCE(excluded.discovery_signals, products.discovery_signals)"), imageUrl: sql.raw("COALESCE(excluded.image_url, products.image_url)"), videoUrl: sql.raw("COALESCE(excluded.video_url, products.video_url)"), productUrl: sql.raw("excluded.product_url"), status: sql.raw("excluded.status"), updatedAt: sql.raw("excluded.updated_at") } }).returning(); return rows.map(toProduct); } }
 class DrizzleAffiliateAccountRepository extends DrizzleRepository<AffiliateAccount, typeof affiliateAccounts.$inferSelect> implements AffiliateAccountRepository { constructor(db: DatabaseExecutor) { super(db, affiliateAccounts, toAccount, (entity) => ({ ...entity, affiliateId: entity.affiliateId ?? null, externalReference: entity.externalReference ?? null, credentialReference: entity.credentialReference ?? null } as any)); } async findByMarketplace(marketplaceId: string) { const rows = await this.db.select().from(affiliateAccounts).where(eq(affiliateAccounts.marketplaceId, marketplaceId)).orderBy(sql`CASE WHEN ${affiliateAccounts.status} = 'active' THEN 0 ELSE 1 END`, affiliateAccounts.createdAt).limit(1); return rows[0] ? toAccount(rows[0]) : undefined; } override async save(entity: AffiliateAccount) { if (await this.findById(entity.id)) await this.db.update(affiliateAccounts).set(this.toRow(entity)).where(eq(affiliateAccounts.id, entity.id)); else await super.save(entity); return entity; } }
 class DrizzleAffiliateOfferRepository extends DrizzleRepository<AffiliateOffer, typeof affiliateOffers.$inferSelect> implements AffiliateOfferRepository {
-  async listVerificationRows() {
+  async listVerificationRows(input: { after?: { createdAt: string; id: string }; limit: number }) {
+    const cursorCondition = input.after
+      ? or(
+          gt(affiliateOffers.createdAt, input.after.createdAt),
+          and(eq(affiliateOffers.createdAt, input.after.createdAt), gt(affiliateOffers.id, input.after.id))
+        )
+      : undefined;
     const rows = await this.db.select({
       offer: affiliateOffers,
       affiliateId: affiliates.id,
@@ -52,7 +58,9 @@ class DrizzleAffiliateOfferRepository extends DrizzleRepository<AffiliateOffer, 
       .leftJoin(affiliates, eq(affiliateAccounts.affiliateId, affiliates.id))
       .leftJoin(marketplaces, eq(affiliateAccounts.marketplaceId, marketplaces.id))
       .leftJoin(products, eq(affiliateOffers.productId, products.id))
-      .orderBy(asc(affiliateOffers.createdAt), asc(affiliateOffers.id));
+      .where(cursorCondition)
+      .orderBy(asc(affiliateOffers.createdAt), asc(affiliateOffers.id))
+      .limit(Math.max(1, Math.min(51, input.limit)));
     return rows.map((row: any) => ({
       ...toAffiliateOffer(row.offer),
       affiliateId: row.affiliateId ?? undefined,
