@@ -20,7 +20,9 @@ export function ProductMediaRightsPanel() {
   const [productId, setProductId] = useState("");
   const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [previewLoadingIds, setPreviewLoadingIds] = useState<Set<string>>(new Set());
   const [audits, setAudits] = useState<Record<string, ProductMediaRightsAuditView[]>>({});
+  const [auditLoadingIds, setAuditLoadingIds] = useState<Set<string>>(new Set());
   const [forms, setForms] = useState<Record<string, ReviewForm>>({});
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -56,20 +58,9 @@ export function ProductMediaRightsPanel() {
     try {
       const response = await api.productMediaAssets(selectedProductId);
       if (requestId !== requestSequence.current) return;
+      // Do not sign or download every private media object when the review
+      // panel opens. Previews and audit histories are loaded on explicit demand.
       setAssets(response.data);
-      const [signed, history] = await Promise.all([
-        Promise.all(response.data.map(async (asset) => {
-          try { return [asset.id, (await api.productMediaPreview(selectedProductId, asset.id)).url] as const; }
-          catch { return [asset.id, ""] as const; }
-        })),
-        Promise.all(response.data.map(async (asset) => {
-          try { return [asset.id, (await api.productMediaRightsAudits(selectedProductId, asset.id)).data] as const; }
-          catch { return [asset.id, []] as const; }
-        }))
-      ]);
-      if (requestId !== requestSequence.current) return;
-      setPreviews(Object.fromEntries(signed.filter(([, url]) => Boolean(url))));
-      setAudits(Object.fromEntries(history));
     } catch (requestError) {
       if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
@@ -82,7 +73,9 @@ export function ProductMediaRightsPanel() {
     requestSequence.current += 1;
     setAssets([]);
     setPreviews({});
+    setPreviewLoadingIds(new Set());
     setAudits({});
+    setAuditLoadingIds(new Set());
     setBusyAssetId(null);
     setError(null);
     setNotice(null);
@@ -90,6 +83,47 @@ export function ProductMediaRightsPanel() {
   };
 
   useEffect(() => { if (isAdmin && productId) void loadAssets(productId); }, [isAdmin, productId]);
+
+  const loadPreview = async (asset: ProductMediaAssetView) => {
+    if (previews[asset.id] || previewLoadingIds.has(asset.id)) return;
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    setPreviewLoadingIds((current) => new Set(current).add(asset.id));
+    try {
+      const result = await api.productMediaPreview(selectedProductId, asset.id);
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      setPreviews((current) => ({ ...current, [asset.id]: result.url }));
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) {
+        setError(requestError instanceof Error ? requestError.message : "Preview privat tidak dapat dimuat.");
+      }
+    } finally {
+      if (selectionRequestId === productSelectionSequence.current) {
+        setPreviewLoadingIds((current) => { const next = new Set(current); next.delete(asset.id); return next; });
+      }
+    }
+  };
+
+  const loadAuditHistory = async (asset: ProductMediaAssetView) => {
+    if (Object.prototype.hasOwnProperty.call(audits, asset.id) || auditLoadingIds.has(asset.id)) return;
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    setAuditLoadingIds((current) => new Set(current).add(asset.id));
+    try {
+      const result = await api.productMediaRightsAudits(selectedProductId, asset.id);
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      setAudits((current) => ({ ...current, [asset.id]: result.data }));
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) {
+        setError(requestError instanceof Error ? requestError.message : "Riwayat hak media tidak dapat dimuat.");
+        setAudits((current) => ({ ...current, [asset.id]: [] }));
+      }
+    } finally {
+      if (selectionRequestId === productSelectionSequence.current) {
+        setAuditLoadingIds((current) => { const next = new Set(current); next.delete(asset.id); return next; });
+      }
+    }
+  };
 
   const updateForm = (assetId: string, field: keyof ReviewForm, value: string) => {
     setForms((current) => ({ ...current, [assetId]: { ...(current[assetId] ?? initialForm()), [field]: value } }));
@@ -164,7 +198,9 @@ export function ProductMediaRightsPanel() {
                 {preview ? asset.kind === "video"
                   ? <video src={preview} controls preload="metadata" />
                   : <img src={preview} alt={`Media produk ${asset.productId}`} />
-                  : <span>Preview privat tidak tersedia</span>}
+                  : <button type="button" onClick={() => void loadPreview(asset)} disabled={previewLoadingIds.has(asset.id)}>
+                      {previewLoadingIds.has(asset.id) ? "Memuat preview…" : "Tampilkan preview privat"}
+                    </button>}
               </div>
               <div className="product-media-rights-details">
                 <div className="panel-heading">
@@ -193,21 +229,25 @@ export function ProductMediaRightsPanel() {
                 <small className="analytics-note">Penilaian ini hanya preflight teknis berdasarkan metadata tersimpan. Ini bukan persetujuan hak media atau izin publikasi; codec, frame rate, dan batas akun tertentu mungkin masih perlu diperiksa.</small>
                 {asset.rightsStatus === "verified" && <p className="analytics-note">Dasar: {asset.rightsBasis} · Penerbit: {asset.sourcePublisher} · Diverifikasi: {asset.rightsVerifiedAt ? new Date(asset.rightsVerifiedAt).toLocaleString("id-ID") : "—"}</p>}
                 {safeEvidenceUrl(asset.rightsEvidenceUrl) && <p><a href={safeEvidenceUrl(asset.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
-                <details className="product-media-rights-history">
-                  <summary>Riwayat pemeriksaan ({(audits[asset.id] ?? []).length})</summary>
-                  {(audits[asset.id] ?? []).length === 0
-                    ? <p className="analytics-note">Belum ada catatan perubahan hak.</p>
-                    : <ol>
-                        {(audits[asset.id] ?? []).map((entry) => (
-                          <li key={entry.id}>
-                            <strong>{entry.action === "verify" ? "Verifikasi" : "Pencabutan"} · {entry.previousRightsStatus} → {entry.newRightsStatus}</strong>
-                            <small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId} ({entry.actorRole})</small>
-                            <p>{entry.reason}</p>
-                            {entry.rightsBasis && <small>Dasar: {entry.rightsBasis} · Penerbit: {entry.sourcePublisher ?? "—"}</small>}
-                            {safeEvidenceUrl(entry.rightsEvidenceUrl) && <a href={safeEvidenceUrl(entry.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Bukti pada saat pemeriksaan</a>}
-                          </li>
-                        ))}
-                      </ol>}
+                <details className="product-media-rights-history" onToggle={(event) => {
+                  if (event.currentTarget.open) void loadAuditHistory(asset);
+                }}>
+                  <summary>Riwayat pemeriksaan{Object.prototype.hasOwnProperty.call(audits, asset.id) ? ` (${(audits[asset.id] ?? []).length})` : ""}</summary>
+                  {auditLoadingIds.has(asset.id) ? <p className="analytics-note">Memuat riwayat…</p>
+                    : !Object.prototype.hasOwnProperty.call(audits, asset.id) ? <p className="analytics-note">Buka bagian ini untuk memuat riwayat pemeriksaan.</p>
+                    : (audits[asset.id] ?? []).length === 0
+                      ? <p className="analytics-note">Belum ada catatan perubahan hak.</p>
+                      : <ol>
+                          {(audits[asset.id] ?? []).map((entry) => (
+                            <li key={entry.id}>
+                              <strong>{entry.action === "verify" ? "Verifikasi" : "Pencabutan"} · {entry.previousRightsStatus} → {entry.newRightsStatus}</strong>
+                              <small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId} ({entry.actorRole})</small>
+                              <p>{entry.reason}</p>
+                              {entry.rightsBasis && <small>Dasar: {entry.rightsBasis} · Penerbit: {entry.sourcePublisher ?? "—"}</small>}
+                              {safeEvidenceUrl(entry.rightsEvidenceUrl) && <a href={safeEvidenceUrl(entry.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Bukti pada saat pemeriksaan</a>}
+                            </li>
+                          ))}
+                        </ol>}
                 </details>
                 <div className="affiliate-form">
                   <label htmlFor={`rights-basis-${asset.id}`}>Dasar hak</label>
