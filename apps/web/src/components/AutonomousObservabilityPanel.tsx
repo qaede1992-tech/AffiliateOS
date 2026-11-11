@@ -53,12 +53,12 @@ const money = (cents: number) => new Intl.NumberFormat("id-ID", {
 const shortId = (value: string) => value.slice(0, 8);
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString() : "—";
 
-export function AutonomousObservabilityPanel() {
+export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus: AutonomousStatus | null }) {
   const [audits, setAudits] = useState<DecisionAudit[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [runs, setRuns] = useState<AutonomousRun[]>([]);
   const [readiness, setReadiness] = useState<PublisherReadiness[]>([]);
-  const [status, setStatus] = useState<AutonomousStatus | null>(null);
+  const [status, setStatus] = useState<AutonomousStatus | null>(initialStatus);
   const [selectedFilter, setSelectedFilter] = useState<"all" | "selected" | "rejected">("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,11 +73,11 @@ export function AutonomousObservabilityPanel() {
       const [auditResponse, productResponse, autonomousStatus] = await Promise.all([
         api.autonomousDecisionAudits(100),
         api.products(),
-        api.autonomousStatus()
+        background ? api.autonomousStatus() : Promise.resolve(null)
       ]);
       setAudits(auditResponse.data);
       setProducts(productResponse.data);
-      setStatus(autonomousStatus);
+      if (autonomousStatus) setStatus(autonomousStatus);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load autonomous observability.");
     } finally {
