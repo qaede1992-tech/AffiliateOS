@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Product } from "@affiliateos/shared";
 import { ProductMediaDiscoveryRunner } from "../../src/domain/product-media-discovery-runner.js";
+import { resetOpenverseCircuitForTests } from "../../src/domain/openverse-provider-circuit.js";
 import type { ProductMediaAsset } from "../../src/domain/product-media-ingestion.js";
 
 const product: Product = {
@@ -562,6 +563,7 @@ test("classifies catalog persistence failures separately and keeps provider erro
 
 
 test("persists catalog search cooldown and invalidates it when product identity changes", async () => {
+  resetOpenverseCircuitForTests();
   const attempts = new Map<string, { fingerprint: string; nextRetryAt: string }>();
   let fetchCount = 0;
   const fetchImpl = async () => {
@@ -601,4 +603,88 @@ test("persists catalog search cooldown and invalidates it when product identity 
 
   await runner.discover({ ...shopeeProduct, name: "Demo product updated" }, true);
   assert.equal(fetchCount, 2, "changed product identity should invalidate the old cooldown");
+});
+
+
+test("stops repeating an Openverse 403 across products while retaining Wikimedia fallback", async () => {
+  resetOpenverseCircuitForTests();
+  const originalFetch = globalThis.fetch;
+  let openverseCalls = 0;
+  let wikimediaCalls = 0;
+  const openverseFetch = async () => {
+    openverseCalls += 1;
+    return new Response("<html>Cloudflare challenge</html>", {
+      status: 403,
+      headers: {
+        "content-type": "text/html; charset=UTF-8",
+        "server": "cloudflare",
+        "cf-ray": "test-ray"
+      }
+    });
+  };
+  globalThis.fetch = async () => {
+    wikimediaCalls += 1;
+    return new Response(JSON.stringify({
+      query: {
+        pages: [{
+          title: "File:Cat food bag.jpg",
+          imageinfo: [{
+            url: "https://upload.wikimedia.org/wikipedia/commons/c/c1/cat-food.jpg",
+            thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/cat-food.jpg/800px-cat-food.jpg",
+            descriptionurl: "https://commons.wikimedia.org/wiki/File:Cat_food_bag.jpg",
+            mime: "image/jpeg",
+            extmetadata: {
+              LicenseShortName: { value: "CC0" },
+              LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" },
+              Artist: { value: "Example creator" }
+            }
+          }]
+        }]
+      }
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    const assets: ProductMediaAsset[] = [];
+    const assetRepository = {
+      async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+      async findByProductAndHash(id: string, hash: string) {
+        return assets.find((asset) => asset.productId === id && asset.sha256 === hash);
+      },
+      async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+    };
+    const candidateRepository = {
+      async saveMany(records: unknown[]) { return records; },
+      async listPendingByProduct() { return []; }
+    };
+    const runner = new ProductMediaDiscoveryRunner(
+      { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+      assetRepository,
+      { maxImageBytes: 1024, maxVideoBytes: 1024 },
+      undefined,
+      candidateRepository as never,
+      { fetchImpl: openverseFetch as typeof fetch }
+    );
+
+    const first = await runner.discover({
+      ...product,
+      name: "cat food",
+      productUrl: "https://shopee.co.id/product/123/456"
+    }, true);
+    const second = await runner.discover({
+      ...product,
+      id: "22222222-2222-4222-8222-222222222222",
+      externalProductId: "external-2",
+      name: "cat food",
+      productUrl: "https://shopee.co.id/product/123/457"
+    }, true);
+
+    assert.equal(first.candidatesFound, 1);
+    assert.equal(second.candidatesFound, 1);
+    assert.equal(openverseCalls, 1, "the second product must not repeat a provider-wide 403 request");
+    assert.equal(wikimediaCalls, 2, "each product must retain the Wikimedia fallback");
+  } finally {
+    globalThis.fetch = originalFetch;
+    resetOpenverseCircuitForTests();
+  }
 });
