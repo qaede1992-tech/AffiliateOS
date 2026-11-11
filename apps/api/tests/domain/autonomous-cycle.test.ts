@@ -10,6 +10,7 @@ describe("autonomous cycle", () => {
     const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
     let videoLookupCount = 0;
+    let mediaListCount = 0;
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean; requirePublishableVideo?: boolean }) {
         if (input.requirePublishableMedia === true) {
@@ -29,7 +30,11 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const discovery = {
       async discover(product: { id: string }) { calls.push("discover:" + product.id); return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { calls.push("list-media"); return ["selected-image", "media-rejected"]; },
+      async listPublishableMediaProductIds() {
+        calls.push("list-media");
+        mediaListCount += 1;
+        return mediaListCount === 1 ? [] : ["selected-image", "media-rejected"];
+      },
       async listMediaReadinessScores() { calls.push("media-readiness"); return { "selected-image": 85, "media-rejected": 20 }; },
       async listVideoProductIds() {
         calls.push("list-videos");
@@ -44,6 +49,7 @@ describe("autonomous cycle", () => {
     assert.ok(result);
     assert.deepEqual(calls, [
       "preliminary-selection",
+      "list-media",
       "discover:selected-image",
       "discover:media-rejected",
       "list-media",
@@ -71,6 +77,7 @@ describe("autonomous cycle", () => {
       },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
+    let mediaListCount = 0;
     const discovery = {
       async discover() {
         return {
@@ -84,7 +91,10 @@ describe("autonomous cycle", () => {
           }]
         };
       },
-      async listPublishableMediaProductIds() { return [product.id]; },
+      async listPublishableMediaProductIds() {
+        mediaListCount += 1;
+        return mediaListCount === 1 ? [] : [product.id];
+      },
       async listVideoProductIds() { return []; },
       async generatePromoVideo() { return { generated: false }; }
     };
@@ -534,12 +544,16 @@ describe("autonomous cycle", () => {
       }
     } as unknown as AutonomousExecutionService;
     let discoveryCount = 0;
+    let mediaListCount = 0;
     const discovery = {
       async discover() {
         discoveryCount += 1;
         return { productId: product.id, pageFetched: false, hasVideo: true, stored: [], skipped: [] };
       },
-      async listPublishableMediaProductIds() { return [product.id]; },
+      async listPublishableMediaProductIds() {
+        mediaListCount += 1;
+        return mediaListCount === 1 ? [] : [product.id];
+      },
       async listVideoProductIds() { return [product.id]; },
       async listPublishableVideoProductIds() { return [product.id]; },
       async listMediaReadinessScores() { return { [product.id]: 100 }; },
@@ -661,6 +675,49 @@ describe("autonomous cycle", () => {
     assert.equal(explorationCalls, 0);
     assert.equal(optimizationCalls, 0);
     assert.deepEqual(result.execution, { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 });
+  });
+
+  it("skips external media discovery when a preliminary candidate already has verified publishable media", async () => {
+    const product = { id: "existing-publishable-media-product" };
+    const candidates: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
+    };
+    let discoveryCalls = 0;
+    let mediaIndexCalls = 0;
+    const execution = {
+      async previewSelection(input: { requirePublishableMedia?: boolean }) {
+        return input.requirePublishableMedia
+          ? { selected: [], rejected: [], audit: [] }
+          : { selected: [{ product: product as never, offerId: "offer-1", score: 90 }], rejected: [], audit: [] };
+      },
+      async runOnce() {
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async discover() {
+        discoveryCalls += 1;
+        throw new Error("Discovery must not run for an already publishable product.");
+      },
+      async listPublishableMediaProductIds() {
+        mediaIndexCalls += 1;
+        return [product.id];
+      },
+      async listVideoProductIds() { return []; },
+      async listPublishableVideoProductIds() { return []; },
+      async listMediaReadinessScores() { return { [product.id]: 90 }; },
+      async generatePromoVideo() { throw new Error("No media-ready selection should require video generation."); }
+    };
+    const service = new AutonomousCycleService(
+      candidates, execution, undefined, undefined, undefined, undefined, discovery as never
+    );
+
+    const result = await service.runOnce({ publicationEnabled: false });
+
+    assert.ok(result);
+    assert.equal(discoveryCalls, 0);
+    assert.equal(mediaIndexCalls, 2);
+    assert.equal(service.skipReason, undefined);
   });
 
 });
