@@ -25,6 +25,11 @@ export function IntegrationSetupPanel() {
   const [testImageUrl, setTestImageUrl] = useState("");
   const [testCommissionPercent, setTestCommissionPercent] = useState("");
 
+  const loadReadiness = async () => {
+    const response = await api.publisherReadiness();
+    setReadiness(response.data);
+  };
+
   const load = async () => {
     const [p, c, a, s, r] = await Promise.all([
       api.marketplaceProviders(), api.marketplaceConnections(), api.affiliates(),
@@ -36,7 +41,7 @@ export function IntegrationSetupPanel() {
   useEffect(() => {
     let disposed = false;
     const refreshReadiness = () => {
-      void load().catch((e: unknown) => {
+      void loadReadiness().catch((e: unknown) => {
         if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
       });
     };
