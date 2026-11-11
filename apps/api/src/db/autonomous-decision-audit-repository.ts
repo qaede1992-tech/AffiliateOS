@@ -1,6 +1,6 @@
 import type { AutonomousDecisionAudit, AutonomousDecisionAuditRepository, AutonomousDecisionAuditQuery, AutonomousDecisionAuditReader, AutonomousDecisionOutcome, AutonomousDecisionOutcomeAnalytics } from "../domain/autonomous-decision-audit.js";
 import { autonomousDecisionAudits } from "./schema.js";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 type DatabaseExecutor = any;
 
@@ -144,6 +144,49 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
             explorationEvaluation: row.explorationEvaluation ?? undefined
           }
         : undefined
+    }));
+  }
+
+  async listPendingExplorationEvaluations(limit = 100): Promise<AutonomousDecisionAudit[]> {
+    const boundedLimit = Math.min(Math.max(1, limit), 100);
+    const rows = await this.db.select().from(autonomousDecisionAudits)
+      .where(and(
+        eq(autonomousDecisionAudits.selected, true),
+        eq(autonomousDecisionAudits.selectionMode, "exploration"),
+        isNotNull(autonomousDecisionAudits.outcomeCampaignId),
+        isNull(autonomousDecisionAudits.explorationEvaluation)
+      ))
+      .orderBy(desc(autonomousDecisionAudits.createdAt))
+      .limit(boundedLimit);
+
+    if (!rows.length) return [];
+    const campaignIds: string[] = [...new Set<string>(rows
+      .map((row: any) => row.outcomeCampaignId)
+      .filter((id: unknown): id is string => typeof id === "string"))];
+    const analyticsByCampaign = await loadCampaignAnalytics(this.db, campaignIds);
+    return rows.map((row: any) => ({
+      cycleId: row.cycleId,
+      auditId: row.id,
+      productId: row.productId,
+      marketplaceId: row.marketplaceId,
+      selected: row.selected,
+      selectionMode: row.selectionMode ?? undefined,
+      score: row.score,
+      policy: row.policy,
+      reasons: row.reasons,
+      category: row.category ?? undefined,
+      audienceSegments: row.audienceSegments ?? undefined,
+      createdAt: row.createdAt,
+      recovery: row.recovery ?? undefined,
+      outcome: row.outcomeStatus ? {
+        offerId: row.outcomeOfferId ?? undefined,
+        status: row.outcomeStatus,
+        campaignId: row.outcomeCampaignId ?? undefined,
+        error: row.outcomeError ?? undefined,
+        observedAt: row.outcomeObservedAt,
+        analytics: row.outcomeCampaignId ? analyticsByCampaign.get(row.outcomeCampaignId) : undefined,
+        explorationEvaluation: row.explorationEvaluation ?? undefined
+      } : undefined
     }));
   }
 
