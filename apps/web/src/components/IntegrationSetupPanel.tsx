@@ -4,10 +4,14 @@ import { api, socialOAuthRedirectUri } from "../api/client";
 
 type Readiness = { platform: string; status: string; reason?: string };
 
-export function IntegrationSetupPanel() {
-  const [providers, setProviders] = useState<MarketplaceProviderInfo[]>([]);
-  const [connections, setConnections] = useState<MarketplaceConnectionView[]>([]);
-  const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
+export function IntegrationSetupPanel({ initialProviders, initialConnections, initialAffiliates }: {
+  initialProviders: MarketplaceProviderInfo[];
+  initialConnections: MarketplaceConnectionView[];
+  initialAffiliates: Affiliate[];
+}) {
+  const [providers, setProviders] = useState<MarketplaceProviderInfo[]>(initialProviders);
+  const [connections, setConnections] = useState<MarketplaceConnectionView[]>(initialConnections);
+  const [affiliates, setAffiliates] = useState<Affiliate[]>(initialAffiliates);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountView[]>([]);
   const [readiness, setReadiness] = useState<Readiness[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
