@@ -40,10 +40,17 @@ export function IntegrationSetupPanel() {
 
   useEffect(() => {
     let disposed = false;
+    let requestInFlight = false;
     const refreshReadiness = () => {
-      void loadReadiness().catch((e: unknown) => {
-        if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
-      });
+      if (disposed || document.visibilityState !== "visible" || requestInFlight) return;
+      requestInFlight = true;
+      void loadReadiness()
+        .catch((e: unknown) => {
+          if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
+        })
+        .finally(() => {
+          requestInFlight = false;
+        });
     };
     refreshReadiness();
     const handleFocus = () => refreshReadiness();
