@@ -17,6 +17,10 @@ export class MarketplaceService {
     return this.products.listByMarketplace(marketplaceId, "active", limit);
   }
   async updateProductMedia(productId: string, input: { imageUrl?: string | null; videoUrl?: string | null }): Promise<Product> {
+    const result = await this.updateProductMediaWithChange(productId, input);
+    return result.product;
+  }
+  async updateProductMediaWithChange(productId: string, input: { imageUrl?: string | null; videoUrl?: string | null }): Promise<{ product: Product; changed: boolean }> {
     const id = productId.trim();
     if (!id) throw new DomainError("INVALID_PRODUCT_ID", "Product ID is required.", 400);
     const product = await this.products.findById(id);
@@ -27,7 +31,11 @@ export class MarketplaceService {
       try { url = new URL(value); } catch { throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `${field} must be a valid HTTPS URL.`, 400); }
       if (url.protocol !== "https:" || !url.hostname || url.username || url.password) throw new DomainError("INVALID_PRODUCT_MEDIA_URL", `${field} must be a valid HTTPS URL without embedded credentials.`, 400);
     }
-    return this.products.save({ ...product, imageUrl: input.imageUrl === undefined ? product.imageUrl : input.imageUrl === null ? null as unknown as string : input.imageUrl, videoUrl: input.videoUrl === undefined ? product.videoUrl : input.videoUrl === null ? null as unknown as string : input.videoUrl, updatedAt: now() });
+    const imageUrl = input.imageUrl === undefined ? product.imageUrl : input.imageUrl === null ? null as unknown as string : input.imageUrl;
+    const videoUrl = input.videoUrl === undefined ? product.videoUrl : input.videoUrl === null ? null as unknown as string : input.videoUrl;
+    if (imageUrl === product.imageUrl && videoUrl === product.videoUrl) return { product, changed: false };
+    const updated = await this.products.save({ ...product, imageUrl, videoUrl, updatedAt: now() });
+    return { product: updated, changed: true };
   }
   async listAffiliateOffers(): Promise<AffiliateOffer[]> { return this.offers.list(); }
   async listActiveAffiliateOffersForProducts(affiliateAccountId: string, productIds: string[]): Promise<AffiliateOffer[]> {
