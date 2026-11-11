@@ -29,12 +29,14 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const discovery = {
       async discover(product: { id: string }) { calls.push("discover:" + product.id); return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { calls.push("list-media"); return ["selected-image", "media-rejected"]; },
-      async listMediaReadinessScores() { calls.push("media-readiness"); return { "selected-image": 85, "media-rejected": 20 }; },
-      async listVideoProductIds() {
-        calls.push("list-videos");
-        videoLookupCount += 1;
-        return videoLookupCount === 1 ? [] : ["selected-image"];
+      async getPublicationReadinessSnapshot() {
+        calls.push("readiness-snapshot");
+        return {
+          publishableMediaProductIds: ["selected-image", "media-rejected"],
+          publishableVideoProductIds: [],
+          storedVideoProductIds: [],
+          mediaReadinessScores: { "selected-image": 85, "media-rejected": 20 }
+        };
       },
       async listPublishableVideoProductIds() { calls.push("list-publishable-videos"); return []; },
       async generatePromoVideo(product: { id: string }) { calls.push("render:" + product.id); return { generated: true }; }
@@ -46,10 +48,7 @@ describe("autonomous cycle", () => {
       "preliminary-selection",
       "discover:selected-image",
       "discover:media-rejected",
-      "list-media",
-      "list-videos",
-      "list-publishable-videos",
-      "media-readiness",
+      "readiness-snapshot",
       "media-ready-selection",
       "render:selected-image",
       "list-publishable-videos",
@@ -215,12 +214,9 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { return [product.id]; },
-      async listVideoProductIds() {
+      async getPublicationReadinessSnapshot() {
         throw new Error("Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: private-media-index-marker");
-      },
-      async listPublishableVideoProductIds() { return []; },
-      async listMediaReadinessScores() { return { [product.id]: 0 }; }
+      }
     };
     const warningLogs: string[] = [];
     const originalWarn = console.warn;
@@ -232,7 +228,7 @@ describe("autonomous cycle", () => {
       console.warn = originalWarn;
     }
     assert.equal(warningLogs.length, 1);
-    assert.ok(warningLogs[0]?.includes("autonomous_product_video_index_failed"));
+    assert.ok(warningLogs[0]?.includes("autonomous_product_media_readiness_snapshot_failed"));
     assert.ok(warningLogs[0]?.includes('"errorType":"Error"'));
     assert.equal(warningLogs.some((line) => line.includes("private-media-index-marker")), false);
     assert.equal(warningLogs.some((line) => line.includes("SELECT *")), false);
@@ -539,10 +535,14 @@ describe("autonomous cycle", () => {
         discoveryCount += 1;
         return { productId: product.id, pageFetched: false, hasVideo: true, stored: [], skipped: [] };
       },
-      async listPublishableMediaProductIds() { return [product.id]; },
-      async listVideoProductIds() { return [product.id]; },
-      async listPublishableVideoProductIds() { return [product.id]; },
-      async listMediaReadinessScores() { return { [product.id]: 100 }; },
+      async getPublicationReadinessSnapshot() {
+        return {
+          publishableMediaProductIds: [product.id],
+          publishableVideoProductIds: [product.id],
+          storedVideoProductIds: [product.id],
+          mediaReadinessScores: { [product.id]: 100 }
+        };
+      },
       async generatePromoVideo() { throw new Error("A stored publishable video must not be rendered again."); }
     };
     const service = new AutonomousCycleService(candidates, execution, undefined, undefined, undefined, undefined, discovery as never);
