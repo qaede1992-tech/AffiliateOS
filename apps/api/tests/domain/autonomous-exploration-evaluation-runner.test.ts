@@ -14,6 +14,25 @@ const audit: AutonomousDecisionAudit = {
 };
 
 describe("autonomous exploration evaluation runner", () => {
+  it("prefers the filtered pending-audit reader and requests a bounded batch", async () => {
+    let limit = 0;
+    const reader: AutonomousDecisionAuditReader = {
+      list: async () => { throw new Error("general audit list must not be used"); },
+      listPendingExplorationEvaluations: async (requestedLimit) => {
+        limit = requestedLimit ?? 0;
+        return [audit];
+      }
+    };
+    const repository: AutonomousDecisionAuditRepository = {
+      saveMany: async () => {},
+      updateOutcome: async () => {},
+      updateExplorationEvaluation: async () => {}
+    };
+    const result = await new AutonomousExplorationEvaluationRunner(reader, repository).run();
+    assert.equal(limit, 100);
+    assert.equal(result.evaluated, 1);
+  });
+
   it("evaluates persisted exploration outcomes and skips already evaluated audits", async () => {
     const stored: Record<string, unknown>[] = [];
     const reader: AutonomousDecisionAuditReader = { list: async () => [audit] };
