@@ -73,6 +73,12 @@ export class InMemoryClickRepository extends InMemoryRepository<Click> implement
   async listByTrackingLink(trackingLinkId: EntityId) { return (await this.list()).filter((item) => item.trackingLinkId === trackingLinkId); }
   async findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string) { return (await this.listByTrackingLink(trackingLinkId)).find((click) => click.idempotencyKey === idempotencyKey); }
   async countByTrackingLink(trackingLinkId: EntityId) { return (await this.listByTrackingLink(trackingLinkId)).length; }
+  async countByTrackingLinks(trackingLinkIds: EntityId[]) {
+    const ids = new Set(trackingLinkIds);
+    const counts: Record<string, number> = {};
+    for (const click of await this.list()) if (ids.has(click.trackingLinkId)) counts[click.trackingLinkId] = (counts[click.trackingLinkId] ?? 0) + 1;
+    return counts;
+  }
 }
 export class InMemoryConversionRepository extends InMemoryRepository<Conversion> implements ConversionRepository { async findByIdempotencyKey(idempotencyKey: string) { return (await this.list()).find((conversion) => conversion.idempotencyKey === idempotencyKey); } }
 export class InMemoryTrackingLinkRepository extends InMemoryRepository<TrackingLink> implements TrackingLinkRepository { async findByCode(code: string) { return (await this.list()).find((link) => link.code === code); } async listByCampaign(campaignId: EntityId) { return (await this.list()).filter((link) => link.campaignId === campaignId); } }
@@ -172,7 +178,7 @@ export interface AffiliateAccountRepository extends Repository<import("@affiliat
 export interface AffiliateOfferRepository extends Repository<AffiliateOffer> { findByConversionOfferId(conversionOfferId: string): Promise<AffiliateOffer | undefined>; findByAccountOffer(affiliateAccountId: string, externalOfferId: string): Promise<AffiliateOffer | undefined>; listActiveByAccountAndProducts(affiliateAccountId: string, productIds: string[]): Promise<AffiliateOffer[]>; findByAccountOffers?(affiliateAccountId: string, externalOfferIds: string[]): Promise<AffiliateOffer[]>; saveManyById?(entities: AffiliateOffer[]): Promise<AffiliateOffer[]>; }
 export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId): Promise<CampaignOffer[]>; find(campaignId: EntityId, affiliateOfferId: EntityId): Promise<CampaignOffer | undefined>; save(entity: CampaignOffer): Promise<CampaignOffer>; remove(campaignId: EntityId, affiliateOfferId: EntityId): Promise<void>; }
 export interface TrackingLinkRepository extends Repository<TrackingLink> { findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
-export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
+export interface ClickRepository extends Repository<Click> { listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; countByTrackingLinks(trackingLinkIds: EntityId[]): Promise<Record<string, number>>; }
 export interface SocialAccountRepository extends Repository<SocialAccount> { findByPlatformAccount(platform: string, accountReference: string): Promise<SocialAccount | undefined>; }
 export interface PublicationJobRepository extends Repository<PublicationJob> { findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>; saveIfAbsent?(job: PublicationJob): Promise<PublicationJob>; claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>; transition?(id: EntityId, expected: PublicationJob["status"][], job: PublicationJob): Promise<PublicationJob | undefined>; }
 export interface TransactionManager { run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T>; runMarketplaceImport?<T>(work: (repositories: Pick<RepositorySet, "affiliates" | "offers" | "marketplaceConnections" | "affiliateAccounts" | "products" | "affiliateOffers">) => Promise<T>): Promise<T>; }
