@@ -600,8 +600,11 @@ test("persists catalog search cooldown and invalidates it when product identity 
   await runner.discover({ ...shopeeProduct, name: "Demo product updated" }, true);
   assert.equal(fetchCount, 2, "changed product identity should invalidate the old cooldown");
 
+
+});
+
 test("applies a persistent cooldown to empty generic product-page discovery and retries when identity changes", async () => {
-  const attempts = new Map<string, { fingerprint: string; nextRetryAt: string }>();
+  const attempts = new Map<string, { fingerprint: string; nextRetryAt: string; outcome?: string }>();
   let fetchCount = 0;
   const fetcher = async (url: string) => {
     fetchCount += 1;
@@ -620,7 +623,7 @@ test("applies a persistent cooldown to empty generic product-page discovery and 
       return true;
     },
     async complete(input: { productId: string; fingerprint: string; outcome: string; now: string; nextRetryAt: string }) {
-      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.nextRetryAt });
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.nextRetryAt, outcome: input.outcome });
     }
   };
   const repository = {
@@ -650,5 +653,4 @@ test("applies a persistent cooldown to empty generic product-page discovery and 
   const changed = await runner.discover({ ...product, name: "Demo product updated" }, true);
   assert.equal(changed.pageFetched, true);
   assert.equal(fetchCount, 2);
-});
 });
