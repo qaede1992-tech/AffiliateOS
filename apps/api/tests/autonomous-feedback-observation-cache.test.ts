@@ -25,9 +25,11 @@ function createProvider() {
   let historyReads = 0;
   let writes = 0;
   const memory = {
+    async latestByProduct() { return undefined; },
     async latestByProductAndMarketplace() { return undefined; },
     async recentByProductAndMarketplace() { historyReads += 1; return []; },
-    async saveIfAbsent(snapshot: unknown) { writes += 1; return snapshot; }
+    async save(snapshot: any) { writes += 1; return snapshot; },
+    async saveIfAbsent(snapshot: any) { writes += 1; return snapshot; }
   };
   const provider = new AutonomousAnalyticsFeedbackProvider({
     async overview() { overviewReads += 1; return overview; }
