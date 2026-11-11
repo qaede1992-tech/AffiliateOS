@@ -96,16 +96,19 @@ export function ProductMediaCandidateReviewPanel() {
 
   const loadCandidateAudits = async (candidateId: string) => {
     if (loadedAuditIds.has(candidateId) || loadingAuditIds.has(candidateId)) return;
+    const requestId = sequence.current;
+    const requestedProductId = productId;
     setLoadingAuditIds((current) => new Set(current).add(candidateId));
     setAuditErrors((current) => ({ ...current, [candidateId]: "" }));
     try {
-      const response = await api.productMediaCandidateReviewAudits(productId, candidateId);
+      const response = await api.productMediaCandidateReviewAudits(requestedProductId, candidateId);
+      if (requestId !== sequence.current) return;
       setAudits((current) => ({ ...current, [candidateId]: response.data }));
       setLoadedAuditIds((current) => new Set(current).add(candidateId));
     } catch (requestError) {
-      setAuditErrors((current) => ({ ...current, [candidateId]: requestError instanceof Error ? requestError.message : "Riwayat review tidak dapat dimuat." }));
+      if (requestId === sequence.current) setAuditErrors((current) => ({ ...current, [candidateId]: requestError instanceof Error ? requestError.message : "Riwayat review tidak dapat dimuat." }));
     } finally {
-      setLoadingAuditIds((current) => { const next = new Set(current); next.delete(candidateId); return next; });
+      if (requestId === sequence.current) setLoadingAuditIds((current) => { const next = new Set(current); next.delete(candidateId); return next; });
     }
   };
 
