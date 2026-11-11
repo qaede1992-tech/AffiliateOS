@@ -599,4 +599,55 @@ test("persists catalog search cooldown and invalidates it when product identity 
 
   await runner.discover({ ...shopeeProduct, name: "Demo product updated" }, true);
   assert.equal(fetchCount, 2, "changed product identity should invalidate the old cooldown");
+
+test("applies a persistent cooldown to empty generic product-page discovery and retries when identity changes", async () => {
+  const attempts = new Map<string, { fingerprint: string; nextRetryAt: string }>();
+  let fetchCount = 0;
+  const fetcher = async (url: string) => {
+    fetchCount += 1;
+    return {
+      url,
+      status: 200,
+      headers: { "content-type": "text/html" },
+      bytes: new TextEncoder().encode("<html><head><title>Demo product</title></head><body>No media metadata</body></html>")
+    };
+  };
+  const attemptRepository = {
+    async claim(input: { productId: string; fingerprint: string; now: string; leaseUntil: string }) {
+      const current = attempts.get(input.productId);
+      if (current && current.fingerprint === input.fingerprint && current.nextRetryAt > input.now) return false;
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.leaseUntil });
+      return true;
+    },
+    async complete(input: { productId: string; fingerprint: string; outcome: string; now: string; nextRetryAt: string }) {
+      attempts.set(input.productId, { fingerprint: input.fingerprint, nextRetryAt: input.nextRetryAt });
+    }
+  };
+  const repository = {
+    async listByProduct() { return []; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    fetcher as never,
+    undefined,
+    {},
+    attemptRepository
+  );
+
+  const first = await runner.discover(product, true);
+  const second = await runner.discover(product, true);
+  assert.equal(first.pageFetched, true);
+  assert.equal(second.pageFetched, false);
+  assert.match(second.skipped[0]?.reason ?? "", /cooldown_active/);
+  assert.equal(fetchCount, 1);
+  assert.equal(attempts.get(product.id)?.nextRetryAt, first.pageFetched ? attempts.get(product.id)?.nextRetryAt : undefined);
+
+  const changed = await runner.discover({ ...product, name: "Demo product updated" }, true);
+  assert.equal(changed.pageFetched, true);
+  assert.equal(fetchCount, 2);
+});
 });
