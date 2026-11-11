@@ -21,6 +21,7 @@ test("preflight accepts only a contiguous suffix of newer pending migrations", (
   assert.deepEqual(result.pendingMigrations.map((item) => item.tag), ["0003_new", "0004_newer"]);
   assert.deepEqual(result.historicalMissingMigrations, []);
   assert.equal(result.latestAppliedTimestamp, 200);
+  assert.equal(result.latestAppliedIndex, 1);
 });
 
 test("preflight classifies a missing migration before the latest applied timestamp as historical drift", () => {
@@ -41,6 +42,32 @@ test("preflight separates historical drift from a newer pending suffix", () => {
 
   assert.deepEqual(result.pendingMigrations.map((item) => item.tag), ["0004_newer"]);
   assert.deepEqual(result.historicalMissingMigrations.map((item) => item.tag), ["0002_existing"]);
+});
+
+test("preflight uses journal order when migration timestamps are non-monotonic", () => {
+  const nonMonotonicMigrations = [
+    { tag: "0001_applied", when: 100 },
+    { tag: "0002_historical_gap", when: 500 },
+    { tag: "0003_applied_after_gap", when: 200 },
+    { tag: "0004_pending", when: 600 }
+  ];
+
+  const result = classifyMigrationLedger({
+    trackedMigrations: nonMonotonicMigrations,
+    appliedTimestamps: new Set([100, 200])
+  });
+
+  assert.deepEqual(result.pendingMigrations.map((item) => item.tag), ["0004_pending"]);
+  assert.deepEqual(result.historicalMissingMigrations.map((item) => item.tag), ["0002_historical_gap"]);
+  assert.equal(result.latestAppliedTimestamp, 200);
+  assert.equal(result.latestAppliedIndex, 2);
+});
+
+test("preflight rejects ledger timestamps absent from the checked-out journal", () => {
+  assert.throws(
+    () => classifyMigrationLedger({ trackedMigrations: migrations, appliedTimestamps: new Set([100, 999]) }),
+    /absent from the checked-out journal/
+  );
 });
 
 test("preflight refuses an empty ledger instead of treating the whole journal as pending", () => {
