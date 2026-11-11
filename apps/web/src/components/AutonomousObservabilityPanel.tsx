@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
 
@@ -63,6 +63,8 @@ export function AutonomousObservabilityPanel() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sectionVisible, setSectionVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
 
   const load = async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
@@ -85,8 +87,19 @@ export function AutonomousObservabilityPanel() {
   };
 
   useEffect(() => {
-    void load();
+    const element = sectionRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setSectionVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setSectionVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (sectionVisible) void load();
+  }, [sectionVisible]);
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const filtered = useMemo(
@@ -103,11 +116,11 @@ export function AutonomousObservabilityPanel() {
   const failedRuns = runs.filter((run) => run.status === "failed").length;
 
   if (loading) {
-    return <section className="analytics-section" id="autonomous-observability"><div className="section-heading"><div><p className="eyebrow">Decision trace</p><h2>Autonomous selection</h2></div></div><p className="empty">Loading autonomous operations...</p></section>;
+    return <section ref={sectionRef} className="analytics-section" id="autonomous-observability"><div className="section-heading"><div><p className="eyebrow">Decision trace</p><h2>Autonomous selection</h2></div></div><p className="empty">Loading autonomous operations...</p></section>;
   }
 
   return (
-    <section className="analytics-section" id="autonomous-observability">
+    <section ref={sectionRef} className="analytics-section" id="autonomous-observability">
       <div className="section-heading">
         <div>
           <p className="eyebrow">Decision trace</p>
