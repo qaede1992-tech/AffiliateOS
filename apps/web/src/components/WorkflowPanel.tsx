@@ -33,7 +33,11 @@ export function WorkflowPanel() {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => {\n    if (!workflowSectionVisible || workflowDataRequestStarted.current) return;\n    workflowDataRequestStarted.current = true;\n    refresh().catch((requestError: unknown) => setError(requestError instanceof Error ? requestError.message : "Unable to load workflow data."));\n  }, [workflowSectionVisible]);
+  useEffect(() => {
+    if (!workflowSectionVisible || workflowDataRequestStarted.current) return;
+    workflowDataRequestStarted.current = true;
+    refresh().catch((requestError: unknown) => setError(requestError instanceof Error ? requestError.message : "Unable to load workflow data."));
+  }, [workflowSectionVisible]);
   useEffect(() => {
     const element = trackingLinksSectionRef.current;
     if (!element) return;
