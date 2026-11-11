@@ -423,7 +423,7 @@ export class ProductMediaDiscoveryRunner {
           leaseUntil: pageLeaseUntil
         });
       } catch (error) {
-        skipped.push({ url: productUrl, reason: "product_page_discovery_cooldown_unavailable" });
+        skipped.push({ url: product.productUrl, reason: "product_page_discovery_cooldown_unavailable" });
         console.warn(JSON.stringify({
           event: "product_media_page_discovery_cooldown_claim_failed",
           productId: product.id,
@@ -432,7 +432,7 @@ export class ProductMediaDiscoveryRunner {
         return { productId: product.id, pageFetched: false, hasVideo: false, stored: existing, skipped };
       }
       if (!pageClaimed) {
-        skipped.push({ url: productUrl, reason: "product_page_discovery_cooldown_active" });
+        skipped.push({ url: product.productUrl, reason: "product_page_discovery_cooldown_active" });
         console.info(JSON.stringify({
           event: "product_media_page_discovery_skipped_cooldown",
           productId: product.id
