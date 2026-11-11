@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   classifyMigrationLedger,
-  findCompensatedHistoricalMigrationGaps
+  findCompensatedHistoricalMigrationGaps,
+  getPendingMigrationSchemaExemptions
 } from "../scripts/migration-ledger-preflight.mjs";
 
 const migrations = [
@@ -119,4 +120,15 @@ test("the 0067 historical gap is compensated only when 0069 is recorded", () => 
     compensationTimestamp: 590,
     forwardRepairTimestamp: 690
   }).size, 0);
+});
+
+
+test("pending schema exemptions are limited to objects created by the exact pending migration", () => {
+  const known = getPendingMigrationSchemaExemptions(new Set(["0060_test_data_retention_markers"]));
+  assert.deepEqual([...known.columns].sort(), ["autonomous_runs.is_test", "campaigns.is_test"]);
+  assert.deepEqual([...known.indexes].sort(), ["autonomous_runs_test_created_idx", "campaigns_test_created_idx"]);
+
+  const unknown = getPendingMigrationSchemaExemptions(new Set(["0088_unreviewed_schema_change"]));
+  assert.equal(unknown.columns.size, 0);
+  assert.equal(unknown.indexes.size, 0);
 });
