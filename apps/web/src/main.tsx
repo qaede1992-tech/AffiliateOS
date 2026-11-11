@@ -127,7 +127,7 @@ function App() {
     }, { rootMargin: "160px" });
     observer.observe(section);
     return () => observer.disconnect();
-  }, []);
+  }, [data !== null]);
 
   const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
