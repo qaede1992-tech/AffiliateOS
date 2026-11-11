@@ -194,7 +194,7 @@ export class CampaignOrchestrator {
           }
           content.push(await this.attachProductMediaIfAvailable(reusable, liveProduct));
         } else {
-          const generated = this.contentGenerator.generate({ product: input.product, offer: executionOffer, opportunity: input.opportunity, platform });
+          const generated = this.contentGenerator.generate({ product: liveProduct, offer: executionOffer, opportunity: input.opportunity, platform });
           let generatedCaption = typeof generated.caption === "string" ? generated.caption : "";
           const referenceNumber = productReferenceNumber(liveProduct);
           if (referenceNumber && !generatedCaption.includes(`Nomor produk: ${referenceNumber}`)) {

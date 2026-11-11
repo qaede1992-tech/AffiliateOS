@@ -193,6 +193,28 @@ describe("campaign orchestrator", () => {
     assert.equal(mediaAssets.assets[0]?.reference, `affiliate-media/products/${product.id}/verified-hash.mp4`);
   });
 
+  it("generates new campaign copy from the revalidated live product snapshot", async () => {
+    const campaigns = new StubCampaigns();
+    const content = new StubContent();
+    const liveProduct: Product = {
+      ...product,
+      name: "Updated Serum Name",
+      description: "Updated product description"
+    };
+    content.validateProductForPublication = async () => liveProduct;
+
+    const result = await new CampaignOrchestrator(
+      campaigns as never,
+      new StubTracking() as never,
+      content as never
+    ).execute({ opportunity, offer, product, platforms: ["tiktok"] });
+
+    assert.equal(result.content[0]?.title, liveProduct.name);
+    assert.match(result.content[0]?.caption ?? "", /Updated Serum Name/);
+    assert.match(result.content[0]?.script ?? "", /Updated Serum Name/);
+    assert.match(result.content[0]?.script ?? "", /Updated product description/);
+  });
+
   it("connects a selected opportunity to campaign, tracking, and platform-specific content", async () => {
     const content = new StubContent();
     const result = await new CampaignOrchestrator(new StubCampaigns() as never, new StubTracking() as never, content as never).execute({ opportunity, offer, product, audience: ["skincare"], platforms: ["tiktok", "instagram", "tiktok"] });
