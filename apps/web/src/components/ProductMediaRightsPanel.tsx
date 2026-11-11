@@ -15,6 +15,8 @@ const safeEvidenceUrl = (value: string | null): string | undefined => { try { co
 
 export function ProductMediaRightsPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [panelVisible, setPanelVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
@@ -30,6 +32,18 @@ export function ProductMediaRightsPanel() {
   const productSelectionSequence = useRef(0);
 
   useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setPanelVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!panelVisible) return;
     let active = true;
     api.me().then(async (user) => {
       if (!active) return;
@@ -43,7 +57,7 @@ export function ProductMediaRightsPanel() {
       if (active) setError(requestError instanceof Error ? requestError.message : "Tidak dapat memeriksa hak akses admin.");
     }).finally(() => { if (active) setCheckingRole(false); });
     return () => { active = false; };
-  }, []);
+  }, [panelVisible]);
 
   const loadAssets = async (selectedProductId: string) => {
     const requestId = ++requestSequence.current;
@@ -89,7 +103,7 @@ export function ProductMediaRightsPanel() {
     setProductId(selectedProductId);
   };
 
-  useEffect(() => { if (isAdmin && productId) void loadAssets(productId); }, [isAdmin, productId]);
+  useEffect(() => { if (panelVisible && isAdmin && productId) void loadAssets(productId); }, [panelVisible, isAdmin, productId]);
 
   const updateForm = (assetId: string, field: keyof ReviewForm, value: string) => {
     setForms((current) => ({ ...current, [assetId]: { ...(current[assetId] ?? initialForm()), [field]: value } }));
@@ -134,7 +148,7 @@ export function ProductMediaRightsPanel() {
     } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
-  if (checkingRole) return <section className="analytics-section"><p className="empty">Memeriksa akses admin…</p></section>;
+  if (checkingRole) return <section className="analytics-section" ref={panelRef}><p className="empty">Memeriksa akses admin…</p></section>;
   if (!isAdmin) return null;
 
   return (
