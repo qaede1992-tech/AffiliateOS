@@ -677,7 +677,7 @@ describe("autonomous cycle", () => {
     assert.equal(service.skipReason, "no_publishable_candidates");
     assert.equal(previewSelectionCalls, 1);
     assert.equal(videoIndexCalls, 0);
-    assert.equal(readinessCalls, 0);
+    assert.equal(readinessCalls, 1);
     assert.equal(runOnceCalls, 0);
     assert.equal(explorationCalls, 0);
     assert.equal(optimizationCalls, 0);
