@@ -6,22 +6,49 @@ export function classifyMigrationLedger({ trackedMigrations, appliedTimestamps }
     throw new Error("Production migration ledger is empty; refusing to run a production migration preflight.");
   }
 
-  const latestAppliedTimestamp = Math.max(...appliedTimestamps);
-  if (!Number.isSafeInteger(latestAppliedTimestamp)) {
-    throw new Error("Production migration ledger has no valid latest timestamp.");
+  // Drizzle applies entries in journal order. Do not infer the applied prefix
+  // from numeric timestamps: historical entries have been inserted with
+  // non-monotonic `when` values, so a missing middle entry can have a timestamp
+  // greater than a later applied entry.
+  const journalIndexByTimestamp = new Map();
+  for (const [index, migration] of trackedMigrations.entries()) {
+    const timestamp = Number(migration.when);
+    if (!Number.isSafeInteger(timestamp)) {
+      throw new Error(`Migration ${migration.tag} has an invalid timestamp: ${migration.when}.`);
+    }
+    if (journalIndexByTimestamp.has(timestamp)) {
+      throw new Error(`Journal timestamp ${timestamp} is duplicated.`);
+    }
+    journalIndexByTimestamp.set(timestamp, index);
   }
 
+  const appliedIndexes = [];
+  for (const timestamp of appliedTimestamps) {
+    const index = journalIndexByTimestamp.get(Number(timestamp));
+    if (index === undefined) {
+      throw new Error(`Production migration ledger contains timestamp ${timestamp}, which is absent from the checked-out journal.`);
+    }
+    appliedIndexes.push(index);
+  }
+
+  const latestAppliedIndex = Math.max(...appliedIndexes);
+  const latestAppliedTimestamp = Number(trackedMigrations[latestAppliedIndex].when);
   const missingMigrations = trackedMigrations.filter(
     (migration) => !appliedTimestamps.has(Number(migration.when))
   );
   const pendingMigrations = missingMigrations.filter(
-    (migration) => Number(migration.when) > latestAppliedTimestamp
+    (migration) => journalIndexByTimestamp.get(Number(migration.when)) > latestAppliedIndex
   );
   const historicalMissingMigrations = missingMigrations.filter(
-    (migration) => Number(migration.when) <= latestAppliedTimestamp
+    (migration) => journalIndexByTimestamp.get(Number(migration.when)) <= latestAppliedIndex
   );
 
-  return { pendingMigrations, historicalMissingMigrations, latestAppliedTimestamp };
+  return {
+    pendingMigrations,
+    historicalMissingMigrations,
+    latestAppliedIndex,
+    latestAppliedTimestamp
+  };
 }
 
 export function findCompensatedHistoricalMigrationGaps({
