@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
 
@@ -15,6 +15,8 @@ export function ProductMediaIntakePanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [panelVisible, setPanelVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -32,7 +34,20 @@ export function ProductMediaIntakePanel() {
     }
   };
 
-  useEffect(() => { void loadProducts(); }, []);
+  useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setPanelVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (panelVisible) void loadProducts();
+  }, [panelVisible]);
 
   const selectedProduct = products.find((product) => product.id === selectedId);
   const missingMediaCount = products.filter((product) => !product.imageUrl && !product.videoUrl).length;
@@ -121,7 +136,7 @@ export function ProductMediaIntakePanel() {
   };
 
   return (
-    <article className="panel shopee-import-panel" id="product-media-intake">
+    <article ref={panelRef} className="panel shopee-import-panel" id="product-media-intake">
       <div className="panel-heading">
         <div><p className="eyebrow">Kelengkapan katalog</p><h3>Media Produk</h3></div>
         <span className="badge">{missingMediaCount} tanpa media</span>
