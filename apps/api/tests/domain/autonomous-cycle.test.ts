@@ -9,7 +9,6 @@ describe("autonomous cycle", () => {
     const candidates = ["selected-image", "media-rejected"].map((id) => ({ product: { id } as never, offers: [{} as never] }));
     const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
-    let videoLookupCount = 0;
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean; requirePublishableVideo?: boolean }) {
         if (input.requirePublishableMedia === true) {
@@ -83,8 +82,14 @@ describe("autonomous cycle", () => {
           }]
         };
       },
-      async listPublishableMediaProductIds() { return [product.id]; },
-      async listVideoProductIds() { return []; },
+      async getPublicationReadinessSnapshot() {
+        return {
+          publishableMediaProductIds: [product.id],
+          publishableVideoProductIds: [],
+          storedVideoProductIds: [],
+          mediaReadinessScores: { [product.id]: 85 }
+        };
+      },
       async generatePromoVideo() { return { generated: false }; }
     };
     const logs: string[] = [];
@@ -596,10 +601,14 @@ describe("autonomous cycle", () => {
     } as unknown as AutonomousExecutionService;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { return []; },
-      async listPublishableVideoProductIds() { return []; },
-      async listMediaReadinessScores() { return { [product.id]: 0 }; },
-      async listVideoProductIds() { return []; }
+      async getPublicationReadinessSnapshot() {
+        return {
+          publishableMediaProductIds: [],
+          publishableVideoProductIds: [],
+          storedVideoProductIds: [],
+          mediaReadinessScores: { [product.id]: 0 }
+        };
+      }
     };
     const evidenceRepository = {
       async saveMany(records: Array<Record<string, unknown>>) { saved.push(...records); },
@@ -648,10 +657,15 @@ describe("autonomous cycle", () => {
     let readinessCalls = 0;
     const discovery = {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
-      async listPublishableMediaProductIds() { return []; },
-      async listPublishableVideoProductIds() { videoIndexCalls += 1; return []; },
-      async listVideoProductIds() { videoIndexCalls += 1; return []; },
-      async listMediaReadinessScores() { readinessCalls += 1; return { [product.id]: 0 }; }
+      async getPublicationReadinessSnapshot() {
+        readinessCalls += 1;
+        return {
+          publishableMediaProductIds: [],
+          publishableVideoProductIds: [],
+          storedVideoProductIds: [],
+          mediaReadinessScores: { [product.id]: 0 }
+        };
+      }
     };
     const exploration = { async run() { explorationCalls += 1; return undefined; } };
     const optimization = { async run() { optimizationCalls += 1; return undefined; } };
