@@ -114,9 +114,10 @@ export function ProductMediaRightsPanel() {
       if (selectionRequestId !== productSelectionSequence.current) return;
       setAudits((current) => ({ ...current, [asset.id]: result.data }));
     } catch (requestError) {
+      // A failed audit read is not an empty history. Leave it uncached so the
+      // administrator can retry by reopening the history disclosure.
       if (selectionRequestId === productSelectionSequence.current) {
         setError(requestError instanceof Error ? requestError.message : "Riwayat hak media tidak dapat dimuat.");
-        setAudits((current) => ({ ...current, [asset.id]: [] }));
       }
     } finally {
       if (selectionRequestId === productSelectionSequence.current) {
