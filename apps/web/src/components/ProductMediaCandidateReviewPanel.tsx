@@ -32,7 +32,7 @@ export function ProductMediaCandidateReviewPanel() {
     }, { rootMargin: "160px" });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [checkingRole]);
 
   useEffect(() => {
     if (!panelVisible) return;
@@ -139,7 +139,7 @@ export function ProductMediaCandidateReviewPanel() {
   if (!isAdmin) return null;
 
   return (
-    <section className="panel product-media-candidate-panel">
+    <section className="panel product-media-candidate-panel" ref={panelRef}>
       <div className="panel-heading">
         <div><p className="eyebrow">Product media governance</p><h3>Review kandidat media</h3></div>
         <span>{candidates.length} kandidat</span>
