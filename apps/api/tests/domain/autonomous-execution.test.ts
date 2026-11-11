@@ -404,6 +404,38 @@ describe("AutonomousExecutionService", () => {
     );
   });
 
+  it("uses latest-only feedback only when explicitly requested for discovery previews", async () => {
+    const historyModes: Array<string | undefined> = [];
+    const feedback = {
+      getSignals: async (context?: { observationKey?: string; historyMode?: "latest" | "full" }) => {
+        historyModes.push(context?.historyMode);
+        return new Map();
+      }
+    };
+    const service = new AutonomousExecutionService(
+      new AutonomousOpportunitySelector(),
+      {} as CampaignOrchestrator,
+      feedback
+    );
+
+    await service.previewSelection({
+      candidates: [],
+      idempotencyNamespace: "discovery-preview",
+      feedbackHistoryMode: "latest"
+    });
+    await service.previewSelection({
+      candidates: [],
+      idempotencyNamespace: "media-ready-preview",
+      feedbackHistoryMode: "full"
+    });
+    await service.previewSelection({
+      candidates: [],
+      idempotencyNamespace: "default-preview"
+    });
+
+    assert.deepEqual(historyModes, ["latest", "full", "full"]);
+  });
+
   it("fails a selected opportunity when its offer cannot be resolved", async () => {
     const selector = {
       select: () => ({ selected: [opportunity], rejected: [] })

@@ -80,19 +80,19 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
 
   async getSignals(context: AutonomousFeedbackContext = {}): Promise<Map<string, OpportunityPerformanceSignal>> {
     const observationKey = context.observationKey?.trim();
-    // A cycle performs preliminary, media-ready, and final selection with the same
-    // observation namespace. Reuse one immutable feedback snapshot across those
-    // passes instead of rereading the same 30-day history each time.
+    // A discovery-only latest snapshot must never satisfy a later authoritative
+    // full-history selection in the same cycle.
     if (!observationKey?.startsWith("autonomous-cycle:")) return this.loadSignals(context);
+    const cacheKey = observationKey + ":" + (context.historyMode ?? "full");
 
     const now = this.now().getTime();
     for (const [key, entry] of this.observationCache) {
       if (entry.expiresAt <= now) this.observationCache.delete(key);
     }
-    const cached = this.observationCache.get(observationKey);
+    const cached = this.observationCache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
-      this.observationCache.delete(observationKey);
-      this.observationCache.set(observationKey, cached);
+      this.observationCache.delete(cacheKey);
+      this.observationCache.set(cacheKey, cached);
       return cached.result;
     }
 
@@ -100,10 +100,10 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       expiresAt: Number.POSITIVE_INFINITY,
       result: this.loadSignals(context)
     };
-    this.observationCache.set(observationKey, entry);
+    this.observationCache.set(cacheKey, entry);
     while (this.observationCache.size > 32) {
       const oldestKey = this.observationCache.keys().next().value as string | undefined;
-      if (!oldestKey || oldestKey === observationKey) break;
+      if (!oldestKey || oldestKey === cacheKey) break;
       this.observationCache.delete(oldestKey);
     }
 
@@ -112,7 +112,7 @@ export class AutonomousAnalyticsFeedbackProvider implements AutonomousFeedbackPr
       entry.expiresAt = this.now().getTime() + 20 * 60_000;
       return result;
     } catch (error) {
-      if (this.observationCache.get(observationKey) === entry) this.observationCache.delete(observationKey);
+      if (this.observationCache.get(cacheKey) === entry) this.observationCache.delete(cacheKey);
       throw error;
     }
   }
