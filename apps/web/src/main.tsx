@@ -280,7 +280,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
 
         <WorkflowPanel />
 
-        <IntegrationSetupPanel />
+        <IntegrationSetupPanel initialProviders={data.marketplaceProviders} initialConnections={data.marketplaceConnections} initialAffiliates={data.affiliates} />
 
         <section className="workspace-grid">
           <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={loadDashboard} />
