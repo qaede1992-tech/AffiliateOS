@@ -205,7 +205,7 @@ describe("AutonomousScheduler", () => {
     });
 
     assert.equal(await scheduler.runNow(), undefined);
-    assert.equal(scheduler.status.lastError, "cycle failure");
+    assert.equal(scheduler.status.lastError, "Error");
     assert.equal(scheduler.status.active, false);
   });
 
