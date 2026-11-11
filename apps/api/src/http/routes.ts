@@ -378,6 +378,26 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     }
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
+    const joinedRows = await services.tracking.listPublicShopRows();
+    if (joinedRows) {
+      const seen = new Set<string>();
+      const items = joinedRows.flatMap(({ product, offer, trackingLink }) => {
+        if (seen.has(product.id)) return [];
+        seen.add(product.id);
+        return [{
+          id: product.id,
+          referenceNumber: product.referenceNumber,
+          name: product.name,
+          category: product.category,
+          priceCents: offer.priceCents ?? product.priceCents,
+          currency: offer.currency ?? product.currency,
+          ratingMilli: product.ratingMilli,
+          reviewCount: product.reviewCount,
+          trackingCode: trackingLink.code
+        }];
+      });
+      return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
+    }
     const [products, offers, trackingLinks] = await Promise.all([
       services.marketplace.listProducts(),
       services.marketplace.listAffiliateOffers(),

@@ -88,6 +88,7 @@ export class TrackingService {
     if (campaignId) await this.getCampaign(campaignId);
     return campaignId ? this.links.listByCampaign(campaignId) : this.links.list();
   }
+  async listPublicShopRows() { return this.links.listPublicShopRows?.(); }
   private async getCampaign(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
   async create(input: CreateTrackingLinkRequest) {
     const offer = await this.affiliateOffers.findById(input.affiliateOfferId);
