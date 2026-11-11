@@ -29,6 +29,8 @@ export interface AutonomousFeedbackMemoryRepository {
   latestByProduct(productId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
   latestByProductAndMarketplace(productId: string, marketplaceId: string): Promise<AutonomousFeedbackSnapshot | undefined>;
   recentByProductAndMarketplace?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;
+  /** Returns only the window anchors and recovery tail needed for feedback evaluation. */
+  feedbackEvaluationHistory?(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]>;
   recoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
   previousRecoveryEpisodeAnalytics?(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined>;
 }
@@ -59,6 +61,10 @@ export class InMemoryAutonomousFeedbackMemoryRepository implements AutonomousFee
     return [...this.snapshots.values()]
       .filter((snapshot) => snapshot.productId === productId && snapshot.marketplaceId === marketplaceId && snapshot.observedAt >= since)
       .sort((left, right) => left.observedAt.localeCompare(right.observedAt) || left.id.localeCompare(right.id));
+  }
+
+  async feedbackEvaluationHistory(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]> {
+    return this.recentByProductAndMarketplace(productId, marketplaceId, since);
   }
 
   async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<RecoveryEpisodeAnalytics | undefined> {
