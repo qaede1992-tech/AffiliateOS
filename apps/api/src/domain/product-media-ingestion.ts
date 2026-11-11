@@ -169,6 +169,12 @@ export class ProductMediaIngestionService {
         if (candidate.provenance && this.assets.findBySourceCandidateId) {
           const existingCandidateAsset = await this.assets.findBySourceCandidateId(candidate.provenance.candidateId);
           if (existingCandidateAsset) {
+            // A provider candidate is product-scoped. Never let a stale or mismatched
+            // provenance reference make another product's asset appear reusable here.
+            if (existingCandidateAsset.productId !== input.productId) {
+              skipped.push({ url: candidate.url, reason: "candidate_asset_product_mismatch" });
+              continue;
+            }
             stored.push(existingCandidateAsset);
             continue;
           }
