@@ -1,4 +1,4 @@
-import { desc, eq, and, gte } from "drizzle-orm";
+import { desc, eq, and, gte, sql } from "drizzle-orm";
 import type { AutonomousFeedbackMemoryRepository, AutonomousFeedbackSnapshot } from "../domain/autonomous-feedback-memory.js";
 import { autonomousFeedbackSnapshots } from "./schema.js";
 
@@ -111,6 +111,80 @@ export class DrizzleAutonomousFeedbackMemoryRepository implements AutonomousFeed
       .where(and(eq(autonomousFeedbackSnapshots.productId, productId), eq(autonomousFeedbackSnapshots.marketplaceId, marketplaceId), gte(autonomousFeedbackSnapshots.observedAt, since)))
       .orderBy(autonomousFeedbackSnapshots.observedAt, autonomousFeedbackSnapshots.id);
     return rows.map((row: SnapshotRow) => toDomain(row));
+  }
+
+  async feedbackEvaluationHistory(productId: string, marketplaceId: string, since: string): Promise<AutonomousFeedbackSnapshot[]> {
+    const sinceMs = Date.parse(since);
+    if (!Number.isFinite(sinceMs)) throw new Error("Feedback history cutoff must be a valid timestamp.");
+    const since7d = new Date(sinceMs + 23 * 24 * 60 * 60_000).toISOString();
+    const since24h = new Date(sinceMs + 29 * 24 * 60 * 60_000).toISOString();
+    const result = await this.db.execute(sql`
+      WITH history AS (
+        SELECT
+          id,
+          observation_key AS "observationKey",
+          product_id AS "productId",
+          marketplace_id AS "marketplaceId",
+          click_count AS "clickCount",
+          conversion_count AS "conversionCount",
+          attributed_commission_cents AS "attributedCommissionCents",
+          commission_per_click_cents AS "commissionPerClickCents",
+          conversion_rate AS "conversionRate",
+          adjustment,
+          anomaly,
+          anomaly_score AS "anomalyScore",
+          recovery_state AS "recoveryState",
+          recovery_clicks AS "recoveryClicks",
+          recovery_evidence_score AS "recoveryEvidenceScore",
+          recovery_quality_score AS "recoveryQualityScore",
+          recovery_policy AS "recoveryPolicy",
+          recovery_episode_id AS "recoveryEpisodeId",
+          observed_at AS "observedAt"
+        FROM public.autonomous_feedback_snapshots
+        WHERE product_id = ${productId}
+          AND marketplace_id = ${marketplaceId}
+          AND observed_at >= ${since}
+      ),
+      last_halt AS (
+        SELECT id, "observedAt"
+        FROM history
+        WHERE anomaly = 'halt'
+        ORDER BY "observedAt" DESC, id DESC
+        LIMIT 1
+      ),
+      selected AS (
+        (SELECT * FROM history ORDER BY "observedAt" ASC, id ASC LIMIT 1)
+        UNION ALL
+        (SELECT * FROM history WHERE "observedAt" >= ${since7d} ORDER BY "observedAt" ASC, id ASC LIMIT 1)
+        UNION ALL
+        (SELECT * FROM history WHERE "observedAt" >= ${since24h} ORDER BY "observedAt" ASC, id ASC LIMIT 1)
+        UNION ALL
+        (SELECT * FROM history ORDER BY "observedAt" DESC, id DESC LIMIT 1)
+        UNION ALL
+        (SELECT * FROM history WHERE anomaly = 'halt' ORDER BY "observedAt" DESC, id DESC LIMIT 1)
+        UNION ALL
+        (
+          SELECT h.*
+          FROM history h
+          JOIN last_halt l ON h."recoveryEpisodeId" = l.id AND h."recoveryState" = 'recovered'
+          ORDER BY h."observedAt" ASC, h.id ASC
+          LIMIT 1
+        )
+        UNION ALL
+        (
+          SELECT h.*
+          FROM history h
+          CROSS JOIN last_halt l
+          WHERE (h."observedAt", h.id) > (l."observedAt", l.id)
+          ORDER BY h."observedAt" DESC, h.id DESC
+          LIMIT 3
+        )
+      )
+      SELECT DISTINCT ON (id) *
+      FROM selected
+      ORDER BY id, "observedAt" ASC
+    `);
+    return result.rows.map((row: SnapshotRow) => toDomain(row));
   }
 
   async recoveryEpisodeAnalytics(productId: string, marketplaceId: string, episodeId: string): Promise<import("../domain/autonomous-feedback-memory.js").RecoveryEpisodeAnalytics | undefined> {
