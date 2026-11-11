@@ -52,7 +52,7 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
       return;
     }
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+      if (entries.length > 0) setPanelVisible(entries[entries.length - 1]!.isIntersecting);
     }, { rootMargin: "120px" });
     observer.observe(element);
     return () => observer.disconnect();
