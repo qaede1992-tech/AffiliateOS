@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { findDuplicateSupabaseMigrationNames } from "./supabase-migration-ledger-audit.mjs";
+import { classifyMigrationLedger } from "./migration-ledger-preflight.mjs";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -16,6 +17,8 @@ if (!Array.isArray(trackedMigrations) || trackedMigrations.length === 0) {
 }
 
 const errors = [];
+const allowPendingSuffix = process.argv.includes("--allow-pending-suffix");
+let pendingSuffixTags = [];
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
@@ -426,6 +429,11 @@ try {
     const missingMigrations = [...migrationByTimestamp.entries()]
       .filter(([timestamp]) => !appliedTimestamps.has(timestamp))
       .map(([, migration]) => migration.tag);
+    const { pendingMigrations, historicalMissingMigrations } = classifyMigrationLedger({
+      trackedMigrations,
+      appliedTimestamps
+    });
+    pendingSuffixTags = pendingMigrations.map((migration) => migration.tag);
 
     // Production's audited ledger has historical gaps for 0056/0057. Accept
     // those two exact gaps only when the forward-only 0059 reconciliation is
@@ -511,19 +519,24 @@ try {
       trackedMigrationHashes.get(forwardRepairTimestamp)?.hashes.has(forwardRepairLedgerRow.hash)
     );
     const compensatedTags = findCompensatedMigrationGaps({
-      missingMigrations,
+      missingMigrations: historicalMissingMigrations.map((migration) => migration.tag),
       compensationTimestamp,
       appliedTimestamps,
       schemaObjectsPresent: schemaObjectsPresent && forwardRepairHashMatches,
       forwardRepairTimestamp
     });
 
-    const uncompensatedMigrations = missingMigrations.filter((tag) => !compensatedTags.has(tag));
+    const missingMigrationsToReject = [
+      ...historicalMissingMigrations.map((migration) => migration.tag),
+      ...(allowPendingSuffix ? [] : pendingMigrations.map((migration) => migration.tag))
+    ];
+    const uncompensatedMigrations = missingMigrationsToReject.filter((tag) => !compensatedTags.has(tag));
     if (uncompensatedMigrations.length > 0) {
       errors.push(`Journal migrations missing from the database ledger without an approved compensation: ${uncompensatedMigrations.join(", ")}.`);
     }
 
-    const expectedLedgerRows = trackedMigrations.length - compensatedTags.size;
+    const acceptedPendingCount = allowPendingSuffix ? pendingMigrations.length : 0;
+    const expectedLedgerRows = trackedMigrations.length - compensatedTags.size - acceptedPendingCount;
     if (migrationRows.length !== expectedLedgerRows) {
       errors.push(`Drizzle migration ledger contains ${migrationRows.length} rows; expected ${expectedLedgerRows} rows for ${trackedMigrations.length} journal entries and ${compensatedTags.size} explicitly compensated historical gaps.`);
     }
@@ -561,4 +574,10 @@ if (errors.length > 0) {
   throw new Error(`PostgreSQL schema and Drizzle migration ledger verification failed:\n- ${errors.join("\n- ")}`);
 }
 
-console.log(`PostgreSQL schema and Drizzle migration ledger verified (${trackedMigrations.length} migrations; timestamp-based hash matching passed).`);
+if (allowPendingSuffix) {
+  console.log(
+    `PostgreSQL schema and Drizzle migration preflight verified (${trackedMigrations.length} journal entries; ${pendingSuffixTags.length} newer pending migration(s) allowed after full schema-contract verification).`
+  );
+} else {
+  console.log(`PostgreSQL schema and Drizzle migration ledger verified (${trackedMigrations.length} migrations; timestamp-based hash matching passed).`);
+}
