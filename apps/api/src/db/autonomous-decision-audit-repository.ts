@@ -34,6 +34,69 @@ export function hasSameDecisionSnapshot(
     && stableJson(previous.recovery) === stableJson(audit.recovery);
 }
 
+async function loadCampaignAnalytics(db: DatabaseExecutor, campaignIds: string[]): Promise<Map<string, AutonomousDecisionOutcomeAnalytics>> {
+  const uniqueCampaignIds = [...new Set(campaignIds)];
+  const analyticsByCampaign = new Map<string, AutonomousDecisionOutcomeAnalytics>();
+  if (!uniqueCampaignIds.length) return analyticsByCampaign;
+
+  const result = await db.execute(sql`
+    WITH target_campaigns AS (
+      SELECT id FROM campaigns
+      WHERE id IN (${sql.join(uniqueCampaignIds.map((id) => sql`${id}::uuid`), sql`, `)})
+    ),
+    click_stats AS (
+      SELECT tl.campaign_id, COUNT(*) AS click_count
+      FROM target_campaigns tc
+      JOIN tracking_links tl ON tl.campaign_id = tc.id
+      JOIN clicks cl ON cl.tracking_link_id = tl.id
+      GROUP BY tl.campaign_id
+    ),
+    attribution_stats AS (
+      SELECT tl.campaign_id,
+        COUNT(*) AS attributed_conversion_count,
+        COALESCE(SUM(cv.amount_cents), 0) AS attributed_revenue_cents
+      FROM target_campaigns tc
+      JOIN tracking_links tl ON tl.campaign_id = tc.id
+      JOIN conversion_attributions ca ON ca.tracking_link_id = tl.id
+      JOIN conversions cv ON cv.id = ca.conversion_id
+      WHERE cv.status <> 'rejected'
+      GROUP BY tl.campaign_id
+    ),
+    commission_stats AS (
+      SELECT tl.campaign_id,
+        COALESCE(SUM(cm.amount_cents), 0) AS attributed_commission_cents
+      FROM target_campaigns tc
+      JOIN tracking_links tl ON tl.campaign_id = tc.id
+      JOIN conversion_attributions ca ON ca.tracking_link_id = tl.id
+      JOIN conversions cv ON cv.id = ca.conversion_id
+      JOIN commissions cm ON cm.conversion_id = cv.id
+      WHERE cv.status <> 'rejected'
+      GROUP BY tl.campaign_id
+    )
+    SELECT tc.id AS campaign_id,
+      COALESCE(cs.click_count, 0) AS click_count,
+      COALESCE(ast.attributed_conversion_count, 0) AS attributed_conversion_count,
+      COALESCE(ast.attributed_revenue_cents, 0) AS attributed_revenue_cents,
+      COALESCE(cms.attributed_commission_cents, 0) AS attributed_commission_cents
+    FROM target_campaigns tc
+    LEFT JOIN click_stats cs ON cs.campaign_id = tc.id
+    LEFT JOIN attribution_stats ast ON ast.campaign_id = tc.id
+    LEFT JOIN commission_stats cms ON cms.campaign_id = tc.id
+  `);
+  for (const row of rowsOf(result)) {
+    const clickCount = Number(row.click_count ?? 0);
+    const attributedConversionCount = Number(row.attributed_conversion_count ?? 0);
+    analyticsByCampaign.set(String(row.campaign_id), {
+      clickCount,
+      attributedConversionCount,
+      attributedRevenueCents: Number(row.attributed_revenue_cents ?? 0),
+      attributedCommissionCents: Number(row.attributed_commission_cents ?? 0),
+      conversionRate: clickCount === 0 ? 0 : attributedConversionCount / clickCount
+    });
+  }
+  return analyticsByCampaign;
+}
+
 export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecisionAuditRepository, AutonomousDecisionAuditReader {
   constructor(private readonly db: DatabaseExecutor) {}
 
@@ -54,32 +117,7 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
 
     const campaignIds = rows.map((row: any) => row.outcomeCampaignId)
       .filter((id: unknown): id is string => typeof id === "string");
-    const analyticsByCampaign = new Map<string, AutonomousDecisionOutcomeAnalytics>();
-
-    if (campaignIds.length) {
-      const result = await this.db.execute(sql`
-        SELECT
-          campaigns.id AS campaign_id,
-          (SELECT COUNT(*) FROM clicks cl JOIN tracking_links tl ON tl.id = cl.tracking_link_id WHERE tl.campaign_id = campaigns.id) AS click_count,
-          (SELECT COUNT(*) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_conversion_count,
-          (SELECT COALESCE(SUM(cv.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_revenue_cents,
-          (SELECT COALESCE(SUM(cm.amount_cents), 0) FROM conversion_attributions ca JOIN conversions cv ON cv.id = ca.conversion_id JOIN commissions cm ON cm.conversion_id = cv.id JOIN tracking_links tl ON tl.id = ca.tracking_link_id WHERE tl.campaign_id = campaigns.id AND cv.status <> 'rejected') AS attributed_commission_cents
-        FROM campaigns
-        WHERE campaigns.id IN (${sql.join(campaignIds.map((id: string) => sql`${id}::uuid`), sql`, `)})
-      `);
-
-      for (const row of rowsOf(result)) {
-        const clickCount = Number(row.click_count ?? 0);
-        const attributedConversionCount = Number(row.attributed_conversion_count ?? 0);
-        analyticsByCampaign.set(String(row.campaign_id), {
-          clickCount,
-          attributedConversionCount,
-          attributedRevenueCents: Number(row.attributed_revenue_cents ?? 0),
-          attributedCommissionCents: Number(row.attributed_commission_cents ?? 0),
-          conversionRate: clickCount === 0 ? 0 : attributedConversionCount / clickCount
-        });
-      }
-    }
+    const analyticsByCampaign = await loadCampaignAnalytics(this.db, campaignIds);
 
     return rows.map((row: any) => ({
       cycleId: row.cycleId,
