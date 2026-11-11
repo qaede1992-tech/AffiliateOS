@@ -24,7 +24,9 @@ export interface DatabasePersistence {
 }
 
 export function createDatabasePersistence(connectionString: string): DatabasePersistence {
-  const pool = new Pool({ connectionString });
+  // Retain idle clients across short gaps between API requests and background work.
+  // This reduces Supavisor reconnect churn without changing pool size or query behavior.
+  const pool = new Pool({ connectionString, idleTimeoutMillis: 120_000 });
   const db = drizzle(pool);
   return {
     repositories: createPostgresRepositories(db),
