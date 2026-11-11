@@ -11,6 +11,7 @@ import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.
 import { createHash, randomUUID } from "node:crypto";
 import { buildProductMediaSearchQuery, getOpenverseHttpFailureDetails, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
 import { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
+import { assertOpenverseAvailable, recordOpenverseFailure, recordOpenverseSuccess } from "./openverse-provider-circuit.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 import type { ProductMediaDiscoveryAttemptRepository, ProductMediaDiscoveryOutcome } from "./product-media-discovery-attempt.js";
 
@@ -223,10 +224,13 @@ export class ProductMediaDiscoveryRunner {
           let discoveryFailed = false;
           try {
             try {
+              assertOpenverseAvailable();
               discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
+              recordOpenverseSuccess();
             } catch (error) {
               openverseFailure = safeErrorType(error);
               openverseFailureDetails = getOpenverseHttpFailureDetails(error);
+              recordOpenverseFailure(openverseFailureDetails);
               discoveryProvider = "wikimedia_commons";
               console.warn(JSON.stringify({
                 event: "product_media_catalog_provider_fallback",
