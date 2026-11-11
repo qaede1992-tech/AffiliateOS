@@ -10,6 +10,30 @@ function rowsOf(result: unknown): Record<string, unknown>[] {
   return Array.isArray(rows) ? rows as Record<string, unknown>[] : [];
 }
 
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** Compare only persisted decision fields; cycle/id/time are intentionally excluded. */
+export function hasSameDecisionSnapshot(
+  audit: AutonomousDecisionAudit,
+  previous: Record<string, unknown>
+): boolean {
+  return previous.selected === false
+    && Number(previous.score) === audit.score
+    && (previous.selectionMode ?? null) === (audit.selectionMode ?? null)
+    && (previous.category ?? null) === (audit.category ?? null)
+    && stableJson(previous.policy) === stableJson(audit.policy)
+    && stableJson(previous.reasons) === stableJson(audit.reasons)
+    && stableJson(previous.audienceSegments) === stableJson(audit.audienceSegments)
+    && stableJson(previous.recovery) === stableJson(audit.recovery);
+}
+
 export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecisionAuditRepository, AutonomousDecisionAuditReader {
   constructor(private readonly db: DatabaseExecutor) {}
 
@@ -87,7 +111,69 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
 
   async saveMany(audits: AutonomousDecisionAudit[]): Promise<void> {
     if (!audits.length) return;
-    await this.db.insert(autonomousDecisionAudits).values(audits.map((audit) => ({
+
+    // Rejected decisions are often re-evaluated unchanged across many work events.
+    // Keep the latest distinct decision state instead of inserting an identical row
+    // for every cycle. Selected decisions are always persisted because their outcome
+    // and exploration evaluation are attached to the new audit ID.
+    const rejected = audits.filter((audit) => !audit.selected);
+    const previousByPair = new Map<string, Record<string, unknown>>();
+    if (rejected.length) {
+      const pairs = [...new Map(rejected.map((audit) => [
+        `${audit.productId}:${audit.marketplaceId}`,
+        [audit.productId, audit.marketplaceId] as const
+      ])).values()];
+      const result = await this.db.execute(sql`
+        SELECT
+          latest."auditId",
+          latest."productId",
+          latest."marketplaceId",
+          latest.selected,
+          latest."selectionMode",
+          latest.score,
+          latest.policy,
+          latest.reasons,
+          latest.category,
+          latest."audienceSegments",
+          latest.recovery
+        FROM (VALUES ${sql.join(
+          pairs.map(([productId, marketplaceId]) => sql`(${productId}::uuid, ${marketplaceId}::uuid)`),
+          sql`, `
+        )}) AS requested(product_id, marketplace_id)
+        LEFT JOIN LATERAL (
+          SELECT
+            a.id AS "auditId",
+            a.product_id AS "productId",
+            a.marketplace_id AS "marketplaceId",
+            a.selected,
+            a.selection_mode AS "selectionMode",
+            a.score,
+            a.policy,
+            a.reasons,
+            a.category,
+            a.audience_segments AS "audienceSegments",
+            a.recovery
+          FROM autonomous_decision_audits a
+          WHERE a.product_id = requested.product_id
+            AND a.marketplace_id = requested.marketplace_id
+          ORDER BY a.created_at DESC, a.id DESC
+          LIMIT 1
+        ) latest ON TRUE
+        WHERE latest."auditId" IS NOT NULL
+      `);
+      for (const row of rowsOf(result)) {
+        previousByPair.set(`${String(row.productId)}:${String(row.marketplaceId)}`, row);
+      }
+    }
+
+    const changedAudits = audits.filter((audit) => {
+      if (audit.selected) return true;
+      const previous = previousByPair.get(`${audit.productId}:${audit.marketplaceId}`);
+      return !previous || !hasSameDecisionSnapshot(audit, previous);
+    });
+    if (!changedAudits.length) return;
+
+    await this.db.insert(autonomousDecisionAudits).values(changedAudits.map((audit) => ({
       id: audit.auditId,
       cycleId: audit.cycleId,
       productId: audit.productId,
