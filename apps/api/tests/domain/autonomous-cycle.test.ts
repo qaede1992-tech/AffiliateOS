@@ -548,6 +548,7 @@ describe("autonomous cycle", () => {
           mediaReadinessScores: { [product.id]: 100 }
         };
       },
+      async listPublishableVideoProductIds() { return [product.id]; },
       async generatePromoVideo() { throw new Error("A stored publishable video must not be rendered again."); }
     };
     const service = new AutonomousCycleService(candidates, execution, undefined, undefined, undefined, undefined, discovery as never);
