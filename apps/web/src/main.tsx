@@ -249,7 +249,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           </article>
         </section>
 
-        <AutonomousObservabilityPanel />
+        <AutonomousObservabilityPanel initialStatus={autonomousStatus} />
 
         <section className="analytics-section" id="analytics">
           <div className="section-heading"><div><p className="eyebrow">Performance</p><h2>Campaign analytics</h2></div><span>{data.analytics.campaignCount} campaigns</span></div>
