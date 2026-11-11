@@ -115,7 +115,7 @@ test("admin can list pending product media candidates with provenance and unveri
 });
 
 test("admin review records an auditable identity decision without verifying publication rights", async () => {
-  const { app } = makeApp();
+  const { app, getCandidateAuditLimit } = makeApp();
   try {
     const response = await app.inject({
       method: "PATCH",
