@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 
 type DecisionAudit = {
@@ -32,8 +32,6 @@ type DecisionAudit = {
   };
 };
 
-type AutonomousRun = { id: string; idempotencyKey: string; productId: string; offerId: string; status: "accepted" | "processing" | "completed" | "failed"; attemptCount: number; campaignId?: string; lastError?: string; nextAttemptAt?: string; updatedAt: string };
-type PublisherReadiness = { platform: string; status: string; reason?: string };
 type AutonomousStatus = {
   running: boolean;
   active: boolean;
@@ -52,15 +50,15 @@ const money = (cents: number) => new Intl.NumberFormat("id-ID", {
 const shortId = (value: string) => value.slice(0, 8);
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString() : "—";
 
-export function AutonomousObservabilityPanel() {
+export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus: AutonomousStatus | null }) {
   const [audits, setAudits] = useState<DecisionAudit[]>([]);
-  const [runs, setRuns] = useState<AutonomousRun[]>([]);
-  const [readiness, setReadiness] = useState<PublisherReadiness[]>([]);
-  const [status, setStatus] = useState<AutonomousStatus | null>(null);
+  const [status, setStatus] = useState<AutonomousStatus | null>(initialStatus);
   const [selectedFilter, setSelectedFilter] = useState<"all" | "selected" | "rejected">("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sectionVisible, setSectionVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
 
   const load = async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
@@ -68,10 +66,10 @@ export function AutonomousObservabilityPanel() {
     try {
       const [auditResponse, autonomousStatus] = await Promise.all([
         api.autonomousDecisionAudits(100),
-        api.autonomousStatus()
+        background ? api.autonomousStatus() : Promise.resolve(null)
       ]);
       setAudits(auditResponse.data);
-      setStatus(autonomousStatus);
+      if (autonomousStatus) setStatus(autonomousStatus);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load autonomous observability.");
     } finally {
@@ -81,8 +79,19 @@ export function AutonomousObservabilityPanel() {
   };
 
   useEffect(() => {
-    void load();
+    const element = sectionRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setSectionVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setSectionVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (sectionVisible) void load();
+  }, [sectionVisible]);
 
   const filtered = useMemo(
     () => audits.filter((audit) => selectedFilter === "all" || (selectedFilter === "selected" ? audit.selected : !audit.selected)),
@@ -94,15 +103,13 @@ export function AutonomousObservabilityPanel() {
   const failedCount = audits.filter((audit) => audit.outcome?.status === "failed").length;
   const recoveryCount = audits.filter((audit) => audit.recovery?.recoveryState === "recovering").length;
   const haltedCount = audits.filter((audit) => audit.recovery?.anomaly === "halt").length;
-  const pendingRuns = runs.filter((run) => run.status === "accepted" || run.status === "processing").length;
-  const failedRuns = runs.filter((run) => run.status === "failed").length;
 
   if (loading) {
-    return <section className="analytics-section" id="autonomous-observability"><div className="section-heading"><div><p className="eyebrow">Decision trace</p><h2>Autonomous selection</h2></div></div><p className="empty">Loading autonomous operations...</p></section>;
+    return <section ref={sectionRef} className="analytics-section" id="autonomous-observability"><div className="section-heading"><div><p className="eyebrow">Decision trace</p><h2>Autonomous selection</h2></div></div><p className="empty">Loading autonomous operations...</p></section>;
   }
 
   return (
-    <section className="analytics-section" id="autonomous-observability">
+    <section ref={sectionRef} className="analytics-section" id="autonomous-observability">
       <div className="section-heading">
         <div>
           <p className="eyebrow">Decision trace</p>
@@ -120,13 +127,11 @@ export function AutonomousObservabilityPanel() {
         <article className="metric-card"><span>Rejected</span><strong>{rejectedCount}</strong><small>Products retained with rejection reasons</small></article>
         <article className="metric-card"><span>Outcomes</span><strong>{completedCount}/{failedCount}</strong><small>Completed / failed execution outcomes</small></article>
         <article className="metric-card"><span>Recovery</span><strong>{recoveryCount}</strong><small>{haltedCount} anomaly halt(s) in audit window</small></article>
-        <article className="metric-card"><span>Runs</span><strong>{pendingRuns}</strong><small>{failedRuns} failed persisted run(s)</small></article>
       </div>
 
       {error && <p className="error-message" role="alert">{error}</p>}
 
       <div className="autonomous-observability-status">
-        {readiness.map((item) => <div key={item.platform}><strong>{item.platform} publisher</strong><span>{item.status}{item.reason ? ` · ${item.reason}` : ""}</span></div>)}
         <div><strong>Cycle status</strong><span>{status?.running ? "scheduler running" : "scheduler stopped"}{status?.active ? " · cycle active" : ""}</span></div>
         <div><strong>Last started</strong><span>{formatDate(status?.lastStartedAt)}</span></div>
         <div><strong>Last completed</strong><span>{formatDate(status?.lastCompletedAt)}</span></div>
@@ -147,7 +152,6 @@ export function AutonomousObservabilityPanel() {
         <p className="empty">No persisted autonomous decision audits match this filter. Run a cycle after an eligible marketplace connection and bound affiliate account are configured.</p>
       ) : (
         <div className="autonomous-audit-list">
-          {runs.length > 0 && <div className="autonomous-run-summary"><strong>Execution runs</strong><span>{runs.slice(0, 8).map((run) => `${shortId(run.productId)}:${run.status} (attempt ${run.attemptCount})`).join(" · ")}</span></div>}
           {filtered.map((audit) => {
             const dataConfidence = audit.reasons.find((reason) => reason.startsWith("Data confidence:"))?.replace("Data confidence:", "").trim() ?? "unavailable";
             return (
