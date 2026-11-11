@@ -190,3 +190,47 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   );
   assert.equal(saved?.category, "Elektronik");
 });
+
+
+test("marketplace offer verification uses batched related records when repository supports it", async () => {
+  const offer = {
+    id: "00000000-0000-4000-8000-000000000051",
+    productId: "00000000-0000-4000-8000-000000000052",
+    affiliateAccountId: "00000000-0000-4000-8000-000000000053",
+    availability: "in_stock" as const,
+    availabilityMetadata: {},
+    affiliateLinkStatus: "not_generated" as const,
+    status: "active" as const,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  };
+  let batchCalls = 0;
+  const offers = {
+    async list() { throw new Error("legacy N+1 path should not run"); },
+    async findById() { return undefined; },
+    async save(entity: any) { return entity; },
+    async findByConversionOfferId() { return undefined; },
+    async findByAccountOffer() { return undefined; },
+    async listActiveByAccountAndProducts() { return []; },
+    async listVerificationDetails() {
+      batchCalls += 1;
+      return [{
+        offer,
+        account: { id: offer.affiliateAccountId, marketplaceId: connection.id, name: "Affiliate account", status: "active" as const, configuration: {}, createdAt: offer.createdAt, updatedAt: offer.updatedAt },
+        affiliate: { id: "00000000-0000-4000-8000-000000000054", name: "Affiliate", email: "affiliate@example.test", status: "active" as const, createdAt: offer.createdAt },
+        product: { id: offer.productId, referenceNumber: 1, marketplaceId: connection.id, externalProductId: "sku-batch", name: "Batch product", priceCents: 1000, currency: "IDR", reviewCount: 0, soldCount: 0, productUrl: "https://shop.example.test/p/sku-batch", status: "active" as const, createdAt: offer.createdAt, updatedAt: offer.updatedAt },
+        connection
+      }];
+    }
+  };
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), new InMemoryRepository<any>(), new InMemoryRepository<any>(), new InMemoryRepository<any>(), new InMemoryRepository<any>(), offers as any, new InMemoryRepository<any>());
+  const result = await service.listAffiliateOfferVerification();
+  assert.equal(batchCalls, 1);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].affiliateName, "Affiliate");
+  assert.equal(result[0].affiliateAccountName, "Affiliate account");
+  assert.equal(result[0].marketplaceSlug, connection.slug);
+  assert.equal(result[0].productExternalId, "sku-batch");
+  assert.equal(result[0].productName, "Batch product");
+  assert.equal(result[0].productUrl, "https://shop.example.test/p/sku-batch");
+});
