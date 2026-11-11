@@ -482,3 +482,66 @@ test("reuses a previously ingested provider candidate without downloading or upl
   assert.equal(downloads, 0);
   assert.equal(uploads, 0);
 });
+
+test("does not reuse a provider candidate asset attached to a different product", async () => {
+  const otherProductId = "0a7e5d6c-2f31-4b8a-9c10-123456789abc";
+  const candidateId = "8f2d4c5a-6b7e-4f90-8a1b-2c3d4e5f6071";
+  const url = "https://upload.wikimedia.org/existing.mp4";
+  const existing = {
+    id: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001",
+    productId: otherProductId
+  } as never;
+  let lookups = 0;
+  let downloads = 0;
+  let uploads = 0;
+  const repository = {
+    findBySourceCandidateId: async (id: string) => {
+      lookups += 1;
+      assert.equal(id, candidateId);
+      return existing;
+    },
+    findByProductAndHash: async () => undefined,
+    save: async () => { throw new Error("mismatched candidate must not be saved"); }
+  } as never;
+  const storage = {
+    upload: async () => { uploads += 1; throw new Error("mismatched candidate must not upload"); }
+  } as never;
+  const fetcher = (async () => {
+    downloads += 1;
+    throw new Error("mismatched candidate must not be downloaded");
+  }) as never;
+  const service = new ProductMediaIngestionService(
+    storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher
+  );
+
+  const result = await service.ingest({
+    productId,
+    nonMediaEligibilityPassed: true,
+    candidates: [{
+      kind: "video",
+      url,
+      source: "catalog",
+      provenance: {
+        provider: "wikimedia_commons",
+        candidateId,
+        landingPageUrl: "https://commons.wikimedia.org/wiki/File:Existing.mp4",
+        title: "Existing media",
+        query: "existing product",
+        creator: null,
+        creatorUrl: null,
+        license: null,
+        licenseVersion: null,
+        licenseUrl: null,
+        sourcePublisher: "Wikimedia Commons"
+      }
+    }]
+  });
+
+  assert.deepEqual(result, {
+    stored: [],
+    skipped: [{ url, reason: "candidate_asset_product_mismatch" }]
+  });
+  assert.equal(lookups, 1);
+  assert.equal(downloads, 0);
+  assert.equal(uploads, 0);
+});
