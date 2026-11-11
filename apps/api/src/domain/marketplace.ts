@@ -35,6 +35,7 @@ export class MarketplaceService {
     return this.offers.listActiveByAccountAndProducts(affiliateAccountId, productIds);
   }
   async listAffiliateOfferVerification() {
+    if (this.offers.listVerificationRows) return this.offers.listVerificationRows();
     const offers = await this.offers.list();
     return Promise.all(offers.map(async (offer) => {
       const account = await this.accounts.findById(offer.affiliateAccountId);
