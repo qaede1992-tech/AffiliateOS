@@ -30,7 +30,7 @@ import { InMemoryAutonomousRunRepository, type AutonomousRunRepository } from ".
 import type { PublicationOperationRepository } from "./publication-operation.js";
 import { AutonomousCycleService } from "./autonomous-cycle.js";
 import { AutonomousMarketplaceCandidateProvider } from "./autonomous-marketplace-candidates.js";
-import { AutonomousScheduler } from "./autonomous-scheduler.js";
+import { AutonomousScheduler, safeAutonomousErrorType } from "./autonomous-scheduler.js";
 import { AutonomousAnalyticsFeedbackProvider } from "./autonomous-feedback.js";
 import { InMemoryAutonomousFeedbackMemoryRepository, type AutonomousFeedbackMemoryRepository } from "./autonomous-feedback-memory.js";
 import { ProviderConversionProcessor } from "./provider-conversion-processor.js";
@@ -148,10 +148,10 @@ export function createServices(repositories: RepositorySet, transactionManager: 
         }));
       },
       onError: (error) => {
+        // Database exceptions may contain SQL, bound values, or provider response details.
         console.error(JSON.stringify({
           event: "autonomous_cycle_failed",
-          error: error instanceof Error ? error.message : String(error),
-          errorChain: describeErrorChain(error)
+          errorType: safeAutonomousErrorType(error)
         }));
       }
     }
@@ -171,34 +171,3 @@ export function createInMemoryServices(): Services {
   return createServices(repositories, transactionManager);
 }
 
-
-function describeErrorChain(error: unknown): Array<Record<string, string | number | undefined>> {
-  const chain: Array<Record<string, string | number | undefined>> = [];
-  const seen = new Set<unknown>();
-  let current: unknown = error;
-  while (current && typeof current === "object" && !seen.has(current) && chain.length < 5) {
-    seen.add(current);
-    const item = current as {
-      name?: unknown;
-      message?: unknown;
-      code?: unknown;
-      detail?: unknown;
-      hint?: unknown;
-      position?: unknown;
-      cause?: unknown;
-    };
-    chain.push({
-      name: typeof item.name === "string" ? item.name : undefined,
-      message: typeof item.message === "string" ? item.message : undefined,
-      code: typeof item.code === "string" ? item.code : undefined,
-      detail: typeof item.detail === "string" ? item.detail : undefined,
-      hint: typeof item.hint === "string" ? item.hint : undefined,
-      position: typeof item.position === "string" || typeof item.position === "number" ? item.position : undefined
-    });
-    current = item.cause;
-  }
-  if (chain.length === 0) {
-    chain.push({ message: typeof error === "string" ? error : String(error) });
-  }
-  return chain;
-}
