@@ -43,6 +43,16 @@ const patch = <T>(path: string, body: unknown) => request<T>(path, { method: "PA
 const put = <T>(path: string, body: unknown) => request<T>(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const remove = (path: string) => request<void>(path, { method: "DELETE" });
 
+type AuthMeResponse = { authenticated: true; operatorId: string; role: string };
+let authMeInFlight: Promise<AuthMeResponse> | null = null;
+const getCurrentOperator = (): Promise<AuthMeResponse> => {
+  if (authMeInFlight) return authMeInFlight;
+  authMeInFlight = get<AuthMeResponse>("/api/v1/auth/me").finally(() => {
+    authMeInFlight = null;
+  });
+  return authMeInFlight;
+};
+
 export type ProductMediaRightsBasis = "explicit_permission" | "license" | "public_domain" | "user_owned" | "platform_authorization";
 export type MediaTechnicalReadinessStatus = "ready" | "review_required" | "not_ready";
 export interface MediaTechnicalReadinessCheck { key: string; status: "pass" | "fail" | "unknown"; detail: string }
@@ -95,7 +105,7 @@ export interface AffiliateOfferVerification extends AffiliateOffer {
 export const api = {
   login: (token: string) => request<{ authenticated: true; operatorId: string; role: string }>("/api/v1/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }, true),
   logout: () => post<{ authenticated: false }>("/api/v1/auth/logout", {}),
-  me: () => get<{ authenticated: true; operatorId: string; role: string }>("/api/v1/auth/me"),
+  me: getCurrentOperator,
   affiliates: () => get<ListResponse<Affiliate>>("/api/v1/affiliates"), createAffiliate: (input: CreateAffiliateRequest) => post<Affiliate>("/api/v1/affiliates", input),
   offers: () => get<ListResponse<Offer>>("/api/v1/offers"), createOffer: (input: CreateOfferRequest) => post<Offer>("/api/v1/offers", input),
   conversions: () => get<ListResponse<Conversion>>("/api/v1/conversions"), createConversion: (input: CreateConversionRequest) => post<Conversion>("/api/v1/conversions", input), commissions: () => get<ListResponse<Commission>>("/api/v1/commissions"),
