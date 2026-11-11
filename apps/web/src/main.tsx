@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type {
   Affiliate,
@@ -56,29 +56,113 @@ function App() {
   const [togglingMarketplaceSlug, setTogglingMarketplaceSlug] = useState<string | null>(null);
   const [autonomousStatus, setAutonomousStatus] = useState<{ running: boolean; active: boolean; lastStartedAt?: string; lastCompletedAt?: string; lastError?: string } | null>(null);
   const [runningAutonomousCycle, setRunningAutonomousCycle] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [marketplaceOffersLoading, setMarketplaceOffersLoading] = useState(false);
+  const [marketplaceOffersError, setMarketplaceOffersError] = useState<string | null>(null);
+  const activitySectionRef = useRef<HTMLElement | null>(null);
+  const activityLoadedRef = useRef(false);
+  const activityRequestRef = useRef<Promise<void> | null>(null);
+  const marketplaceOffersSectionRef = useRef<HTMLElement | null>(null);
+  const marketplaceOffersLoadedRef = useRef(false);
+  const marketplaceOffersRequestRef = useRef<Promise<void> | null>(null);
 
   const loadDashboard = async () => {
-    const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, affiliateOfferVerification, analytics, autonomous] = await Promise.all([
+    const [affiliates, offers, marketplaceProviders, marketplaceConnections, analytics, autonomous] = await Promise.all([
       api.affiliates(),
       api.offers(),
-      api.conversions(),
-      api.commissions(),
       api.marketplaceProviders(),
       api.marketplaceConnections(),
-      api.affiliateOfferVerification(),
       api.analyticsOverview(),
       api.autonomousStatus()
     ]);
-    setData({
+    setData((previous) => ({
       affiliates: affiliates.data,
       offers: offers.data,
-      conversions: conversions.data,
-      commissions: commissions.data,
+      conversions: previous?.conversions ?? [],
+      commissions: previous?.commissions ?? [],
       marketplaceProviders: marketplaceProviders.data,
       marketplaceConnections: marketplaceConnections.data,
-      affiliateOfferVerification: affiliateOfferVerification.data,
+      affiliateOfferVerification: previous?.affiliateOfferVerification ?? [],
       analytics
-    });
+    }));
+    setAutonomousStatus(autonomous);
+  };
+
+  const loadMarketplaceOfferVerification = () => {
+    if (marketplaceOffersLoadedRef.current) return Promise.resolve();
+    if (marketplaceOffersRequestRef.current) return marketplaceOffersRequestRef.current;
+    setMarketplaceOffersLoading(true);
+    setMarketplaceOffersError(null);
+    const request = api.affiliateOfferVerification()
+      .then((response) => {
+        setData((previous) => previous ? { ...previous, affiliateOfferVerification: response.data } : previous);
+        marketplaceOffersLoadedRef.current = true;
+      })
+      .catch((requestError: unknown) => {
+        setMarketplaceOffersError(requestError instanceof Error ? requestError.message : "Unable to load marketplace offers.");
+        throw requestError;
+      })
+      .finally(() => {
+        marketplaceOffersRequestRef.current = null;
+        setMarketplaceOffersLoading(false);
+      });
+    marketplaceOffersRequestRef.current = request;
+    return request;
+  };
+
+  const handleMarketplaceImport = async () => {
+    const hadLoadedData = marketplaceOffersLoadedRef.current;
+    const pendingRequest = marketplaceOffersRequestRef.current;
+    marketplaceOffersLoadedRef.current = false;
+    if (hadLoadedData || pendingRequest) {
+      if (pendingRequest) await pendingRequest.catch(() => undefined);
+      marketplaceOffersLoadedRef.current = false;
+      await loadMarketplaceOfferVerification();
+    }
+  };
+
+  const loadActivityData = () => {
+    if (activityLoadedRef.current) return Promise.resolve();
+    if (activityRequestRef.current) return activityRequestRef.current;
+    setActivityLoading(true);
+    setActivityError(null);
+    const request = Promise.all([api.conversions(), api.commissions()])
+      .then(([conversions, commissions]) => {
+        setData((previous) => previous ? { ...previous, conversions: conversions.data, commissions: commissions.data } : previous);
+        activityLoadedRef.current = true;
+      })
+      .catch((requestError: unknown) => {
+        setActivityError(requestError instanceof Error ? requestError.message : "Unable to load conversion activity.");
+        throw requestError;
+      })
+      .finally(() => {
+        activityRequestRef.current = null;
+        setActivityLoading(false);
+      });
+    activityRequestRef.current = request;
+    return request;
+  };
+
+  // Refresh only the resources affected by a mutation to avoid repeating unrelated Supabase reads.
+  const refreshAffiliates = async () => {
+    const result = await api.affiliates();
+    setData((current) => current ? { ...current, affiliates: result.data } : current);
+  };
+
+  const refreshOffers = async () => {
+    const result = await api.offers();
+    setData((current) => current ? { ...current, offers: result.data } : current);
+  };
+
+  const refreshMarketplaceConnections = async () => {
+    const result = await api.marketplaceConnections();
+    setData((current) => current ? { ...current, marketplaceConnections: result.data } : current);
+  };
+
+  const refreshAutonomousSummary = async () => {
+    const [analytics, autonomous] = await Promise.all([api.analyticsOverview(), api.autonomousStatus()]);
+    setData((current) => current ? { ...current, analytics } : current);
     setAutonomousStatus(autonomous);
   };
 
@@ -88,6 +172,38 @@ function App() {
     });
   }, []);
 
+  useEffect(() => {
+    const section = activitySectionRef.current;
+    if (!section) return;
+    if (typeof IntersectionObserver === "undefined") {
+      void loadActivityData().catch(() => undefined);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      void loadActivityData().catch(() => undefined);
+    }, { rootMargin: "160px" });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [data !== null]);
+
+  useEffect(() => {
+    const section = marketplaceOffersSectionRef.current;
+    if (!section) return;
+    if (typeof IntersectionObserver === "undefined") {
+      void loadMarketplaceOfferVerification().catch(() => undefined);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      void loadMarketplaceOfferVerification().catch(() => undefined);
+    }, { rootMargin: "160px" });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [data !== null]);
+
   const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsCreatingAffiliate(true);
@@ -96,7 +212,7 @@ function App() {
       await api.createAffiliate({ name: affiliateName.trim(), email: affiliateEmail.trim() });
       setAffiliateName("");
       setAffiliateEmail("");
-      await loadDashboard();
+      await refreshAffiliates();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create affiliate.");
     } finally {
@@ -116,7 +232,7 @@ function App() {
       });
       setOfferName("");
       setOfferRate("");
-      await loadDashboard();
+      await refreshOffers();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create offer.");
     } finally {
@@ -137,7 +253,11 @@ function App() {
       setConversionAffiliateId("");
       setConversionOfferId("");
       setConversionAmount("");
-      await loadDashboard();
+      activityLoadedRef.current = false;
+      await Promise.all([
+        loadActivityData(),
+        api.analyticsOverview().then((analytics) => setData((previous) => previous ? { ...previous, analytics } : previous))
+      ]);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create conversion.");
     } finally {
@@ -158,7 +278,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     setError(null);
     try {
       await api.marketplaceSetEnabled(connection.slug, enable);
-      await loadDashboard();
+      await refreshMarketplaceConnections();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to change marketplace connection state.");
     } finally {
@@ -172,7 +292,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     try {
       const response = await api.runAutonomousCycle();
       if (response.status === "failed") throw new Error(response.error ?? "Autonomous cycle failed.");
-      await loadDashboard();
+      await refreshAutonomousSummary();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to run autonomous cycle.");
     } finally {
@@ -249,7 +369,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           </article>
         </section>
 
-        <AutonomousObservabilityPanel />
+        <AutonomousObservabilityPanel initialStatus={autonomousStatus} />
 
         <section className="analytics-section" id="analytics">
           <div className="section-heading"><div><p className="eyebrow">Performance</p><h2>Campaign analytics</h2></div><span>{data.analytics.campaignCount} campaigns</span></div>
@@ -280,15 +400,15 @@ This will allow AffiliateOS to use this marketplace connection for operational w
 
         <WorkflowPanel />
 
-        <IntegrationSetupPanel />
+        <IntegrationSetupPanel initialProviders={data.marketplaceProviders} initialConnections={data.marketplaceConnections} initialAffiliates={data.affiliates} />
 
         <section className="workspace-grid">
-          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={loadDashboard} />
+          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={handleMarketplaceImport} />
           <ProductMediaIntakePanel />
         </section>
 
         <section className="workspace-grid">
-          <article className="panel" id="conversions">
+          <article className="panel" id="conversions" ref={activitySectionRef} aria-busy={activityLoading}>
             <div className="panel-heading"><div><p className="eyebrow">Activity</p><h3>Recent conversions</h3></div><span>{data.conversions.length} total</span></div>
             <form className="affiliate-form" onSubmit={handleCreateConversion}>
               <select aria-label="Affiliate" value={conversionAffiliateId} onChange={(event) => setConversionAffiliateId(event.target.value)} required>
@@ -302,7 +422,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
               <input aria-label="Nilai konversi dalam rupiah" type="number" min="0.01" step="0.01" placeholder="Nilai konversi (IDR)" value={conversionAmount} onChange={(event) => setConversionAmount(event.target.value)} required />
               <button type="submit" disabled={isCreatingConversion || data.affiliates.length === 0 || !data.offers.some((offer) => offer.status === "active")}>{isCreatingConversion ? "Menyimpan..." : "Catat konversi"}</button>
             </form>
-            {data.conversions.length === 0 ? <p className="empty">No conversions recorded yet.</p> : <div className="record-list">{data.conversions.slice(0, 5).map((conversion) => <div className="record" key={conversion.id}><div><strong>{money(conversion.amountCents)}</strong><small>{conversion.id.slice(0, 8)}</small></div><span className={`badge ${conversion.status}`}>{conversion.status}</span></div>)}</div>}
+            {activityError ? <div><p className="error-message">{activityError}</p><button type="button" onClick={() => void loadActivityData().catch(() => undefined)}>Retry activity</button></div> : activityLoading ? <p className="empty">Loading activity...</p> : !activityLoadedRef.current ? <p className="empty">Activity loads when this section is near the screen.</p> : data.conversions.length === 0 ? <p className="empty">No conversions recorded yet.</p> : <div className="record-list">{data.conversions.slice(0, 5).map((conversion) => <div className="record" key={conversion.id}><div><strong>{money(conversion.amountCents)}</strong><small>{conversion.id.slice(0, 8)}</small></div><span className={`badge ${conversion.status}`}>{conversion.status}</span></div>)}</div>}
           </article>
           <article className="panel" id="commissions">
             <div className="panel-heading"><div><p className="eyebrow">Earnings</p><h3>Commissions</h3></div><span>{data.commissions.length} total</span></div>
@@ -327,11 +447,11 @@ This will allow AffiliateOS to use this marketplace connection for operational w
           <article id="offers" className="offers-workspace">
             <div className="offers-title-row">
               <div><span className="eyebrow">Komersial</span><h3>Penawaran</h3><p>Kelola penawaran internal dan produk affiliate marketplace dari area yang berbeda.</p></div>
-              <span className="badge">{data.offers.length + data.affiliateOfferVerification.length} total</span>
+              <span className="badge">{marketplaceOffersLoadedRef.current ? `${data.offers.length + data.affiliateOfferVerification.length} total` : `${data.offers.length} internal`}</span>
             </div>
             <div className="offers-overview" aria-label="Ringkasan penawaran">
               <div><span>Penawaran internal</span><strong>{data.offers.length}</strong><small>{data.offers.filter((offer) => offer.status === "active").length} aktif</small></div>
-              <div><span>Produk marketplace</span><strong>{data.affiliateOfferVerification.length}</strong><small>Diimpor dari akun affiliate</small></div>
+              <div><span>Produk marketplace</span><strong>{marketplaceOffersLoadedRef.current ? data.affiliateOfferVerification.length : "—"}</strong><small>Diimpor dari akun affiliate</small></div>
             </div>
             <section className="offers-subsection" aria-labelledby="internal-offers-heading">
               <div className="offers-subsection-heading"><div><p className="eyebrow">Program</p><h4 id="internal-offers-heading">Penawaran internal</h4></div><span className="badge">{data.offers.length} data</span></div>
@@ -348,10 +468,10 @@ This will allow AffiliateOS to use this marketplace connection for operational w
                 </div>
               ))}</div>}
             </section>
-            <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading">
-              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{data.affiliateOfferVerification.length} produk</span></div>
+            <section className="offers-subsection marketplace-offers-subsection" aria-labelledby="marketplace-offers-heading" ref={marketplaceOffersSectionRef}>
+              <div className="offers-subsection-heading"><div><p className="eyebrow">Marketplace</p><h4 id="marketplace-offers-heading">Produk affiliate marketplace</h4></div><span className="badge">{marketplaceOffersLoadedRef.current ? `${data.affiliateOfferVerification.length} produk` : "Marketplace"}</span></div>
               <p className="offers-help">Produk dan tautan affiliate yang berasal dari feed marketplace, termasuk impor CSV Shopee. Data ini berbeda dari penawaran internal di atas.</p>
-              {data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
+              {marketplaceOffersError ? <div><p className="error-message">{marketplaceOffersError}</p><button type="button" onClick={() => void loadMarketplaceOfferVerification().catch(() => undefined)}>Coba lagi</button></div> : marketplaceOffersLoading ? <p className="empty">Memuat produk marketplace...</p> : !marketplaceOffersLoadedRef.current ? <p className="empty">Produk marketplace dimuat saat bagian ini mendekati layar.</p> : data.affiliateOfferVerification.length === 0 ? <p className="empty">Belum ada produk affiliate marketplace. Impor feed/CSV marketplace terlebih dahulu.</p> : <div className="offer-visibility-list">{data.affiliateOfferVerification.map((offer) => (
                 <div className="offer-visibility-card marketplace-offer-card" key={offer.id}>
                   <div className="offer-visibility-header"><div><strong>{offer.productName ?? "Produk marketplace"}</strong><small>{offer.marketplaceSlug ?? "Marketplace tidak diketahui"} · ID produk: {offer.productExternalId ?? "—"}</small></div><span className={`badge ${offer.status}`}>{offer.status}</span></div>
                   <div className="offer-visibility-details">
