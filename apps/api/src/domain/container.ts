@@ -55,6 +55,7 @@ import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
 
 export interface Services {
   publicShopCatalog?: RepositorySet["publicShopCatalog"];
+  publicShopCatalogFallbackAllowed?: boolean;
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; contentStory: ContentStoryService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   productMediaAssets?: ProductMediaAssetRepository; productMediaCandidates?: ProductMediaCandidateRepository; productMediaCandidateImport?: ProductMediaCandidateImportService; productMediaPreviewUrl?: (productId: string, assetId: string) => Promise<string | undefined>; publicationJobs: PublicationJobService; shopeeAffiliateLinkIntakes: ShopeeAffiliateLinkIntakeService; mediaUpload?: MediaUploadService; tiktokCreatorInfo: { getCreatorInfo(account: SocialAccount): Promise<TikTokCreatorInfo> }; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor; shopeeCommissionReportReconciliation: ShopeeCommissionReportReconciliationService;
@@ -170,6 +171,8 @@ export function createInMemoryServices(): Services {
     affiliates: new InMemoryRepository<Affiliate>(), offers: new InMemoryRepository<Offer>(), conversions: new InMemoryConversionRepository(), commissions: new InMemoryCommissionRepository(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository(), campaigns: new InMemoryRepository<Campaign>(), campaignOffers: new InMemoryCampaignOfferRepository(), trackingLinks: new InMemoryTrackingLinkRepository(), clicks: new InMemoryClickRepository(), contents: new InMemoryRepository<Content>(), contentProducts: new InMemoryContentProductRepository(), mediaAssets: new InMemoryMediaAssetRepository(), socialAccounts: new InMemorySocialAccountRepository(), publicationJobs: new InMemoryPublicationJobRepository(), publicationOperations: new InMemoryPublicationOperationRepository(), autonomousRuns: new InMemoryAutonomousRunRepository()
   };
   const transactionManager: TransactionManager = { run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions }) };
-  return createServices(repositories, transactionManager);
+  const services = createServices(repositories, transactionManager);
+  services.publicShopCatalogFallbackAllowed = true;
+  return services;
 }
 
