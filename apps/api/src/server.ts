@@ -18,6 +18,11 @@ import { ShopeeIntakeRecoveryWorker } from "./domain/shopee-intake-recovery-work
 import { ShopeeIntakeRecoveryScheduler } from "./domain/shopee-intake-recovery-scheduler.js";
 import { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./domain/provider-event-conversion-processor.js";
 import { GenericProviderConversionNormalizer } from "./domain/provider-conversion.js";
+
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
 import { MarketplaceProviderRegistry, ShopeeAffiliateFeedProvider } from "./domain/foundations.js";
 import { createShopeeAffiliateProvider } from "./domain/shopee-affiliate-runtime.js";
 import { InMemorySocialOAuthProviderRegistry } from "./domain/oauth.js";
@@ -132,7 +137,7 @@ const providerEventProcessor = new ProviderEventConversionProcessor(
 const providerEventWorker = new ProviderEventWorker(persistence.providerEvents, providerEventProcessor);
 const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   intervalMs: environment.PROVIDER_EVENT_WORKER_INTERVAL_MS,
-  onError: (error) => app.log.error(error, "Provider event worker cycle failed")
+  onError: (error) => app.log.error({ errorType: safeErrorType(error) }, "Provider event worker cycle failed")
 });
 
 const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
@@ -154,7 +159,7 @@ try {
   if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
-  app.log.error(error);
+  app.log.error({ errorType: safeErrorType(error) }, "API startup failed");
   await services.autonomousScheduler.stop();
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();
