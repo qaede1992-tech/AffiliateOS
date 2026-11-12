@@ -159,7 +159,7 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
 }
 export interface PublicShopCatalogItem {
   id: string;
-  referenceNumber: number;
+  referenceNumber?: number | null;
   name: string;
   category?: string | null;
   priceCents?: number | null;
