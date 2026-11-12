@@ -97,6 +97,6 @@ export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entity
 
 export const publicShopQuerySchema = z.object({
   query: z.string().trim().max(200).default(""),
-  page: z.coerce.number().int().min(1).max(100000).default(1),
+  page: z.coerce.number().int().min(1).max(100).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(24)
 });
