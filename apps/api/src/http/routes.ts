@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
@@ -17,6 +18,35 @@ import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
 import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
+const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    const isLocalHostname =
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal") ||
+      hostname.endsWith(".test") ||
+      hostname.endsWith(".invalid") ||
+      hostname.endsWith(".example") ||
+      hostname.endsWith(".onion") ||
+      hostname.endsWith(".arpa") ||
+      hostname.endsWith(".lan") ||
+      hostname.endsWith(".home.arpa");
+    return parsed.protocol === "https:" &&
+      hostname.includes(".") &&
+      !isIP(hostname) &&
+      !isLocalHostname &&
+      !parsed.username &&
+      !parsed.password
+      ? parsed.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 const writeGuard = { preHandler: requireOperator };
 const adminGuard = { preHandler: requireAdmin };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
@@ -271,6 +301,24 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       services.tracking.list()
     ]);
     const productsById = new Map(products.map((product) => [product.id, product]));
+    const productsWithMedia = products.filter((product) => Boolean(product.imageUrl || product.videoUrl));
+    const mediaRepository = services.productMediaAssets;
+    const mediaAssets = mediaRepository && typeof mediaRepository.listByProducts === "function" && productsWithMedia.length > 0
+      ? await mediaRepository.listByProducts(productsWithMedia.map((product) => product.id))
+      : [];
+    const getVerifiedMediaUrl = (product: Product, kind: "image" | "video"): string | undefined => {
+      const rawUrl = kind === "image" ? product.imageUrl : product.videoUrl;
+      const safeUrl = toPublicHttpsMediaUrl(rawUrl);
+      if (!safeUrl) return undefined;
+      const matchingAssets = mediaAssets.filter((asset) =>
+        asset.productId === product.id && asset.sourceUrl === rawUrl
+      );
+      if (matchingAssets.length !== 1) return undefined;
+      const asset = matchingAssets[0];
+      if (!asset || asset.kind !== kind || !hasCurrentVerifiedRights(asset)) return undefined;
+      if (asset.identityStatus !== "not_required" && asset.identityStatus !== "verified") return undefined;
+      return safeUrl;
+    };
     const seen = new Set<string>();
     const items = offers.flatMap((offer) => {
       if (offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return [];
@@ -283,6 +331,8 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       );
       if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
       seen.add(product.id);
+      const imageUrl = getVerifiedMediaUrl(product, "image");
+      const videoUrl = getVerifiedMediaUrl(product, "video");
       return [{
         id: product.id,
         referenceNumber: product.referenceNumber,
@@ -292,7 +342,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         currency: offer.currency ?? product.currency,
         ratingMilli: product.ratingMilli,
         reviewCount: product.reviewCount,
-        trackingCode: trackingLink.code
+        trackingCode: trackingLink.code,
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(videoUrl ? { videoUrl } : {})
       }];
     });
     return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));

@@ -34,6 +34,10 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   rightsBasis: row.rightsBasis as ProductMediaAsset["rightsBasis"],
   rightsEvidenceUrl: row.rightsEvidenceUrl,
   rightsVerifiedAt: row.rightsVerifiedAt,
+  identityStatus: row.identityStatus as ProductMediaAsset["identityStatus"],
+  identityReviewedBy: row.identityReviewedBy,
+  identityReviewedAt: row.identityReviewedAt,
+  identityReviewReason: row.identityReviewReason,
   createdAt: row.createdAt
 });
 
