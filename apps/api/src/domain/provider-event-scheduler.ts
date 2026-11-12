@@ -20,6 +20,13 @@ export type ProviderEventSchedulerStatus = {
 const DEFAULT_INTERVAL_MS = 60_000;
 const DEFAULT_IDLE_MAX_INTERVAL_MS = 2 * 60_000;
 const MIN_INTERVAL_MS = 10_000;
+
+/** Keep database and transport details out of scheduler status. */
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class ProviderEventScheduler {
@@ -106,7 +113,7 @@ export class ProviderEventScheduler {
       })
       .catch(async (error) => {
         this.resetInterval();
-        this.lastError = error instanceof Error ? error.message : String(error);
+        this.lastError = safeErrorType(error);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyError(error);
         throw error;
