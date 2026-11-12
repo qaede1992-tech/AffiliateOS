@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { Client } from "pg";
+import {
+  findPublicSchemaDefaultAclGrants,
+  PUBLIC_SCHEMA_DEFAULT_ACL_QUERY
+} from "./public-schema-privilege-audit.mjs";
 
 if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true") {
   throw new Error("Refusing to run the public-schema privilege guard outside a GitHub Actions CI runner.");
@@ -59,26 +63,19 @@ try {
       AND has_function_privilege(r.rolname::name, p.oid, 'EXECUTE')
     ORDER BY p.proname, r.rolname
   `);
-  const { rows: defaultAclRows } = await client.query(`
-    SELECT owner.rolname AS creator_role, d.defaclobjtype AS object_type,
-           grantee.rolname AS grantee, acl.privilege_type
-    FROM pg_default_acl d
-    JOIN pg_roles owner ON owner.oid = d.defaclrole
-    JOIN pg_namespace n ON n.oid = d.defaclnamespace
-    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
-    JOIN pg_roles grantee ON grantee.oid = acl.grantee
-    WHERE n.nspname = 'public'
-      AND owner.rolname = current_user
-      AND grantee.rolname IN ('anon', 'authenticated')
-    ORDER BY d.defaclobjtype, grantee.rolname, acl.privilege_type
-  `);
+  const { rows: defaultAclRows } = await client.query(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY);
+  const broadDefaultAclRows = findPublicSchemaDefaultAclGrants(defaultAclRows);
 
   assert.deepEqual(tableRows, [], "anon/authenticated must not have effective privileges on public tables or views.");
   assert.deepEqual(sequenceRows, [], "anon/authenticated must not have effective privileges on public sequences.");
   assert.deepEqual(routineRows, [], "anon/authenticated must not have effective EXECUTE privileges on public routines.");
-  assert.deepEqual(defaultAclRows, [], "The application migration role must not configure default public-schema privileges for anon/authenticated.");
+  assert.deepEqual(
+    broadDefaultAclRows,
+    [],
+    "No creator role or global default may grant public-schema privileges to anon, authenticated, or PUBLIC."
+  );
 
-  console.log("Public-schema privilege guard passed: no effective table, sequence, routine, or application-role default ACL privileges for anon/authenticated.");
+  console.log("Public-schema privilege guard passed: no effective object privileges or broad explicit/implicit defaults.");
 } finally {
   await client.end();
 }
