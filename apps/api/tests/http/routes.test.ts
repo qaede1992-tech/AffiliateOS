@@ -1258,3 +1258,124 @@ test("verified product media rights trigger autonomous evaluation but revocation
   assert.equal(triggerCalls, 1);
   await app.close();
 });
+
+
+test("GET /api/v1/public/shop exposes product media only with current verified rights", async () => {
+  const services = createInMemoryServices();
+  const now = new Date().toISOString();
+  const products = [
+    {
+      id: "product-with-verified-media", referenceNumber: 1, marketplaceId: "marketplace-test",
+      externalProductId: "external-1", name: "Verified media", category: "Test",
+      priceCents: 10000, currency: "IDR", ratingMilli: 5000, reviewCount: 10, soldCount: 20,
+      imageUrl: "https://cdn.example.com/product.jpg", videoUrl: "https://cdn.example.com/product.mp4",
+      productUrl: "https://shop.example.com/product/1", status: "active" as const,
+      createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-unverified-media", referenceNumber: 2, marketplaceId: "marketplace-test",
+      externalProductId: "external-2", name: "Unverified media", category: "Test",
+      priceCents: 20000, currency: "IDR", ratingMilli: 4900, reviewCount: 5, soldCount: 8,
+      imageUrl: "https://cdn.example.com/unverified.jpg", videoUrl: "https://cdn.example.com/unverified.mp4",
+      productUrl: "https://shop.example.com/product/2", status: "active" as const,
+      createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-private-media", referenceNumber: 3, marketplaceId: "marketplace-test",
+      externalProductId: "external-3", name: "Private media", category: "Test",
+      priceCents: 30000, currency: "IDR", ratingMilli: 4800, reviewCount: 3, soldCount: 4,
+      imageUrl: "https://127.0.0.1/private.jpg", videoUrl: "https://media.local/private.mp4",
+      productUrl: "https://shop.example.com/product/3", status: "active" as const,
+      createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-special-use-media", referenceNumber: 4, marketplaceId: "marketplace-test",
+      externalProductId: "external-4", name: "Special-use media", category: "Test",
+      priceCents: 40000, currency: "IDR", ratingMilli: 4700, reviewCount: 2, soldCount: 3,
+      imageUrl: "https://cdn.example/media.jpg", videoUrl: "https://cdn.onion/media.mp4",
+      productUrl: "https://shop.example.com/product/4", status: "active" as const,
+      createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-pending-identity", referenceNumber: 5, marketplaceId: "marketplace-test",
+      externalProductId: "external-5", name: "Pending identity", category: "Test",
+      priceCents: 50000, currency: "IDR", ratingMilli: 4600, reviewCount: 1, soldCount: 2,
+      imageUrl: "https://cdn.example.com/pending-identity.jpg",
+      productUrl: "https://shop.example.com/product/5", status: "active" as const,
+      createdAt: now, updatedAt: now
+    },
+    {
+      id: "product-with-rejected-identity", referenceNumber: 6, marketplaceId: "marketplace-test",
+      externalProductId: "external-6", name: "Rejected identity", category: "Test",
+      priceCents: 60000, currency: "IDR", ratingMilli: 4500, reviewCount: 1, soldCount: 1,
+      imageUrl: "https://cdn.example.com/rejected-identity.jpg",
+      productUrl: "https://shop.example.com/product/6", status: "active" as const,
+      createdAt: now, updatedAt: now
+    }
+  ];
+  const offers = products.map((product, index) => ({
+    id: `offer-${product.id}`, productId: product.id, status: "active",
+    affiliateLinkStatus: "active", affiliateUrl: `https://affiliate.example.com/${index}`,
+    priceCents: product.priceCents, currency: product.currency
+  }));
+  const trackingLinks = offers.map((offer, index) => ({
+    id: `tracking-${index}`, affiliateOfferId: offer.id, status: "active",
+    destinationUrl: offer.affiliateUrl, code: `track-${index}`
+  }));
+  const verifiedAt = new Date(Date.now() - 60_000).toISOString();
+  const mediaAsset = (
+    id: string, productId: string, kind: "image" | "video", sourceUrl: string, verified: boolean,
+    identityStatus: "not_required" | "pending" | "verified" | "rejected" = "not_required"
+  ) => ({
+    id, productId, kind, bucket: "affiliate-media", objectKey: `products/${productId}/${id}.bin`,
+    mimeType: kind === "image" ? "image/jpeg" : "video/mp4", byteSize: 1024, sha256: "a".repeat(64),
+    sourceUrl, sourcePublisher: verified ? "Product owner" : null,
+    rightsStatus: verified ? "verified" : "unverified",
+    rightsBasis: verified ? "user_owned" : null,
+    rightsEvidenceUrl: verified ? "https://rights.example.com/evidence" : null,
+    rightsVerifiedAt: verified ? verifiedAt : null, identityStatus, createdAt: verifiedAt
+  });
+  let mediaLookupCalls = 0;
+  services.marketplace.listProducts = async () => products;
+  services.marketplace.listAffiliateOffers = async () => offers as never;
+  services.tracking.list = async () => trackingLinks as never;
+  services.productMediaAssets = {
+    listByProducts: async (productIds: string[]) => {
+      mediaLookupCalls += 1;
+      assert.deepEqual(productIds, products.map((product) => product.id));
+      return [
+        mediaAsset("verified-image", products[0]!.id, "image", products[0]!.imageUrl!, true),
+        mediaAsset("verified-video", products[0]!.id, "video", products[0]!.videoUrl!, true, "verified"),
+        mediaAsset("unverified-image", products[1]!.id, "image", products[1]!.imageUrl!, false),
+        mediaAsset("unverified-video", products[1]!.id, "video", products[1]!.videoUrl!, false),
+        mediaAsset("private-image", products[2]!.id, "image", products[2]!.imageUrl!, true),
+        mediaAsset("private-video", products[2]!.id, "video", products[2]!.videoUrl!, true),
+        mediaAsset("special-use-image", products[3]!.id, "image", products[3]!.imageUrl!, true),
+        mediaAsset("special-use-video", products[3]!.id, "video", products[3]!.videoUrl!, true),
+        mediaAsset("pending-identity-image", products[4]!.id, "image", products[4]!.imageUrl!, true, "pending"),
+        mediaAsset("rejected-identity-image", products[5]!.id, "image", products[5]!.imageUrl!, true, "rejected")
+      ] as never;
+    }
+  } as never;
+
+  const app = createApp(services);
+  try {
+    const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
+    assert.equal(response.statusCode, 200);
+    const items = response.json().data;
+    assert.equal(items.length, 6);
+    assert.equal(items[0].imageUrl, products[0]!.imageUrl);
+    assert.equal(items[0].videoUrl, products[0]!.videoUrl);
+    assert.equal(Object.hasOwn(items[1], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[1], "videoUrl"), false);
+    assert.equal(Object.hasOwn(items[2], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[2], "videoUrl"), false);
+    assert.equal(Object.hasOwn(items[3], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[3], "videoUrl"), false);
+    assert.equal(Object.hasOwn(items[4], "imageUrl"), false);
+    assert.equal(Object.hasOwn(items[5], "imageUrl"), false);
+    assert.equal(mediaLookupCalls, 1);
+  } finally {
+    await app.close();
+  }
+});
