@@ -33,7 +33,7 @@ async function setup(options: { imageUrl?: string; videoUrl?: string; mediaAsset
 }
 
 test("attaches a product image URL and reuses it on repeated selection", async () => {
-  const { service, mediaAssets, contentId } = await setup({ imageUrl: "https://cdn.example/image.jpg" });
+  const { service, mediaAssets, contentId } = await setup({ imageUrl: "https://cdn.example.com/image.jpg" });
   const first = await service.attachProductMedia(contentId, ["image"]);
   const second = await service.attachProductMedia(contentId, ["image"]);
   assert.equal((await mediaAssets.listByContent(contentId)).length, 1);
@@ -43,11 +43,11 @@ test("attaches a product image URL and reuses it on repeated selection", async (
 
 test("attaches video URL without disturbing manually assigned media IDs", async () => {
   const { service, mediaAssets, contentId, contents, content } = await setup({
-    videoUrl: "https://cdn.example/video.mp4", mediaAssetIds: [manualAssetId]
+    videoUrl: "https://cdn.example.com/video.mp4", mediaAssetIds: [manualAssetId]
   });
   await mediaAssets.save({
     id: manualAssetId, contentId, kind: "image", source: "url",
-    reference: "https://cdn.example/manual.jpg",
+    reference: "https://cdn.example.com/manual.jpg",
     createdAt: content.createdAt, updatedAt: content.updatedAt
   });
   const result = await service.attachProductMedia(contentId, ["video"]);
@@ -66,15 +66,15 @@ test("rejects a selected product media kind when its URL is missing", async () =
 });
 
 test("does not partially attach image when a requested video URL is missing", async () => {
-  const { service, mediaAssets, contentId } = await setup({ imageUrl: "https://cdn.example/image.jpg" });
+  const { service, mediaAssets, contentId } = await setup({ imageUrl: "https://cdn.example.com/image.jpg" });
   await assert.rejects(service.attachProductMedia(contentId, ["image", "video"]));
   assert.equal((await mediaAssets.listByContent(contentId)).length, 0);
 });
 
 test("attaches a changed product URL as a new asset without deleting the previous one", async () => {
-  const { service, mediaAssets, product, contentId } = await setup({ imageUrl: "https://cdn.example/old.jpg" });
+  const { service, mediaAssets, product, contentId } = await setup({ imageUrl: "https://cdn.example.com/old.jpg" });
   const first = await service.attachProductMedia(contentId, ["image"]);
-  const updatedProduct = { ...product, imageUrl: "https://cdn.example/new.jpg" };
+  const updatedProduct = { ...product, imageUrl: "https://cdn.example.com/new.jpg" };
   const products = new InMemoryRepository<Product>();
   await products.save(updatedProduct);
   const content = await service.get(contentId);
