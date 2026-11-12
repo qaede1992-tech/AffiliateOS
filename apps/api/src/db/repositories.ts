@@ -8,7 +8,7 @@ import { DrizzleProductMediaAssetRepository } from "./product-media-asset-reposi
 import { DrizzleProductMediaCandidateRepository } from "./product-media-candidate-repository.js";
 import { DrizzleProductMediaDiscoveryAttemptRepository } from "./product-media-discovery-attempt-repository.js";
 import type { ShopeeAffiliateLinkIntake, ShopeeAffiliateLinkIntakeRepository } from "../domain/shopee-affiliate-link-intake.js";
-import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ContentProductRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager } from "../domain/repository.js";
+import type { AffiliateAccountRepository, AffiliateOfferRepository, CampaignOfferRepository, ClickRepository, CommissionRepository, ContentProductRepository, ConversionRepository, MarketplaceConnectionRepository, ProductCatalogRepository, PublicationJobRepository, Repository, RepositorySet, SocialAccountRepository, TrackingLinkRepository, TransactionManager, PublicShopCatalogRepository } from "../domain/repository.js";
 
 type DatabaseExecutor = any;
 const toAffiliate = (row: typeof affiliates.$inferSelect): Affiliate => ({ id: row.id, name: row.name, email: row.email, status: row.status as Affiliate["status"], createdAt: row.createdAt });
@@ -169,7 +169,52 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
   }
 }
 
+class DrizzlePublicShopCatalogRepository implements PublicShopCatalogRepository {
+  constructor(private readonly db: DatabaseExecutor) {}
+  async listPage(input: { query: string; page: number; pageSize: number }) {
+    const offset = (input.page - 1) * input.pageSize;
+    const query = input.query.trim();
+    const numericQuery = /^\d+$/.test(query);
+    const numericValue = numericQuery ? Number(query) : Number.NaN;
+    const numeric = Number.isSafeInteger(numericValue) && numericValue <= 2_147_483_647 ? numericValue : null;
+    const pattern = `%${query.replace(/[\\%_]/g, (value) => `\\${value}`)}%`;
+    const result = await this.db.execute(sql`
+      WITH eligible AS (
+        SELECT DISTINCT ON (p.id) p.id, p.reference_number, p.name, p.category, p.image_url, p.video_url,
+          COALESCE(ao.price_cents, p.price_cents) AS price_cents,
+          COALESCE(ao.currency, p.currency) AS currency, p.rating_milli, p.review_count, tl.code AS tracking_code
+        FROM products p
+        JOIN affiliate_offers ao ON ao.product_id = p.id
+        JOIN LATERAL (
+          SELECT t.code FROM tracking_links t
+          WHERE t.affiliate_offer_id = ao.id AND t.status = 'active' AND t.destination_url = ao.affiliate_url
+          ORDER BY t.created_at DESC, t.id DESC LIMIT 1
+        ) tl ON true
+        WHERE p.status = 'active' AND ao.status = 'active'
+          AND ao.affiliate_link_status = 'active' AND ao.affiliate_url IS NOT NULL
+          AND (ao.affiliate_link_expires_at IS NULL OR ao.affiliate_link_expires_at > now())
+          AND (${query} = '' OR (${numericQuery} AND ${numeric}::integer IS NOT NULL AND p.reference_number = ${numeric})
+            OR (NOT ${numericQuery} AND p.name ILIKE ${pattern} ESCAPE E'\\'))
+        ORDER BY p.id, ao.created_at DESC, ao.id DESC
+      ),
+      counted AS (SELECT count(*)::integer AS total FROM eligible),
+      page_rows AS (SELECT * FROM eligible ORDER BY reference_number ASC NULLS LAST, id ASC LIMIT ${input.pageSize} OFFSET ${offset})
+      SELECT page_rows.*, counted.total FROM counted LEFT JOIN page_rows ON true
+    `);
+    const rows = Array.isArray(result) ? result : (result as { rows?: Record<string, unknown>[] }).rows ?? [];
+    const total = Number(rows[0]?.total ?? 0);
+    const data = rows.filter((row: Record<string, unknown>) => row.id != null).map((row: Record<string, unknown>) => ({
+      id: String(row.id), referenceNumber: Number(row.reference_number), name: String(row.name),
+      category: row.category == null ? null : String(row.category), priceCents: row.price_cents == null ? null : Number(row.price_cents),
+      currency: row.currency == null ? null : String(row.currency), ratingMilli: row.rating_milli == null ? null : Number(row.rating_milli),
+      reviewCount: row.review_count == null ? null : Number(row.review_count), trackingCode: String(row.tracking_code),
+      imageUrl: row.image_url == null ? undefined : String(row.image_url), videoUrl: row.video_url == null ? undefined : String(row.video_url)
+    }));
+    return { data, total, page: input.page, pageSize: input.pageSize };
+  }
+}
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
+  publicShopCatalog: new DrizzlePublicShopCatalogRepository(db),
   shopeeAffiliateLinkIntakes: new DrizzleShopeeAffiliateLinkIntakeRepository(db),
   productMediaAssets: new DrizzleProductMediaAssetRepository(db),
   productMediaCandidates: new DrizzleProductMediaCandidateRepository(db),
