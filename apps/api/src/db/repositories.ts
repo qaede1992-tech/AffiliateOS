@@ -172,6 +172,12 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
 class DrizzlePublicShopCatalogRepository implements PublicShopCatalogRepository {
   constructor(private readonly db: DatabaseExecutor) {}
   async listPage(input: { query: string; page: number; pageSize: number }) {
+    if (!Number.isSafeInteger(input.page) || input.page < 1 || input.page > 100) {
+      throw new RangeError("Public Shop page must be between 1 and 100.");
+    }
+    if (!Number.isSafeInteger(input.pageSize) || input.pageSize < 1 || input.pageSize > 50) {
+      throw new RangeError("Public Shop page size must be between 1 and 50.");
+    }
     const offset = (input.page - 1) * input.pageSize;
     const query = input.query.trim();
     const numericQuery = /^\d+$/.test(query);
