@@ -1399,6 +1399,10 @@ test("GET /api/v1/public/shop rejects pagination values outside supported bounds
     const response = await app.inject({ method: "GET", url: "/api/v1/public/shop?page=0&pageSize=100" });
     assert.equal(response.statusCode, 400);
     assert.equal(response.json().error, "VALIDATION_ERROR");
+
+    const deepPage = await app.inject({ method: "GET", url: "/api/v1/public/shop?page=101" });
+    assert.equal(deepPage.statusCode, 400);
+    assert.equal(deepPage.json().error, "VALIDATION_ERROR");
   } finally {
     await app.close();
   }
@@ -1453,6 +1457,26 @@ test("GET /api/v1/public/shop loads media evidence only for the returned page an
       page: 2,
       pageSize: 24
     });
+  } finally {
+    await app.close();
+  }
+});
+
+
+test("GET /api/v1/public/shop fails closed when the production SQL catalog is unavailable", async () => {
+  const services = createInMemoryServices();
+  services.publicShopCatalogFallbackAllowed = false;
+  let fullListCalls = 0;
+  services.marketplace.listProducts = async () => { fullListCalls += 1; return []; };
+  services.marketplace.listAffiliateOffers = async () => { fullListCalls += 1; return []; };
+  services.tracking.list = async () => { fullListCalls += 1; return []; };
+
+  const app = createApp(services);
+  try {
+    const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.json().error, "PUBLIC_SHOP_CATALOG_UNAVAILABLE");
+    assert.equal(fullListCalls, 0, "production must never fall back to full-table repository reads");
   } finally {
     await app.close();
   }
