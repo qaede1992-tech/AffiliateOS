@@ -204,7 +204,7 @@ class DrizzlePublicShopCatalogRepository implements PublicShopCatalogRepository 
     const rows = Array.isArray(result) ? result : (result as { rows?: Record<string, unknown>[] }).rows ?? [];
     const total = Number(rows[0]?.total ?? 0);
     const data = rows.filter((row: Record<string, unknown>) => row.id != null).map((row: Record<string, unknown>) => ({
-      id: String(row.id), referenceNumber: Number(row.reference_number), name: String(row.name),
+      id: String(row.id), referenceNumber: row.reference_number == null ? null : Number(row.reference_number), name: String(row.name),
       category: row.category == null ? null : String(row.category), priceCents: row.price_cents == null ? null : Number(row.price_cents),
       currency: row.currency == null ? null : String(row.currency), ratingMilli: row.rating_milli == null ? null : Number(row.rating_milli),
       reviewCount: row.review_count == null ? null : Number(row.review_count), trackingCode: String(row.tracking_code),
