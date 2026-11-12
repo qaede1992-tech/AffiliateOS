@@ -126,7 +126,7 @@ function Home() {
 
 type PublicShopItem = {
   id: string;
-  referenceNumber: number;
+  referenceNumber?: number | null;
   name: string;
   category?: string | null;
   priceCents?: number | null;
@@ -224,7 +224,7 @@ function ShopPage() {
           <article className="public-shop-card" key={item.id}>
             <p className="public-eyebrow">{item.category || "Rekomendasi produk"}</p>
             <h2>{item.name}</h2>
-            <p className="public-shop-code">Nomor produk: <strong>{item.referenceNumber}</strong></p>
+            <p className="public-shop-code">Nomor produk: <strong>{typeof item.referenceNumber === "number" ? item.referenceNumber : "—"}</strong></p>
             <p className="public-shop-price">{money(item)}</p>
             {typeof item.ratingMilli === "number" && item.ratingMilli > 0 ? (
               <p className="public-shop-rating">Rating {(item.ratingMilli / 1000).toFixed(1)}{typeof item.reviewCount === "number" ? " · " + item.reviewCount.toLocaleString("id-ID") + " ulasan" : ""}</p>
