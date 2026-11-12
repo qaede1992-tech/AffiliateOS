@@ -369,3 +369,28 @@ test("rejects a honey-category wildlife image that does not identify the honey p
 
   assert.deepEqual(results, []);
 });
+
+
+test("ignores invalid numeric HTML entities in external attribution metadata", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Sony WH-1000XM5 Wireless Headphones.jpg",
+        imageinfo: [{
+          thumburl: "https://upload.wikimedia.org/thumb.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY 4.0" },
+            LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0/" },
+            Artist: { value: "Example Photographer &#128512; &#0; &#55296; &#65535; &#99999999;" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia(identity, { fetchImpl, timeoutMs: 1000 });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.creator, "Example Photographer 😀");
+});
