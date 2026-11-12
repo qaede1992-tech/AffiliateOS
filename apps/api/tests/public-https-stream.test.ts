@@ -7,7 +7,7 @@ import { fetchPublicHttpsStream } from "../src/domain/public-https-stream.js";
 test("streaming media fetch rejects private DNS answers before opening a socket", async () => {
   let requestOpened = false;
   await assert.rejects(
-    () => fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+    () => fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
       maxBytes: 1024,
       resolveHost: (async () => [{ address: "127.0.0.1", family: 4 }]) as never,
       requestImpl: (() => {
@@ -30,9 +30,55 @@ test("streaming media fetch rejects IP-literal and credential-bearing URLs", asy
     /public HTTPS URL/i
   );
   await assert.rejects(
-    () => fetchPublicHttpsStream("https://user:pass@media.example.test/video.mp4", { method: "GET" }, options),
+    () => fetchPublicHttpsStream("https://user:pass@media.example.com/video.mp4", { method: "GET" }, options),
     /public HTTPS URL/i
   );
+});
+
+test("streaming media fetch rejects local and special-use hostnames before DNS resolution", async () => {
+  let resolutions = 0;
+  const options = {
+    maxBytes: 1024,
+    resolveHost: (async () => {
+      resolutions += 1;
+      return [{ address: "93.184.216.34", family: 4 }];
+    }) as never
+  };
+  for (const url of [
+    "https://localhost/video.mp4",
+    "https://media.localhost/video.mp4",
+    "https://printer.local/video.mp4",
+    "https://metadata.internal/video.mp4",
+    "https://router.home.arpa/video.mp4",
+    "https://asset.test/video.mp4",
+    "https://asset.example/video.mp4",
+    "https://asset.invalid/video.mp4",
+    "https://asset.onion/video.mp4",
+    "https://metadata/video.mp4"
+  ]) {
+    await assert.rejects(
+      () => fetchPublicHttpsStream(url, { method: "GET" }, options),
+      /credential-free public HTTPS URL/i
+    );
+  }
+  assert.equal(resolutions, 0);
+});
+
+test("streaming media fetch bounds DNS resolution by the configured timeout", async () => {
+  let requestOpened = false;
+  await assert.rejects(
+    () => fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
+      maxBytes: 1024,
+      timeoutMs: 10,
+      resolveHost: (() => new Promise(() => undefined)) as never,
+      requestImpl: (() => {
+        requestOpened = true;
+        throw new Error("socket must not open");
+      }) as never
+    }),
+    /DNS lookup exceeded the configured timeout/i
+  );
+  assert.equal(requestOpened, false);
 });
 
 test("streaming media fetch re-resolves redirect hosts and blocks DNS rebinding to private IPs", async () => {
@@ -62,7 +108,7 @@ test("streaming media fetch re-resolves redirect hosts and blocks DNS rebinding 
         headers: Record<string, string>;
       };
       response.statusCode = 302;
-      response.headers = { location: "https://redirect.example.test/video.mp4" };
+      response.headers = { location: "https://redirect.example.com/video.mp4" };
       callback(response);
       response.end();
     };
@@ -70,7 +116,7 @@ test("streaming media fetch re-resolves redirect hosts and blocks DNS rebinding 
   }) as never;
 
   await assert.rejects(
-    () => fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+    () => fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
       maxBytes: 1024,
       resolveHost: resolver,
       requestImpl
@@ -108,7 +154,7 @@ test("streaming media fetch rejects successful GET responses that cannot carry a
   }) as never;
 
   await assert.rejects(
-    () => fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+    () => fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
       maxBytes: 1024,
       resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
       requestImpl
@@ -122,7 +168,7 @@ test("streaming media fetch rejects non-global 192.0.0.0/24 protocol assignments
   for (const address of ["192.0.0.1", "192.0.0.8", "192.0.0.170", "192.0.0.171"]) {
     let requestOpened = false;
     await assert.rejects(
-      () => fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+      () => fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
         maxBytes: 1024,
         resolveHost: (async () => [{ address, family: 4 }]) as never,
         requestImpl: (() => {
@@ -138,10 +184,10 @@ test("streaming media fetch rejects non-global 192.0.0.0/24 protocol assignments
 
 
 test("streaming media fetch rejects IANA IPv6 non-global and documentation ranges", async () => {
-  for (const address of ["2001::1", "2001:1ff::1", "3fff::1"]) {
+  for (const address of ["2001::1", "2001:1ff::1", "2001:0db8:0:0:0:0:0:1", "3fff::1"]) {
     let requestOpened = false;
     await assert.rejects(
-      () => fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+      () => fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
         maxBytes: 1024,
         resolveHost: (async () => [{ address, family: 6 }]) as never,
         requestImpl: (() => {
@@ -183,7 +229,7 @@ test("streaming media fetch disables pooled HTTPS agents so each request uses it
     return request;
   }) as never;
 
-  const response = await fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "HEAD" }, {
+  const response = await fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "HEAD" }, {
     maxBytes: 1024,
     resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
     requestImpl
@@ -224,7 +270,7 @@ test("streaming media fetch destroys the upstream request when its response body
     return request;
   }) as never;
 
-  const response = await fetchPublicHttpsStream("https://media.example.test/video.mp4", { method: "GET" }, {
+  const response = await fetchPublicHttpsStream("https://media.example.com/video.mp4", { method: "GET" }, {
     maxBytes: 1024,
     resolveHost: (async () => [{ address: "93.184.216.34", family: 4 }]) as never,
     requestImpl
