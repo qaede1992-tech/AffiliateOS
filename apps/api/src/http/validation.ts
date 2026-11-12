@@ -94,3 +94,9 @@ export const createShopeeAffiliateLinkIntakeSchema = z.object({
   }, "Only credential-free Shopee HTTPS links are supported.")
 });
 export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entityId });
+
+export const publicShopQuerySchema = z.object({
+  query: z.string().trim().max(200).default(""),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(24)
+});
