@@ -27,6 +27,11 @@ import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClien
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
@@ -132,7 +137,7 @@ const providerEventProcessor = new ProviderEventConversionProcessor(
 const providerEventWorker = new ProviderEventWorker(persistence.providerEvents, providerEventProcessor);
 const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   intervalMs: environment.PROVIDER_EVENT_WORKER_INTERVAL_MS,
-  onError: (error) => app.log.error(error, "Provider event worker cycle failed")
+  onError: (error) => app.log.error({ errorType: safeErrorType(error) }, "Provider event worker cycle failed")
 });
 
 const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
@@ -154,7 +159,7 @@ try {
   if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
-  app.log.error(error);
+  app.log.error({ errorType: safeErrorType(error) }, "API startup failed");
   await services.autonomousScheduler.stop();
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();

@@ -123,3 +123,17 @@ test("provider event scheduler resets idle backoff after worker failure", async 
   await assert.rejects(scheduler.runNow(), /temporary database failure/);
   assert.equal(scheduler.nextIntervalMs, 10_000);
 });
+
+
+test("provider event scheduler stores only a safe error type in status", async () => {
+  const marker = "private-provider-event-db-marker";
+  const databaseError = new Error(`Failed query: SELECT * FROM provider_events; params: ${marker}`);
+  databaseError.name = "DatabaseError";
+  const scheduler = new ProviderEventScheduler(
+    { runOnce: async () => { throw databaseError; } }
+  );
+
+  await assert.rejects(scheduler.runNow());
+  assert.equal(scheduler.status.lastError, "DatabaseError");
+  assert.doesNotMatch(scheduler.status.lastError ?? "", /Failed query|params:|private-provider-event-db-marker/i);
+});
