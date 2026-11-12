@@ -23,10 +23,45 @@ export class DrizzleAutonomousDecisionAuditRepository implements AutonomousDecis
       query.selected === undefined ? undefined : eq(autonomousDecisionAudits.selected, query.selected)
     ].filter(Boolean) as any[];
 
-    const rows = await this.db.select().from(autonomousDecisionAudits)
-      .where(filters.length ? and(...filters) : undefined)
-      .orderBy(desc(autonomousDecisionAudits.createdAt))
-      .limit(limit);
+    // selected is NOT NULL. Split both values so the existing
+    // (selected, created_at DESC) index can satisfy each bounded branch,
+    // then merge only the newest candidates for the global result.
+    const rows = filters.length
+      ? await this.db.select().from(autonomousDecisionAudits)
+          .where(and(...filters))
+          .orderBy(desc(autonomousDecisionAudits.createdAt))
+          .limit(limit)
+      : rowsOf(await this.db.execute(sql`
+          SELECT * FROM (
+            (
+              SELECT id, cycle_id AS "cycleId", product_id AS "productId", marketplace_id AS "marketplaceId",
+                selected, selection_mode AS "selectionMode", score, policy, reasons, category,
+                audience_segments AS "audienceSegments", outcome_offer_id AS "outcomeOfferId",
+                outcome_status AS "outcomeStatus", outcome_campaign_id AS "outcomeCampaignId",
+                outcome_error AS "outcomeError", outcome_observed_at AS "outcomeObservedAt",
+                recovery, exploration_evaluation AS "explorationEvaluation", created_at AS "createdAt"
+              FROM autonomous_decision_audits
+              WHERE selected = true
+              ORDER BY created_at DESC
+              LIMIT ${limit}
+            )
+            UNION ALL
+            (
+              SELECT id, cycle_id AS "cycleId", product_id AS "productId", marketplace_id AS "marketplaceId",
+                selected, selection_mode AS "selectionMode", score, policy, reasons, category,
+                audience_segments AS "audienceSegments", outcome_offer_id AS "outcomeOfferId",
+                outcome_status AS "outcomeStatus", outcome_campaign_id AS "outcomeCampaignId",
+                outcome_error AS "outcomeError", outcome_observed_at AS "outcomeObservedAt",
+                recovery, exploration_evaluation AS "explorationEvaluation", created_at AS "createdAt"
+              FROM autonomous_decision_audits
+              WHERE selected = false
+              ORDER BY created_at DESC
+              LIMIT ${limit}
+            )
+          ) AS recent
+          ORDER BY "createdAt" DESC
+          LIMIT ${limit}
+        `));
 
     const campaignIds = rows.map((row: any) => row.outcomeCampaignId)
       .filter((id: unknown): id is string => typeof id === "string");
