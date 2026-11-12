@@ -18,11 +18,6 @@ import { ShopeeIntakeRecoveryWorker } from "./domain/shopee-intake-recovery-work
 import { ShopeeIntakeRecoveryScheduler } from "./domain/shopee-intake-recovery-scheduler.js";
 import { ProviderEventConversionProcessor, StaticProviderEventConversionNormalizerRegistry } from "./domain/provider-event-conversion-processor.js";
 import { GenericProviderConversionNormalizer } from "./domain/provider-conversion.js";
-
-const safeErrorType = (error: unknown): string =>
-  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
-    ? error.name
-    : "UnknownError";
 import { MarketplaceProviderRegistry, ShopeeAffiliateFeedProvider } from "./domain/foundations.js";
 import { createShopeeAffiliateProvider } from "./domain/shopee-affiliate-runtime.js";
 import { InMemorySocialOAuthProviderRegistry } from "./domain/oauth.js";
@@ -32,6 +27,11 @@ import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClien
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
