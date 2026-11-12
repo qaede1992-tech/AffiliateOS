@@ -328,7 +328,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         seen.add(product.id);
         return [{
           id: product.id,
-          referenceNumber: product.referenceNumber,
+          referenceNumber: product.referenceNumber ?? null,
           name: product.name,
           category: product.category ?? null,
           priceCents: offer.priceCents ?? product.priceCents,
@@ -339,7 +339,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           imageUrl: product.imageUrl,
           videoUrl: product.videoUrl
         }];
-      }).sort((left, right) => left.referenceNumber - right.referenceNumber);
+      }).sort((left, right) => (left.referenceNumber ?? Number.MAX_SAFE_INTEGER) - (right.referenceNumber ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id));
       const offset = (query.page - 1) * query.pageSize;
       catalog = {
         data: items.slice(offset, offset + query.pageSize),
