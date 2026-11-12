@@ -112,6 +112,12 @@ const EXTENSION: Record<SupportedMime, string> = {
 const detectMime = (bytes: Uint8Array): SupportedMime | undefined =>
   MIME_TYPES.find((mimeType) => isStructurallyValidMedia(mimeType, bytes));
 
+/** Keep database and transport details out of persisted media skip reasons. */
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 const validateProductId = (productId: string): void => {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(productId)) {
     throw new Error("A valid product UUID is required.");
@@ -249,7 +255,7 @@ export class ProductMediaIngestionService {
           throw error;
         }
       } catch (error) {
-        skipped.push({ url: candidate.url, reason: error instanceof Error ? error.message : "Unknown media ingestion failure." });
+        skipped.push({ url: candidate.url, reason: `Media ingestion failed (${safeErrorType(error)}).` });
       }
     }
     return { stored, skipped };
