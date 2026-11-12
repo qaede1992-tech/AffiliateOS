@@ -69,8 +69,13 @@ test("affiliate offer verification uses one ordered query with the required join
               joinedTables.push(tableToJoin);
               return this;
             },
-            async orderBy() {
+            where() { return this; },
+            orderBy() {
               orderByCount += 1;
+              return this;
+            },
+            async limit(value: number) {
+              assert.equal(value, 26);
               return [joinedRow];
             }
           };
@@ -80,7 +85,7 @@ test("affiliate offer verification uses one ordered query with the required join
   };
 
   const repositories = createPostgresRepositories(db as never);
-  const rows = await repositories.affiliateOffers.listVerificationRows?.();
+  const rows = await repositories.affiliateOffers.listVerificationRows?.({ limit: 26 });
 
   assert.equal(selectCount, 1);
   assert.equal(selectedTable, affiliateOffers);
@@ -119,8 +124,9 @@ test("marketplace verification service prefers the joined repository path", asyn
   let joinedReadCount = 0;
   let fallbackReadCount = 0;
   const offers = {
-    async listVerificationRows() {
+    async listVerificationRows(input: { after?: { createdAt: string; id: string }; limit: number }) {
       joinedReadCount += 1;
+      assert.equal(input.limit, 26);
       return expected;
     },
     async list() {
@@ -139,7 +145,10 @@ test("marketplace verification service prefers the joined repository path", asyn
     {} as never
   );
 
-  assert.deepEqual(await service.listAffiliateOfferVerification(), expected);
+  const page = await service.listAffiliateOfferVerification({ limit: 25 });
+  assert.deepEqual(page.items, expected);
+  assert.equal(page.hasMore, false);
+  assert.equal(page.nextCursor, null);
   assert.equal(joinedReadCount, 1);
   assert.equal(fallbackReadCount, 0);
 });
