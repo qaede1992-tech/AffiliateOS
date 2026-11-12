@@ -148,8 +148,9 @@ jobs:
             fi
             sleep 1
           done
+          # The container smoke database is intentionally empty; readiness must fail closed until its schema is applied.
           readiness_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3001/api/v1/ready)
-          test "$readiness_status" = '200'
+          test "$readiness_status" = '503'
           unauthorized_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3001/api/v1/auth/me)
           test "$unauthorized_status" = '401'
           authorized_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
