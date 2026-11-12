@@ -295,12 +295,12 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     }
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
-  }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get<{ Querystring: { query?: string; page?: string | number; pageSize?: string | number } }>("/api/v1/public/shop", async (request) => {
+  }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get<{ Querystring: { query?: string; page?: string | number; pageSize?: string | number } }>("/api/v1/public/shop", async (request, reply) => {
     const query = publicShopQuerySchema.parse(request.query);
     let catalog: { data: PublicShopCatalogItem[]; total: number; page: number; pageSize: number };
     if (services.publicShopCatalog) {
       catalog = await services.publicShopCatalog.listPage(query);
-    } else {
+    } else if (services.publicShopCatalogFallbackAllowed === true) {
       const [products, offers, trackingLinks] = await Promise.all([
         services.marketplace.listProducts(),
         services.marketplace.listAffiliateOffers(),
@@ -347,6 +347,11 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         page: query.page,
         pageSize: query.pageSize
       };
+    } else {
+      return reply.status(503).send({
+        error: "PUBLIC_SHOP_CATALOG_UNAVAILABLE",
+        message: "The product catalog is temporarily unavailable."
+      });
     }
 
     const productsWithMedia = catalog.data.filter((product) => Boolean(product.imageUrl || product.videoUrl));
