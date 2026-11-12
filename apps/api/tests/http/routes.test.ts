@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp, configuredCorsOrigin } from "../../src/app.js";
 import { createInMemoryServices } from "../../src/domain/container.js";
+import type { ProductMediaAssetRepository } from "../../src/domain/product-media-ingestion.js";
 
 test("configured CORS origin rejects an unset production origin", () => {
   const previous = process.env.API_CORS_ORIGIN;
@@ -1375,6 +1376,83 @@ test("GET /api/v1/public/shop exposes product media only with current verified r
     assert.equal(Object.hasOwn(items[4], "imageUrl"), false);
     assert.equal(Object.hasOwn(items[5], "imageUrl"), false);
     assert.equal(mediaLookupCalls, 1);
+  } finally {
+    await app.close();
+  }
+});
+
+
+test("GET /api/v1/public/shop returns a bounded paginated catalog envelope", async () => {
+  const app = createApp();
+  try {
+    const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { data: [], total: 0, page: 1, pageSize: 24 });
+  } finally {
+    await app.close();
+  }
+});
+
+test("GET /api/v1/public/shop rejects pagination values outside supported bounds", async () => {
+  const app = createApp();
+  try {
+    const response = await app.inject({ method: "GET", url: "/api/v1/public/shop?page=0&pageSize=100" });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error, "VALIDATION_ERROR");
+  } finally {
+    await app.close();
+  }
+});
+
+test("GET /api/v1/public/shop loads media evidence only for the returned page and fails closed", async () => {
+  const services = createInMemoryServices();
+  const productId = "f13b6b18-2c1a-4f31-8c44-1c1e1a6a9a31";
+  let receivedQuery: { query: string; page: number; pageSize: number } | undefined;
+  const lookedUpProductIds: string[][] = [];
+  services.publicShopCatalog = {
+    listPage: async (input) => {
+      receivedQuery = input;
+      return {
+        data: [{
+          id: productId,
+          referenceNumber: 25,
+          name: "Lampu Uji",
+          trackingCode: "TRACK25",
+          imageUrl: "https://cdn.example.com/lampu.jpg"
+        }],
+        total: 25,
+        page: 2,
+        pageSize: 24
+      };
+    }
+  };
+  services.productMediaAssets = {
+    listByProducts: async (productIds: string[]) => {
+      lookedUpProductIds.push(productIds);
+      return [];
+    }
+  } as unknown as ProductMediaAssetRepository;
+
+  const app = createApp(services);
+  try {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/public/shop?query=lampu&page=2&pageSize=24"
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(receivedQuery, { query: "lampu", page: 2, pageSize: 24 });
+    assert.deepEqual(lookedUpProductIds, [[productId]]);
+    assert.deepEqual(response.json(), {
+      data: [{
+        id: productId,
+        referenceNumber: 25,
+        name: "Lampu Uji",
+        trackingCode: "TRACK25"
+      }],
+      total: 25,
+      page: 2,
+      pageSize: 24
+    });
   } finally {
     await app.close();
   }
