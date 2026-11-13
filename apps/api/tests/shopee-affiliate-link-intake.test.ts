@@ -126,7 +126,7 @@ test("stale resolving claim is compare-and-set guarded", async () => {
   assert.equal(await repository.claimStaleResolving(intake.id, now, new Date().toISOString()), false);
 });
 
-test("different affiliate URLs resolving to the same Shopee product deduplicate by product identity", async () => {
+test("different affiliate URLs resolving to the same Shopee product deduplicate without persisting a duplicate intake", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => ({
     status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
@@ -136,9 +136,27 @@ test("different affiliate URLs resolving to the same Shopee product deduplicate 
   const second = await service.submit(secondUrl);
   assert.equal(first.id, second.id);
   const secondHash = createHash("sha256").update(secondUrl).digest("hex");
-  const duplicateIntake = await repository.findByUrlHash(secondHash);
-  assert.equal(duplicateIntake?.status, "failed", "Duplicate product identity must not leave an intake stuck in resolving.");
-  assert.equal(duplicateIntake?.sourceMetadata.duplicateOfIntakeId, first.id);
+  assert.equal(await repository.findByUrlHash(secondHash), undefined);
+});
+
+test("concurrent affiliate URLs resolving to the same Shopee product persist only one intake", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  let resolverCalls = 0;
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => {
+    resolverCalls += 1;
+    if (resolverCalls === 2) release();
+    await barrier;
+    return { status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456" };
+  });
+  const urls = ["https://s.shopee.co.id/race-first", "https://s.shopee.co.id/race-second"];
+  const [first, second] = await Promise.all(urls.map((url) => service.submit(url)));
+  assert.equal(resolverCalls, 2);
+  assert.equal(first.id, second.id);
+  const hashes = urls.map((url) => createHash("sha256").update(url).digest("hex"));
+  const stored = await Promise.all(hashes.map((hash) => repository.findByUrlHash(hash)));
+  assert.equal(stored.filter(Boolean).length, 1);
 });
 
 test("verified feed offer reconciles a matching intake without inventing offer values", async () => {
