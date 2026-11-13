@@ -13,7 +13,7 @@ type InstagramProfileResponse = { user_id?: string | number; username?: string; 
 export type InstagramGraphPublishingClientConfiguration = {
   accessTokenResolver: (account: SocialAccount) => Promise<string>;
   mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
-  assertPublicationRights?: (input: { content: Content }) => Promise<void>;
+  assertPublicationRights?: (input: { content: Content; operation: PublicationOperation }) => Promise<void>;
   fetchImpl?: typeof fetch;
   graphBaseUrl?: string;
 };
@@ -65,7 +65,7 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     if (status === "FINISHED") {
       // Re-check rights at the last application-controlled point before Meta publishes.
       // PUBLISHED containers still take the reconciliation-only path below.
-      await this.configuration.assertPublicationRights?.({ content: input.content });
+      await this.configuration.assertPublicationRights?.({ content: input.content, operation: input.operation });
       const externalPostId = await this.publishContainer(accountId, input.operation.providerOperationId, accessToken);
       return { status: "published", externalPostId };
     }
