@@ -2,59 +2,74 @@ import type { ShopeeIntakeRecoveryWorker } from "./shopee-intake-recovery-worker
 import type { ShopeeIntakeRecoveryResult } from "./shopee-affiliate-link-intake.js";
 
 export type ShopeeIntakeRecoverySchedulerOptions = {
+  /** Retry delay after a database/worker error. Idle queues are event-driven and never polled. */
   intervalMs?: number;
-  idleMaxIntervalMs?: number;
+  now?: () => Date;
+  setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+  clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
   onResult?: (result: ShopeeIntakeRecoveryResult) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
 };
 
 type TimerHandle = ReturnType<typeof setTimeout>;
-const DEFAULT_INTERVAL_MS = 60_000;
-const DEFAULT_IDLE_MAX_INTERVAL_MS = 15 * 60_000;
+const DEFAULT_RETRY_INTERVAL_MS = 60_000;
+const MAX_TIMER_DELAY_MS = 2_147_000_000;
 
 export class ShopeeIntakeRecoveryScheduler {
-  private readonly intervalMs: number;
-  private readonly idleMaxIntervalMs: number;
-  private currentIntervalMs: number;
-  private consecutiveEmptyRuns = 0;
+  private readonly retryIntervalMs: number;
+  private readonly now: () => Date;
+  private readonly setTimer: NonNullable<ShopeeIntakeRecoverySchedulerOptions["setTimer"]>;
+  private readonly clearTimer: NonNullable<ShopeeIntakeRecoverySchedulerOptions["clearTimer"]>;
   private readonly onResult?: ShopeeIntakeRecoverySchedulerOptions["onResult"];
   private readonly onError?: ShopeeIntakeRecoverySchedulerOptions["onError"];
   private timer?: TimerHandle;
   private activeRun?: Promise<ShopeeIntakeRecoveryResult>;
+  private wakeLookup?: Promise<void>;
+  private wakeRevision = 0;
+  private retryAfterError = false;
   private started = false;
 
   constructor(
-    private readonly worker: Pick<ShopeeIntakeRecoveryWorker, "runOnce">,
+    private readonly worker: Pick<ShopeeIntakeRecoveryWorker, "runOnce" | "nextWakeAt">,
     options: ShopeeIntakeRecoverySchedulerOptions = {}
   ) {
-    this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
-    this.idleMaxIntervalMs = options.idleMaxIntervalMs ?? DEFAULT_IDLE_MAX_INTERVAL_MS;
-    if (!Number.isFinite(this.intervalMs) || this.intervalMs < 10_000) throw new Error("Shopee intake recovery interval must be at least 10 seconds.");
-    if (!Number.isFinite(this.idleMaxIntervalMs) || this.idleMaxIntervalMs < this.intervalMs || this.idleMaxIntervalMs > 3_600_000) {
-      throw new Error("Shopee intake recovery idle maximum must be between the base interval and one hour.");
+    this.retryIntervalMs = options.intervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
+    if (!Number.isFinite(this.retryIntervalMs) || this.retryIntervalMs < 1_000 || this.retryIntervalMs > 3_600_000) {
+      throw new Error("Shopee intake recovery retry interval must be between one second and one hour.");
     }
-    this.currentIntervalMs = this.intervalMs;
+    this.now = options.now ?? (() => new Date());
+    this.setTimer = options.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+    this.clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
     this.onResult = options.onResult;
     this.onError = options.onError;
   }
 
-  /** Current delay before the next scheduled poll; exposed for health diagnostics. */
-  get nextIntervalMs(): number {
-    return this.currentIntervalMs;
+  get isRunning(): boolean {
+    return this.started;
   }
 
   start(): void {
     if (this.started) return;
     this.started = true;
-    void this.runAndSchedule();
+    void this.scheduleNext();
+  }
+
+  /**
+   * Called when an intake enters or leaves the resolving state. It only refreshes
+   * the bounded wake-time lookup; it never starts a recovery worker by itself.
+   */
+  notifyChanged(): void {
+    if (!this.started) return;
+    this.wakeRevision += 1;
+    this.retryAfterError = false;
+    this.clearScheduledTimer();
+    void this.scheduleNext();
   }
 
   async stop(): Promise<void> {
     this.started = false;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
+    this.wakeRevision += 1;
+    this.clearScheduledTimer();
     // A failed worker has already been reported through onError. Do not let
     // that failure abort application shutdown before the database is closed.
     await this.activeRun?.catch(() => undefined);
@@ -62,51 +77,90 @@ export class ShopeeIntakeRecoveryScheduler {
 
   async runNow(): Promise<ShopeeIntakeRecoveryResult> {
     if (this.activeRun) return this.activeRun;
-    this.activeRun = this.worker.runOnce()
+    this.wakeRevision += 1;
+    this.activeRun = Promise.resolve()
+      .then(() => this.worker.runOnce())
       .then(async (result) => {
-        this.updateIntervalAfterResult(result);
+        this.retryAfterError = false;
         try { await this.onResult?.(result); } catch (error) { await this.notifyError(error); }
         return result;
       })
       .catch(async (error) => {
-        // Retry failures at the normal cadence; idle backoff is only for a
-        // confirmed empty queue, never for database/provider errors.
-        this.resetInterval();
+        this.retryAfterError = true;
         await this.notifyError(error);
         throw error;
       })
-      .finally(() => { this.activeRun = undefined; });
+      .finally(() => {
+        this.activeRun = undefined;
+        if (this.started) void this.scheduleNext();
+      });
     return this.activeRun;
   }
 
-  private updateIntervalAfterResult(result: ShopeeIntakeRecoveryResult): void {
-    if (result.scanned > 0) {
-      this.resetInterval();
+  private async scheduleNext(): Promise<void> {
+    if (!this.started || this.timer || this.activeRun || this.wakeLookup) return;
+    if (this.retryAfterError) {
+      this.scheduleRetry();
       return;
     }
-    // Keep the first empty poll at the normal cadence. Increase subsequent
-    // empty polls exponentially, capped at 15 minutes by default.
-    if (this.consecutiveEmptyRuns > 0) {
-      this.currentIntervalMs = Math.min(this.currentIntervalMs * 2, this.idleMaxIntervalMs);
+    const revision = this.wakeRevision;
+    const lookup = (async () => {
+      try {
+        const nextWakeAt = await this.worker.nextWakeAt();
+        if (revision !== this.wakeRevision || !this.started || this.timer || this.activeRun || !nextWakeAt) return;
+        const nextTime = nextWakeAt.getTime();
+        if (!Number.isFinite(nextTime)) throw new Error("Shopee intake recovery returned an invalid wake time.");
+        const now = this.now().getTime();
+        if (nextTime <= now) {
+          // A zero-result run with an already-due row can be a concurrent CAS race.
+          // Back off briefly instead of spinning on the same stale candidate.
+          this.scheduleRetry();
+          return;
+        }
+        const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, nextTime - now));
+        this.timer = this.setTimer(() => {
+          this.timer = undefined;
+          void this.runDue();
+        }, delayMs);
+        (this.timer as TimerHandle & { unref?: () => void }).unref?.();
+      } catch (error) {
+        if (revision !== this.wakeRevision || !this.started) return;
+        await this.notifyError(error);
+        this.scheduleRetry();
+      }
+    })();
+    this.wakeLookup = lookup;
+    try {
+      await lookup;
+    } finally {
+      if (this.wakeLookup === lookup) this.wakeLookup = undefined;
+      if (this.started && revision !== this.wakeRevision && !this.timer && !this.activeRun) {
+        void this.scheduleNext();
+      }
     }
-    this.consecutiveEmptyRuns += 1;
   }
 
-  private resetInterval(): void {
-    this.consecutiveEmptyRuns = 0;
-    this.currentIntervalMs = this.intervalMs;
+  private async runDue(): Promise<void> {
+    if (!this.started) return;
+    try { await this.runNow(); } catch { /* A retry timer is scheduled by runNow(). */ }
+  }
+
+  private scheduleRetry(): void {
+    if (!this.started || this.timer || this.activeRun) return;
+    this.timer = this.setTimer(() => {
+      this.timer = undefined;
+      void this.runDue();
+    }, this.retryIntervalMs);
+    (this.timer as TimerHandle & { unref?: () => void }).unref?.();
+  }
+
+  private clearScheduledTimer(): void {
+    if (!this.timer) return;
+    this.clearTimer(this.timer);
+    this.timer = undefined;
   }
 
   private async notifyError(error: unknown): Promise<void> {
     try { await this.onError?.(error); } catch { /* Observer failures do not change worker semantics. */ }
-  }
-
-  private async runAndSchedule(): Promise<void> {
-    try { await this.runNow(); } catch { /* Continue on the next scheduled cycle. */ }
-    if (!this.started) return;
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      void this.runAndSchedule();
-    }, this.currentIntervalMs);
   }
 }
