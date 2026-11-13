@@ -26,6 +26,12 @@ RUN apk add --no-cache ffmpeg font-dejavu \
   && test -f /usr/share/fonts/dejavu/DejaVuSans.ttf
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/packages/shared/dist packages/shared/dist
+COPY apps/api/drizzle apps/api/drizzle
+COPY apps/api/scripts/run-migrations.mjs apps/api/scripts/run-migrations.mjs
+COPY apps/api/scripts/verify-migrations.mjs apps/api/scripts/verify-migrations.mjs
+COPY apps/api/scripts/verify-migrations-preflight.mjs apps/api/scripts/verify-migrations-preflight.mjs
+COPY apps/api/scripts/migration-ledger-preflight.mjs apps/api/scripts/migration-ledger-preflight.mjs
+COPY apps/api/scripts/supabase-migration-ledger-audit.mjs apps/api/scripts/supabase-migration-ledger-audit.mjs
 RUN mkdir -p /var/lib/affiliateos/secrets && chown -R node:node /var/lib/affiliateos
 WORKDIR /app/apps/api
 VOLUME ["/var/lib/affiliateos/secrets"]
