@@ -5,6 +5,7 @@
  * grants usage rights, or marks assets publishable. A human rights review and
  * persisted evidence are still required by product-media-publication-rights.
  */
+import { isIP } from "node:net";
 export interface ProductMediaSearchIdentity {
   name: string;
   brand?: string | null;
@@ -127,11 +128,34 @@ export const evaluateProductMediaIdentity = (
   return { score, status: "rejected", reasons: [...reasons, "Kecocokan identitas belum cukup kuat."] };
 };
 
+const RESERVED_HOST_SUFFIXES = [
+  ".localhost", ".local", ".internal", ".invalid", ".lan", ".home.arpa", ".test", ".example"
+] as const;
+
 const safeHttps = (value: unknown): string | null => {
   if (typeof value !== "string" || value.length > 2048) return null;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || !url.hostname) return null;
+    const rawHostname = url.hostname.toLowerCase();
+    const hostname = rawHostname.startsWith("[") && rawHostname.endsWith("]")
+      ? rawHostname.slice(1, -1)
+      : rawHostname;
+    const normalizedHostname = hostname.endsWith(".") ? hostname.slice(0, -1) : hostname;
+    const reservedHostname = normalizedHostname === "localhost" || normalizedHostname === "home.arpa" ||
+      RESERVED_HOST_SUFFIXES.some((suffix) => normalizedHostname.endsWith(suffix));
+    const hasControlCharacters = [...url.href].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    });
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      !normalizedHostname.includes(".") ||
+      isIP(normalizedHostname) !== 0 ||
+      reservedHostname ||
+      hasControlCharacters
+    ) return null;
     return url.toString();
   } catch {
     return null;
