@@ -136,6 +136,43 @@ test("maps Indonesian marketplace listing titles to concise Commons category que
   }), ["honey"]);
 });
 
+test("maps lipstick holder marketplace titles to a precise organizer query", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Rak Lipstick / Rak Tempat Lipstick / Rak Meja Lipstick / Rak Lipstick Slot Top006"
+  }), ["lipstick holder"]);
+});
+
+test("keeps first meaningful product tokens and drops trailing listing codes", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Asthin Force 12 Suplemen Antioksidan Healthy Skin isi 2 Strip"
+  }), ["asthin force suplemen"]);
+});
+
+test("accepts a properly licensed lipstick organizer as a low-confidence review candidate", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: [{
+      title: "File:Plastic lipstick organizer tray.jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/thumb-lipstick-organizer.jpg",
+        url: "https://upload.wikimedia.org/lipstick-organizer.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Plastic_lipstick_organizer_tray.jpg",
+        mime: "image/jpeg",
+        extmetadata: {
+          LicenseShortName: { value: "CC0" },
+          LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+        }
+      }]
+    }] }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Rak Lipstick / Rak Tempat Lipstick / Rak Meja Lipstick / Rak Lipstick Slot Top006"
+  }, { fetchImpl });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+  assert.equal(results[0]?.license, "cc0");
+});
+
 test("keeps category-relevant results as low-confidence manual-review candidates", async () => {
   let requestedUrl = "";
   const fetchImpl: typeof fetch = async (input) => {
