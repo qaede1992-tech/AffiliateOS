@@ -333,6 +333,7 @@ test("recovery metrics do not double-count an intake completed by another worker
     update: (value: ShopeeAffiliateLinkIntake) => baseRepository.update(value),
     // Both workers retain the same stale snapshot; the second sees the first worker's completed row.
     listStaleResolving: async () => [intake],
+    nextStaleResolvingAt: () => baseRepository.nextStaleResolvingAt(),
     claimStaleResolving: (id: string, expectedUpdatedAt: string, claimedAt: string) =>
       baseRepository.claimStaleResolving(id, expectedUpdatedAt, claimedAt),
     updateIfResolving: (id: string, expectedUpdatedAt: string, value: ShopeeAffiliateLinkIntake) =>
@@ -377,4 +378,61 @@ test("resolver timeout marks stale intake unresolved and late completion cannot 
   await new Promise((resolve) => setTimeout(resolve, 0));
   const afterLateCompletion = await repository.findByUrlHash(createHash("sha256").update(url).digest("hex"));
   assert.equal(afterLateCompletion?.status, "unresolved");
+});
+
+test("Shopee intake repository returns only the earliest resolving recovery deadline", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const base = new Date("2026-11-13T10:00:00.000Z");
+  const resolving = {
+    id: "intake-resolving",
+    marketplaceSlug: "shopee-affiliate-feed" as const,
+    affiliateUrl: "https://s.shopee.co.id/resolving",
+    normalizedUrlHash: "resolving-hash",
+    status: "resolving" as const,
+    sourceMetadata: {},
+    createdAt: base.toISOString(),
+    updatedAt: base.toISOString()
+  };
+  await repository.saveIfAbsent(resolving);
+  await repository.saveIfAbsent({
+    ...resolving,
+    id: "intake-complete",
+    affiliateUrl: "https://s.shopee.co.id/complete",
+    normalizedUrlHash: "complete-hash",
+    status: "awaiting_offer_data",
+    updatedAt: new Date(base.getTime() - 60_000).toISOString()
+  });
+
+  assert.equal(
+    await repository.nextStaleResolvingAt(),
+    new Date(base.getTime() + 5 * 60_000).toISOString()
+  );
+});
+
+test("Shopee intake notifies recovery scheduler when a resolving row is created and completed", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  let resolve!: (value: { status: "resolved"; affiliateUrl: string; productUrl: string; shopId: string; itemId: string }) => void;
+  const resolution = new Promise<{ status: "resolved"; affiliateUrl: string; productUrl: string; shopId: string; itemId: string }>((yes) => { resolve = yes; });
+  let wakeSignals = 0;
+  const affiliateUrl = "https://s.shopee.co.id/wake-signal-test";
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async () => resolution);
+  service.setRecoveryWakeSignal(() => { wakeSignals += 1; });
+
+  const submitting = service.submit(affiliateUrl);
+  await new Promise<void>((done) => setImmediate(done));
+  assert.equal(wakeSignals, 1);
+  assert.ok(await service.nextStaleResolvingAt());
+
+  resolve({
+    status: "resolved",
+    affiliateUrl,
+    productUrl: "https://shopee.co.id/product/123/456",
+    shopId: "123",
+    itemId: "456"
+  });
+  const intake = await submitting;
+
+  assert.equal(intake.status, "awaiting_offer_data");
+  assert.equal(wakeSignals, 2);
+  assert.equal(await service.nextStaleResolvingAt(), undefined);
 });

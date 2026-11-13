@@ -32,6 +32,15 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
       .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
       .slice(0, limit);
   }
+  async nextStaleResolvingAt() {
+    const timestamps = [...this.rows.values()]
+      .filter((row) => row.status === "resolving")
+      .map((row) => Date.parse(row.updatedAt))
+      .filter(Number.isFinite);
+    return timestamps.length > 0
+      ? new Date(Math.min(...timestamps) + 5 * 60_000).toISOString()
+      : undefined;
+  }
   async updateIfResolving(id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake) {
     const current = this.rows.get(id);
     if (!current || current.status !== "resolving" || current.updatedAt !== expectedUpdatedAt) return undefined;

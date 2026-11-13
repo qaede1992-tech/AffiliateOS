@@ -150,6 +150,7 @@ const shopeeIntakeRecoveryScheduler = new ShopeeIntakeRecoveryScheduler(shopeeIn
   onResult: (result) => app.log.info({ ...result }, "Shopee stale intake recovery cycle completed"),
   onError: (error) => app.log.error({ errorType: safeErrorType(error) }, "Shopee stale intake recovery cycle failed")
 });
+services.shopeeAffiliateLinkIntakes.setRecoveryWakeSignal(() => shopeeIntakeRecoveryScheduler.notifyChanged());
 
 try {
   await app.listen({ host: environment.API_HOST, port: environment.API_PORT });
