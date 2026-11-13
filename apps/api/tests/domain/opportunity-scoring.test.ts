@@ -227,3 +227,26 @@ describe("opportunity scoring", () => {
     assert.ok(result.reasons.includes("Additional data unavailable: rating data, review count data"));
     assert.ok(!result.reasons.some((reason) => reason.includes("recorded reviews")));
   });
+
+
+it("does not describe measured zero counts as positive demand sources", () => {
+  const result = scoreOpportunity({
+    product: product({
+      soldCount: 100_000,
+      reviewCount: 0,
+      ratingMilli: undefined,
+      discoverySignals: {
+        dataQuality: {
+          soldCount: "exact",
+          reviewCount: "exact",
+          ratingMilli: "missing",
+          source: "shopee-affiliate-csv",
+        },
+      },
+    }),
+    offers: [offer()],
+  });
+
+  assert.ok(result.reasons.includes("Strong demand from recorded sales"));
+  assert.ok(!result.reasons.some((reason) => reason.includes("recorded reviews")));
+});
