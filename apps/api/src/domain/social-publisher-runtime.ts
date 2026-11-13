@@ -1,3 +1,4 @@
+import type { Content } from "@affiliateos/shared";
 import type { SocialPublisher } from "./distribution-engine.js";
 import { InstagramContentPublisher } from "./instagram-content-publisher.js";
 import { InstagramGraphPublishingClient } from "./instagram-graph-publishing-client.js";
@@ -16,6 +17,7 @@ export type OfficialSocialPublisherRuntimeConfiguration = {
     fetchImpl?: typeof fetch;
     graphBaseUrl?: string;
     mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
+    assertPublicationRights?: (input: { content: Content; mediaAssets: MediaAsset[] }) => Promise<void>;
   };
 };
 
@@ -49,7 +51,8 @@ export function createOfficialSocialPublishers(
         },
         fetchImpl: configuration.instagram?.fetchImpl,
         graphBaseUrl: configuration.instagram?.graphBaseUrl,
-        mediaUrlResolver: configuration.instagram?.mediaUrlResolver
+        mediaUrlResolver: configuration.instagram?.mediaUrlResolver,
+        assertPublicationRights: configuration.instagram?.assertPublicationRights
       })
     )
   ];
