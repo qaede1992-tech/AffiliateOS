@@ -30,7 +30,7 @@ export const publisherSupportsContent = (publisher: SocialPublisher, content: Co
 const platformMatches = (content: Content, account: SocialAccount) => content.platform === account.platform;
 
 export class DistributionEngine {
-  constructor(private readonly contentService: ContentService, private readonly socialAccounts: SocialAccountRepository, private readonly publishers: SocialPublisher[] = [], private readonly publicationJobs?: import("./publication-job-service.js").PublicationJobService) {}
+  constructor(private readonly contentService: ContentService, private readonly socialAccounts: SocialAccountRepository, private readonly publishers: SocialPublisher[] = [], private readonly publicationJobs?: import("./publication-job-service.js").PublicationJobService, private readonly onScheduled?: () => void) {}
 
   async validate(request: DistributionRequest): Promise<SocialAccount> {
     const scheduledAt = new Date(request.scheduledAt);
@@ -55,6 +55,7 @@ export class DistributionEngine {
         await this.contentService.update(request.content.id, { status: "draft", scheduledAt: undefined, socialAccountId: undefined });
         throw error;
       }
+      this.onScheduled?.();
     }
     const publishable = this.publishers.some((publisher) => publisherSupportsContent(publisher, request.content));
     return { content: updated, account, scheduledAt: scheduledAt.toISOString(), publishable };
