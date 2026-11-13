@@ -24,9 +24,9 @@ test("marketplace endpoints normalize products, persist offers, and generate moc
   assert.equal(discover.statusCode, 200);
   assert.equal(discover.json().data[0].name, "Test kettle");
   const discoveredProduct = discover.json().data[0];
-  const mediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://cdn.example.test/product.jpg", videoUrl: "https://cdn.example.com/product.mp4" } });
+  const mediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://cdn.example.com/product.jpg", videoUrl: "https://cdn.example.com/product.mp4" } });
   assert.equal(mediaUpdate.statusCode, 200);
-  assert.equal(mediaUpdate.json().imageUrl, "https://cdn.example.test/product.jpg");
+  assert.equal(mediaUpdate.json().imageUrl, "https://cdn.example.com/product.jpg");
   assert.equal(mediaUpdate.json().videoUrl, "https://cdn.example.com/product.mp4");
   assert.equal(mediaUpdate.json().productUrl, discoveredProduct.productUrl);
   const clearMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: null } });
