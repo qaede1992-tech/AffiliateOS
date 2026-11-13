@@ -108,6 +108,8 @@ jobs:
         run: node apps/api/scripts/run-migrations.mjs
 
       - name: Verify applied production schema and migration ledger
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: npm run db:verify:applied
 
       - name: Verify test-data retention columns and indexes
