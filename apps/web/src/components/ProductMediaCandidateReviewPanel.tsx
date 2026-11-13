@@ -144,8 +144,8 @@ export function ProductMediaCandidateReviewPanel() {
             <option value="">Pilih produk</option>
             {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
           </select>
-          {productsHaveMore && <button type="button" className="secondary-button" onClick={() => void loadMoreProducts()}>Muat 25 produk berikutnya</button>}
         </label>
+        {productsHaveMore && <button type="button" className="secondary-button" onClick={() => void loadMoreProducts()}>Muat 25 produk berikutnya</button>}
         <div className="product-media-candidate-tabs" role="tablist" aria-label="Status kandidat media">
           <button type="button" role="tab" aria-selected={status === "pending"} className={status === "pending" ? "active" : ""} onClick={() => setStatus("pending")}>Menunggu review</button>
           <button type="button" role="tab" aria-selected={status === "approved"} className={status === "approved" ? "active" : ""} onClick={() => setStatus("approved")}>Disetujui</button>
