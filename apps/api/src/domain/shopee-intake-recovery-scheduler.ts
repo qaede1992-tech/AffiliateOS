@@ -27,6 +27,7 @@ export class ShopeeIntakeRecoveryScheduler {
   private wakeLookup?: Promise<void>;
   private wakeRevision = 0;
   private retryAfterError = false;
+  private backoffDueWake = false;
   private started = false;
 
   constructor(
@@ -62,6 +63,7 @@ export class ShopeeIntakeRecoveryScheduler {
     if (!this.started) return;
     this.wakeRevision += 1;
     this.retryAfterError = false;
+    this.backoffDueWake = false;
     this.clearScheduledTimer();
     void this.scheduleNext();
   }
@@ -82,6 +84,7 @@ export class ShopeeIntakeRecoveryScheduler {
       .then(() => this.worker.runOnce())
       .then(async (result) => {
         this.retryAfterError = false;
+        this.backoffDueWake = result.scanned === 0 || (result.recovered === 0 && result.skipped > 0);
         try { await this.onResult?.(result); } catch (error) { await this.notifyError(error); }
         return result;
       })
@@ -111,7 +114,7 @@ export class ShopeeIntakeRecoveryScheduler {
         const nextTime = nextWakeAt.getTime();
         if (!Number.isFinite(nextTime)) throw new Error("Shopee intake recovery returned an invalid wake time.");
         const now = this.now().getTime();
-        if (nextTime <= now) {
+        if (nextTime <= now && this.backoffDueWake) {
           // A zero-result run with an already-due row can be a concurrent CAS race.
           // Back off briefly instead of spinning on the same stale candidate.
           this.scheduleRetry();
