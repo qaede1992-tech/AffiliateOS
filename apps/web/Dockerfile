@@ -1,8 +1,8 @@
 FROM node:24-alpine AS build
 WORKDIR /app
-# blitz.cloud Free builds do not expose Docker build arguments; production CI
-# overrides this public fallback through the release workflow.
-ARG VITE_API_URL=https://affiliateos.affiliateos.blitz.cloud
+# Blitz Cloud builds directly from this Dockerfile and do not pass release build args.
+# Use the canonical Production API hostname; the .blitz.cloud alias fails CORS preflight.
+ARG VITE_API_URL=https://affiliateos.affiliateos.prod.page
 RUN test -n "$VITE_API_URL"
 ENV VITE_API_URL=$VITE_API_URL
 COPY package.json package-lock.json ./
