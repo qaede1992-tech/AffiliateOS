@@ -147,6 +147,14 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
       .limit(limit);
     return rows.map((row: typeof shopeeAffiliateLinkIntakes.$inferSelect) => this.map(row));
   }
+  async nextStaleResolvingAt() {
+    const rows = await this.db.select({
+      nextAt: sql<Date | null>`min(${shopeeAffiliateLinkIntakes.updatedAt} + interval '5 minutes')`
+    }).from(shopeeAffiliateLinkIntakes)
+      .where(eq(shopeeAffiliateLinkIntakes.status, "resolving"));
+    const nextAt = rows[0]?.nextAt;
+    return nextAt ? new Date(String(nextAt)).toISOString() : undefined;
+  }
   async updateIfResolving(id: string, expectedUpdatedAt: string, entity: ShopeeAffiliateLinkIntake) {
     const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
     const rows = await this.db.update(shopeeAffiliateLinkIntakes).set(values).where(and(
