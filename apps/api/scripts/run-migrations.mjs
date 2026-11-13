@@ -28,7 +28,7 @@ runVerification("verify-migrations-preflight.mjs");
 
 const pool = new Pool({ connectionString: migrationUrl, max: 1, connectionTimeoutMillis: 10000 });
 try {
-  await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });
+  await migrate(drizzle(pool), { migrationsFolder: fileURLToPath(new URL("../drizzle/", import.meta.url)) });
 } finally {
   await pool.end();
 }
