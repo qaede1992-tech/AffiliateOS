@@ -44,7 +44,7 @@ class DrizzleAffiliateOfferRepository extends DrizzleRepository<AffiliateOffer, 
           and(eq(affiliateOffers.createdAt, input.after.createdAt), gt(affiliateOffers.id, input.after.id))
         )
       : undefined;
-    const rows = await this.db.select({
+    const query = this.db.select({
       offer: affiliateOffers,
       affiliateId: affiliates.id,
       affiliateName: affiliates.name,
@@ -57,8 +57,8 @@ class DrizzleAffiliateOfferRepository extends DrizzleRepository<AffiliateOffer, 
       .leftJoin(affiliateAccounts, eq(affiliateOffers.affiliateAccountId, affiliateAccounts.id))
       .leftJoin(affiliates, eq(affiliateAccounts.affiliateId, affiliates.id))
       .leftJoin(marketplaces, eq(affiliateAccounts.marketplaceId, marketplaces.id))
-      .leftJoin(products, eq(affiliateOffers.productId, products.id))
-      .where(cursorCondition)
+      .leftJoin(products, eq(affiliateOffers.productId, products.id));
+    const rows = await (cursorCondition ? query.where(cursorCondition) : query)
       .orderBy(asc(affiliateOffers.createdAt), asc(affiliateOffers.id))
       .limit(Math.max(1, Math.min(51, input.limit)));
     return rows.map((row: any) => ({
