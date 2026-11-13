@@ -13,7 +13,8 @@ export type AuditEvent =
   | "shopee_affiliate_link_intake_submitted"
   | "product_media_rights_updated"
   | "product_media_candidate_reviewed"
-  | "product_media_candidate_imported";
+  | "product_media_candidate_imported"
+  | "product_media_uploaded";
 
 export function auditSecurityEvent(
   log: FastifyBaseLogger,
