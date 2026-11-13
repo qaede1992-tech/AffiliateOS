@@ -58,7 +58,7 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
 };
 
 const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp; exclude?: RegExp }> = [
-  { pattern: /\\b(?:rak|holder|organizer|organiser|stand|storage|tray)\\b.{0,40}\\b(lipstick|makeup|cosmetic)\\b|\\b(lipstick|makeup|cosmetic)\\b.{0,40}\\b(?:rak|holder|organizer|organiser|stand|storage|tray)\\b/i, query: "lipstick holder", relevant: /\\b(lipstick holder|lipstick organizer|lipstick stand|makeup organizer|cosmetic organizer|makeup storage|lipstick storage)\\b/i, exclude: /\\b(lipstick tube|lipstick product|lipstick bottle|makeup brush)\\b/i },
+  { pattern: /\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b.{0,40}\b(lipstick|makeup|cosmetic)\b|\b(lipstick|makeup|cosmetic)\b.{0,40}\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b/i, query: "lipstick holder", relevant: /\b(lipstick holder|lipstick organizer|lipstick stand|makeup organizer|cosmetic organizer|makeup storage|lipstick storage)\b/i, exclude: /\b(lipstick tube|lipstick product|lipstick bottle|makeup brush)\b/i },
   { pattern: /\b(backpack|rucksack|ransel|tas sekolah|tas kuliah)\b/i, query: "backpack", relevant: /\b(backpack|rucksack|knapsack|school bag)\b/i },
   { pattern: /\b(botol minum|tumbler|termos|water bottle)\b/i, query: "water bottle", relevant: /\b(water bottle|bottle|thermos|flask|canteen)\b/i },
   { pattern: /\b(charger|pengisi daya|fast charging)\b/i, query: "charger", relevant: /\b(charger|charging adapter|power adapter)\b/i },
