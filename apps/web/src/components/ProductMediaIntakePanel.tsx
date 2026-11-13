@@ -9,6 +9,9 @@ export function ProductMediaIntakePanel() {
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +48,38 @@ export function ProductMediaIntakePanel() {
     setImageUrl(selectedProduct?.imageUrl ?? "");
     setVideoUrl(selectedProduct?.videoUrl ?? "");
     setRightsConfirmed(false);
+    setImageFile(null);
+    setVideoFile(null);
     setNotice(null);
   }, [selectedId]);
+
+  const uploadSelectedFiles = async () => {
+    if (!selectedProduct || (!imageFile && !videoFile)) {
+      setError("Pilih file gambar atau video yang akan diunggah.");
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const uploaded: string[] = [];
+      if (imageFile) {
+        await api.uploadProductMedia(selectedProduct.id, "image", imageFile);
+        uploaded.push("gambar");
+      }
+      if (videoFile) {
+        await api.uploadProductMedia(selectedProduct.id, "video", videoFile);
+        uploaded.push("video");
+      }
+      setImageFile(null);
+      setVideoFile(null);
+      setNotice(`File ${uploaded.join(" dan ")} berhasil diunggah. Status hak tetap UNVERIFIED dan wajib ditinjau admin pada panel Verifikasi Hak Media sebelum dapat dipakai untuk publikasi.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "File media gagal diunggah.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const saveMedia = async () => {
     if (!selectedProduct) return;
@@ -111,6 +144,16 @@ export function ProductMediaIntakePanel() {
               <strong>{selectedProduct.name}</strong>
               <small>ID produk: {selectedProduct.externalProductId} · <a href={selectedProduct.productUrl} target="_blank" rel="noreferrer">Buka halaman produk</a></small>
             </div>
+            <div className="shopee-file-summary">
+              <strong>Unggah file media langsung</strong>
+              <small>Gambar: JPEG, PNG, WebP (maks. 10 MiB). Video: MP4 (maks. 45 MiB).</small>
+            </div>
+            <label htmlFor="product-media-image-file">File gambar produk</label>
+            <input id="product-media-image-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && file.size > 10 * 1024 * 1024) { setImageFile(null); setError("Ukuran gambar melebihi batas 10 MiB."); event.currentTarget.value = ""; return; } setImageFile(file); setError(null); }} />
+            <label htmlFor="product-media-video-file">File video produk</label>
+            <input id="product-media-video-file" type="file" accept="video/mp4,.mp4" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && file.size > 45 * 1024 * 1024) { setVideoFile(null); setError("Ukuran video melebihi batas 45 MiB."); event.currentTarget.value = ""; return; } setVideoFile(file); setError(null); }} />
+            <button type="button" onClick={() => void uploadSelectedFiles()} disabled={uploading || (!imageFile && !videoFile)}>{uploading ? "Mengunggah file…" : "Unggah file media"}</button>
+            <p className="shopee-import-note">Upload menyimpan aset dengan status hak UNVERIFIED. Upload tidak membuktikan kepemilikan atau lisensi dan tidak membuat aset otomatis siap publikasi. Admin harus memeriksa bukti hak pada panel Verifikasi Hak Media.</p>
             <label htmlFor="product-media-image">URL gambar langsung (opsional)</label>
             <input id="product-media-image" type="url" inputMode="url" placeholder="https://cdn.example.com/product-image.jpg" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} />
             <label htmlFor="product-media-video">URL video langsung (opsional)</label>
