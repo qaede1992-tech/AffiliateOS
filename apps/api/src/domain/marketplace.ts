@@ -13,6 +13,25 @@ export class MarketplaceService {
   async listProviders(): Promise<MarketplaceProviderInfo[]> { const configured = await this.connections.list(); return this.registry.list().map((provider) => ({ slug: provider.slug, displayName: provider.displayName, connectionMode: provider.connectionMode, configured: configured.some((connection) => connection.providerSlug === provider.slug), capabilities: [...provider.capabilities], supportsConnectionTest: Boolean(provider.testConnection) })); }
   async listConnections(): Promise<MarketplaceConnectionView[]> { return (await this.connections.list()).map(this.toView); }
   async listProducts(): Promise<Product[]> { return this.products.list(); }
+  async listProductsPage(input: { limit: number; cursor?: string; query?: string }) {
+    let afterId: string | undefined;
+    if (input.cursor) {
+      try {
+        const decoded = Buffer.from(input.cursor, "base64url").toString("utf8");
+        if (Buffer.from(decoded).toString("base64url") !== input.cursor) throw new Error("Invalid cursor encoding");
+        const parsed = JSON.parse(decoded) as { id?: unknown };
+        if (typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.id)) throw new Error("Invalid cursor payload");
+        afterId = parsed.id;
+      } catch { throw new DomainError("INVALID_PRODUCT_COLLECTION_CURSOR", "Cursor pagination value is invalid.", 400); }
+    }
+    const rows = this.products.listPage
+      ? await this.products.listPage({ afterId, limit: input.limit + 1, query: input.query })
+      : (await this.products.list()).filter((product) => (!afterId || product.id > afterId) && (!input.query || product.name.toLocaleLowerCase("id-ID").includes(input.query.toLocaleLowerCase("id-ID")) || product.externalProductId.toLocaleLowerCase("id-ID").includes(input.query.toLocaleLowerCase("id-ID")))).sort((a, b) => a.id.localeCompare(b.id)).slice(0, input.limit + 1);
+    const hasMore = rows.length > input.limit;
+    const items = rows.slice(0, input.limit);
+    const last = items.at(-1);
+    return { items, hasMore, nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ id: last.id })).toString("base64url") : null };
+  }
   async listActiveProductsByMarketplace(marketplaceId: string, limit: number): Promise<Product[]> {
     return this.products.listByMarketplace(marketplaceId, "active", limit);
   }
@@ -30,6 +49,25 @@ export class MarketplaceService {
     return this.products.save({ ...product, imageUrl: input.imageUrl === undefined ? product.imageUrl : input.imageUrl === null ? null as unknown as string : input.imageUrl, videoUrl: input.videoUrl === undefined ? product.videoUrl : input.videoUrl === null ? null as unknown as string : input.videoUrl, updatedAt: now() });
   }
   async listAffiliateOffers(): Promise<AffiliateOffer[]> { return this.offers.list(); }
+  async listAffiliateOffersPage(input: { limit: number; cursor?: string }) {
+    let after: { createdAt: string; id: string } | undefined;
+    if (input.cursor) {
+      try {
+        const decoded = Buffer.from(input.cursor, "base64url").toString("utf8");
+        if (Buffer.from(decoded).toString("base64url") !== input.cursor) throw new Error("Invalid cursor encoding");
+        const parsed = JSON.parse(decoded) as { createdAt?: unknown; id?: unknown };
+        if (typeof parsed.createdAt !== "string" || !Number.isFinite(Date.parse(parsed.createdAt)) || typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.id)) throw new Error("Invalid cursor payload");
+        after = { createdAt: new Date(parsed.createdAt).toISOString(), id: parsed.id };
+      } catch { throw new DomainError("INVALID_AFFILIATE_OFFER_COLLECTION_CURSOR", "Cursor pagination value is invalid.", 400); }
+    }
+    const rows = this.offers.listPage
+      ? await this.offers.listPage({ after, limit: input.limit + 1 })
+      : (await this.offers.list()).filter((offer) => !after || offer.createdAt > after.createdAt || (offer.createdAt === after.createdAt && offer.id > after.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).slice(0, input.limit + 1);
+    const hasMore = rows.length > input.limit;
+    const items = rows.slice(0, input.limit);
+    const last = items.at(-1);
+    return { items, hasMore, nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt, id: last.id })).toString("base64url") : null };
+  }
   async listActiveAffiliateOffersForProducts(affiliateAccountId: string, productIds: string[]): Promise<AffiliateOffer[]> {
     if (!productIds.length) return [];
     return this.offers.listActiveByAccountAndProducts(affiliateAccountId, productIds);
