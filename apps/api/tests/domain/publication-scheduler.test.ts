@@ -1,150 +1,238 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { PublicationWorker } from "../../src/domain/publication-worker.js";
+import type { PublicationWorker, PublicationWorkerResult } from "../../src/domain/publication-worker.js";
 import { PublicationScheduler } from "../../src/domain/publication-scheduler.js";
 
+type Timer = ReturnType<typeof setTimeout>;
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((nextResolve) => { resolve = nextResolve; });
   return { promise, resolve };
 };
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+const fakeTimers = () => {
+  const scheduled: Array<{ handle: Timer; callback: () => void; delayMs: number }> = [];
+  const cleared: Timer[] = [];
+  let nextId = 0;
+  const setTimer = ((callback: () => void, delayMs: number) => {
+    const handle = { id: ++nextId, unref: () => undefined } as unknown as Timer;
+    scheduled.push({ handle, callback, delayMs });
+    return handle;
+  }) as (callback: () => void, delayMs: number) => Timer;
+  const clearTimer = (handle: Timer) => { cleared.push(handle); };
+  return { scheduled, cleared, setTimer, clearTimer };
+};
+
+const emptyResult: PublicationWorkerResult[] = [];
+const worker = (runOnce: () => Promise<PublicationWorkerResult[]>, nextWakeAt: () => Promise<Date | undefined>) =>
+  ({ runOnce, nextWakeAt }) as unknown as PublicationWorker;
 
 describe("PublicationScheduler", () => {
-  it("does not overlap worker runs", async () => {
-    const first = deferred<void>();
+  it("does not run the worker or schedule a timer when the queue is empty", async () => {
     let calls = 0;
-    const worker = {
-      runOnce: async () => {
-        calls += 1;
-        if (calls === 1) await first.promise;
-        return [];
-      }
-    } as unknown as PublicationWorker;
-    const scheduler = new PublicationScheduler(worker);
+    const timers = fakeTimers();
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return emptyResult; }, async () => undefined),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
 
-    const firstRun = scheduler.runNow(new Date("2026-09-20T11:00:00.000Z"));
-    const secondRun = scheduler.runNow(new Date("2026-09-20T11:00:01.000Z"));
-    let secondSettled = false;
-    void secondRun.finally(() => { secondSettled = true; });
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    scheduler.start();
+    await flush();
+    assert.equal(calls, 0);
+    assert.equal(timers.scheduled.length, 0);
+    await scheduler.stop();
+  });
 
-    assert.equal(secondSettled, false);
+  it("schedules the next worker run at the exact due time", async () => {
+    const timers = fakeTimers();
+    const now = new Date("2026-09-21T10:00:00.000Z");
+    const scheduler = new PublicationScheduler(
+      worker(async () => emptyResult, async () => new Date("2026-09-21T10:02:00.000Z")),
+      { now: () => now, setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
+
+    scheduler.start();
+    await flush();
+    assert.equal(timers.scheduled.length, 1);
+    assert.equal(timers.scheduled[0]?.delayMs, 120_000);
+    await scheduler.stop();
+    assert.equal(timers.cleared.length, 1);
+  });
+
+  it("cancels a future wake when a new job is scheduled", async () => {
+    const timers = fakeTimers();
+    let calls = 0;
+    let nextAt: Date | undefined = new Date("2026-09-21T10:02:00.000Z");
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return emptyResult; }, async () => nextAt),
+      { now: () => new Date("2026-09-21T10:00:00.000Z"), setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
+
+    scheduler.start();
+    await flush();
+    assert.equal(timers.scheduled.length, 1);
+    nextAt = undefined;
+    await scheduler.trigger();
     assert.equal(calls, 1);
-    first.resolve();
-    await Promise.all([firstRun, secondRun]);
-    assert.equal(calls, 1);
+    assert.equal(timers.cleared.length, 1);
+    assert.equal(timers.scheduled.length, 1);
+    await scheduler.stop();
   });
 
-  it("reports worker errors without stopping the scheduler", async () => {
-    const errors: unknown[] = [];
+  it("coalesces multiple triggers received during an active worker run", async () => {
+    const first = deferred<PublicationWorkerResult[]>();
     let calls = 0;
-    const worker = {
-      runOnce: async () => {
-        calls += 1;
-        if (calls === 1) throw new Error("worker failure");
-        return [];
-      }
-    } as unknown as PublicationWorker;
-    const scheduler = new PublicationScheduler(worker, { onError: (error) => errors.push(error) });
-
-    await scheduler.runNow();
-    await scheduler.runNow();
-
-    assert.equal(calls, 2);
-    assert.equal(errors.length, 1);
-    assert.equal((errors[0] as Error).message, "worker failure");
-  });
-
-  it("preserves successful worker completion when the result observer fails", async () => {
-    const errors: unknown[] = [];
-    const results = [{ jobId: "job-1", status: "completed" }];
-    const worker = { runOnce: async () => results } as unknown as PublicationWorker;
-    const scheduler = new PublicationScheduler(worker, {
-      onResults: () => { throw new Error("observer failure"); },
-      onError: (error) => errors.push(error)
-    });
-
-    await scheduler.runNow();
-
-    assert.equal(errors.length, 1);
-    assert.equal((errors[0] as Error).message, "observer failure");
-  });
-
-  it("does not reject when the error observer itself fails", async () => {
-    const worker = { runOnce: async () => { throw new Error("worker failure"); } } as unknown as PublicationWorker;
-    const scheduler = new PublicationScheduler(worker, {
-      onError: () => { throw new Error("error observer failure"); }
-    });
-
-    await scheduler.runNow();
-  });
-
-  it("starts an immediate run and stops cleanly while a run is active", async () => {
-    const first = deferred<void>();
-    let calls = 0;
-    const worker = {
-      runOnce: async () => {
-        calls += 1;
-        await first.promise;
-        return [];
-      }
-    } as unknown as PublicationWorker;
-    const scheduler = new PublicationScheduler(worker, { intervalMs: 60_000 });
+    const timers = fakeTimers();
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return calls === 1 ? first.promise : emptyResult; }, async () => undefined),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
 
     scheduler.start();
     await Promise.resolve();
-    assert.equal(scheduler.isRunning, true);
+    const one = scheduler.trigger();
+    const two = scheduler.trigger();
+    const three = scheduler.trigger();
+    await Promise.resolve();
     assert.equal(calls, 1);
-
-    const stopping = scheduler.stop();
-    first.resolve();
-    await stopping;
-
-    assert.equal(scheduler.isRunning, false);
+    first.resolve(emptyResult);
+    await Promise.all([one, two, three]);
+    assert.equal(calls, 2);
+    assert.equal(timers.scheduled.length, 0);
+    await scheduler.stop();
   });
 
-  it("rejects invalid intervals", () => {
-    const worker = { runOnce: async () => [] } as unknown as PublicationWorker;
-    assert.throws(() => new PublicationScheduler(worker, { intervalMs: 0 }), /positive finite/);
-    assert.throws(() => new PublicationScheduler(worker, { intervalMs: Number.NaN }), /positive finite/);
-  });
-});
-
-
-describe("PublicationScheduler idle polling backoff", () => {
-  it("backs off empty polls and resets when publication or reconciliation work appears", async () => {
-    const work = [{ jobId: "job-1", contentId: "content-1", status: "succeeded" as const }];
-    const results = [[], [], [], work, []];
-    const worker = { runOnce: async () => results.shift()! } as unknown as PublicationWorker;
-    const scheduler = new PublicationScheduler(worker, { intervalMs: 10_000, idleMaxIntervalMs: 40_000 });
-
-    await scheduler.runNow();
-    assert.equal(scheduler.nextIntervalMs, 10_000);
-    await scheduler.runNow();
-    assert.equal(scheduler.nextIntervalMs, 20_000);
-    await scheduler.runNow();
-    assert.equal(scheduler.nextIntervalMs, 40_000);
-    await scheduler.runNow();
-    assert.equal(scheduler.nextIntervalMs, 10_000);
-    await scheduler.runNow();
-    assert.equal(scheduler.nextIntervalMs, 10_000);
-  });
-
-  it("resets idle backoff after worker failure", async () => {
+  it("preserves a trigger received during a manual worker run", async () => {
+    const first = deferred<PublicationWorkerResult[]>();
     let calls = 0;
-    const worker = {
-      runOnce: async () => {
-        calls += 1;
-        if (calls === 3) throw new Error("temporary database failure");
-        return [];
-      }
-    } as unknown as PublicationWorker;
-    const scheduler = new PublicationScheduler(worker, { intervalMs: 10_000, idleMaxIntervalMs: 40_000 });
+    const timers = fakeTimers();
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return calls === 1 ? first.promise : emptyResult; }, async () => undefined),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
 
-    await scheduler.runNow();
-    await scheduler.runNow();
-    assert.equal(scheduler.nextIntervalMs, 20_000);
-    await scheduler.runNow();
-    assert.equal(scheduler.nextIntervalMs, 10_000);
+    const manual = scheduler.runNow();
+    await Promise.resolve();
+    assert.equal(calls, 1);
+    scheduler.start();
+    const drain = scheduler.trigger();
+    first.resolve(emptyResult);
+    await Promise.all([manual, drain]);
+    assert.equal(calls, 2);
+    await scheduler.stop();
   });
+
+  it("does not overlap manual worker runs", async () => {
+    const first = deferred<PublicationWorkerResult[]>();
+    let calls = 0;
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return first.promise; }, async () => undefined)
+    );
+
+    const one = scheduler.runNow();
+    const two = scheduler.runNow();
+    await Promise.resolve();
+    assert.equal(calls, 1);
+    first.resolve(emptyResult);
+    await Promise.all([one, two]);
+  });
+
+  it("uses a short fallback timer when due-time inspection fails", async () => {
+    const timers = fakeTimers();
+    const errors: unknown[] = [];
+    const scheduler = new PublicationScheduler(
+      worker(async () => emptyResult, async () => { throw new Error("database unavailable"); }),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer, onError: (error) => errors.push(error) }
+    );
+
+    scheduler.start();
+    await flush();
+    assert.equal(errors.length, 1);
+    assert.equal(timers.scheduled[0]?.delayMs, 30_000);
+    await scheduler.stop();
+  });
+
+  it("backs off after a worker failure even when work remains due", async () => {
+    const timers = fakeTimers();
+    const errors: unknown[] = [];
+    const scheduler = new PublicationScheduler(
+      worker(async () => { throw new Error("temporary worker failure"); }, async () => new Date("2026-09-21T09:59:00.000Z")),
+      {
+        now: () => new Date("2026-09-21T10:00:00.000Z"),
+        setTimer: timers.setTimer,
+        clearTimer: timers.clearTimer,
+        onError: (error) => errors.push(error)
+      }
+    );
+
+    scheduler.start();
+    await scheduler.trigger();
+    await flush();
+    assert.equal(errors.length, 1);
+    assert.equal(timers.scheduled.length, 1);
+    assert.equal(timers.scheduled[0]?.delayMs, 30_000);
+    await scheduler.stop();
+  });
+
+  it("does not reject when the error observer fails", async () => {
+    const scheduler = new PublicationScheduler(
+      worker(async () => { throw new Error("worker failure"); }, async () => undefined),
+      { onError: () => { throw new Error("observer failure"); } }
+    );
+
+    assert.deepEqual(await scheduler.runNow(), []);
+  });
+
+  it("rejects an invalid error retry interval", () => {
+    assert.throws(
+      () => new PublicationScheduler(worker(async () => emptyResult, async () => undefined), { retryAfterErrorMs: 999 }),
+      /at least one second/
+    );
+  });
+
+  it("invalidates an in-flight wake lookup when a new publication event arrives", async () => {
+    const firstLookup = deferred<Date | undefined>();
+    const timers = fakeTimers();
+    let lookups = 0;
+    let calls = 0;
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return emptyResult; }, async () => {
+        lookups += 1;
+        return lookups === 1 ? firstLookup.promise : undefined;
+      }),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
+
+    scheduler.start();
+    assert.equal(lookups, 1);
+    const triggered = scheduler.trigger();
+    await triggered;
+    firstLookup.resolve(new Date("2026-09-21T10:05:00.000Z"));
+    await flush();
+
+    assert.equal(calls, 1);
+    assert.equal(lookups, 2);
+    assert.equal(timers.scheduled.length, 0);
+    await scheduler.stop();
+  });
+
+  it("does not schedule work when stopped during a wake-time lookup", async () => {
+    const firstLookup = deferred<Date | undefined>();
+    const timers = fakeTimers();
+    let calls = 0;
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return emptyResult; }, async () => firstLookup.promise),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
+
+    scheduler.start();
+    await scheduler.stop();
+    firstLookup.resolve(new Date("2026-09-21T10:05:00.000Z"));
+    await flush();
+
+    assert.equal(calls, 0);
+    assert.equal(timers.scheduled.length, 0);
+  });
+
 });
