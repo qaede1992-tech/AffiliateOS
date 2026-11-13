@@ -3,6 +3,7 @@ import { z } from "zod";
 const nonEmptyText = z.string().trim().min(1);
 const entityId = z.string().uuid();
 const isoTimestamp = z.string().datetime({ offset: true });
+export const affiliateOfferVerificationQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(25), cursor: z.string().min(1).max(512).optional() }).strict();
 const postgresTimestampPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?[+-]\d{2}(?::?\d{2})?$/;
 const normalizeProductTimestamp = (value: string): string => value
   .replace(" ", "T")
