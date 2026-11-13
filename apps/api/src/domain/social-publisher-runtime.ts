@@ -6,6 +6,7 @@ import { TikTokContentPublisher } from "./tiktok-content-publisher.js";
 import { TikTokContentPostingClient } from "./tiktok-content-posting-client.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 import type { MediaAsset } from "./media-asset.js";
+import type { PublicationOperation } from "./publication-operation.js";
 
 export type OfficialSocialPublisherRuntimeConfiguration = {
   credentialResolver?: SocialCredentialResolver;
@@ -17,7 +18,7 @@ export type OfficialSocialPublisherRuntimeConfiguration = {
     fetchImpl?: typeof fetch;
     graphBaseUrl?: string;
     mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
-    assertPublicationRights?: (input: { content: Content }) => Promise<void>;
+    assertPublicationRights?: (input: { content: Content; operation: PublicationOperation }) => Promise<void>;
   };
 };
 
