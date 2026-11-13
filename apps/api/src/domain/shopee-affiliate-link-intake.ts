@@ -14,6 +14,7 @@ export interface ShopeeAffiliateLinkIntakeRepository {
   saveIfAbsent(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   update(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   listStaleResolving(cutoff: string, limit: number): Promise<ShopeeAffiliateLinkIntake[]>;
+  nextStaleResolvingAt(): Promise<string | undefined>;
   claimStaleResolving(id: string, expectedUpdatedAt: string, claimedAt: string): Promise<boolean>;
   updateIfResolving(id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake | undefined>;
 }
@@ -29,6 +30,15 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
       .filter((row) => row.status === "resolving" && row.updatedAt < cutoff)
       .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
       .slice(0, limit);
+  }
+  async nextStaleResolvingAt() {
+    const timestamps = [...this.rows.values()]
+      .filter((row) => row.status === "resolving")
+      .map((row) => Date.parse(row.updatedAt))
+      .filter(Number.isFinite);
+    return timestamps.length > 0
+      ? new Date(Math.min(...timestamps) + STALE_RESOLVING_INTAKE_MS).toISOString()
+      : undefined;
   }
   async updateIfResolving(id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake) {
     const current = this.rows.get(id);
@@ -54,7 +64,24 @@ export type ShopeeIntakeRecoveryResult = { scanned: number; recovered: number; f
 type StaleResolvingRetryResult = { intake: ShopeeAffiliateLinkIntake; completedByThisAttempt: boolean };
 
 export class ShopeeAffiliateLinkIntakeService {
+  private recoveryWakeSignal?: () => void;
+
   constructor(private readonly repository: ShopeeAffiliateLinkIntakeRepository, private readonly resolver: typeof resolveShopeeAffiliateLink = resolveShopeeAffiliateLink) {}
+
+  setRecoveryWakeSignal(signal?: () => void): void {
+    this.recoveryWakeSignal = signal;
+  }
+
+  private notifyRecoveryScheduleChanged(): void {
+    try { this.recoveryWakeSignal?.(); } catch { /* Wake observers must not change intake semantics. */ }
+  }
+
+  async nextStaleResolvingAt(): Promise<Date | undefined> {
+    const timestamp = await this.repository.nextStaleResolvingAt();
+    if (!timestamp) return undefined;
+    const date = new Date(timestamp);
+    return Number.isFinite(date.getTime()) ? date : undefined;
+  }
 
   async recoverStaleResolvingBatch(options: { batchSize: number; concurrency: number; resolverTimeoutMs: number; now?: Date }): Promise<ShopeeIntakeRecoveryResult> {
     const { batchSize, concurrency, resolverTimeoutMs } = options;
@@ -94,6 +121,7 @@ export class ShopeeAffiliateLinkIntakeService {
     const claimedAt = new Date().toISOString();
     const claimed = await this.repository.claimStaleResolving(existing.id, existing.updatedAt, claimedAt);
     if (!claimed) return { intake: (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: false };
+    this.notifyRecoveryScheduleChanged();
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let result: Awaited<ReturnType<typeof resolveShopeeAffiliateLink>>;
@@ -114,6 +142,7 @@ export class ShopeeAffiliateLinkIntakeService {
         sourceMetadata: { ...existing.sourceMetadata, recoveredFromStaleResolving: true, recoveryFailure: true },
         updatedAt: now
       });
+      if (completed) this.notifyRecoveryScheduleChanged();
       return { intake: completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: Boolean(completed) };
     } finally {
       if (timeout) clearTimeout(timeout);
@@ -133,6 +162,7 @@ export class ShopeeAffiliateLinkIntakeService {
           sourceMetadata: { ...existing.sourceMetadata, resolution: "resolved", duplicateOfIntakeId: sameProduct.id },
           updatedAt: now
         });
+        if (completed) this.notifyRecoveryScheduleChanged();
         return { intake: completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: Boolean(completed) };
       }
     }
@@ -147,6 +177,7 @@ export class ShopeeAffiliateLinkIntakeService {
       sourceMetadata: { ...existing.sourceMetadata, resolution: result.status, recoveredFromStaleResolving: true },
       updatedAt: now
     });
+    if (completed) this.notifyRecoveryScheduleChanged();
     return { intake: completed ?? (await this.repository.findByUrlHash(existing.normalizedUrlHash)) ?? existing, completedByThisAttempt: Boolean(completed) };
   }
 
@@ -162,6 +193,7 @@ export class ShopeeAffiliateLinkIntakeService {
     if (existing && existing.status !== "unresolved") return existing;
     const now = new Date().toISOString();
     const intake = existing ?? await this.repository.saveIfAbsent({ id: randomUUID(), marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: normalized, normalizedUrlHash: hash, status: "resolving", sourceMetadata: {}, createdAt: now, updatedAt: now });
+    if (!existing && intake.status === "resolving") this.notifyRecoveryScheduleChanged();
     if (intake.status !== "resolving" && intake.status !== "unresolved") return intake;
     const result = await this.resolver(normalized);
     if (result.status === "resolved" && result.shopId && result.itemId) {
@@ -177,7 +209,8 @@ export class ShopeeAffiliateLinkIntakeService {
           updatedAt: new Date().toISOString()
         };
         if (intake.status === "resolving") {
-          await this.repository.updateIfResolving(intake.id, intake.updatedAt, duplicate);
+          const completed = await this.repository.updateIfResolving(intake.id, intake.updatedAt, duplicate);
+          if (completed) this.notifyRecoveryScheduleChanged();
         } else {
           await this.repository.update(duplicate);
         }
@@ -193,9 +226,9 @@ export class ShopeeAffiliateLinkIntakeService {
     };
     try {
       if (intake.status === "resolving") {
-        return (await this.repository.updateIfResolving(intake.id, intake.updatedAt, updated))
-          ?? (await this.repository.findByUrlHash(hash))
-          ?? intake;
+        const completed = await this.repository.updateIfResolving(intake.id, intake.updatedAt, updated);
+        if (completed) this.notifyRecoveryScheduleChanged();
+        return completed ?? (await this.repository.findByUrlHash(hash)) ?? intake;
       }
       return await this.repository.update(updated);
     }
