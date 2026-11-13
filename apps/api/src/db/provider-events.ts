@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lte, lt, or } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, lt, or, sql } from "drizzle-orm";
 import { providerEvents } from "./schema.js";
 
 export const PROVIDER_EVENT_PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
@@ -21,7 +21,13 @@ export type ProviderEventRecord = {
 export type ProviderEventStatus = "received" | "processing" | "processed" | "failed";
 
 export class ProviderEventStore {
+  private wakeSignal?: () => void;
+
   constructor(private readonly db: DatabaseExecutor) {}
+
+  setWakeSignal(signal?: () => void): void {
+    this.wakeSignal = signal;
+  }
 
   async insertIfNew(event: ProviderEventRecord): Promise<boolean> {
     const result = await this.db.insert(providerEvents).values({
@@ -30,7 +36,42 @@ export class ProviderEventStore {
       status: event.status ?? "received", receivedAt: event.receivedAt, processedAt: null,
       processingStartedAt: null, retryCount: 0, nextAttemptAt: null, error: null,
     }).onConflictDoNothing({ target: [providerEvents.affiliateAccountId, providerEvents.externalEventId] });
-    return Number(result.rowCount ?? 0) === 1;
+    const inserted = Number(result.rowCount ?? 0) === 1;
+    if (inserted) {
+      try {
+        this.wakeSignal?.();
+      } catch {
+        // Persisted events remain recoverable when the API starts again.
+      }
+    }
+    return inserted;
+  }
+
+  async nextWakeAt(): Promise<Date | undefined> {
+    const rows = await this.db.select({
+      nextAt: sql<string | null>`min(
+        CASE
+          WHEN ${providerEvents.status} = 'received' THEN ${providerEvents.receivedAt}
+          WHEN ${providerEvents.status} = 'failed'
+            AND ${providerEvents.retryCount} < ${PROVIDER_EVENT_MAX_RETRIES}
+            THEN COALESCE(${providerEvents.nextAttemptAt}, now())
+          WHEN ${providerEvents.status} = 'processing'
+            AND ${providerEvents.retryCount} < ${PROVIDER_EVENT_MAX_RETRIES}
+            THEN ${providerEvents.processingStartedAt}
+              + (${PROVIDER_EVENT_PROCESSING_TIMEOUT_MS} * interval '1 millisecond')
+        END
+      )`
+    }).from(providerEvents).where(or(
+      eq(providerEvents.status, "received"),
+      and(eq(providerEvents.status, "failed"), lt(providerEvents.retryCount, PROVIDER_EVENT_MAX_RETRIES)),
+      and(
+        eq(providerEvents.status, "processing"),
+        lt(providerEvents.retryCount, PROVIDER_EVENT_MAX_RETRIES),
+        isNotNull(providerEvents.processingStartedAt)
+      )
+    ));
+    const nextAt = rows[0]?.nextAt;
+    return nextAt ? new Date(nextAt) : undefined;
   }
 
   async findByExternalId(affiliateAccountId: string, externalEventId: string) {
