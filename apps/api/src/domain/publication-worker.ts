@@ -5,7 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import type { PublicationJobRepository } from "./publication-job.js";
 import { PublicationOperationService } from "./publication-operation-service.js";
-import type { PublicationOperationRepository } from "./publication-operation.js";
+import { InMemoryPublicationOperationRepository, type PublicationOperationRepository } from "./publication-operation.js";
 
 const ACCEPTED_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
 const PROCESSING_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
@@ -15,25 +15,6 @@ export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
 import { MAX_PUBLICATION_JOB_ATTEMPTS, publicationRetryDelayMs } from "./publication-job.js";
 export { publicationRetryDelayMs } from "./publication-job.js";
-const retryEligibleAt = (job: PublicationJob): number =>
-  new Date(job.updatedAt).getTime() + publicationRetryDelayMs(job.attemptCount);
-
-const isDue = (job: PublicationJob, now: Date): boolean =>
-  new Date(job.scheduledAt).getTime() <= now.getTime();
-
-const isStaleProcessingJob = (job: PublicationJob, now: Date): boolean => {
-  if (job.status !== "processing" || !job.lockedAt) return false;
-  const lockedAt = new Date(job.lockedAt).getTime();
-  return Number.isFinite(lockedAt) && now.getTime() - lockedAt >= PUBLICATION_JOB_LOCK_TIMEOUT_MS;
-};
-
-const reconciliationEligibleAt = (operation: import("./publication-operation.js").PublicationOperation): number => {
-  const updatedAt = new Date(operation.updatedAt).getTime();
-  if (!Number.isFinite(updatedAt)) return 0;
-  const delay = operation.status === "accepted" ? ACCEPTED_RECONCILIATION_DELAY_MS : PROCESSING_RECONCILIATION_DELAY_MS;
-  return updatedAt + delay;
-};
-
 export type PublicationWorkerResult = {
   jobId: EntityId;
   contentId: EntityId;
@@ -52,22 +33,27 @@ export class PublicationWorker {
     private readonly contentService?: ContentService,
     operationRepository?: PublicationOperationRepository
   ) {
-    this.operations = new PublicationOperationService(operationRepository ?? new InMemoryFallbackPublicationOperationRepository());
+    this.operations = new PublicationOperationService(operationRepository ?? new InMemoryPublicationOperationRepository());
+  }
+
+  async nextWakeAt(): Promise<Date | undefined> {
+    if (!this.jobs.nextWakeAt) throw new Error("Publication job repository must implement bounded nextWakeAt().");
+    const jobsWakeAt = await this.jobs.nextWakeAt(PUBLICATION_JOB_LOCK_TIMEOUT_MS);
+    const earliestOperationUpdatedAt = await this.operations.findEarliestReconciliationUpdatedAt();
+    const operationWakeAt = earliestOperationUpdatedAt
+      ? new Date(new Date(earliestOperationUpdatedAt).getTime() + ACCEPTED_RECONCILIATION_DELAY_MS)
+      : undefined;
+    const candidates = [jobsWakeAt, operationWakeAt]
+      .filter((candidate): candidate is Date => Boolean(candidate) && Number.isFinite(candidate!.getTime()));
+    return candidates.length > 0
+      ? new Date(Math.min(...candidates.map((candidate) => candidate.getTime())))
+      : undefined;
   }
 
   async runOnce(now = new Date()): Promise<PublicationWorkerResult[]> {
     const results = await this.reconcile(now);
-    const candidates = this.jobs.listClaimable
-      ? await this.jobs.listClaimable(now, PUBLICATION_JOB_LOCK_TIMEOUT_MS, PUBLICATION_JOB_BATCH_LIMIT)
-      : (await this.jobs.list())
-          .filter((job) => {
-            if (!isDue(job, now)) return false;
-            if (job.status === "pending") return true;
-            if (job.status === "failed") return job.attemptCount < MAX_PUBLICATION_JOB_ATTEMPTS && retryEligibleAt(job) <= now.getTime();
-            return isStaleProcessingJob(job, now);
-          })
-          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-          .slice(0, PUBLICATION_JOB_BATCH_LIMIT);
+    if (!this.jobs.listClaimable) throw new Error("Publication job repository must implement bounded listClaimable().");
+    const candidates = await this.jobs.listClaimable(now, PUBLICATION_JOB_LOCK_TIMEOUT_MS, PUBLICATION_JOB_BATCH_LIMIT);
 
     for (const candidate of candidates) {
       if (candidate.status === "failed" && await this.shouldSkipFailedJobRetry(candidate)) continue;

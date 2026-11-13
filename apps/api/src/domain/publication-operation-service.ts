@@ -16,21 +16,22 @@ export class PublicationOperationService {
     return this.operations.list();
   }
 
+  async findEarliestReconciliationUpdatedAt(): Promise<string | undefined> {
+    if (this.operations.findEarliestReconciliationUpdatedAt) {
+      return this.operations.findEarliestReconciliationUpdatedAt();
+    }
+    throw new Error("Publication operation repository must implement bounded findEarliestReconciliationUpdatedAt().");
+  }
+
   async listByJobId(jobId: EntityId): Promise<PublicationOperation[]> {
     return this.operations.listByJobId(jobId);
   }
 
   async listReconciliationCandidates(updatedBefore: Date, limit: number): Promise<PublicationOperation[]> {
-    if (this.operations.listReconciliationCandidates) {
-      return this.operations.listReconciliationCandidates(updatedBefore, limit);
+    if (!this.operations.listReconciliationCandidates) {
+      throw new Error("Publication operation repository must implement bounded listReconciliationCandidates().");
     }
-    return (await this.operations.list())
-      .filter((operation) =>
-        (operation.status === "accepted" || operation.status === "processing") &&
-        new Date(operation.updatedAt).getTime() <= updatedBefore.getTime()
-      )
-      .sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime())
-      .slice(0, Math.max(0, limit));
+    return this.operations.listReconciliationCandidates(updatedBefore, limit);
   }
 
   async create(input: { contentId: EntityId; jobId: EntityId; provider: string; providerOperationId: string; status?: PublicationOperationStatus }, now = new Date()): Promise<PublicationOperation> {
