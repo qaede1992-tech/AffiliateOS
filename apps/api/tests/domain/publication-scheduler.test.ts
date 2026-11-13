@@ -188,4 +188,49 @@ describe("PublicationScheduler", () => {
       /at least one second/
     );
   });
+
+  it("invalidates an in-flight wake lookup when a new publication event arrives", async () => {
+    const firstLookup = deferred<Date | undefined>();
+    const timers = fakeTimers();
+    let lookups = 0;
+    let calls = 0;
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return emptyResult; }, async () => {
+        lookups += 1;
+        return lookups === 1 ? firstLookup.promise : undefined;
+      }),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
+
+    scheduler.start();
+    assert.equal(lookups, 1);
+    const triggered = scheduler.trigger();
+    await triggered;
+    firstLookup.resolve(new Date("2026-09-21T10:05:00.000Z"));
+    await flush();
+
+    assert.equal(calls, 1);
+    assert.equal(lookups, 2);
+    assert.equal(timers.scheduled.length, 0);
+    await scheduler.stop();
+  });
+
+  it("does not schedule work when stopped during a wake-time lookup", async () => {
+    const firstLookup = deferred<Date | undefined>();
+    const timers = fakeTimers();
+    let calls = 0;
+    const scheduler = new PublicationScheduler(
+      worker(async () => { calls += 1; return emptyResult; }, async () => firstLookup.promise),
+      { setTimer: timers.setTimer, clearTimer: timers.clearTimer }
+    );
+
+    scheduler.start();
+    await scheduler.stop();
+    firstLookup.resolve(new Date("2026-09-21T10:05:00.000Z"));
+    await flush();
+
+    assert.equal(calls, 0);
+    assert.equal(timers.scheduled.length, 0);
+  });
+
 });
