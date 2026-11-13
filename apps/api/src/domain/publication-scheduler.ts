@@ -21,6 +21,8 @@ export class PublicationScheduler {
   private triggerDrain?: Promise<PublicationWorkerResult[] | undefined>;
   private pending = false;
   private retryAfterRunError = false;
+  private wakeLookup?: Promise<void>;
+  private wakeRevision = 0;
   private readonly now: () => Date;
   private readonly retryAfterErrorMs: number;
   private readonly setTimer: NonNullable<PublicationSchedulerOptions["setTimer"]>;
@@ -61,6 +63,7 @@ export class PublicationScheduler {
   // scheduled at their exact due time by nextWakeAt(), so an empty queue has no poll.
   async trigger(): Promise<PublicationWorkerResult[] | undefined> {
     if (!this.started) return undefined;
+    this.wakeRevision += 1;
     this.pending = true;
     this.clearScheduledTimer();
     if (this.triggerDrain) return this.triggerDrain;
@@ -87,6 +90,7 @@ export class PublicationScheduler {
 
   async runNow(now = this.now()): Promise<PublicationWorkerResult[]> {
     if (this.activeRun) return this.activeRun;
+    this.wakeRevision += 1;
     const run = Promise.resolve()
       .then(() => this.worker.runOnce(now))
       .then(async (results) => {
@@ -108,26 +112,39 @@ export class PublicationScheduler {
   }
 
   private async scheduleNext(): Promise<void> {
-    if (!this.started || this.timer || this.activeRun || this.triggerDrain || this.pending) return;
+    if (!this.started || this.timer || this.activeRun || this.triggerDrain || this.pending || this.wakeLookup) return;
     if (this.retryAfterRunError) {
       this.retryAfterRunError = false;
       this.scheduleRetry();
       return;
     }
+    const revision = this.wakeRevision;
+    const lookup = (async () => {
+      try {
+        const nextWakeAt = await this.worker.nextWakeAt();
+        if (revision !== this.wakeRevision || !this.started || this.timer || this.activeRun || this.triggerDrain || this.pending || !nextWakeAt) return;
+        const nextTime = nextWakeAt.getTime();
+        if (!Number.isFinite(nextTime)) return;
+        const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, nextTime - this.now().getTime()));
+        this.timer = this.setTimer(() => {
+          this.timer = undefined;
+          void this.trigger();
+        }, delayMs);
+        (this.timer as SchedulerTimer & { unref?: () => void }).unref?.();
+      } catch (error) {
+        if (revision !== this.wakeRevision || !this.started) return;
+        await this.notifyError(error);
+        this.scheduleRetry();
+      }
+    })();
+    this.wakeLookup = lookup;
     try {
-      const nextWakeAt = await this.worker.nextWakeAt();
-      if (!this.started || this.timer || this.activeRun || this.triggerDrain || this.pending || !nextWakeAt) return;
-      const nextTime = nextWakeAt.getTime();
-      if (!Number.isFinite(nextTime)) return;
-      const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, nextTime - this.now().getTime()));
-      this.timer = this.setTimer(() => {
-        this.timer = undefined;
-        void this.trigger();
-      }, delayMs);
-      (this.timer as SchedulerTimer & { unref?: () => void }).unref?.();
-    } catch (error) {
-      await this.notifyError(error);
-      this.scheduleRetry();
+      await lookup;
+    } finally {
+      if (this.wakeLookup === lookup) this.wakeLookup = undefined;
+      if (this.started && revision !== this.wakeRevision && !this.timer && !this.activeRun && !this.triggerDrain && !this.pending) {
+        void this.scheduleNext();
+      }
     }
   }
 
