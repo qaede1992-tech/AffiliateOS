@@ -68,7 +68,7 @@ export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus:
     try {
       const [auditResponse, productResponse, autonomousStatus] = await Promise.all([
         api.autonomousDecisionAudits(100),
-        api.products(),
+        api.productsPage({ limit: 50 }),
         background ? api.autonomousStatus() : Promise.resolve(null)
       ]);
       setAudits(auditResponse.data);
