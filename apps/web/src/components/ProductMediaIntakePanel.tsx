@@ -149,9 +149,9 @@ export function ProductMediaIntakePanel() {
               <small>Gambar: JPEG, PNG, WebP (maks. 10 MiB). Video: MP4 (maks. 45 MiB).</small>
             </div>
             <label htmlFor="product-media-image-file">File gambar produk</label>
-            <input id="product-media-image-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] ?? null; setImageFile(file); setError(null); }} />
+            <input id="product-media-image-file" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && file.size > 10 * 1024 * 1024) { setImageFile(null); setError("Ukuran gambar melebihi batas 10 MiB."); event.currentTarget.value = ""; return; } setImageFile(file); setError(null); }} />
             <label htmlFor="product-media-video-file">File video produk</label>
-            <input id="product-media-video-file" type="file" accept="video/mp4,.mp4" onChange={(event) => { const file = event.target.files?.[0] ?? null; setVideoFile(file); setError(null); }} />
+            <input id="product-media-video-file" type="file" accept="video/mp4,.mp4" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && file.size > 45 * 1024 * 1024) { setVideoFile(null); setError("Ukuran video melebihi batas 45 MiB."); event.currentTarget.value = ""; return; } setVideoFile(file); setError(null); }} />
             <button type="button" onClick={() => void uploadSelectedFiles()} disabled={uploading || (!imageFile && !videoFile)}>{uploading ? "Mengunggah file…" : "Unggah file media"}</button>
             <p className="shopee-import-note">Upload menyimpan aset dengan status hak UNVERIFIED. Upload tidak membuktikan kepemilikan atau lisensi dan tidak membuat aset otomatis siap publikasi. Admin harus memeriksa bukti hak pada panel Verifikasi Hak Media.</p>
             <label htmlFor="product-media-image">URL gambar langsung (opsional)</label>
