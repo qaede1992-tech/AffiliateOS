@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      confirm_backup_completed:
+        description: "Confirm that a fresh Production backup was completed and a restore test verified it"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,11 +24,19 @@ concurrency:
 
 jobs:
   migrate:
-    if: ${{ inputs.confirm_production_migration == true }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_production_migration == true && inputs.confirm_backup_completed == true }}
     runs-on: ubuntu-latest
     environment: production-migrations
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
+      - name: Require the main branch ref
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Production migrations may only run from refs/heads/main."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -58,14 +71,6 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Configure migration process environment
-        env:
-          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          # The URL is supplied only as a protected GitHub Environment secret.
-          printf 'DATABASE_URL=%s\n' "$PRODUCTION_DATABASE_URL" > .env
-          chmod 600 .env
 
       - name: Verify connected production database identity (read-only)
         env:
@@ -93,12 +98,18 @@ jobs:
           NODE
 
       - name: Verify current production migration ledger and pending suffix (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: npm run db:verify:pre-migrate
 
-      - name: Apply pending migrations
-        run: npm run db:migrate
+      - name: Apply pending migrations with the guarded Drizzle runner
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: node apps/api/scripts/run-migrations.mjs
 
       - name: Verify applied production schema and migration ledger
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: npm run db:verify:applied
 
       - name: Verify test-data retention columns and indexes
@@ -143,6 +154,3 @@ jobs:
           }
           NODE
 
-      - name: Remove temporary environment file
-        if: always()
-        run: rm -f .env
