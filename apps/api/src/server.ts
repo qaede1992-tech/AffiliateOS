@@ -139,6 +139,7 @@ const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   intervalMs: environment.PROVIDER_EVENT_WORKER_INTERVAL_MS,
   onError: (error) => app.log.error({ errorType: safeErrorType(error) }, "Provider event worker cycle failed")
 });
+persistence.providerEvents.setWakeSignal(() => providerEventScheduler.notifyChanged());
 
 const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
   batchSize: environment.SHOPEE_INTAKE_RECOVERY_BATCH_SIZE,
