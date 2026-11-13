@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { MediaAsset } from "../../src/domain/media-asset.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "../../src/domain/product-media-ingestion.js";
-import { assertProductMediaRightsForPublication } from "../../src/domain/product-media-publication-rights.js";
+import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication } from "../../src/domain/product-media-publication-rights.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
 const media: MediaAsset = {
@@ -106,4 +106,29 @@ test("preserves legacy content-scoped uploads for the existing publisher resolve
 test("does not mistake non-product object namespaces for product-media assets", async () => {
   const legacy = { ...media, reference: "affiliate-media/legacy/video.mp4" };
   await assert.doesNotReject(assertProductMediaRightsForPublication([legacy], [productId], repository()));
+});
+
+
+test("blocks final Instagram publication when content changed after its container was created", () => {
+  assert.throws(
+    () => assertContentUnchangedSincePublicationOperation(
+      { updatedAt: "2026-11-14T01:00:01.000Z" },
+      { createdAt: "2026-11-14T01:00:00.000Z" }
+    ),
+    /Content changed after Instagram media container creation/
+  );
+});
+
+test("allows final Instagram publication when content predates its container", () => {
+  assert.doesNotThrow(() => assertContentUnchangedSincePublicationOperation(
+    { updatedAt: "2026-11-14T01:00:00.000Z" },
+    { createdAt: "2026-11-14T01:00:01.000Z" }
+  ));
+});
+
+test("fails closed when content or container timestamps are invalid", () => {
+  assert.throws(() => assertContentUnchangedSincePublicationOperation(
+    { updatedAt: "not-a-date" },
+    { createdAt: "2026-11-14T01:00:00.000Z" }
+  ));
 });
