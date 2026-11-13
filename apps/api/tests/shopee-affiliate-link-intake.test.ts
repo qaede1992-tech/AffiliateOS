@@ -333,6 +333,7 @@ test("recovery metrics do not double-count an intake completed by another worker
     update: (value: ShopeeAffiliateLinkIntake) => baseRepository.update(value),
     // Both workers retain the same stale snapshot; the second sees the first worker's completed row.
     listStaleResolving: async () => [intake],
+    nextStaleResolvingAt: () => baseRepository.nextStaleResolvingAt(),
     claimStaleResolving: (id: string, expectedUpdatedAt: string, claimedAt: string) =>
       baseRepository.claimStaleResolving(id, expectedUpdatedAt, claimedAt),
     updateIfResolving: (id: string, expectedUpdatedAt: string, value: ShopeeAffiliateLinkIntake) =>
