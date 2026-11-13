@@ -23,6 +23,7 @@ export interface PublicationJob {
 
 export interface PublicationJobRepository {
   list(): Promise<PublicationJob[]>;
+  nextWakeAt?(lockTimeoutMs: number): Promise<Date | undefined>;
   listClaimable?(now: Date, lockTimeoutMs: number, limit: number): Promise<PublicationJob[]>;
   findById(id: EntityId): Promise<PublicationJob | undefined>;
   findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>;
@@ -35,6 +36,22 @@ export interface PublicationJobRepository {
 export class InMemoryPublicationJobRepository implements PublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
+  async nextWakeAt(lockTimeoutMs: number) {
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const job of this.jobs.values()) {
+      const scheduled = Date.parse(job.scheduledAt);
+      if (!Number.isFinite(scheduled)) continue;
+      if (job.status === "pending") earliest = Math.min(earliest, scheduled);
+      else if (job.status === "failed" && job.attemptCount < MAX_PUBLICATION_JOB_ATTEMPTS) {
+        const retry = Date.parse(job.updatedAt) + publicationRetryDelayMs(job.attemptCount);
+        if (Number.isFinite(retry)) earliest = Math.min(earliest, Math.max(scheduled, retry));
+      } else if (job.status === "processing" && job.lockedAt) {
+        const locked = Date.parse(job.lockedAt);
+        if (Number.isFinite(locked)) earliest = Math.min(earliest, Math.max(scheduled, locked + lockTimeoutMs));
+      }
+    }
+    return Number.isFinite(earliest) ? new Date(earliest) : undefined;
+  }
   async listClaimable(nowDate: Date, lockTimeoutMs: number, limit: number) {
     return [...this.jobs.values()]
       .filter((job) => {

@@ -39,6 +39,15 @@ export class DrizzlePublicationOperationRepository implements PublicationOperati
     return (await this.db.select().from(publicationOperations)).map(toDomain);
   }
 
+  async findEarliestReconciliationUpdatedAt(): Promise<string | undefined> {
+    const rows = await this.db.select({ updatedAt: publicationOperations.updatedAt })
+      .from(publicationOperations)
+      .where(inArray(publicationOperations.status, ["accepted", "processing"]))
+      .orderBy(asc(publicationOperations.updatedAt))
+      .limit(1);
+    return rows[0]?.updatedAt;
+  }
+
   async listByJobId(jobId: string): Promise<PublicationOperation[]> {
     const rows = await this.db.select().from(publicationOperations)
       .where(eq(publicationOperations.jobId, jobId))

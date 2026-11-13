@@ -1,7 +1,7 @@
-import { and, asc, eq, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { MAX_PUBLICATION_JOB_ATTEMPTS, type PublicationJob } from "../domain/publication-job.js";
 import type { PublicationJobRepository } from "../domain/repository.js";
-import { publicationJobs } from "./schema.js";
+import { content, publicationJobs } from "./schema.js";
 
 type DatabaseExecutor = any;
 type PublicationJobRow = typeof publicationJobs.$inferSelect;
@@ -31,6 +31,36 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
   async list(): Promise<PublicationJob[]> {
     const rows = await this.db.select().from(publicationJobs);
     return rows.map(toPublicationJob);
+  }
+
+  async nextWakeAt(lockTimeoutMs: number): Promise<Date | undefined> {
+    const retryAt = sql`GREATEST(
+      ${publicationJobs.scheduledAt},
+      ${publicationJobs.updatedAt} + (${retryDelaySql(publicationJobs.attemptCount)} * INTERVAL '1 millisecond')
+    )`;
+    const staleAt = sql`GREATEST(
+      ${publicationJobs.scheduledAt},
+      ${publicationJobs.lockedAt} + (${lockTimeoutMs} * INTERVAL '1 millisecond')
+    )`;
+    const rows = await this.db.select({
+      nextAt: sql<string | null>`min(
+        CASE
+          WHEN ${publicationJobs.status} = 'pending' THEN ${publicationJobs.scheduledAt}
+          WHEN ${publicationJobs.status} = 'failed'
+            AND ${publicationJobs.attemptCount} < ${MAX_PUBLICATION_JOB_ATTEMPTS}
+            AND ${content.status} IN ('scheduled', 'failed')
+          THEN ${retryAt}
+          WHEN ${publicationJobs.status} = 'processing'
+            AND ${publicationJobs.lockedAt} IS NOT NULL
+          THEN ${staleAt}
+          ELSE NULL
+        END
+      )`
+    }).from(publicationJobs)
+      .innerJoin(content, eq(publicationJobs.contentId, content.id))
+      .where(inArray(publicationJobs.status, ["pending", "failed", "processing"]));
+    const nextAt = rows[0]?.nextAt;
+    return nextAt ? new Date(nextAt) : undefined;
   }
 
   async listClaimable(now: Date, lockTimeoutMs: number, limit: number): Promise<PublicationJob[]> {
