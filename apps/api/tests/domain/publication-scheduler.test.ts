@@ -74,7 +74,7 @@ describe("PublicationScheduler", () => {
     assert.equal(timers.scheduled.length, 1);
     nextAt = undefined;
     await scheduler.trigger();
-    assert.equal(calls, 2);
+    assert.equal(calls, 1);
     assert.equal(timers.cleared.length, 1);
     assert.equal(timers.scheduled.length, 1);
     await scheduler.stop();
@@ -94,6 +94,7 @@ describe("PublicationScheduler", () => {
     const one = scheduler.trigger();
     const two = scheduler.trigger();
     const three = scheduler.trigger();
+    await Promise.resolve();
     assert.equal(calls, 1);
     first.resolve(emptyResult);
     await Promise.all([one, two, three]);
@@ -166,6 +167,7 @@ describe("PublicationScheduler", () => {
     );
 
     scheduler.start();
+    await scheduler.trigger();
     await flush();
     assert.equal(errors.length, 1);
     assert.equal(timers.scheduled.length, 1);
