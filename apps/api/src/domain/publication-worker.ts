@@ -20,7 +20,7 @@ const reconciliationEligibleAt = (operation: import("./publication-operation.js"
   return updatedAt + delay;
 };
 
-import { MAX_PUBLICATION_JOB_ATTEMPTS, publicationRetryDelayMs } from "./publication-job.js";
+import { publicationRetryDelayMs } from "./publication-job.js";
 export { publicationRetryDelayMs } from "./publication-job.js";
 export type PublicationWorkerResult = {
   jobId: EntityId;
