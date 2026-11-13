@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
 
 export function ProductMediaIntakePanel() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -17,13 +19,15 @@ export function ProductMediaIntakePanel() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const loadProducts = async () => {
+  const loadProducts = async (query = search, cursor?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.products();
-      setProducts(response.data);
-      setSelectedId((current) => current && response.data.some((product) => product.id === current)
+      const response = await api.productsPage({ limit: 25, query, ...(cursor ? { cursor } : {}) });
+      setProducts((current) => cursor ? [...current, ...response.data] : response.data);
+      setNextCursor(response.nextCursor);
+      setHasMore(response.hasMore);
+      setSelectedId((current) => current && (cursor ? [...products, ...response.data] : response.data).some((product) => product.id === current)
         ? current
         : response.data.find((product) => !product.imageUrl || !product.videoUrl)?.id ?? response.data[0]?.id ?? "");
     } catch (requestError) {
@@ -33,16 +37,13 @@ export function ProductMediaIntakePanel() {
     }
   };
 
-  useEffect(() => { void loadProducts(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadProducts(search); }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const selectedProduct = products.find((product) => product.id === selectedId);
   const missingMediaCount = products.filter((product) => !product.imageUrl && !product.videoUrl).length;
-  const filteredProducts = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("id-ID");
-    return [...products]
-      .sort((a, b) => Number(!b.imageUrl && !b.videoUrl) - Number(!a.imageUrl && !a.videoUrl) || a.name.localeCompare(b.name, "id"))
-      .filter((product) => !query || product.name.toLocaleLowerCase("id-ID").includes(query) || product.externalProductId.toLocaleLowerCase("id-ID").includes(query));
-  }, [products, search]);
 
   useEffect(() => {
     setImageUrl(selectedProduct?.imageUrl ?? "");
@@ -128,7 +129,7 @@ export function ProductMediaIntakePanel() {
     <article className="panel shopee-import-panel" id="product-media-intake">
       <div className="panel-heading">
         <div><p className="eyebrow">Kelengkapan katalog</p><h3>Media Produk</h3></div>
-        <span className="badge">{missingMediaCount} tanpa media</span>
+        <span className="badge">{missingMediaCount} tanpa media di halaman</span>
       </div>
       <p>Tambahkan URL HTTPS langsung ke gambar atau video produk dari sumber yang mengizinkan penggunaan promosi. Masukkan URL file media, bukan URL halaman produk Shopee atau tautan affiliate.</p>
       {loading ? <p className="empty">Memuat katalog produk…</p> : products.length === 0 ? <p className="empty">Belum ada produk. Impor penawaran affiliate terlebih dahulu.</p> : (
@@ -137,8 +138,9 @@ export function ProductMediaIntakePanel() {
           <input id="product-media-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nama atau ID produk" />
           <label htmlFor="product-media-product">Pilih produk</label>
           <select id="product-media-product" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-            {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.imageUrl || product.videoUrl ? "media tersedia" : "tanpa media"}</option>)}
+            {products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.imageUrl || product.videoUrl ? "media tersedia" : "tanpa media"}</option>)}
           </select>
+          {hasMore && <button type="button" className="secondary-button" onClick={() => nextCursor && void loadProducts(search, nextCursor)} disabled={loading}>Muat 25 produk berikutnya</button>}
           {selectedProduct && <>
             <div className="shopee-file-summary">
               <strong>{selectedProduct.name}</strong>
@@ -169,7 +171,7 @@ export function ProductMediaIntakePanel() {
       {error && <div className="shopee-import-error" role="alert"><strong>Media belum tersimpan</strong><p>{error}</p></div>}
       {notice && <div className="shopee-import-success" role="status"><strong>Berhasil</strong><p>{notice}</p></div>}
       <p className="shopee-import-note">AffiliateOS tidak mengambil gambar/video dari HTML halaman Shopee. URL yang dimasukkan akan diperiksa saat proses media discovery; konten hanya dibuat setelah produk lolos seleksi akhir dan media siap digunakan.</p>
-      <button type="button" className="secondary-button" onClick={() => void loadProducts()} disabled={loading || saving}>Muat ulang katalog</button>
+      <button type="button" className="secondary-button" onClick={() => void loadProducts(search)} disabled={loading || saving}>Muat ulang katalog</button>
     </article>
   );
 }
