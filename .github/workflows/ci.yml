@@ -113,7 +113,12 @@ jobs:
       - name: Build API image
         run: docker build --file apps/api/Dockerfile --tag affiliateos-api:ci .
       - name: Build web image
-        run: docker build --file apps/web/Dockerfile --build-arg VITE_API_URL=http://localhost:3001 --tag affiliateos-web:ci .
+        run: docker build --file apps/web/Dockerfile --tag affiliateos-web:ci .
+      - name: Verify Production web API origin default
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh affiliateos-web:ci -c \
+            "grep -R -F 'https://affiliateos.affiliateos.prod.page' /usr/share/nginx/html/assets >/dev/null && ! grep -R -F 'https://affiliateos.affiliateos.blitz.cloud' /usr/share/nginx/html/assets >/dev/null"
       - name: Build staging web image
         if: github.event_name == 'pull_request' || github.ref == 'refs/heads/deploy/web-staging-mainline'
         run: docker build --file apps/web/Dockerfile.staging --tag affiliateos-web-staging:ci .
