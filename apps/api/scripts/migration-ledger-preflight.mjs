@@ -96,6 +96,10 @@ export function getPendingMigrationSchemaExemptions(pendingMigrationTags) {
     "0060_test_data_retention_markers": {
       columns: ["campaigns.is_test", "autonomous_runs.is_test"],
       indexes: ["campaigns_test_created_idx", "autonomous_runs_test_created_idx"]
+    },
+    "0088_affiliate_offers_verification_cursor_index": {
+      columns: [],
+      indexes: ["affiliate_offers_verification_cursor_idx"]
     }
   };
 
