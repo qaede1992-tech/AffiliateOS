@@ -122,6 +122,21 @@ test("rejects non-image files returned from the Commons file namespace", async (
 });
 
 
+test("prioritizes lipstick holder intent over generic cosmetics category", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Rak Lipstick / Rak Tempat Lipstick / Rak Meja Lipstick / Rak Lipstick Slot Top006"
+  }), ["lipstick holder"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Hanasui Mattedorable Lipstick"
+  }), ["cosmetics and skincare"]);
+});
+
+test("keeps the first useful listing tokens and removes trailing product codes", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Pouch Serut Motif Bunga Top006"
+  }), ["pouch serut motif"]);
+});
+
 test("maps Indonesian marketplace listing titles to concise Commons category queries", () => {
   assert.deepEqual(buildWikimediaCommonsQueries({
     name: "CELAH LANGIT GUMMY BACKPACK | Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"

@@ -72,6 +72,7 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
 };
 
 const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp; exclude?: RegExp }> = [
+  { pattern: /\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b.{0,40}\b(lipstick|makeup|cosmetic)\b|\b(lipstick|makeup|cosmetic)\b.{0,40}\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b/i, query: "lipstick holder", relevant: /\b(lipstick holder|lipstick organizer|lipstick stand|makeup organizer|cosmetic organizer|makeup storage|lipstick storage)\b/i, exclude: /\b(lipstick tube|lipstick product|lipstick bottle|makeup brush)\b/i },
   { pattern: /\b(keranjang|colander|strainer|tirisan|saringan sayuran|vegetable strainer)\b/i, query: "colander", relevant: /\b(colander|strainer|draining basket|vegetable strainer|food strainer)\b/i },
   { pattern: /\b(food container|food storage|kontainer|kotak penyimpanan makanan|wadah makanan)\b/i, query: "food container", relevant: /\b(food container|food storage container|plastic food container|kitchen storage container)\b/i },
   { pattern: /\b(blood pressure monitor|wrist blood pressure|tensimeter|sphygmomanometer|omron hem)\b/i, query: "blood pressure monitor", relevant: /\b(blood pressure monitor|blood pressure monitoring|sphygmomanometer)\b/i },
@@ -135,7 +136,8 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
   ]);
   const tokens = source.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().match(/[a-z]{4,}/g) ?? [];
-  const useful = [...new Set(tokens.filter((token) => !stopWords.has(token)))].slice(-3);
+  const listingNoise = new Set(["rak", "tempat", "meja", "slot", "top", "type", "fast", "charging", "original", "official", "latest", "terbaru", "premium", "pcs", "box", "set"]);
+  const useful = [...new Set(tokens.filter((token) => !stopWords.has(token) && !listingNoise.has(token) && !/^[a-z]{2,}\d+[a-z0-9]*$/i.test(token)))].slice(0, 3);
   return [useful.join(" ") || source.trim().slice(0, 100)];
 };
 
