@@ -131,4 +131,10 @@ test("pending schema exemptions are limited to objects created by the exact pend
   const unknown = getPendingMigrationSchemaExemptions(new Set(["0088_unreviewed_schema_change"]));
   assert.equal(unknown.columns.size, 0);
   assert.equal(unknown.indexes.size, 0);
+
+  const verificationIndex = getPendingMigrationSchemaExemptions(
+    new Set(["0088_affiliate_offers_verification_cursor_index"])
+  );
+  assert.equal(verificationIndex.columns.size, 0);
+  assert.deepEqual([...verificationIndex.indexes], ["affiliate_offers_verification_cursor_idx"]);
 });

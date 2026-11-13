@@ -212,25 +212,69 @@ test("marketplace offer verification uses batched related records when repositor
     async findByConversionOfferId() { return undefined; },
     async findByAccountOffer() { return undefined; },
     async listActiveByAccountAndProducts() { return []; },
-    async listVerificationDetails() {
+    async listVerificationRows(input: { limit: number }) {
       batchCalls += 1;
+      assert.equal(input.limit, 26);
       return [{
-        offer,
-        account: { id: offer.affiliateAccountId, marketplaceId: connection.id, name: "Affiliate account", status: "active" as const, configuration: {}, createdAt: offer.createdAt, updatedAt: offer.updatedAt },
-        affiliate: { id: "00000000-0000-4000-8000-000000000054", name: "Affiliate", email: "affiliate@example.test", status: "active" as const, createdAt: offer.createdAt },
-        product: { id: offer.productId, referenceNumber: 1, marketplaceId: connection.id, externalProductId: "sku-batch", name: "Batch product", priceCents: 1000, currency: "IDR", reviewCount: 0, soldCount: 0, productUrl: "https://shop.example.test/p/sku-batch", status: "active" as const, createdAt: offer.createdAt, updatedAt: offer.updatedAt },
-        connection
+        ...offer,
+        affiliateId: "00000000-0000-4000-8000-000000000054",
+        affiliateName: "Affiliate",
+        affiliateAccountName: "Affiliate account",
+        marketplaceSlug: connection.slug,
+        productExternalId: "sku-batch",
+        productName: "Batch product",
+        productUrl: "https://shop.example.test/p/sku-batch"
       }];
     }
   };
   const service = new MarketplaceService(new MarketplaceProviderRegistry(), new InMemoryRepository<any>(), new InMemoryRepository<any>(), new InMemoryRepository<any>(), new InMemoryRepository<any>(), offers as any, new InMemoryRepository<any>());
   const result = await service.listAffiliateOfferVerification();
   assert.equal(batchCalls, 1);
-  assert.equal(result.length, 1);
-  assert.equal(result[0].affiliateName, "Affiliate");
-  assert.equal(result[0].affiliateAccountName, "Affiliate account");
-  assert.equal(result[0].marketplaceSlug, connection.slug);
-  assert.equal(result[0].productExternalId, "sku-batch");
-  assert.equal(result[0].productName, "Batch product");
-  assert.equal(result[0].productUrl, "https://shop.example.test/p/sku-batch");
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].affiliateName, "Affiliate");
+  assert.equal(result.items[0].affiliateAccountName, "Affiliate account");
+  assert.equal(result.items[0].marketplaceSlug, connection.slug);
+  assert.equal(result.items[0].productExternalId, "sku-batch");
+  assert.equal(result.items[0].productName, "Batch product");
+  assert.equal(result.items[0].productUrl, "https://shop.example.test/p/sku-batch");
+  assert.equal(result.hasMore, false);
+});
+
+test("marketplace offer verification uses stable keyset pages without gaps", async () => {
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const affiliates = new InMemoryRepository<any>();
+  const offers = new InMemoryRepository<any>();
+  const accounts = new InMemoryAffiliateAccountRepository();
+  const connections = new InMemoryMarketplaceConnectionRepository();
+  const products = new InMemoryProductCatalogRepository();
+  const affiliateOffers = new InMemoryAffiliateOfferRepository();
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), connections, products, accounts, affiliates, affiliateOffers, offers);
+  const createdAt = "2026-02-01T00:00:00.000Z";
+  for (const id of [
+    "00000000-0000-4000-8000-000000000101",
+    "00000000-0000-4000-8000-000000000102",
+    "00000000-0000-4000-8000-000000000103"
+  ]) {
+    await affiliateOffers.save({ id, affiliateAccountId: "00000000-0000-4000-8000-000000000111", productId: "00000000-0000-4000-8000-000000000121", status: "active", createdAt, updatedAt: createdAt } as any);
+  }
+  const first = await service.listAffiliateOfferVerification({ limit: 2 });
+  assert.deepEqual(first.items.map((row) => row.id), [
+    "00000000-0000-4000-8000-000000000101",
+    "00000000-0000-4000-8000-000000000102"
+  ]);
+  assert.equal(first.hasMore, true);
+  assert.ok(first.nextCursor);
+  const second = await service.listAffiliateOfferVerification({ limit: 2, cursor: first.nextCursor! });
+  assert.deepEqual(second.items.map((row) => row.id), ["00000000-0000-4000-8000-000000000103"]);
+  assert.equal(second.hasMore, false);
+  assert.equal(second.nextCursor, null);
+});
+
+test("marketplace offer verification rejects malformed cursors", async () => {
+  const { InMemoryAffiliateAccountRepository, InMemoryAffiliateOfferRepository, InMemoryMarketplaceConnectionRepository, InMemoryProductCatalogRepository, InMemoryRepository } = await import("../src/domain/repository.js");
+  const service = new MarketplaceService(new MarketplaceProviderRegistry(), new InMemoryMarketplaceConnectionRepository(), new InMemoryProductCatalogRepository(), new InMemoryAffiliateAccountRepository(), new InMemoryRepository<any>(), new InMemoryAffiliateOfferRepository(), new InMemoryRepository<any>());
+  await assert.rejects(
+    () => service.listAffiliateOfferVerification({ limit: 25, cursor: "not-a-valid-cursor" }),
+    (error: any) => error?.code === "INVALID_AFFILIATE_OFFER_VERIFICATION_CURSOR" && error?.statusCode === 400
+  );
 });
