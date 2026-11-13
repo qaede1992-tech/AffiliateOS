@@ -24,17 +24,21 @@ test("marketplace endpoints normalize products, persist offers, and generate moc
   assert.equal(discover.statusCode, 200);
   assert.equal(discover.json().data[0].name, "Test kettle");
   const discoveredProduct = discover.json().data[0];
-  const mediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://cdn.example.test/product.jpg", videoUrl: "https://cdn.example.test/product.mp4" } });
+  const mediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://cdn.example.test/product.jpg", videoUrl: "https://cdn.example.com/product.mp4" } });
   assert.equal(mediaUpdate.statusCode, 200);
   assert.equal(mediaUpdate.json().imageUrl, "https://cdn.example.test/product.jpg");
-  assert.equal(mediaUpdate.json().videoUrl, "https://cdn.example.test/product.mp4");
+  assert.equal(mediaUpdate.json().videoUrl, "https://cdn.example.com/product.mp4");
   assert.equal(mediaUpdate.json().productUrl, discoveredProduct.productUrl);
   const clearMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: null } });
   assert.equal(clearMediaUpdate.statusCode, 200);
   assert.equal(clearMediaUpdate.json().imageUrl ?? null, null);
-  assert.equal(clearMediaUpdate.json().videoUrl, "https://cdn.example.test/product.mp4");
+  assert.equal(clearMediaUpdate.json().videoUrl, "https://cdn.example.com/product.mp4");
   const invalidMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "http://not-secure.example.test/product.jpg" } });
   assert.equal(invalidMediaUpdate.statusCode, 400);
+  const credentialedMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://operator:password@cdn.example.com/product.jpg" } });
+  assert.equal(credentialedMediaUpdate.statusCode, 400);
+  const privateMediaUpdate = await app.inject({ method: "PATCH", url: `/api/v1/products/${discoveredProduct.id}/media`, payload: { imageUrl: "https://127.0.0.1/product.jpg" } });
+  assert.equal(privateMediaUpdate.statusCode, 400);
 
   const link = await app.inject({ method: "POST", url: "/api/v1/marketplaces/test-catalog/products/sku-1/offers/offer-1/affiliate-link" });
   assert.equal(link.statusCode, 200);
