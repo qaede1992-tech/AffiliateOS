@@ -13,7 +13,7 @@ type InstagramProfileResponse = { user_id?: string | number; username?: string; 
 export type InstagramGraphPublishingClientConfiguration = {
   accessTokenResolver: (account: SocialAccount) => Promise<string>;
   mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
-  assertPublicationRights?: (input: { content: Content; mediaAssets: MediaAsset[] }) => Promise<void>;
+  assertPublicationRights?: (input: { content: Content }) => Promise<void>;
   fetchImpl?: typeof fetch;
   graphBaseUrl?: string;
 };
