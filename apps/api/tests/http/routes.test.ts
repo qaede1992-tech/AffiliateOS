@@ -1574,8 +1574,8 @@ test("POST /api/v1/products/:productId/media-upload requires operator authorizat
       headers: { "content-type": "application/octet-stream", "x-media-mime-type": "image/png", "content-length": "8" },
       payload: Buffer.from("12345678")
     });
-    assert.equal(response.statusCode, 403);
-    assert.equal(response.json().error, "FORBIDDEN");
+    assert.equal(response.statusCode, 401);
+    assert.equal(response.json().error, "UNAUTHORIZED");
   } finally {
     await app.close();
   }
