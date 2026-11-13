@@ -148,7 +148,7 @@ const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shope
 const shopeeIntakeRecoveryScheduler = new ShopeeIntakeRecoveryScheduler(shopeeIntakeRecoveryWorker, {
   intervalMs: environment.SHOPEE_INTAKE_RECOVERY_INTERVAL_MS,
   onResult: (result) => app.log.info({ ...result }, "Shopee stale intake recovery cycle completed"),
-  onError: (error) => app.log.error(error, "Shopee stale intake recovery cycle failed")
+  onError: (error) => app.log.error({ errorType: safeErrorType(error) }, "Shopee stale intake recovery cycle failed")
 });
 
 try {
