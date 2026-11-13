@@ -67,6 +67,34 @@ test("Instagram image publishing persists its container before media_publish", a
   assert.equal(calls.length, 5);
 });
 
+test("Instagram rechecks media rights before publishing a finished container", async () => {
+  let rightsChecks = 0;
+  const calls: string[] = [];
+  const client = new InstagramGraphPublishingClient({
+    accessTokenResolver: async () => "secret-token",
+    assertPublicationRights: async () => {
+      rightsChecks += 1;
+      throw new Error("product media rights were revoked");
+    },
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+      calls.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id" }), { status: 200 });
+      if (url.pathname.endsWith("/container-rights")) return new Response(JSON.stringify({ id: "container-rights", status_code: "FINISHED" }), { status: 200 });
+      if (url.pathname.endsWith("/media_publish")) return new Response(JSON.stringify({ id: "unexpected-publication" }), { status: 200 });
+      throw new Error("Unexpected Instagram request");
+    }
+  });
+
+  await assert.rejects(() => client.checkPublication({
+    content, account, mediaAssets: [asset],
+    operation: { id: "op-rights", jobId: "job-1", contentId: "content-1", provider: "instagram-graph-publishing", providerOperationId: "container-rights", status: "accepted", attemptCount: 1, createdAt: "2026-09-26T00:00:00.000Z", updatedAt: "2026-09-26T00:00:00.000Z" }
+  }), /product media rights were revoked/);
+
+  assert.equal(rightsChecks, 1);
+  assert.equal(calls.some((call) => call.endsWith("/media_publish")), false);
+});
+
 test("Instagram client rejects non-HTTPS media", async () => {
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
@@ -85,8 +113,10 @@ test("Instagram video publishing waits for a finished container before media_pub
   const videoAsset = { ...asset, kind: "video" as const, mimeType: "video/mp4", reference: "https://media.example.test/reel.mp4" };
   const calls: string[] = [];
   let status = "IN_PROGRESS";
+  let rightsChecks = 0;
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
+    assertPublicationRights: async () => { rightsChecks += 1; },
     fetchImpl: async (input, init) => {
       const url = new URL(String(input));
       calls.push(url.toString());
@@ -122,6 +152,7 @@ test("Instagram video publishing waits for a finished container before media_pub
     }) }
   });
   assert.deepEqual(processing, { status: "processing" });
+  assert.equal(rightsChecks, 0, "rights are not rechecked while the container is still processing");
 
   status = "FINISHED";
   const published = await client.checkPublication({
@@ -141,12 +172,15 @@ test("Instagram video publishing waits for a finished container before media_pub
     }) }
   });
   assert.deepEqual(published, { status: "published", externalPostId: "media-2" });
+  assert.equal(rightsChecks, 1, "rights are checked immediately before the final publish call");
   assert.equal(calls.length, 7);
 });
 
 test("Instagram recovers the actual media ID only for a unique recent caption match", async () => {
+  let rightsChecks = 0;
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
+    assertPublicationRights: async () => { rightsChecks += 1; },
     fetchImpl: async (input) => {
       const url = new URL(String(input));
       if (url.pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id", username: "test" }), { status: 200 });
@@ -165,6 +199,7 @@ test("Instagram recovers the actual media ID only for a unique recent caption ma
     operation: { id: "op-published", jobId: "job-1", contentId: "content-1", provider: "instagram-graph-publishing", providerOperationId: "container-published", status: "processing", attemptCount: 1, createdAt: "2026-09-26T00:00:00.000Z", updatedAt: "2026-09-26T00:00:00.000Z" }
   });
   assert.deepEqual(result, { status: "published", externalPostId: "actual-media-7" });
+  assert.equal(rightsChecks, 0, "already-published containers only reconcile and never re-run the dispatch gate");
 });
 
 test("Instagram keeps published status pending when recent media matches are ambiguous", async () => {
