@@ -60,7 +60,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     });
     mediaApp.addHook("onRequest", async (request, reply) => {
       const pathname = request.url.split("?", 1)[0] ?? "";
-      if (pathname !== "/api/v1/content/media-upload" && !/^\\/api\\/v1\\/products\\/[^/]+\\/media-upload$/.test(pathname)) return;
+      if (pathname !== "/api/v1/content/media-upload" && !/^\/api\/v1\/products\/[^/]+\/media-upload$/.test(pathname)) return;
       const role = request.auth?.role;
       if (role !== "admin" && role !== "operator") {
         auditSecurityEvent(request.log, request, "authorization_denied", { reason: "media_upload_requires_operator" });
@@ -140,7 +140,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           return reply.status(400).send({ error: "MEDIA_MIME_TYPE_REQUIRED", message: "X-Media-Mime-Type is required." });
         }
         const rawLength = request.headers["content-length"];
-        const contentLength = typeof rawLength === "string" && /^\\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+        const contentLength = typeof rawLength === "string" && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
         if (!Number.isSafeInteger(contentLength) || contentLength <= 0) {
           return reply.status(411).send({ error: "CONTENT_LENGTH_REQUIRED", message: "A valid Content-Length header is required." });
         }
