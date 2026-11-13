@@ -64,8 +64,11 @@ jobs:
         run: node apps/api/scripts/check-migration-timestamps.mjs
       - name: Configure CI database environment
         run: printf 'DATABASE_URL=postgresql://affiliateos:affiliateos@localhost:5432/affiliateos\n' > .env
-      - name: Apply migrations
-        run: npm run db:migrate
+      - name: Apply migrations with the runtime migration runner
+        env:
+          DATABASE_URL: postgresql://affiliateos:affiliateos@localhost:5432/affiliateos
+          MIGRATION_DATABASE_URL: postgresql://affiliateos:affiliateos@localhost:5432/affiliateos
+        run: node apps/api/scripts/run-migrations.mjs
       - name: Verify migrated database
         run: npm run db:verify
       - name: Test Supabase-managed default ACL detection
