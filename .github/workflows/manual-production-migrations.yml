@@ -98,6 +98,8 @@ jobs:
           NODE
 
       - name: Verify current production migration ledger and pending suffix (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: npm run db:verify:pre-migrate
 
       - name: Apply pending migrations with the guarded Drizzle runner
