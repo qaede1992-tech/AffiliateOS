@@ -291,6 +291,41 @@ export class AutonomousCycleService {
             errorType: safeErrorType(error)
           }));
         }
+        if (mediaIds.length === 0) {
+          console.info(JSON.stringify({
+            event: "autonomous_media_discovery_summary",
+            candidateCount: candidateList.length,
+            preliminaryMinimumScore,
+            finalMinimumScore: defaultMinimumScore,
+            preliminaryMinimumDataConfidence,
+            finalMinimumDataConfidence: defaultMinimumDataConfidence,
+            preliminarySelectedCount: preliminary.selected.length,
+            discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
+            discoverySkippedExistingMediaCount: mediaDiscoverySummary.existingMediaSkipCount,
+            discoveryFailedCount: mediaDiscoverySummary.failedCount,
+            catalogCandidateCount: mediaDiscoverySummary.catalogCandidateCount,
+            storedImageCount: mediaDiscoverySummary.storedImageCount,
+            storedVideoCount: mediaDiscoverySummary.storedVideoCount,
+            skippedReasonCounts: mediaDiscoverySummary.skippedReasonCounts,
+            mediaReadySelectedCount: 0,
+            mediaReadyRejectedCount: candidateList.length,
+            publishableMediaProductCount: 0,
+            publishableVideoProductCount: 0
+          }));
+          this.lastSkipReason = "no_publishable_candidates";
+          console.info(JSON.stringify({
+            event: "autonomous_cycle_skipped",
+            reason: "no_publishable_candidates",
+            catalogCandidateCount: candidateList.length
+          }));
+          return {
+            startedAt,
+            completedAt: new Date().toISOString(),
+            candidateCount: candidateList.length,
+            execution: { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 }
+          };
+        }
+
         try {
           // Keep readiness separate from publication rights: an unverified generated video
           // must not trigger endless rendering, but it must not pass the final publish gate.
