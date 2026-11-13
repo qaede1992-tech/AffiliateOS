@@ -13,6 +13,13 @@ const RECONCILIATION_BATCH_LIMIT = 100;
 const PUBLICATION_JOB_BATCH_LIMIT = 100;
 export const PUBLICATION_JOB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
+const reconciliationEligibleAt = (operation: import("./publication-operation.js").PublicationOperation): number => {
+  const updatedAt = new Date(operation.updatedAt).getTime();
+  if (!Number.isFinite(updatedAt)) return 0;
+  const delay = operation.status === "accepted" ? ACCEPTED_RECONCILIATION_DELAY_MS : PROCESSING_RECONCILIATION_DELAY_MS;
+  return updatedAt + delay;
+};
+
 import { MAX_PUBLICATION_JOB_ATTEMPTS, publicationRetryDelayMs } from "./publication-job.js";
 export { publicationRetryDelayMs } from "./publication-job.js";
 export type PublicationWorkerResult = {
