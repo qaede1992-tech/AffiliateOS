@@ -1518,3 +1518,63 @@ test("TikTok approval confirmation wakes the publication scheduler", async () =>
     await app.close();
   }
 });
+
+
+test("POST /api/v1/products/:productId/media-upload stores product media with unverified rights", async () => {
+  const services = createInMemoryServices();
+  const productId = "f13b6b18-2c1a-4f31-8c44-1c1e1a6a9a31";
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvWQAAAAASUVORK5CYII=",
+    "base64"
+  );
+  const saved: Array<Record<string, unknown>> = [];
+  services.productMediaUpload = new (await import("../../src/domain/product-media-upload-service.js")).ProductMediaUploadService(
+    { async findById(id: string) { return id === productId ? { id } : undefined; } },
+    {
+      async findByProductAndHash() { return undefined; },
+      async listByProduct() { return []; },
+      async save(asset) { saved.push(asset as unknown as Record<string, unknown>); return asset; }
+    },
+    { async upload(input) { return { bucket: "affiliate-media", key: input.key }; }, async remove() {} },
+    { maxImageBytes: 1024 * 1024, maxVideoBytes: 45 * 1024 * 1024 }
+  );
+  const token = "product-media-upload-test-token-1234";
+  const app = createApp(services, { auth: { enabled: true, token, operatorId: "operator-test", role: "operator" } });
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/products/${productId}/media-upload?kind=image`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/octet-stream",
+        "x-media-mime-type": "image/png",
+        "content-length": String(png.byteLength)
+      },
+      payload: png
+    });
+    assert.equal(response.statusCode, 201, response.body);
+    assert.equal(response.json().productId, productId);
+    assert.equal(response.json().sourceProvider, "user_upload");
+    assert.equal(response.json().rightsStatus, "unverified");
+    assert.equal(response.json().rightsEvidenceUrl, null);
+    assert.equal(saved.length, 1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("POST /api/v1/products/:productId/media-upload requires operator authorization", async () => {
+  const app = createApp();
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/products/f13b6b18-2c1a-4f31-8c44-1c1e1a6a9a31/media-upload?kind=image",
+      headers: { "content-type": "application/octet-stream", "x-media-mime-type": "image/png", "content-length": "8" },
+      payload: Buffer.from("12345678")
+    });
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.json().error, "FORBIDDEN");
+  } finally {
+    await app.close();
+  }
+});
