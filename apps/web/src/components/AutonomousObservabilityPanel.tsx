@@ -70,7 +70,7 @@ export function AutonomousObservabilityPanel() {
     try {
       const [auditResponse, productResponse, autonomousStatus] = await Promise.all([
         api.autonomousDecisionAudits(100),
-        api.products(),
+        api.productsPage({ limit: 50 }),
         api.autonomousStatus()
       ]);
       setAudits(auditResponse.data);
