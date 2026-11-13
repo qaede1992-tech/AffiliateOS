@@ -76,7 +76,7 @@ test("resolves product-owned video only when that product is linked to the conte
 });
 
 test("preserves existing HTTPS URL assets without requesting a signed URL", async () => {
-  const publicAsset = { ...asset, source: "url" as const, reference: "https://images.example/image.jpg" };
+  const publicAsset = { ...asset, source: "url" as const, reference: "https://images.example.com/image.jpg" };
   const storage = {
     bucketName: "affiliate-media",
     async createSignedUrl() { throw new Error("must not be called"); }
