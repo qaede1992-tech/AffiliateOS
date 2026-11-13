@@ -17,6 +17,8 @@ export function ProductMediaRightsPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingRole, setCheckingRole] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsCursor, setProductsCursor] = useState<string | null>(null);
+  const [productsHaveMore, setProductsHaveMore] = useState(false);
   const [productId, setProductId] = useState("");
   const [assets, setAssets] = useState<ProductMediaAssetView[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -35,15 +37,19 @@ export function ProductMediaRightsPanel() {
       if (!active) return;
       if (user.role !== "admin") return;
       setIsAdmin(true);
-      const response = await api.products();
+      const response = await api.productsPage({ limit: 25 });
       if (!active) return;
       setProducts(response.data);
+      setProductsCursor(response.nextCursor);
+      setProductsHaveMore(response.hasMore);
       if (response.data[0]) setProductId(response.data[0].id);
     }).catch((requestError: unknown) => {
       if (active) setError(requestError instanceof Error ? requestError.message : "Tidak dapat memeriksa hak akses admin.");
     }).finally(() => { if (active) setCheckingRole(false); });
     return () => { active = false; };
   }, []);
+
+  const loadMoreProducts = async () => { if (!productsCursor) return; try { const page = await api.productsPage({ cursor: productsCursor, limit: 25 }); setProducts((current) => [...current, ...page.data]); setProductsCursor(page.nextCursor); setProductsHaveMore(page.hasMore); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Produk berikutnya gagal dimuat."); } };
 
   const loadAssets = async (selectedProductId: string) => {
     const requestId = ++requestSequence.current;
@@ -150,6 +156,7 @@ export function ProductMediaRightsPanel() {
           <option value="">Pilih produk</option>
           {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
         </select>
+        {productsHaveMore && <button type="button" className="secondary-button" onClick={() => void loadMoreProducts()}>Muat 25 produk berikutnya</button>}
         <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading || Boolean(busyAssetId)}>Muat ulang aset</button>
       </div>
       {loading && <p className="empty">Memuat media dan preview privat…</p>}
