@@ -58,6 +58,7 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
 };
 
 const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp; exclude?: RegExp }> = [
+  { pattern: /\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b.{0,40}\b(lipstick|makeup|cosmetic)\b|\b(lipstick|makeup|cosmetic)\b.{0,40}\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b/i, query: "lipstick holder", relevant: /\b(lipstick holder|lipstick organizer|lipstick stand|makeup organizer|cosmetic organizer|makeup storage|lipstick storage)\b/i, exclude: /\b(lipstick tube|lipstick product|lipstick bottle|makeup brush)\b/i },
   { pattern: /\b(backpack|rucksack|ransel|tas sekolah|tas kuliah)\b/i, query: "backpack", relevant: /\b(backpack|rucksack|knapsack|school bag)\b/i },
   { pattern: /\b(botol minum|tumbler|termos|water bottle)\b/i, query: "water bottle", relevant: /\b(water bottle|bottle|thermos|flask|canteen)\b/i },
   { pattern: /\b(charger|pengisi daya|fast charging)\b/i, query: "charger", relevant: /\b(charger|charging adapter|power adapter)\b/i },
@@ -89,7 +90,8 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
   ]);
   const tokens = source.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().match(/[a-z]{4,}/g) ?? [];
-  const useful = [...new Set(tokens.filter((token) => !stopWords.has(token)))].slice(-3);
+  const listingNoise = new Set(["rak", "tempat", "meja", "slot", "top", "type", "fast", "charging", "original", "official", "latest", "terbaru", "premium", "pcs", "box", "set"]);
+  const useful = [...new Set(tokens.filter((token) => !stopWords.has(token) && !listingNoise.has(token) && !/^[a-z]{2,}\d+[a-z0-9]*$/i.test(token)))].slice(0, 3);
   return [useful.join(" ") || source.trim().slice(0, 100)];
 };
 
