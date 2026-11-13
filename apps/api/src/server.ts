@@ -27,6 +27,7 @@ import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClien
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
+import { assertProductMediaRightsForPublication } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
     ? error.name
@@ -83,6 +84,14 @@ const services = createServices(
         const key = asset.reference.slice(separator + 1);
         if (!key) throw new Error("Instagram media asset has an invalid Storage object key.");
         return mediaStorage.createSignedUrl(key, 1800);
+      },
+      assertPublicationRights: async ({ content, mediaAssets }) => {
+        const linkedProducts = await persistence.repositories.contentProducts.listByContent(content.id);
+        const linkedProductIds = [...new Set([
+          ...linkedProducts.map((item) => item.productId),
+          ...(content.productId ? [content.productId] : [])
+        ])];
+        await assertProductMediaRightsForPublication(mediaAssets, linkedProductIds, persistence.repositories.productMediaAssets);
       }
     }
   }),
