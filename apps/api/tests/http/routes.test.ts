@@ -1564,7 +1564,9 @@ test("POST /api/v1/products/:productId/media-upload stores product media with un
 });
 
 test("POST /api/v1/products/:productId/media-upload requires operator authorization", async () => {
-  const app = createApp();
+  const app = createApp(undefined, {
+    auth: { enabled: true, token: "product-media-upload-auth-token-1234", operatorId: "operator-test", role: "operator" }
+  });
   try {
     const response = await app.inject({
       method: "POST",
