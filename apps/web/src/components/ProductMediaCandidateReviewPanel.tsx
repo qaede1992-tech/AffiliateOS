@@ -9,6 +9,8 @@ export function ProductMediaCandidateReviewPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingRole, setCheckingRole] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsCursor, setProductsCursor] = useState<string | null>(null);
+  const [productsHaveMore, setProductsHaveMore] = useState(false);
   const [productId, setProductId] = useState("");
   const [status, setStatus] = useState<CandidateStatus>("pending");
   const [candidates, setCandidates] = useState<ProductMediaCandidateView[]>([]);
@@ -27,15 +29,19 @@ export function ProductMediaCandidateReviewPanel() {
       if (!active) return;
       if (user.role !== "admin") return;
       setIsAdmin(true);
-      const response = await api.products();
+      const response = await api.productsPage({ limit: 25 });
       if (!active) return;
       setProducts(response.data);
+      setProductsCursor(response.nextCursor);
+      setProductsHaveMore(response.hasMore);
       setProductId(response.data[0]?.id ?? "");
     }).catch((requestError: unknown) => {
       if (active) setError(requestError instanceof Error ? requestError.message : "Hak akses admin tidak dapat diverifikasi.");
     }).finally(() => { if (active) setCheckingRole(false); });
     return () => { active = false; };
   }, []);
+
+  const loadMoreProducts = async () => { if (!productsCursor) return; try { const page = await api.productsPage({ cursor: productsCursor, limit: 25 }); setProducts((current) => [...current, ...page.data]); setProductsCursor(page.nextCursor); setProductsHaveMore(page.hasMore); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Produk berikutnya gagal dimuat."); } };
 
   const loadCandidates = async (selectedProductId: string, selectedStatus: CandidateStatus) => {
     const requestId = ++sequence.current;
@@ -138,6 +144,7 @@ export function ProductMediaCandidateReviewPanel() {
             <option value="">Pilih produk</option>
             {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
           </select>
+          {productsHaveMore && <button type="button" className="secondary-button" onClick={() => void loadMoreProducts()}>Muat 25 produk berikutnya</button>}
         </label>
         <div className="product-media-candidate-tabs" role="tablist" aria-label="Status kandidat media">
           <button type="button" role="tab" aria-selected={status === "pending"} className={status === "pending" ? "active" : ""} onClick={() => setStatus("pending")}>Menunggu review</button>
