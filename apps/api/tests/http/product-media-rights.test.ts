@@ -38,7 +38,8 @@ const candidate: ProductMediaCandidateRecord = {
 function makeApp(
   role: "admin" | "operator" | "viewer" = "admin",
   auditRepositoryConfigured = true,
-  importer?: { importApprovedCandidate(productId: string, candidateId: string): Promise<{ asset: ProductMediaAsset; alreadyImported: boolean }> }
+  importer?: { importApprovedCandidate(productId: string, candidateId: string): Promise<{ asset: ProductMediaAsset; alreadyImported: boolean }> },
+  candidateListError?: unknown
 ) {
   let asset = { ...initialAsset };
   let lastReview: ProductMediaRightsReviewCommand | undefined;
@@ -75,7 +76,7 @@ function makeApp(
   const candidateReviewAudits: Array<{ id: string; candidateId: string; productId: string; actorId: string; actorRole: "admin"; action: "approve" | "reject"; reason: string; previousStatus: "pending"; newStatus: "approved" | "rejected"; createdAt: string }> = [];
   const candidateRepository: ProductMediaCandidateRepository = {
     async saveMany(rows) { return rows; },
-    async listPendingByProduct(id) { return id === productId && reviewedCandidate.reviewStatus === "pending" ? [reviewedCandidate] : []; },
+    async listPendingByProduct(id) { if (candidateListError !== undefined) throw candidateListError; return id === productId && reviewedCandidate.reviewStatus === "pending" ? [reviewedCandidate] : []; },
     async review(id, ownerProductId, command) {
       if (id !== candidate.id || ownerProductId !== productId || reviewedCandidate.reviewStatus !== "pending") return undefined;
       const reviewedAt = new Date().toISOString();
@@ -179,6 +180,30 @@ test("operator cannot read pending product media candidates", async () => {
     await app.close();
   }
 });
+
+test("admin receives a clear 503 when the product media candidates migration is not applied", async () => {
+  const missingTable = Object.assign(new Error('relation "product_media_candidates" does not exist'), { code: "42P01" });
+  const { app } = makeApp("admin", true, undefined, missingTable);
+  try {
+    const response = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-candidates` });
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.json().error, "PRODUCT_MEDIA_CANDIDATES_SCHEMA_NOT_READY");
+  } finally {
+    await app.close();
+  }
+});
+
+test("does not mask unrelated PostgreSQL missing-relation errors", async () => {
+  const missingOtherTable = Object.assign(new Error('relation "some_other_table" does not exist'), { code: "42P01" });
+  const { app } = makeApp("admin", true, undefined, missingOtherTable);
+  try {
+    const response = await app.inject({ method: "GET", url: `/api/v1/products/${productId}/media-candidates` });
+    assert.equal(response.statusCode, 500);
+  } finally {
+    await app.close();
+  }
+});
+
 test("admin can list product media and verify rights with credential-free HTTPS evidence and a reason", async () => {
   const { app, getAsset, getReview } = makeApp();
   try {
