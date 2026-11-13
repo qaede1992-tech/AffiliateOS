@@ -147,7 +147,7 @@ class DrizzleContentProductRepository implements ContentProductRepository {
 class DrizzleSocialAccountRepository extends DrizzleRepository<SocialAccount, typeof socialAccounts.$inferSelect> { constructor(db: DatabaseExecutor) { super(db, socialAccounts, toSocialAccount, (entity) => ({ ...entity, credentialReference: entity.credentialReference ?? null } as any)); } async findByPlatformAccount(platform: string, accountReference: string) { const rows = await this.db.select().from(socialAccounts).where(and(eq(socialAccounts.platform, platform), eq(socialAccounts.accountReference, accountReference))).limit(1); return rows[0] ? toSocialAccount(rows[0]) : undefined; } override async save(entity: SocialAccount) { if (await this.findById(entity.id)) await this.db.update(socialAccounts).set(this.toRow(entity)).where(eq(socialAccounts.id, entity.id)); else await super.save(entity); return entity; } }
 
 
-class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
+export class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
   constructor(private readonly db: DatabaseExecutor) {}
   private map(row: typeof shopeeAffiliateLinkIntakes.$inferSelect): ShopeeAffiliateLinkIntake {
     return { id: row.id, marketplaceSlug: "shopee-affiliate-feed", affiliateUrl: row.affiliateUrl, normalizedUrlHash: row.normalizedUrlHash,
@@ -182,6 +182,14 @@ class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkI
       .orderBy(asc(shopeeAffiliateLinkIntakes.updatedAt))
       .limit(limit);
     return rows.map((row: typeof shopeeAffiliateLinkIntakes.$inferSelect) => this.map(row));
+  }
+  async nextStaleResolvingAt() {
+    const rows = await this.db.select({
+      nextAt: sql<Date | null>`min(${shopeeAffiliateLinkIntakes.updatedAt} + interval '5 minutes')`
+    }).from(shopeeAffiliateLinkIntakes)
+      .where(eq(shopeeAffiliateLinkIntakes.status, "resolving"));
+    const nextAt = rows[0]?.nextAt;
+    return nextAt ? new Date(String(nextAt)).toISOString() : undefined;
   }
   async updateIfResolving(id: string, expectedUpdatedAt: string, entity: ShopeeAffiliateLinkIntake) {
     const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
