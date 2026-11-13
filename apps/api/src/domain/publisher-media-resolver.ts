@@ -1,5 +1,5 @@
 import type { Content } from "@affiliateos/shared";
-import type { MediaAsset } from "./media-asset.js";
+import { validateMediaAsset, type MediaAsset } from "./media-asset.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
@@ -16,6 +16,7 @@ export async function resolvePublisherMediaAssets(
   allowedProductIds: string[] = []
 ): Promise<MediaAsset[]> {
   return Promise.all(assets.map(async (asset) => {
+    validateMediaAsset(asset);
     if (asset.source !== "object-storage") return asset;
     if (!storage) {
       throw new Error("Private media publishing requires configured Supabase Storage.");
@@ -54,6 +55,8 @@ export async function resolvePublisherMediaAssets(
       throw new Error("Storage returned a signed media URL that is not public HTTPS.");
     }
 
-    return { ...asset, source: "url" as const, reference: parsed.toString() };
+    const resolvedAsset = { ...asset, source: "url" as const, reference: parsed.toString() };
+    validateMediaAsset(resolvedAsset);
+    return resolvedAsset;
   }));
 }
