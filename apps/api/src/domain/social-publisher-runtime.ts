@@ -17,7 +17,7 @@ export type OfficialSocialPublisherRuntimeConfiguration = {
     fetchImpl?: typeof fetch;
     graphBaseUrl?: string;
     mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
-    assertPublicationRights?: (input: { content: Content; mediaAssets: MediaAsset[] }) => Promise<void>;
+    assertPublicationRights?: (input: { content: Content }) => Promise<void>;
   };
 };
 
