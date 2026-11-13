@@ -685,13 +685,13 @@ describe("autonomous cycle", () => {
     assert.deepEqual(result.execution, { selected: [], rejected: [], audit: [], outcomes: [], recoveredRunCount: 0 });
   });
 
-  it("redacts remaining readiness, promo-video, and final video-index database errors", async () => {
+  it("sanitizes readiness snapshot, promo-video, and final video-index database errors", async () => {
     const product = { id: "media-error-product" };
     const provider: AutonomousCandidateProvider = {
-      async listCandidates() { return [{ product: product as never, offers: [] }]; }
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const execution = {
-      async previewSelection() {
+      async previewSelection(input: { requirePublishableMedia?: boolean }) {
         return {
           selected: [{ product: product as never, offerId: "offer", score: 90 }],
           rejected: [],
@@ -700,39 +700,45 @@ describe("autonomous cycle", () => {
       },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
-    let videoIndexCalls = 0;
-    const discovery = {
-      async discover() {
-        return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] };
-      },
-      async listPublishableMediaProductIds() { return [product.id]; },
-      async listVideoProductIds() { return []; },
-      async listPublishableVideoProductIds() {
-        videoIndexCalls += 1;
-        if (videoIndexCalls === 1) return [];
-        throw new Error("Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: final-video-index-marker");
-      },
-      async listMediaReadinessScores() {
-        throw new Error("Failed query: SELECT * FROM product_media_assets WHERE product_id = $1; params: readiness-marker");
-      },
-      async generatePromoVideo() {
-        throw new Error("Failed query: INSERT INTO product_media_assets VALUES ($1); params: promo-marker");
-      }
-    };
+
     const warningLogs: string[] = [];
     const originalWarn = console.warn;
     console.warn = (message?: unknown) => { warningLogs.push(String(message)); };
     try {
-      const service = new AutonomousCycleService(
-        provider,
-        execution,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        discovery as never
-      );
-      await service.runOnce({ publicationEnabled: false });
+      const readinessFailure = {
+        async discover() {
+          return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] };
+        },
+        async getPublicationReadinessSnapshot() {
+          throw new Error("Failed query: SELECT * FROM product_media_assets; params: readiness-private-marker");
+        }
+      };
+      await new AutonomousCycleService(
+        provider, execution, undefined, undefined, undefined, undefined, readinessFailure as never
+      ).runOnce({ publicationEnabled: false });
+
+      const laterMediaFailures = {
+        async discover() {
+          return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] };
+        },
+        async getPublicationReadinessSnapshot() {
+          return {
+            publishableMediaProductIds: [product.id],
+            publishableVideoProductIds: [],
+            storedVideoProductIds: [],
+            mediaReadinessScores: { [product.id]: 85 }
+          };
+        },
+        async generatePromoVideo() {
+          throw new Error("Failed query: INSERT INTO product_media_assets; params: promo-private-marker");
+        },
+        async listPublishableVideoProductIds() {
+          throw new Error("Failed query: SELECT * FROM product_media_assets; params: video-index-private-marker");
+        }
+      };
+      await new AutonomousCycleService(
+        provider, execution, undefined, undefined, undefined, undefined, laterMediaFailures as never
+      ).runOnce({ publicationEnabled: false });
     } finally {
       console.warn = originalWarn;
     }
@@ -743,14 +749,14 @@ describe("autonomous cycle", () => {
     assert.deepEqual(
       events.map((entry) => entry.event).sort(),
       [
-        "autonomous_product_media_readiness_failed",
+        "autonomous_product_media_readiness_snapshot_failed",
         "autonomous_product_promo_video_failed",
         "autonomous_product_video_index_failed"
       ].sort()
     );
     assert.ok(events.every((entry) => entry.errorType === "Error"));
     assert.ok(warningLogs.every((line) =>
-      !/(Failed query|params:|readiness-marker|promo-marker|final-video-index-marker)/i.test(line)
+      !/(Failed query|params:|readiness-private-marker|promo-private-marker|video-index-private-marker)/i.test(line)
     ));
   });
 
