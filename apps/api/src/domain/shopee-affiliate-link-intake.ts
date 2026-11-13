@@ -24,10 +24,13 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
   async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
   async findById(id: string) { return this.rows.get(id); }
   async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) {
-    const existingByUrl = await this.findByUrlHash(intake.normalizedUrlHash);
+    // Keep the check-and-insert synchronous so concurrent in-memory submissions
+    // cannot interleave between the URL/product identity checks and the Map write.
+    const rows = [...this.rows.values()];
+    const existingByUrl = rows.find((row) => row.normalizedUrlHash === intake.normalizedUrlHash);
     if (existingByUrl) return existingByUrl;
     if (intake.shopId && intake.itemId) {
-      const existingByProduct = await this.findByProductIdentity(intake.shopId, intake.itemId);
+      const existingByProduct = rows.find((row) => row.shopId === intake.shopId && row.itemId === intake.itemId);
       if (existingByProduct) return existingByProduct;
     }
     this.rows.set(intake.id, intake);
