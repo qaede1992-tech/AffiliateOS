@@ -95,6 +95,35 @@ export class InMemoryMediaAssetRepository implements MediaAssetRepository {
 export class InMemoryPublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
+  async nextWakeAt(lockTimeoutMs: number) {
+    let earliest = Number.POSITIVE_INFINITY;
+    const retryDelay = (attempt: number) => Math.min(3600000, 60000 * 2 ** Math.max(0, attempt - 1));
+    for (const job of this.jobs.values()) {
+      const scheduled = Date.parse(job.scheduledAt);
+      if (!Number.isFinite(scheduled)) continue;
+      if (job.status === "pending") earliest = Math.min(earliest, scheduled);
+      else if (job.status === "failed" && job.attemptCount < 8) {
+        const retry = Date.parse(job.updatedAt) + retryDelay(job.attemptCount);
+        if (Number.isFinite(retry)) earliest = Math.min(earliest, Math.max(scheduled, retry));
+      } else if (job.status === "processing" && job.lockedAt) {
+        const locked = Date.parse(job.lockedAt);
+        if (Number.isFinite(locked)) earliest = Math.min(earliest, Math.max(scheduled, locked + lockTimeoutMs));
+      }
+    }
+    return Number.isFinite(earliest) ? new Date(earliest) : undefined;
+  }
+  async listClaimable(now: Date, lockTimeoutMs: number, limit: number) {
+    const retryDelay = (attempt: number) => Math.min(3600000, 60000 * 2 ** Math.max(0, attempt - 1));
+    return [...this.jobs.values()].filter((job) => {
+      const scheduled = Date.parse(job.scheduledAt);
+      const locked = job.lockedAt ? Date.parse(job.lockedAt) : undefined;
+      const freshLock = locked !== undefined && now.getTime() - locked < lockTimeoutMs;
+      const claimable = job.status === "pending" ||
+        (job.status === "failed" && job.attemptCount < 8 && Date.parse(job.updatedAt) + retryDelay(job.attemptCount) <= now.getTime()) ||
+        (job.status === "processing" && !freshLock);
+      return scheduled <= now.getTime() && claimable && !freshLock;
+    }).sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt)).slice(0, Math.max(0, limit));
+  }
   async findById(id: EntityId) { return this.jobs.get(id); }
   async findByIdempotencyKey(key: string) { for (const job of this.jobs.values()) if (job.idempotencyKey === key) return job; return undefined; }
   async save(job: PublicationJob) { this.jobs.set(job.id, job); return job; }
@@ -122,6 +151,17 @@ export class InMemoryPublicationJobRepository {
 export class InMemoryPublicationOperationRepository implements PublicationOperationRepository {
   private readonly operations = new Map<EntityId, PublicationOperation>();
   async list() { return [...this.operations.values()]; }
+  async findEarliestReconciliationUpdatedAt() {
+    return [...this.operations.values()]
+      .filter((operation) => operation.status === "accepted" || operation.status === "processing")
+      .sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt))[0]?.updatedAt;
+  }
+  async listReconciliationCandidates(updatedBefore: Date, limit: number) {
+    return [...this.operations.values()]
+      .filter((operation) => (operation.status === "accepted" || operation.status === "processing") && Date.parse(operation.updatedAt) <= updatedBefore.getTime())
+      .sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt))
+      .slice(0, Math.max(0, limit));
+  }
   async listByJobId(jobId: EntityId) {
     return [...this.operations.values()]
       .filter((operation) => operation.jobId === jobId)
