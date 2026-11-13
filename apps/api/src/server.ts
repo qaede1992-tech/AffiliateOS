@@ -85,7 +85,16 @@ const services = createServices(
         if (!key) throw new Error("Instagram media asset has an invalid Storage object key.");
         return mediaStorage.createSignedUrl(key, 1800);
       },
-      assertPublicationRights: async ({ content, mediaAssets }) => {
+      assertPublicationRights: async ({ content }) => {
+        const mediaAssetIds = content.mediaAssetIds ?? [];
+        if (mediaAssetIds.length === 0) {
+          throw new Error("Instagram publication cannot revalidate rights without configured media assets.");
+        }
+        const configuredAssets = await Promise.all(mediaAssetIds.map((id) => persistence.repositories.mediaAssets.findById(id)));
+        if (configuredAssets.some((asset) => !asset)) {
+          throw new Error("Instagram publication cannot revalidate rights because a configured media asset is missing.");
+        }
+        const mediaAssets = configuredAssets as NonNullable<(typeof configuredAssets)[number]>[];
         const linkedProducts = await persistence.repositories.contentProducts.listByContent(content.id);
         const linkedProductIds = [...new Set([
           ...linkedProducts.map((item) => item.productId),
