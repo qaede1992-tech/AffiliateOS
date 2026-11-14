@@ -206,6 +206,28 @@ export class InMemoryAutonomousRunRepository implements AutonomousRunRepository 
     return next;
   }
 }
+export interface PublicShopCatalogItem {
+  id: string;
+  referenceNumber?: number | null;
+  name: string;
+  category?: string | null;
+  priceCents?: number | null;
+  currency?: string | null;
+  ratingMilli?: number | null;
+  reviewCount?: number | null;
+  trackingCode: string;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
+}
+export interface PublicShopCatalogPage {
+  data: PublicShopCatalogItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+export interface PublicShopCatalogRepository {
+  listPage(input: { query: string; page: number; pageSize: number }): Promise<PublicShopCatalogPage>;
+}
 export interface RepositorySet {
   shopeeAffiliateLinkIntakes?: ShopeeAffiliateLinkIntakeRepository; productMediaCandidates?: ProductMediaCandidateRepository; productMediaDiscoveryAttempts?: ProductMediaDiscoveryAttemptRepository;
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
