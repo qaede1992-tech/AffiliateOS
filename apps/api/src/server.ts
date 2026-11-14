@@ -28,6 +28,11 @@ import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-soci
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
 
+const safeErrorType = (error: unknown): string =>
+  error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+
 const persistence = createDatabasePersistence(environment.DATABASE_URL);
 const marketplaceRegistry = new MarketplaceProviderRegistry();
 marketplaceRegistry.register(new ShopeeAffiliateFeedProvider());
@@ -139,8 +144,9 @@ const providerEventProcessor = new ProviderEventConversionProcessor(
 const providerEventWorker = new ProviderEventWorker(persistence.providerEvents, providerEventProcessor);
 const providerEventScheduler = new ProviderEventScheduler(providerEventWorker, {
   intervalMs: environment.PROVIDER_EVENT_WORKER_INTERVAL_MS,
-  onError: (error) => app.log.error(error, "Provider event worker cycle failed")
+  onError: (error) => app.log.error({ errorType: safeErrorType(error) }, "Provider event worker cycle failed")
 });
+persistence.providerEvents.setWakeSignal(() => providerEventScheduler.notifyChanged());
 
 const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shopeeAffiliateLinkIntakes, {
   batchSize: environment.SHOPEE_INTAKE_RECOVERY_BATCH_SIZE,
@@ -150,7 +156,7 @@ const shopeeIntakeRecoveryWorker = new ShopeeIntakeRecoveryWorker(services.shope
 const shopeeIntakeRecoveryScheduler = new ShopeeIntakeRecoveryScheduler(shopeeIntakeRecoveryWorker, {
   intervalMs: environment.SHOPEE_INTAKE_RECOVERY_INTERVAL_MS,
   onResult: (result) => app.log.info({ ...result }, "Shopee stale intake recovery cycle completed"),
-  onError: (error) => app.log.error(error, "Shopee stale intake recovery cycle failed")
+  onError: (error) => app.log.error({ errorType: safeErrorType(error) }, "Shopee stale intake recovery cycle failed")
 });
 services.shopeeAffiliateLinkIntakes.setRecoveryWakeSignal(() => shopeeIntakeRecoveryScheduler.notifyChanged());
 
@@ -162,7 +168,7 @@ try {
   if (environment.SHOPEE_CONVERSION_SYNC_ENABLED) services.shopeeConversionSyncScheduler.start();
   if (environment.AUTONOMOUS_CYCLE_ENABLED) services.autonomousScheduler.start();
 } catch (error) {
-  app.log.error(error);
+  app.log.error({ errorType: safeErrorType(error) }, "API startup failed");
   await services.autonomousScheduler.stop();
   await services.shopeeConversionSyncScheduler.stop();
   await services.publicationScheduler.stop();

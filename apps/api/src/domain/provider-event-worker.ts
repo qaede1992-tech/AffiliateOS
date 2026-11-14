@@ -9,13 +9,17 @@ export type ProviderEventWorkerResult = {
 
 export class ProviderEventWorker {
   constructor(
-    private readonly store: Pick<ProviderEventStore, "listProcessable">,
+    private readonly store: Pick<ProviderEventStore, "listProcessable" | "nextWakeAt">,
     private readonly processor: ProviderEventConversionProcessor,
     private readonly batchSize = 100
   ) {
     if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {
       throw new Error("Provider event worker batch size must be an integer between 1 and 500.");
     }
+  }
+
+  nextWakeAt(): Promise<Date | undefined> {
+    return this.store.nextWakeAt();
   }
 
   async runOnce(): Promise<ProviderEventWorkerResult> {
