@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
@@ -19,6 +20,19 @@ import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
 import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
+const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    const isLocalHostname = hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") ||
+      hostname.endsWith(".internal") || hostname.endsWith(".test") || hostname.endsWith(".invalid") ||
+      hostname.endsWith(".example") || hostname.endsWith(".onion") || hostname.endsWith(".arpa") ||
+      hostname.endsWith(".lan") || hostname.endsWith(".home.arpa");
+    return parsed.protocol === "https:" && hostname.includes(".") && !isIP(hostname) && !isLocalHostname &&
+      !parsed.username && !parsed.password ? parsed.toString() : undefined;
+  } catch { return undefined; }
+};
 const writeGuard = { preHandler: requireOperator };
 const adminGuard = { preHandler: requireAdmin };
 const isMissingProductMediaCandidatesTable = (error: unknown): boolean => {
@@ -393,10 +407,31 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           currency: offer.currency ?? product.currency,
           ratingMilli: product.ratingMilli,
           reviewCount: product.reviewCount,
-          trackingCode: trackingLink.code
+          trackingCode: trackingLink.code,
+          imageUrl: product.imageUrl,
+          videoUrl: product.videoUrl
         }];
       });
-      return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
+      const productsWithMedia = items.filter((item) => Boolean(item.imageUrl || item.videoUrl));
+      const mediaAssets = services.productMediaAssets?.listByProducts && productsWithMedia.length > 0
+        ? await services.productMediaAssets.listByProducts(productsWithMedia.map((item) => item.id))
+        : [];
+      const getVerifiedMediaUrl = (item: (typeof items)[number], kind: "image" | "video"): string | undefined => {
+        const rawUrl = kind === "image" ? item.imageUrl : item.videoUrl;
+        const safeUrl = toPublicHttpsMediaUrl(rawUrl ?? undefined);
+        if (!safeUrl) return undefined;
+        const matches = mediaAssets.filter((asset) => asset.productId === item.id && asset.sourceUrl === rawUrl);
+        if (matches.length !== 1) return undefined;
+        const asset = matches[0];
+        if (!asset || asset.kind !== kind || !hasCurrentVerifiedRights(asset)) return undefined;
+        if (asset.identityStatus !== "not_required" && asset.identityStatus !== "verified") return undefined;
+        return safeUrl;
+      };
+      return list(items.map((item) => ({
+        ...item,
+        imageUrl: getVerifiedMediaUrl(item, "image"),
+        videoUrl: getVerifiedMediaUrl(item, "video")
+      })).sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
     }
     const [products, offers, trackingLinks] = await Promise.all([
       services.marketplace.listProducts(),
@@ -427,10 +462,31 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         currency: offer.currency ?? product.currency,
         ratingMilli: product.ratingMilli,
         reviewCount: product.reviewCount,
-        trackingCode: trackingLink.code
+        trackingCode: trackingLink.code,
+        imageUrl: product.imageUrl,
+        videoUrl: product.videoUrl
       }];
     });
-    return list(items.sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
+    const productsWithMedia = items.filter((item) => Boolean(item.imageUrl || item.videoUrl));
+    const mediaAssets = services.productMediaAssets?.listByProducts && productsWithMedia.length > 0
+      ? await services.productMediaAssets.listByProducts(productsWithMedia.map((item) => item.id))
+      : [];
+    const getVerifiedMediaUrl = (item: (typeof items)[number], kind: "image" | "video"): string | undefined => {
+      const rawUrl = kind === "image" ? item.imageUrl : item.videoUrl;
+      const safeUrl = toPublicHttpsMediaUrl(rawUrl ?? undefined);
+      if (!safeUrl) return undefined;
+      const matches = mediaAssets.filter((asset) => asset.productId === item.id && asset.sourceUrl === rawUrl);
+      if (matches.length !== 1) return undefined;
+      const asset = matches[0];
+      if (!asset || asset.kind !== kind || !hasCurrentVerifiedRights(asset)) return undefined;
+      if (asset.identityStatus !== "not_required" && asset.identityStatus !== "verified") return undefined;
+      return safeUrl;
+    };
+    return list(items.map((item) => ({
+      ...item,
+      imageUrl: getVerifiedMediaUrl(item, "image"),
+      videoUrl: getVerifiedMediaUrl(item, "video")
+    })).sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
   });
   app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.get("/api/v1/products/page", async (request) => { const input = productCollectionQuerySchema.parse(request.query); const page = await services.marketplace.listProductsPage(input); return { ...list(page.items), nextCursor: page.nextCursor, hasMore: page.hasMore }; }); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
