@@ -1351,9 +1351,7 @@ test("public shop uses the paginated catalog repository when available", async (
       currency: "IDR",
       ratingMilli: 4900,
       reviewCount: 12,
-      trackingCode: "PUB301",
-      imageUrl: undefined,
-      videoUrl: undefined
+      trackingCode: "PUB301"
     }],
     total: 1,
     page: 1,
