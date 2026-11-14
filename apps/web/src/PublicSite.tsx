@@ -133,7 +133,21 @@ type PublicShopItem = {
   currency?: string | null;
   ratingMilli?: number | null;
   reviewCount?: number | null;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
   trackingCode: string;
+};
+
+const safePublicMediaUrl = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
@@ -220,8 +234,27 @@ function ShopPage() {
         </p>
       ) : null}
       <div className="public-shop-grid">
-        {items.map((item) => (
+        {items.map((item) => {
+          const imageUrl = safePublicMediaUrl(item.imageUrl);
+          const videoUrl = safePublicMediaUrl(item.videoUrl);
+          return (
           <article className="public-shop-card" key={item.id}>
+            {videoUrl ? (
+              <div className="public-shop-media">
+                <video controls preload="metadata" playsInline poster={imageUrl} aria-label={`Video produk: ${item.name}`}>
+                  <source src={videoUrl} />
+                  Browser Anda tidak mendukung pemutaran video.
+                </video>
+              </div>
+            ) : imageUrl ? (
+              <div className="public-shop-media">
+                <img src={imageUrl} alt={item.name} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+              </div>
+            ) : (
+              <div className="public-shop-media public-shop-media-placeholder" role="img" aria-label={`Media produk belum tersedia: ${item.name}`}>
+                Media produk belum tersedia
+              </div>
+            )}
             <p className="public-eyebrow">{item.category || "Rekomendasi produk"}</p>
             <h2>{item.name}</h2>
             <p className="public-shop-code">Nomor produk: <strong>{typeof item.referenceNumber === "number" ? item.referenceNumber : "—"}</strong></p>
@@ -233,7 +266,8 @@ function ShopPage() {
               Lihat produk di marketplace
             </a>
           </article>
-        ))}
+          );
+        })}
       </div>
       {!loading && !error && total > pageSize ? (
         <nav className="public-shop-pagination" aria-label="Navigasi katalog">
