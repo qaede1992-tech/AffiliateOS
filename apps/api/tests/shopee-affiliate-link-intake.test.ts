@@ -126,7 +126,7 @@ test("stale resolving claim is compare-and-set guarded", async () => {
   assert.equal(await repository.claimStaleResolving(intake.id, now, new Date().toISOString()), false);
 });
 
-test("different affiliate URLs resolving to the same Shopee product deduplicate by product identity", async () => {
+test("different affiliate URLs resolving to the same Shopee product deduplicate without persisting a duplicate intake", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => ({
     status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
@@ -136,9 +136,27 @@ test("different affiliate URLs resolving to the same Shopee product deduplicate 
   const second = await service.submit(secondUrl);
   assert.equal(first.id, second.id);
   const secondHash = createHash("sha256").update(secondUrl).digest("hex");
-  const duplicateIntake = await repository.findByUrlHash(secondHash);
-  assert.equal(duplicateIntake?.status, "failed", "Duplicate product identity must not leave an intake stuck in resolving.");
-  assert.equal(duplicateIntake?.sourceMetadata.duplicateOfIntakeId, first.id);
+  assert.equal(await repository.findByUrlHash(secondHash), undefined);
+});
+
+test("concurrent affiliate URLs resolving to the same Shopee product persist only one intake", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  let resolverCalls = 0;
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => { release = resolve; });
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (affiliateUrl) => {
+    resolverCalls += 1;
+    if (resolverCalls === 2) release();
+    await barrier;
+    return { status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456" };
+  });
+  const urls = ["https://s.shopee.co.id/race-first", "https://s.shopee.co.id/race-second"];
+  const [first, second] = await Promise.all(urls.map((url) => service.submit(url)));
+  assert.equal(resolverCalls, 2);
+  assert.equal(first.id, second.id);
+  const hashes = urls.map((url) => createHash("sha256").update(url).digest("hex"));
+  const stored = await Promise.all(hashes.map((hash) => repository.findByUrlHash(hash)));
+  assert.equal(stored.filter(Boolean).length, 1);
 });
 
 test("verified feed offer reconciles a matching intake without inventing offer values", async () => {
@@ -409,7 +427,7 @@ test("Shopee intake repository returns only the earliest resolving recovery dead
   );
 });
 
-test("Shopee intake notifies recovery scheduler when a resolving row is created and completed", async () => {
+test("new Shopee intake resolves inline without scheduling a stale-row recovery job", async () => {
   const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
   let resolve!: (value: { status: "resolved"; affiliateUrl: string; productUrl: string; shopId: string; itemId: string }) => void;
   const resolution = new Promise<{ status: "resolved"; affiliateUrl: string; productUrl: string; shopId: string; itemId: string }>((yes) => { resolve = yes; });
@@ -420,8 +438,8 @@ test("Shopee intake notifies recovery scheduler when a resolving row is created 
 
   const submitting = service.submit(affiliateUrl);
   await new Promise<void>((done) => setImmediate(done));
-  assert.equal(wakeSignals, 1);
-  assert.ok(await service.nextStaleResolvingAt());
+  assert.equal(wakeSignals, 0);
+  assert.equal(await service.nextStaleResolvingAt(), undefined);
 
   resolve({
     status: "resolved",
@@ -433,6 +451,33 @@ test("Shopee intake notifies recovery scheduler when a resolving row is created 
   const intake = await submitting;
 
   assert.equal(intake.status, "awaiting_offer_data");
+  assert.equal(wakeSignals, 0);
+  assert.equal(await service.nextStaleResolvingAt(), undefined);
+});
+
+test("legacy stale resolving recovery still wakes the scheduler when it claims and completes a row", async () => {
+  const repository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const affiliateUrl = "https://s.shopee.co.id/legacy-wake-signal";
+  const staleAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  await repository.saveIfAbsent({
+    id: "legacy-wake-signal",
+    marketplaceSlug: "shopee-affiliate-feed",
+    affiliateUrl,
+    normalizedUrlHash: createHash("sha256").update(affiliateUrl).digest("hex"),
+    status: "resolving",
+    sourceMetadata: {},
+    createdAt: staleAt,
+    updatedAt: staleAt
+  });
+  let wakeSignals = 0;
+  const service = new ShopeeAffiliateLinkIntakeService(repository, async (url) => ({
+    status: "resolved", affiliateUrl: url, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
+  }));
+  service.setRecoveryWakeSignal(() => { wakeSignals += 1; });
+
+  const result = await service.recoverStaleResolvingBatch({ batchSize: 1, concurrency: 1, resolverTimeoutMs: 1_000 });
+
+  assert.deepEqual(result, { scanned: 1, recovered: 1, failed: 0, skipped: 0 });
   assert.equal(wakeSignals, 2);
   assert.equal(await service.nextStaleResolvingAt(), undefined);
 });
