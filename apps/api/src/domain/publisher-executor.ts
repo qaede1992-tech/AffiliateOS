@@ -78,8 +78,9 @@ export class PublisherExecutor {
     const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content) && (candidate.provider ?? content.platform) === operation.provider);
     if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
     if (!publisher.checkPublication) throw new Error(`Publisher ${operation.provider} does not support publication status checks.`);
-    const credential = await this.resolveCredential(account);
+    // Validate configured media references before reading social credentials.
     const mediaAssets = await this.resolveMediaAssets(content);
+    const credential = await this.resolveCredential(account);
     const result = await publisher.checkPublication({ content, account, credential, mediaAssets, operation });
     return { content, account, result };
   }
