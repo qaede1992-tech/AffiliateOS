@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
@@ -28,7 +29,7 @@ const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
       hostname.endsWith(".internal") || hostname.endsWith(".test") || hostname.endsWith(".invalid") ||
       hostname.endsWith(".example") || hostname.endsWith(".onion") || hostname.endsWith(".arpa") ||
       hostname.endsWith(".lan") || hostname.endsWith(".home.arpa");
-    return parsed.protocol === "https:" && hostname.includes(".") && !isLocalHostname &&
+    return parsed.protocol === "https:" && hostname.includes(".") && !isIP(hostname) && !isLocalHostname &&
       !parsed.username && !parsed.password ? parsed.toString() : undefined;
   } catch { return undefined; }
 };
