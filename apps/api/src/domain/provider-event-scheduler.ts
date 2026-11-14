@@ -1,9 +1,11 @@
 import type { ProviderEventWorker, ProviderEventWorkerResult } from "./provider-event-worker.js";
 
 export type ProviderEventSchedulerOptions = {
+  /** Delay used only to retry a failed worker or wake-time lookup; idle queues are not polled. */
   intervalMs?: number;
-  idleMaxIntervalMs?: number;
   now?: () => Date;
+  setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
+  clearTimer?: (timer: TimerHandle) => void;
   onResult?: (result: ProviderEventWorkerResult) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
 };
@@ -17,11 +19,10 @@ export type ProviderEventSchedulerStatus = {
   lastError?: string;
 };
 
-const DEFAULT_INTERVAL_MS = 60_000;
-const DEFAULT_IDLE_MAX_INTERVAL_MS = 2 * 60_000;
+const DEFAULT_RETRY_INTERVAL_MS = 60_000;
 const MIN_INTERVAL_MS = 10_000;
+const MAX_TIMER_DELAY_MS = 2_147_000_000;
 
-/** Keep database and transport details out of scheduler status. */
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
     ? error.name
@@ -30,15 +31,17 @@ const safeErrorType = (error: unknown): string =>
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export class ProviderEventScheduler {
-  private readonly intervalMs: number;
-  private readonly idleMaxIntervalMs: number;
-  private currentIntervalMs: number;
-  private consecutiveEmptyRuns = 0;
+  private readonly retryIntervalMs: number;
   private readonly now: () => Date;
   private readonly onResult?: ProviderEventSchedulerOptions["onResult"];
   private readonly onError?: ProviderEventSchedulerOptions["onError"];
+  private readonly setTimer: NonNullable<ProviderEventSchedulerOptions["setTimer"]>;
+  private readonly clearTimer: NonNullable<ProviderEventSchedulerOptions["clearTimer"]>;
   private timer?: TimerHandle;
   private activeRun?: Promise<ProviderEventWorkerResult>;
+  private wakeLookup?: Promise<void>;
+  private wakeRevision = 0;
+  private retryAfterError = false;
   private started = false;
   private lastStartedAt?: string;
   private lastCompletedAt?: string;
@@ -46,19 +49,16 @@ export class ProviderEventScheduler {
   private lastError?: string;
 
   constructor(
-    private readonly worker: Pick<ProviderEventWorker, "runOnce">,
+    private readonly worker: Pick<ProviderEventWorker, "runOnce" | "nextWakeAt">,
     options: ProviderEventSchedulerOptions = {}
   ) {
-    this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
-    if (!Number.isFinite(this.intervalMs) || this.intervalMs < MIN_INTERVAL_MS) {
-      throw new Error("Provider event scheduler interval must be at least 10 seconds.");
+    this.retryIntervalMs = options.intervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
+    if (!Number.isFinite(this.retryIntervalMs) || this.retryIntervalMs < MIN_INTERVAL_MS) {
+      throw new Error("Provider event scheduler retry interval must be at least 10 seconds.");
     }
-    this.idleMaxIntervalMs = options.idleMaxIntervalMs ?? Math.max(this.intervalMs, DEFAULT_IDLE_MAX_INTERVAL_MS);
-    if (!Number.isFinite(this.idleMaxIntervalMs) || this.idleMaxIntervalMs < this.intervalMs || this.idleMaxIntervalMs > 60 * 60_000) {
-      throw new Error("Provider event scheduler idle maximum must be between the base interval and one hour.");
-    }
-    this.currentIntervalMs = this.intervalMs;
     this.now = options.now ?? (() => new Date());
+    this.setTimer = options.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+    this.clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
     this.onResult = options.onResult;
     this.onError = options.onError;
   }
@@ -67,9 +67,9 @@ export class ProviderEventScheduler {
     return this.started;
   }
 
-  /** Current delay before the next poll; exposed for health diagnostics and deterministic tests. */
+  /** Retained for diagnostics; this is the error retry delay, not an idle poll interval. */
   get nextIntervalMs(): number {
-    return this.currentIntervalMs;
+    return this.retryIntervalMs;
   }
 
   get status(): ProviderEventSchedulerStatus {
@@ -86,33 +86,42 @@ export class ProviderEventScheduler {
   start(): void {
     if (this.started) return;
     this.started = true;
-    void this.runAndSchedule();
+    void this.scheduleNext();
+  }
+
+  /** Wake after a provider event is persisted; an empty queue remains completely idle. */
+  notifyChanged(): void {
+    if (!this.started) return;
+    this.wakeRevision += 1;
+    this.retryAfterError = false;
+    this.clearScheduledTimer();
+    void this.scheduleNext();
   }
 
   async stop(): Promise<void> {
     this.started = false;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
-    await this.activeRun;
+    this.wakeRevision += 1;
+    this.clearScheduledTimer();
+    await this.activeRun?.catch(() => undefined);
   }
 
   async runNow(): Promise<ProviderEventWorkerResult> {
     if (this.activeRun) return this.activeRun;
 
+    this.wakeRevision += 1;
     this.lastStartedAt = this.now().toISOString();
     this.lastError = undefined;
-    this.activeRun = this.worker.runOnce()
+    this.activeRun = Promise.resolve()
+      .then(() => this.worker.runOnce())
       .then(async (result) => {
         this.lastResult = result;
-        this.updateIntervalAfterResult(result);
+        this.retryAfterError = false;
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyResult(result);
         return result;
       })
       .catch(async (error) => {
-        this.resetInterval();
+        this.retryAfterError = true;
         this.lastError = safeErrorType(error);
         this.lastCompletedAt = this.now().toISOString();
         await this.notifyError(error);
@@ -120,25 +129,73 @@ export class ProviderEventScheduler {
       })
       .finally(() => {
         this.activeRun = undefined;
+        if (this.started) void this.scheduleNext();
       });
 
     return this.activeRun;
   }
 
-  private updateIntervalAfterResult(result: ProviderEventWorkerResult): void {
-    if (result.scanned > 0) {
-      this.resetInterval();
+  private async scheduleNext(): Promise<void> {
+    if (!this.started || this.timer || this.activeRun || this.wakeLookup) return;
+    if (this.retryAfterError) {
+      this.scheduleRetry();
       return;
     }
-    if (this.consecutiveEmptyRuns > 0) {
-      this.currentIntervalMs = Math.min(this.currentIntervalMs * 2, this.idleMaxIntervalMs);
+
+    const revision = this.wakeRevision;
+    const lookup = (async () => {
+      try {
+        const nextWakeAt = await this.worker.nextWakeAt();
+        if (revision !== this.wakeRevision || !this.started || this.timer || this.activeRun || !nextWakeAt) return;
+        const nextTime = nextWakeAt.getTime();
+        if (!Number.isFinite(nextTime)) throw new Error("Provider event store returned an invalid wake time.");
+        const delayMs = Math.min(MAX_TIMER_DELAY_MS, Math.max(0, nextTime - this.now().getTime()));
+        this.timer = this.setTimer(() => {
+          this.timer = undefined;
+          void this.runDue();
+        }, delayMs);
+        (this.timer as TimerHandle & { unref?: () => void }).unref?.();
+      } catch (error) {
+        if (revision !== this.wakeRevision || !this.started) return;
+        this.retryAfterError = true;
+        this.lastError = safeErrorType(error);
+        await this.notifyError(error);
+      }
+    })();
+
+    this.wakeLookup = lookup;
+    try {
+      await lookup;
+    } finally {
+      if (this.wakeLookup === lookup) this.wakeLookup = undefined;
+      if (this.started && !this.timer && !this.activeRun && (revision !== this.wakeRevision || this.retryAfterError)) {
+        void this.scheduleNext();
+      }
     }
-    this.consecutiveEmptyRuns += 1;
   }
 
-  private resetInterval(): void {
-    this.consecutiveEmptyRuns = 0;
-    this.currentIntervalMs = this.intervalMs;
+  private async runDue(): Promise<void> {
+    if (!this.started) return;
+    try {
+      await this.runNow();
+    } catch {
+      // runNow schedules a bounded retry after a worker failure.
+    }
+  }
+
+  private scheduleRetry(): void {
+    if (!this.started || this.timer || this.activeRun || this.wakeLookup) return;
+    this.timer = this.setTimer(() => {
+      this.timer = undefined;
+      void this.runDue();
+    }, this.retryIntervalMs);
+    (this.timer as TimerHandle & { unref?: () => void }).unref?.();
+  }
+
+  private clearScheduledTimer(): void {
+    if (!this.timer) return;
+    this.clearTimer(this.timer);
+    this.timer = undefined;
   }
 
   private async notifyResult(result: ProviderEventWorkerResult): Promise<void> {
@@ -157,18 +214,5 @@ export class ProviderEventScheduler {
     } catch {
       // Observer failures must not alter worker execution semantics.
     }
-  }
-
-  private async runAndSchedule(): Promise<void> {
-    try {
-      await this.runNow();
-    } catch {
-      // The next scheduled cycle is still allowed to recover after a worker-level failure.
-    }
-    if (!this.started) return;
-    this.timer = setTimeout(() => {
-      this.timer = undefined;
-      void this.runAndSchedule();
-    }, this.currentIntervalMs);
   }
 }
