@@ -1306,40 +1306,59 @@ test("verified AI product identity review triggers autonomous evaluation but rej
   await app.close();
 });
 
-test("public shop uses the filtered joined listing when the repository supports it", async () => {
+test("public shop uses the paginated catalog repository when available", async () => {
   const services = createInMemoryServices();
   const productId = "00000000-0000-4000-8000-000000000301";
+  let repositoryReads = 0;
   let fallbackReads = 0;
-  services.tracking.listPublicShopRows = async () => [
-    {
-      product: { id: productId, referenceNumber: 7, name: "Public product", category: "home", priceCents: 50000, currency: "IDR", ratingMilli: 4900, reviewCount: 12, status: "active" } as never,
-      offer: { id: "offer-301", productId, priceCents: 45000, currency: "IDR" } as never,
-      trackingLink: { id: "tracking-301", affiliateOfferId: "offer-301", destinationUrl: "https://affiliate.example.test/item", status: "active", code: "PUB301" } as never
-    },
-    {
-      product: { id: productId, referenceNumber: 7, name: "Public product", category: "home", priceCents: 50000, currency: "IDR", ratingMilli: 4900, reviewCount: 12, status: "active" } as never,
-      offer: { id: "offer-302", productId, priceCents: 47000, currency: "IDR" } as never,
-      trackingLink: { id: "tracking-302", affiliateOfferId: "offer-302", destinationUrl: "https://affiliate.example.test/item-2", status: "active", code: "PUB302" } as never
+  services.publicShopCatalog = {
+    listPage: async (input) => {
+      repositoryReads += 1;
+      assert.deepEqual(input, { query: "", page: 1, pageSize: 24 });
+      return {
+        data: [{
+          id: productId,
+          referenceNumber: 7,
+          name: "Public product",
+          category: "home",
+          priceCents: 45000,
+          currency: "IDR",
+          ratingMilli: 4900,
+          reviewCount: 12,
+          trackingCode: "PUB301"
+        }],
+        total: 1,
+        page: 1,
+        pageSize: 24
+      };
     }
-  ];
+  };
   services.marketplace.listProducts = async () => { fallbackReads += 1; return []; };
   services.marketplace.listAffiliateOffers = async () => { fallbackReads += 1; return []; };
   services.tracking.list = async () => { fallbackReads += 1; return []; };
   const app = createApp(services);
   const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
   assert.equal(response.statusCode, 200);
+  assert.equal(repositoryReads, 1);
   assert.equal(fallbackReads, 0);
-  assert.deepEqual(response.json(), { data: [{
-    id: productId,
-    referenceNumber: 7,
-    name: "Public product",
-    category: "home",
-    priceCents: 45000,
-    currency: "IDR",
-    ratingMilli: 4900,
-    reviewCount: 12,
-    trackingCode: "PUB301"
-  }] });
+  assert.deepEqual(response.json(), {
+    data: [{
+      id: productId,
+      referenceNumber: 7,
+      name: "Public product",
+      category: "home",
+      priceCents: 45000,
+      currency: "IDR",
+      ratingMilli: 4900,
+      reviewCount: 12,
+      trackingCode: "PUB301",
+      imageUrl: undefined,
+      videoUrl: undefined
+    }],
+    total: 1,
+    page: 1,
+    pageSize: 24
+  });
   await app.close();
 });
 
