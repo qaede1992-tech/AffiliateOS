@@ -176,7 +176,9 @@ export function createInMemoryServices(): Services {
     affiliates: new InMemoryRepository<Affiliate>(), offers: new InMemoryRepository<Offer>(), conversions: new InMemoryConversionRepository(), commissions: new InMemoryCommissionRepository(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository(), campaigns: new InMemoryRepository<Campaign>(), campaignOffers: new InMemoryCampaignOfferRepository(), trackingLinks: new InMemoryTrackingLinkRepository(), clicks: new InMemoryClickRepository(), contents: new InMemoryRepository<Content>(), contentProducts: new InMemoryContentProductRepository(), mediaAssets: new InMemoryMediaAssetRepository(), socialAccounts: new InMemorySocialAccountRepository(), publicationJobs: new InMemoryPublicationJobRepository(), publicationOperations: new InMemoryPublicationOperationRepository(), autonomousRuns: new InMemoryAutonomousRunRepository()
   };
   const transactionManager: TransactionManager = { run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions }) };
-  return createServices(repositories, transactionManager);
+  const services = createServices(repositories, transactionManager);
+  services.publicShopCatalogFallbackAllowed = true;
+  return services;
 }
 
 
