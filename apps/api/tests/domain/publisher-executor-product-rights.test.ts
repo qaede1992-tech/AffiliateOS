@@ -68,6 +68,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
     async save(asset) { return asset; }
   };
   let providerCalls = 0;
+  let providerCheckCalls = 0;
   const publisher: SocialPublisher = {
     provider: "test-publisher",
     supports: () => true,
@@ -76,6 +77,10 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
       assert.equal(sent.length, 1);
       assert.equal(sent[0]?.source, "url");
       return { externalPostId: "external-post-1" };
+    },
+    async checkPublication() {
+      providerCheckCalls += 1;
+      return { status: "processing" };
     }
   };
   const storage = {
@@ -86,7 +91,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
     contentService, socialAccounts, [publisher], credentialResolver, mediaAssets, undefined, storage,
     contentProducts, productMediaAssets
   );
-  return { executor, contentService, getProviderCalls: () => providerCalls };
+  return { executor, contentService, getProviderCalls: () => providerCalls, getProviderCheckCalls: () => providerCheckCalls };
 }
 
 test("publisher re-reads current product-media rights immediately before provider dispatch", async () => {
@@ -165,4 +170,45 @@ test("checks product-media rights before resolving social credentials", async ()
   assert.equal(result.status, "published");
   assert.equal(verifiedCredentialReads, 1);
   assert.equal(verified.getProviderCalls(), 1);
+});
+
+
+const reconciliationOperation = {
+  id: "operation-1",
+  jobId: "job-1",
+  contentId,
+  provider: "test-publisher",
+  providerOperationId: "provider-operation-1",
+  status: "accepted" as const,
+  createdAt: "2026-11-02T00:00:00.000Z",
+  updatedAt: "2026-11-02T00:00:00.000Z"
+};
+
+test("validates configured media before resolving credentials during reconciliation", async () => {
+  let credentialReads = 0;
+  const resolver: SocialCredentialResolver = {
+    async resolve() { credentialReads += 1; return { accessToken: "test-only" }; }
+  };
+  const mismatchedMedia = { ...media, contentId: "99999999-9999-4999-8999-999999999999" };
+  const fixture = await setup("verified", mismatchedMedia, resolver);
+
+  await assert.rejects(
+    fixture.executor.check(reconciliationOperation),
+    /does not belong to the content/
+  );
+  assert.equal(credentialReads, 0);
+  assert.equal(fixture.getProviderCheckCalls(), 0);
+});
+
+test("resolves credentials and checks the provider after valid reconciliation media", async () => {
+  let credentialReads = 0;
+  const resolver: SocialCredentialResolver = {
+    async resolve() { credentialReads += 1; return { accessToken: "test-only" }; }
+  };
+  const fixture = await setup("verified", media, resolver);
+
+  const result = await fixture.executor.check(reconciliationOperation);
+  assert.equal(result.result.status, "processing");
+  assert.equal(credentialReads, 1);
+  assert.equal(fixture.getProviderCheckCalls(), 1);
 });
