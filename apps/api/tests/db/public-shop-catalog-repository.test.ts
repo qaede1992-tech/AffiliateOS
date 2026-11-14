@@ -41,6 +41,7 @@ test("Public Shop SQL filters eligible offers, deduplicates products, counts and
   assert.match(compiled.sql, /ao\.affiliate_link_status = 'active'/);
   assert.match(compiled.sql, /ao\.affiliate_link_expires_at/);
   assert.match(compiled.sql, /JOIN LATERAL/);
+  assert.match(compiled.sql, /ESCAPE E'\\\\'/);
   assert.match(compiled.sql, /t\.status = 'active'/);
   assert.match(compiled.sql, /ORDER BY p\.id, ao\.created_at DESC, ao\.id DESC/);
   assert.match(compiled.sql, /count\(\*\)::integer AS total/i);
