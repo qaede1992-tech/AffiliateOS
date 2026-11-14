@@ -126,14 +126,28 @@ function Home() {
 
 type PublicShopItem = {
   id: string;
-  referenceNumber: number;
+  referenceNumber?: number | null;
   name: string;
   category?: string | null;
   priceCents?: number | null;
   currency?: string | null;
   ratingMilli?: number | null;
   reviewCount?: number | null;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
   trackingCode: string;
+};
+
+const safePublicMediaUrl = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
@@ -141,35 +155,64 @@ const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.trim().r
 function ShopPage() {
   const [items, setItems] = useState<PublicShopItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pageSize = 24;
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     if (!apiOrigin) {
       setError("Tautan katalog belum dikonfigurasi.");
       setLoading(false);
-      return;
+      return () => controller.abort();
     }
-    fetch(`${apiOrigin}/api/v1/public/shop`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Katalog produk belum dapat dimuat.");
-        return response.json() as Promise<{ data: PublicShopItem[] }>;
-      })
-      .then((payload) => { if (!cancelled) setItems(payload.data ?? []); })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Terjadi kesalahan saat memuat katalog.");
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("id-ID");
-  const isNumberQuery = /^\d+$/.test(normalizedQuery);
-  const filteredItems = items.filter((item) => isNumberQuery
-    ? item.referenceNumber === Number(normalizedQuery)
-    : item.name.toLocaleLowerCase("id-ID").includes(normalizedQuery)
-  );
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams({
+      query: searchQuery.trim(),
+      page: String(page),
+      pageSize: String(pageSize)
+    });
+    const debounce = window.setTimeout(() => {
+      fetch(apiOrigin + "/api/v1/public/shop?" + params.toString(), { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Katalog produk belum dapat dimuat.");
+          return response.json() as Promise<{ data: PublicShopItem[]; total?: number }>;
+        })
+        .then((payload) => {
+          if (controller.signal.aborted) return;
+          const rows = payload.data ?? [];
+          if (typeof payload.total === "number") {
+            setItems(rows);
+            setTotal(payload.total);
+            return;
+          }
+          // Older staging APIs return the complete catalog without pagination metadata.
+          // Preserve search and pagination compatibility until the API sync is deployed.
+          const normalized = searchQuery.trim().toLocaleLowerCase("id-ID");
+          const numericQuery = /^\\d+$/.test(normalized);
+          const filtered = rows.filter((item) => !normalized || (numericQuery
+            ? item.referenceNumber === Number(normalized)
+            : item.name.toLocaleLowerCase("id-ID").includes(normalized)));
+          setTotal(filtered.length);
+          const offset = (page - 1) * pageSize;
+          setItems(filtered.slice(offset, offset + pageSize));
+        })
+        .catch((cause: unknown) => {
+          if (cause instanceof DOMException && cause.name === "AbortError") return;
+          setError(cause instanceof Error ? cause.message : "Terjadi kesalahan saat memuat katalog.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(debounce);
+      controller.abort();
+    };
+  }, [searchQuery, page]);
 
   const money = (item: PublicShopItem) => {
     if (typeof item.priceCents !== "number") return "Lihat harga di marketplace";
@@ -187,30 +230,66 @@ function ShopPage() {
         <h1>Temukan produk yang sedang kami rekomendasikan.</h1>
         <p className="public-lead">Masukkan nomor produk atau nama yang tercantum di postingan untuk menemukan produk yang tepat. Pilih produk untuk membuka marketplace melalui tautan afiliasi yang terlacak.</p>
       </div>
+      <label className="public-shop-search-label" htmlFor="public-shop-search">Cari nomor atau nama produk</label>
+      <input
+        id="public-shop-search"
+        className="public-shop-search"
+        type="search"
+        value={searchQuery}
+        onChange={(event) => { setSearchQuery(event.target.value); setPage(1); }}
+        placeholder="Contoh: 1"
+        autoComplete="off"
+      />
       {loading ? <p role="status">Memuat produk…</p> : null}
       {error ? <p className="public-shop-message" role="alert">{error}</p> : null}
-      {!loading && !error && items.length === 0 ? (
-        <p className="public-shop-message">Belum ada produk dengan tautan afiliasi aktif. Silakan kembali lagi nanti.</p>
+      {!loading && !error && total === 0 ? (
+        <p className="public-shop-message">
+          {searchQuery.trim() ? "Tidak ada produk yang cocok dengan nomor atau nama tersebut." : "Belum ada produk dengan tautan afiliasi aktif. Silakan kembali lagi nanti."}
+        </p>
       ) : null}
-      <label className="public-shop-search-label" htmlFor="public-shop-search">Cari nomor atau nama produk</label>
-      <input id="public-shop-search" className="public-shop-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Contoh: 1" autoComplete="off" />
-      {!loading && !error && normalizedQuery && filteredItems.length === 0 ? <p className="public-shop-message" role="status">Tidak ada produk yang cocok dengan nomor atau nama tersebut.</p> : null}
       <div className="public-shop-grid">
-        {filteredItems.map((item) => (
+        {items.map((item) => {
+          const imageUrl = safePublicMediaUrl(item.imageUrl);
+          const videoUrl = safePublicMediaUrl(item.videoUrl);
+          return (
           <article className="public-shop-card" key={item.id}>
+            {videoUrl ? (
+              <div className="public-shop-media">
+                <video controls preload="metadata" playsInline poster={imageUrl} aria-label={`Video produk: ${item.name}`}>
+                  <source src={videoUrl} />
+                  Browser Anda tidak mendukung pemutaran video.
+                </video>
+              </div>
+            ) : imageUrl ? (
+              <div className="public-shop-media">
+                <img src={imageUrl} alt={item.name} loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+              </div>
+            ) : (
+              <div className="public-shop-media public-shop-media-placeholder" role="img" aria-label={`Media produk belum tersedia: ${item.name}`}>
+                Media produk belum tersedia
+              </div>
+            )}
             <p className="public-eyebrow">{item.category || "Rekomendasi produk"}</p>
             <h2>{item.name}</h2>
-            <p className="public-shop-code">Nomor produk: <strong>{item.referenceNumber}</strong></p>
+            <p className="public-shop-code">Nomor produk: <strong>{typeof item.referenceNumber === "number" ? item.referenceNumber : "—"}</strong></p>
             <p className="public-shop-price">{money(item)}</p>
             {typeof item.ratingMilli === "number" && item.ratingMilli > 0 ? (
-              <p className="public-shop-rating">Rating {(item.ratingMilli / 1000).toFixed(1)}{typeof item.reviewCount === "number" ? ` · ${item.reviewCount.toLocaleString("id-ID")} ulasan` : ""}</p>
+              <p className="public-shop-rating">Rating {(item.ratingMilli / 1000).toFixed(1)}{typeof item.reviewCount === "number" ? " · " + item.reviewCount.toLocaleString("id-ID") + " ulasan" : ""}</p>
             ) : null}
-            <a className="public-primary-button" href={`${apiOrigin}/r/${encodeURIComponent(item.trackingCode)}`} target="_blank" rel="noopener noreferrer">
+            <a className="public-primary-button" href={apiOrigin + "/r/" + encodeURIComponent(item.trackingCode)} target="_blank" rel="noopener noreferrer">
               Lihat produk di marketplace
             </a>
           </article>
-        ))}
+          );
+        })}
       </div>
+      {!loading && !error && total > pageSize ? (
+        <nav className="public-shop-pagination" aria-label="Navigasi katalog">
+          <button type="button" className="public-primary-button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Sebelumnya</button>
+          <span>Halaman {page} dari {Math.ceil(total / pageSize)} · {total.toLocaleString("id-ID")} produk</span>
+          <button type="button" className="public-primary-button" disabled={page >= Math.ceil(total / pageSize)} onClick={() => setPage((value) => value + 1)}>Berikutnya</button>
+        </nav>
+      ) : null}
       <p className="public-shop-disclosure">Sebagian tautan merupakan tautan afiliasi. Jika Anda membeli melalui tautan tersebut, kami mungkin menerima komisi tanpa biaya tambahan bagi Anda.</p>
     </section>
   );
