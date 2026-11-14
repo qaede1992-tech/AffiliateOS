@@ -56,6 +56,8 @@ import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
 import type { ProductImageGenerationService } from "./product-image-generation.js";
 
 export interface Services {
+  publicShopCatalog?: RepositorySet["publicShopCatalog"];
+  publicShopCatalogFallbackAllowed?: boolean;
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; contentStory: ContentStoryService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
   productMediaAssets?: ProductMediaAssetRepository; productMediaCandidates?: ProductMediaCandidateRepository; productMediaCandidateImport?: ProductMediaCandidateImportService; productMediaUpload?: ProductMediaUploadService; productImageGeneration?: ProductImageGenerationService; productMediaPreviewUrl?: (productId: string, assetId: string) => Promise<string | undefined>; publicationJobs: PublicationJobService; shopeeAffiliateLinkIntakes: ShopeeAffiliateLinkIntakeService; mediaUpload?: MediaUploadService; tiktokCreatorInfo: { getCreatorInfo(account: SocialAccount): Promise<TikTokCreatorInfo> }; publicationWorker: PublicationWorker; publicationScheduler: PublicationScheduler; publisherReadiness: PublisherReadinessService; providerConversions: ProviderConversionProcessor; shopeeCommissionReportReconciliation: ShopeeCommissionReportReconciliationService;
@@ -162,6 +164,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
     }
   );
   return {
+    publicShopCatalog: repositories.publicShopCatalog,
     affiliates: new AffiliateService(repositories.affiliates), offers: new OfferService(repositories.offers), conversions, commissions: new CommissionService(repositories.commissions), marketplace, campaigns, tracking, content, campaignOrchestrator, autonomousExecution, autonomousRuns, autonomousCycle, autonomousScheduler, autonomousOptimization, distribution,
     shopeeConversionSync, shopeeConversionSyncScheduler, shopeeCommissionReportReconciliation, autonomousDecisionAudits: autonomousDecisionAuditRepository,
     contentStory, productMediaAssets: repositories.productMediaAssets, productMediaCandidates: repositories.productMediaCandidates, ...(productMediaCandidateImport ? { productMediaCandidateImport } : {}), ...(productMediaUpload ? { productMediaUpload } : {}), ...(mediaStorage && repositories.productMediaAssets ? { productMediaPreviewUrl: async (productId: string, assetId: string) => { const asset = (await repositories.productMediaAssets!.listByProduct(productId)).find((item) => item.id === assetId); if (!asset || asset.bucket !== mediaStorage.bucketName || !asset.objectKey.startsWith(`products/${productId}/`)) return undefined; return mediaStorage.createSignedUrl(asset.objectKey, 300); } } : {}), shopeeAffiliateLinkIntakes, ...(mediaUpload ? { mediaUpload } : {}), socialAccounts: new SocialAccountService(repositories.socialAccounts), socialOAuth: new SocialOAuthService(socialOAuthRegistry, repositories.socialAccounts, oauthStateRepository, undefined, socialCredentialStore), analytics, attribution, publicationJobs, tiktokCreatorInfo: tiktokCreatorInfoClient ?? { getCreatorInfo: async () => { throw new Error("TikTok creator info is not configured."); } }, publicationWorker, publicationScheduler, publisherReadiness, providerConversions
@@ -173,7 +176,9 @@ export function createInMemoryServices(): Services {
     affiliates: new InMemoryRepository<Affiliate>(), offers: new InMemoryRepository<Offer>(), conversions: new InMemoryConversionRepository(), commissions: new InMemoryCommissionRepository(), marketplaceConnections: new InMemoryMarketplaceConnectionRepository(), affiliateAccounts: new InMemoryAffiliateAccountRepository(), products: new InMemoryProductCatalogRepository(), affiliateOffers: new InMemoryAffiliateOfferRepository(), campaigns: new InMemoryRepository<Campaign>(), campaignOffers: new InMemoryCampaignOfferRepository(), trackingLinks: new InMemoryTrackingLinkRepository(), clicks: new InMemoryClickRepository(), contents: new InMemoryRepository<Content>(), contentProducts: new InMemoryContentProductRepository(), mediaAssets: new InMemoryMediaAssetRepository(), socialAccounts: new InMemorySocialAccountRepository(), publicationJobs: new InMemoryPublicationJobRepository(), publicationOperations: new InMemoryPublicationOperationRepository(), autonomousRuns: new InMemoryAutonomousRunRepository()
   };
   const transactionManager: TransactionManager = { run: (work) => work({ conversions: repositories.conversions, commissions: repositories.commissions }) };
-  return createServices(repositories, transactionManager);
+  const services = createServices(repositories, transactionManager);
+  services.publicShopCatalogFallbackAllowed = true;
+  return services;
 }
 
 

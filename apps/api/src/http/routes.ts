@@ -3,9 +3,10 @@ import { isIP } from "node:net";
 import type { FastifyInstance } from "fastify";
 import type { Affiliate, Commission, Conversion, CreateAffiliateRequest, CreateConversionRequest, CreateOfferRequest, ListResponse, Offer, Product, ProductOpportunity } from "@affiliateos/shared";
 import type { Services } from "../domain/container.js";
+import type { PublicShopCatalogItem } from "../domain/repository.js";
 import type { ProviderEventStore } from "../db/provider-events.js";
 import { captureRawBody, getRawBody } from "./raw-body.js";
-import { createAffiliateSchema, affiliateOfferVerificationQuerySchema, productCollectionQuerySchema, affiliateOfferCollectionQuerySchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, generateProductImageSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, reviewProductMediaIdentitySchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
+import { createAffiliateSchema, affiliateOfferVerificationQuerySchema, productCollectionQuerySchema, publicShopQuerySchema, affiliateOfferCollectionQuerySchema, createConversionSchema, createOfferSchema, scoreProductSchema, conversionIdSchema, createConversionAttributionSchema, marketplaceLinkSchema, marketplaceProductParamsSchema, marketplaceSearchSchema, marketplaceSlugSchema, marketplaceConversionSyncSchema, createMarketplaceConnectionSchema, marketplaceEnableSchema, bindAffiliateAccountSchema, updateMarketplaceConnectionSchema, createCampaignSchema, updateCampaignSchema, campaignIdSchema, campaignOfferParamsSchema, autonomousRunIdSchema, autonomousRunQuerySchema, autonomousDecisionAuditQuerySchema, trackingLinkQuerySchema, createTrackingLinkSchema, trackingLinkIdSchema, recordClickSchema, contentQuerySchema, contentIdSchema, contentStoryProductsSchema, attachProductMediaSchema, createContentSchema, updateContentSchema, scheduleContentSchema, socialAccountIdSchema, createSocialAccountSchema, updateSocialAccountSchema, socialCredentialRotationSchema, socialOAuthStartSchema, socialOAuthCallbackSchema, publicationJobIdSchema, tiktokPublicationApprovalSchema, importShopeeAffiliateFeedSchema, importShopeeAffiliateCsvSchema, productMediaParamsSchema, updateProductMediaSchema, generateProductImageSchema, productMediaRightsParamsSchema, updateProductMediaRightsSchema, productMediaCandidateListQuerySchema, productMediaCandidateReviewParamsSchema, reviewProductMediaCandidateSchema, reviewProductMediaIdentitySchema, shopeeCommissionReportSchema, createShopeeAffiliateLinkIntakeSchema, shopeeAffiliateLinkIntakeParamsSchema } from "./validation.js";
 import { ProductOpportunityService } from "../domain/foundations.js";
 import { auditSecurityEvent } from "./app-audit.js";
 import { ProductMediaCandidateImportError } from "../domain/product-media-candidate-import.js";
@@ -391,102 +392,91 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     }
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
-  }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get("/api/v1/public/shop", async () => {
-    const joinedRows = await services.tracking.listPublicShopRows();
-    if (joinedRows) {
+  }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get<{ Querystring: { query?: string; page?: string | number; pageSize?: string | number } }>("/api/v1/public/shop", async (request, reply) => {
+    const query = publicShopQuerySchema.parse(request.query);
+    let catalog: { data: PublicShopCatalogItem[]; total: number; page: number; pageSize: number };
+    if (services.publicShopCatalog) {
+      catalog = await services.publicShopCatalog.listPage(query);
+    } else if (services.publicShopCatalogFallbackAllowed === true) {
+      const [products, offers, trackingLinks] = await Promise.all([
+        services.marketplace.listProducts(),
+        services.marketplace.listAffiliateOffers(),
+        services.tracking.list()
+      ]);
+      const productsById = new Map(products.map((product) => [product.id, product]));
       const seen = new Set<string>();
-      const items = joinedRows.flatMap(({ product, offer, trackingLink }) => {
-        if (seen.has(product.id)) return [];
+      const normalized = query.query.toLocaleLowerCase("id-ID");
+      const numericQuery = /^\d+$/.test(normalized);
+      const numericValue = numericQuery ? Number(normalized) : Number.NaN;
+      const numeric = Number.isSafeInteger(numericValue) ? numericValue : null;
+      const items: PublicShopCatalogItem[] = offers.flatMap((offer) => {
+        if (offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return [];
+        if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) return [];
+        const product = productsById.get(offer.productId);
+        const trackingLink = trackingLinks.find((link) =>
+          link.affiliateOfferId === offer.id &&
+          link.status === "active" &&
+          link.destinationUrl === offer.affiliateUrl
+        );
+        if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
+        if (normalized && (numericQuery
+          ? numeric === null || product.referenceNumber !== numeric
+          : !product.name.toLocaleLowerCase("id-ID").includes(normalized))) return [];
         seen.add(product.id);
         return [{
           id: product.id,
-          referenceNumber: product.referenceNumber,
+          referenceNumber: product.referenceNumber ?? null,
           name: product.name,
-          category: product.category,
+          category: product.category ?? null,
           priceCents: offer.priceCents ?? product.priceCents,
           currency: offer.currency ?? product.currency,
-          ratingMilli: product.ratingMilli,
-          reviewCount: product.reviewCount,
+          ratingMilli: product.ratingMilli ?? null,
+          reviewCount: product.reviewCount ?? null,
           trackingCode: trackingLink.code,
           imageUrl: product.imageUrl,
           videoUrl: product.videoUrl
         }];
-      });
-      const productsWithMedia = items.filter((item) => Boolean(item.imageUrl || item.videoUrl));
-      const mediaAssets = services.productMediaAssets?.listByProducts && productsWithMedia.length > 0
-        ? await services.productMediaAssets.listByProducts(productsWithMedia.map((item) => item.id))
-        : [];
-      const getVerifiedMediaUrl = (item: (typeof items)[number], kind: "image" | "video"): string | undefined => {
-        const rawUrl = kind === "image" ? item.imageUrl : item.videoUrl;
-        const safeUrl = toPublicHttpsMediaUrl(rawUrl ?? undefined);
-        if (!safeUrl) return undefined;
-        const matches = mediaAssets.filter((asset) => asset.productId === item.id && asset.sourceUrl === rawUrl);
-        if (matches.length !== 1) return undefined;
-        const asset = matches[0];
-        if (!asset || asset.kind !== kind || !hasCurrentVerifiedRights(asset)) return undefined;
-        if (asset.identityStatus !== "not_required" && asset.identityStatus !== "verified") return undefined;
-        return safeUrl;
+      }).sort((left, right) => (left.referenceNumber ?? Number.MAX_SAFE_INTEGER) - (right.referenceNumber ?? Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id));
+      const offset = (query.page - 1) * query.pageSize;
+      catalog = {
+        data: items.slice(offset, offset + query.pageSize),
+        total: items.length,
+        page: query.page,
+        pageSize: query.pageSize
       };
-      return list(items.map((item) => ({
-        ...item,
-        imageUrl: getVerifiedMediaUrl(item, "image"),
-        videoUrl: getVerifiedMediaUrl(item, "video")
-      })).sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
+    } else {
+      return reply.status(503).send({
+        error: "PUBLIC_SHOP_CATALOG_UNAVAILABLE",
+        message: "The product catalog is temporarily unavailable."
+      });
     }
-    const [products, offers, trackingLinks] = await Promise.all([
-      services.marketplace.listProducts(),
-      services.marketplace.listAffiliateOffers(),
-      services.tracking.list()
-    ]);
-    const productsById = new Map(products.map((product) => [product.id, product]));
-    const trackingLinksByOfferAndDestination = new Map<string, (typeof trackingLinks)[number]>();
-    for (const trackingLink of trackingLinks) {
-      if (trackingLink.status !== "active") continue;
-      const key = `${trackingLink.affiliateOfferId}\u0000${trackingLink.destinationUrl}`;
-      if (!trackingLinksByOfferAndDestination.has(key)) trackingLinksByOfferAndDestination.set(key, trackingLink);
-    }
-    const seen = new Set<string>();
-    const items = offers.flatMap((offer) => {
-      if (offer.status !== "active" || offer.affiliateLinkStatus !== "active" || !offer.affiliateUrl) return [];
-      if (offer.affiliateLinkExpiresAt && Date.parse(offer.affiliateLinkExpiresAt) <= Date.now()) return [];
-      const product = productsById.get(offer.productId);
-      const trackingLink = trackingLinksByOfferAndDestination.get(`${offer.id}\u0000${offer.affiliateUrl}`);
-      if (!product || product.status !== "active" || !trackingLink || seen.has(product.id)) return [];
-      seen.add(product.id);
-      return [{
-        id: product.id,
-        referenceNumber: product.referenceNumber,
-        name: product.name,
-        category: product.category,
-        priceCents: offer.priceCents ?? product.priceCents,
-        currency: offer.currency ?? product.currency,
-        ratingMilli: product.ratingMilli,
-        reviewCount: product.reviewCount,
-        trackingCode: trackingLink.code,
-        imageUrl: product.imageUrl,
-        videoUrl: product.videoUrl
-      }];
-    });
-    const productsWithMedia = items.filter((item) => Boolean(item.imageUrl || item.videoUrl));
-    const mediaAssets = services.productMediaAssets?.listByProducts && productsWithMedia.length > 0
-      ? await services.productMediaAssets.listByProducts(productsWithMedia.map((item) => item.id))
+
+    const productsWithMedia = catalog.data.filter((product) => Boolean(product.imageUrl || product.videoUrl));
+    const mediaRepository = services.productMediaAssets;
+    const mediaAssets = mediaRepository && typeof mediaRepository.listByProducts === "function" && productsWithMedia.length > 0
+      ? await mediaRepository.listByProducts(productsWithMedia.map((product) => product.id))
       : [];
-    const getVerifiedMediaUrl = (item: (typeof items)[number], kind: "image" | "video"): string | undefined => {
-      const rawUrl = kind === "image" ? item.imageUrl : item.videoUrl;
+    const getVerifiedMediaUrl = (product: PublicShopCatalogItem, kind: "image" | "video"): string | undefined => {
+      const rawUrl = kind === "image" ? product.imageUrl : product.videoUrl;
       const safeUrl = toPublicHttpsMediaUrl(rawUrl ?? undefined);
       if (!safeUrl) return undefined;
-      const matches = mediaAssets.filter((asset) => asset.productId === item.id && asset.sourceUrl === rawUrl);
-      if (matches.length !== 1) return undefined;
-      const asset = matches[0];
+      const matchingAssets = mediaAssets.filter((asset) =>
+        asset.productId === product.id && asset.sourceUrl === rawUrl
+      );
+      if (matchingAssets.length !== 1) return undefined;
+      const asset = matchingAssets[0];
       if (!asset || asset.kind !== kind || !hasCurrentVerifiedRights(asset)) return undefined;
       if (asset.identityStatus !== "not_required" && asset.identityStatus !== "verified") return undefined;
       return safeUrl;
     };
-    return list(items.map((item) => ({
-      ...item,
-      imageUrl: getVerifiedMediaUrl(item, "image"),
-      videoUrl: getVerifiedMediaUrl(item, "video")
-    })).sort((a, b) => (a.referenceNumber ?? 0) - (b.referenceNumber ?? 0)));
+    return {
+      ...catalog,
+      data: catalog.data.map((product) => ({
+        ...product,
+        imageUrl: getVerifiedMediaUrl(product, "image"),
+        videoUrl: getVerifiedMediaUrl(product, "video")
+      }))
+    };
   });
   app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.get("/api/v1/products/page", async (request) => { const input = productCollectionQuerySchema.parse(request.query); const page = await services.marketplace.listProductsPage(input); return { ...list(page.items), nextCursor: page.nextCursor, hasMore: page.hasMore }; }); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
