@@ -511,12 +511,15 @@ test("TikTok FILE_UPLOAD rejects an incomplete final chunk before uploading it",
   assert.deepEqual(uploadedChunks, []);
 });
 
-test("TikTok FILE_UPLOAD rejects a mismatched GET Content-Length before uploading any chunk", async () => {
+test("TikTok FILE_UPLOAD cancels a mismatched GET Content-Length stream before uploading any chunk", async () => {
   const videoSize = asset.byteSize;
   let uploadedChunks = 0;
+  let sourceCancelled = false;
   const client = new TikTokContentPostingClient({
     accessTokenResolver: async () => "secret-token",
-    mediaFetchImpl: async () => new Response(Buffer.alloc(videoSize), { status: 200, headers: { "content-type": "video/mp4", "content-length": String(videoSize - 1) } }),
+    mediaFetchImpl: async () => new Response(new ReadableStream<Uint8Array>({
+      cancel() { sourceCancelled = true; }
+    }), { status: 200, headers: { "content-type": "video/mp4", "content-length": String(videoSize - 1) } }),
     fetchImpl: async (input, init) => {
       const url = String(input);
       if (url.includes("creator_info")) return new Response(JSON.stringify({ data: { privacy_level_options: ["SELF_ONLY"] } }), { status: 200 });
@@ -527,6 +530,7 @@ test("TikTok FILE_UPLOAD rejects a mismatched GET Content-Length before uploadin
   });
   await assert.rejects(() => client.publish({ content, account, mediaAssets: [asset], tiktokApproval: approval, idempotencyKey: "idem-content-length-mismatch" }), /size changed during download/);
   assert.equal(uploadedChunks, 0);
+  assert.equal(sourceCancelled, true);
 });
 
 test("TikTok media URL validation rejects local and credential-bearing hosts before publication", async () => {
