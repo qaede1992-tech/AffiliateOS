@@ -12,6 +12,7 @@ import {
   InMemorySocialAccountRepository
 } from "../../src/domain/repository.js";
 import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
+import type { SocialCredentialResolver } from "../../src/domain/social-credentials.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
 const contentId = "11111111-1111-4111-8111-111111111111";
@@ -46,14 +47,14 @@ const productMedia = (rightsStatus: ProductMediaAsset["rightsStatus"]): ProductM
   rightsVerifiedAt: "2026-11-02T00:00:00.000Z", createdAt: "2026-11-02T00:00:00.000Z"
 });
 
-async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configuredMedia: MediaAsset = media) {
+async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configuredMedia: MediaAsset = media, credentialResolver?: SocialCredentialResolver) {
   const contents = new InMemoryRepository<Content>();
   await contents.save(content);
   const products = new InMemoryProductCatalogRepository();
   await products.save(product);
   const contentService = new ContentService(contents, new InMemoryRepository<any>(), products);
   const socialAccounts = new InMemorySocialAccountRepository();
-  await socialAccounts.save(account);
+  await socialAccounts.save(credentialResolver ? { ...account, credentialReference: "social-credential-1" } : account);
   const mediaAssets = new InMemoryMediaAssetRepository();
   await mediaAssets.save(configuredMedia);
   const contentProducts = {
@@ -82,7 +83,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
     async createSignedUrl() { return "https://project.supabase.co/storage/v1/object/sign/affiliate-media/video.mp4?token=temporary"; }
   };
   const executor = new PublisherExecutor(
-    contentService, socialAccounts, [publisher], undefined, mediaAssets, undefined, storage,
+    contentService, socialAccounts, [publisher], credentialResolver, mediaAssets, undefined, storage,
     contentProducts, productMediaAssets
   );
   return { executor, contentService, getProviderCalls: () => providerCalls };
@@ -140,4 +141,28 @@ test("keeps legacy content-scoped storage media publishable while product media 
   const result = await fixture.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
   assert.equal(result.status, "published");
   assert.equal(fixture.getProviderCalls(), 1);
+});
+
+test("checks product-media rights before resolving social credentials", async () => {
+  let rejectedCredentialReads = 0;
+  const rejectedResolver: SocialCredentialResolver = {
+    async resolve() { rejectedCredentialReads += 1; return { accessToken: "test-only" }; }
+  };
+  const unverified = await setup("unverified", media, rejectedResolver);
+  await assert.rejects(
+    unverified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z")),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+  assert.equal(rejectedCredentialReads, 0);
+  assert.equal(unverified.getProviderCalls(), 0);
+
+  let verifiedCredentialReads = 0;
+  const verifiedResolver: SocialCredentialResolver = {
+    async resolve() { verifiedCredentialReads += 1; return { accessToken: "test-only" }; }
+  };
+  const verified = await setup("verified", media, verifiedResolver);
+  const result = await verified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  assert.equal(result.status, "published");
+  assert.equal(verifiedCredentialReads, 1);
+  assert.equal(verified.getProviderCalls(), 1);
 });

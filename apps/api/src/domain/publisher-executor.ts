@@ -55,8 +55,9 @@ export class PublisherExecutor {
     if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
 
     try {
-      const credential = await this.resolveCredential(account);
+      // Reject ineligible media before reading social credentials from the secret store.
       const mediaAssets = await this.resolveMediaAssets(content, true);
+      const credential = await this.resolveCredential(account);
       const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
     if (result.status === "accepted") {
       return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
