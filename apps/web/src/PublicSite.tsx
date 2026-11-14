@@ -179,12 +179,26 @@ function ShopPage() {
       fetch(apiOrigin + "/api/v1/public/shop?" + params.toString(), { signal: controller.signal })
         .then(async (response) => {
           if (!response.ok) throw new Error("Katalog produk belum dapat dimuat.");
-          return response.json() as Promise<{ data: PublicShopItem[]; total: number }>;
+          return response.json() as Promise<{ data: PublicShopItem[]; total?: number }>;
         })
         .then((payload) => {
           if (controller.signal.aborted) return;
-          setItems(payload.data ?? []);
-          setTotal(Number(payload.total ?? 0));
+          const rows = payload.data ?? [];
+          if (typeof payload.total === "number") {
+            setItems(rows);
+            setTotal(payload.total);
+            return;
+          }
+          // Older staging APIs return the complete catalog without pagination metadata.
+          // Preserve search and pagination compatibility until the API sync is deployed.
+          const normalized = searchQuery.trim().toLocaleLowerCase("id-ID");
+          const numericQuery = /^\\d+$/.test(normalized);
+          const filtered = rows.filter((item) => !normalized || (numericQuery
+            ? item.referenceNumber === Number(normalized)
+            : item.name.toLocaleLowerCase("id-ID").includes(normalized)));
+          setTotal(filtered.length);
+          const offset = (page - 1) * pageSize;
+          setItems(filtered.slice(offset, offset + pageSize));
         })
         .catch((cause: unknown) => {
           if (cause instanceof DOMException && cause.name === "AbortError") return;
