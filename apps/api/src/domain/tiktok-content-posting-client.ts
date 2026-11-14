@@ -246,6 +246,9 @@ export class TikTokContentPostingClient implements TikTokContentPublisherClient 
     }
     const declaredLength = response.headers.get("content-length");
     if (declaredLength !== null && (!Number.isSafeInteger(Number(declaredLength)) || Number(declaredLength) !== videoSize)) {
+      // Reject before acquiring a reader, but cancel the upstream stream so a
+      // mismatched source cannot keep its HTTP request open until the deadline.
+      await response.body.cancel().catch(() => undefined);
       throw new Error("TikTok media source size changed during download.");
     }
 
