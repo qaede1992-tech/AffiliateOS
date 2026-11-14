@@ -55,8 +55,9 @@ export class PublisherExecutor {
     if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
 
     try {
-      const credential = await this.resolveCredential(account);
+      // Reject ineligible media before reading social credentials from the secret store.
       const mediaAssets = await this.resolveMediaAssets(content, true);
+      const credential = await this.resolveCredential(account);
       const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
     if (result.status === "accepted") {
       return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
@@ -77,8 +78,9 @@ export class PublisherExecutor {
     const publisher = this.publishers.find((candidate) => publisherSupportsContent(candidate, content) && (candidate.provider ?? content.platform) === operation.provider);
     if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
     if (!publisher.checkPublication) throw new Error(`Publisher ${operation.provider} does not support publication status checks.`);
-    const credential = await this.resolveCredential(account);
+    // Validate configured media references before reading social credentials.
     const mediaAssets = await this.resolveMediaAssets(content);
+    const credential = await this.resolveCredential(account);
     const result = await publisher.checkPublication({ content, account, credential, mediaAssets, operation });
     return { content, account, result };
   }
