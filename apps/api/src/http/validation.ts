@@ -101,3 +101,9 @@ export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entity
 export const generateProductImageSchema = z.object({ referenceAssetId: entityId, style: z.enum(["studio", "lifestyle", "minimal"]) });
 
 export const reviewProductMediaIdentitySchema = z.object({ status: z.enum(["verified", "rejected"]), reason: nonEmptyText.max(1000) });
+
+export const publicShopQuerySchema = z.object({
+  query: z.string().trim().max(200).default(""),
+  page: z.coerce.number().int().min(1).max(100).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(24)
+});
