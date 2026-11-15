@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
+import { findPublicSchemaDefaultAclGrants, PUBLIC_SCHEMA_DEFAULT_ACL_QUERY } from "./public-schema-privilege-audit.mjs";
 import {
   classifyMigrationLedger,
   findCompensatedHistoricalMigrationGaps
@@ -48,6 +49,22 @@ const client = new Client({ connectionString, connectionTimeoutMillis: 10000 });
 await client.connect();
 try {
   await client.query("SET default_transaction_read_only = on");
+
+  // Fail closed before any production migration if newly created public-schema
+  // objects could inherit privileges for anon, authenticated, or PUBLIC.
+  const { rows: defaultAclRows } = await client.query(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY);
+  const unsafeDefaultAclGrants = findPublicSchemaDefaultAclGrants(defaultAclRows);
+  if (unsafeDefaultAclGrants.length > 0) {
+    const details = unsafeDefaultAclGrants
+      .map(({ schemaName, creatorRole, objectType, grantee, privilegeType }) =>
+        `${schemaName} creator=${creatorRole} object=${objectType} grantee=${grantee} privilege=${privilegeType}`
+      )
+      .join("; ");
+    throw new Error(
+      "Public-schema default ACL preflight failed; future objects may inherit privileges for anon, authenticated, or PUBLIC. " +
+      `Review and revoke unintended defaults before applying migrations: ${details}`
+    );
+  }
 
   const { rows: ledgerTables } = await client.query(
     "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
