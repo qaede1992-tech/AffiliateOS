@@ -27,7 +27,7 @@ export interface PublicationDispatchReservationRepository {
 
 const transitions: Record<PublicationDispatchState, PublicationDispatchState[]> = {
   reserved: ["dispatching", "safe_to_retry", "failed"],
-  dispatching: ["accepted", "uncertain", "needs_reconciliation", "failed"],
+  dispatching: ["accepted", "published", "uncertain", "needs_reconciliation", "failed"],
   accepted: ["needs_reconciliation", "published", "failed"],
   uncertain: ["needs_reconciliation", "accepted", "safe_to_retry"],
   needs_reconciliation: ["accepted", "published", "failed", "safe_to_retry"],
