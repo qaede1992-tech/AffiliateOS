@@ -70,6 +70,34 @@ test("uploads product media without creating content and leaves rights unverifie
   assert.equal(asset.byteSize, png.byteLength);
 });
 
+test("persists declared source provenance while keeping rights unverified", async () => {
+  const { service, calls } = makeHarness();
+  const asset = await service.uploadStream({
+    ...input(),
+    sourcePublisher: "Shopee Affiliate Program",
+    sourceLandingPageUrl: "https://shopee.co.id/product/123",
+    sourceLicense: "Display official affiliate creative without modification",
+    sourceLicenseUrl: "https://example.com/affiliate-terms"
+  });
+  assert.equal(calls.saved.length, 1);
+  assert.equal(asset.sourcePublisher, "Shopee Affiliate Program");
+  assert.equal(asset.sourceLandingPageUrl, "https://shopee.co.id/product/123");
+  assert.equal(asset.sourceLicense, "Display official affiliate creative without modification");
+  assert.equal(asset.sourceLicenseUrl, "https://example.com/affiliate-terms");
+  assert.equal(asset.rightsStatus, "unverified");
+  assert.equal(asset.rightsBasis, null);
+  assert.equal(asset.rightsEvidenceUrl, null);
+});
+
+test("rejects invalid provenance URLs and blank source publishers before storage", async () => {
+  const { service, calls } = makeHarness();
+  await assert.rejects(service.uploadStream({ ...input(), sourceLandingPageUrl: "http://shopee.co.id/item" }), (error: unknown) =>
+    error instanceof ProductMediaUploadError && error.code === "INVALID_SOURCE_METADATA");
+  await assert.rejects(service.uploadStream({ ...input(), sourcePublisher: "   " }), (error: unknown) =>
+    error instanceof ProductMediaUploadError && error.code === "INVALID_SOURCE_METADATA");
+  assert.equal(calls.uploads.length, 0);
+});
+
 test("rejects unknown products before writing storage", async () => {
   const { service, calls } = makeHarness({ productExists: false });
   await assert.rejects(service.uploadStream(input()), (error: unknown) =>
