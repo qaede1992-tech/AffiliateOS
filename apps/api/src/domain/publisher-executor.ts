@@ -133,7 +133,9 @@ export class PublisherExecutor {
     if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
     if (!publisher.checkPublication) throw new Error(`Publisher ${operation.provider} does not support publication status checks.`);
     // Validate configured media references before reading social credentials.
-    const mediaAssets = await this.resolveMediaAssets(content);
+    // Revalidate product-media provenance on every Instagram reconciliation pass,
+    // immediately before the adapter can call media_publish for a FINISHED container.
+    const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram");
     const credential = await this.resolveCredential(account);
     const result = await publisher.checkPublication({ content, account, credential, mediaAssets, operation });
     return { content, account, result };
