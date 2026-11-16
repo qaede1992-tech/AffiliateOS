@@ -69,7 +69,7 @@ export class ProductMediaUploadService {
     const sourceLandingPageUrl = input.sourceLandingPageUrl?.trim() || null;
     const sourceLicense = input.sourceLicense?.trim() || null;
     const sourceLicenseUrl = input.sourceLicenseUrl?.trim() || null;
-    if (sourcePublisher.length > 255 || (input.sourcePublisher !== undefined && !sourcePublisher)) {
+    if (sourcePublisher.length > 255 || (input.sourcePublisher !== undefined && !input.sourcePublisher.trim())) {
       throw new ProductMediaUploadError("Media source publisher is invalid.", "INVALID_SOURCE_METADATA");
     }
     for (const value of [sourceLandingPageUrl, sourceLicenseUrl]) {
