@@ -77,9 +77,17 @@ export class PublicationWorker {
     if (job.status !== "failed" || !this.contentService) return false;
     try {
       const content = await this.contentService.get(job.contentId);
+      // A durable Instagram reservation must be reconciled even when an earlier
+      // worker attempt marked the job failed after the provider accepted or
+      // published the post. Skipping on content.status === "published" here
+      // would strand the reservation before process() can restore job success.
+      if (content.platform === "instagram" && this.dispatchReservations) {
+        const reservation = await this.dispatchReservations.findByJobProvider(job.id, "instagram-graph");
+        if (reservation) return false;
+      }
       // A failed job is retryable only while its content remains scheduled or
       // failed (the latter is reset to scheduled by prepareRetry). Draft or
-      // already-published content must not be retried by the worker.
+      // already-published content without a dispatch reservation must not retry.
       return content.status !== "scheduled" && content.status !== "failed";
     } catch {
       // A missing content record cannot be published; avoid retrying it forever.
