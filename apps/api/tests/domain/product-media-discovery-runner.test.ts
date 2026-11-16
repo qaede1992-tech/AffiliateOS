@@ -840,3 +840,81 @@ test("stops repeating an Openverse 403 across products while retaining Wikimedia
     resetOpenverseCircuitForTests();
   }
 });
+
+
+test("builds the publication readiness snapshot from one bulk asset read", async () => {
+  const imageProductId = "12121212-1212-4212-8212-121212121212";
+  const videoProductId = "34343434-3434-4434-8434-343434343434";
+  const baseAsset = {
+    id: "56565656-5656-4565-8565-565656565656",
+    bucket: "affiliate-media",
+    objectKey: "products/snapshot/media.bin",
+    byteSize: 128,
+    sha256: "f".repeat(64),
+    sourceUrl: "https://cdn.example.test/media",
+    sourcePublisher: "Example publisher",
+    rightsStatus: "verified" as const,
+    rightsBasis: "license" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/license",
+    rightsVerifiedAt: "2026-11-02T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z"
+  };
+  const assets: ProductMediaAsset[] = [
+    {
+      ...baseAsset,
+      productId: imageProductId,
+      kind: "image",
+      mimeType: "image/jpeg"
+    },
+    {
+      ...baseAsset,
+      id: "78787878-7878-4787-8787-787878787878",
+      productId: videoProductId,
+      objectKey: "products/snapshot/video.mp4",
+      kind: "video",
+      mimeType: "video/mp4"
+    },
+    {
+      ...baseAsset,
+      id: "90909090-9090-4909-8909-909090909090",
+      productId: "abababab-abab-4bab-8bab-abababababab",
+      kind: "video",
+      mimeType: "video/mp4"
+    }
+  ];
+  let bulkReads = 0;
+  let perProductReads = 0;
+  const repository = {
+    async listByProducts(ids: string[]) {
+      bulkReads += 1;
+      assert.deepEqual(ids, [imageProductId, videoProductId]);
+      return assets.filter((asset) => ids.includes(asset.productId));
+    },
+    async listByProduct() {
+      perProductReads += 1;
+      throw new Error("Snapshot should use one bulk asset read.");
+    },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  const snapshot = await runner.getPublicationReadinessSnapshot([
+    imageProductId,
+    videoProductId,
+    imageProductId
+  ]);
+
+  assert.equal(bulkReads, 1);
+  assert.equal(perProductReads, 0);
+  assert.deepEqual(snapshot.publishableMediaProductIds, [imageProductId, videoProductId]);
+  assert.deepEqual(snapshot.publishableVideoProductIds, [videoProductId]);
+  assert.deepEqual(snapshot.storedVideoProductIds, [videoProductId]);
+  assert.deepEqual(Object.keys(snapshot.mediaReadinessScores).sort(), [imageProductId, videoProductId].sort());
+  assert.ok(snapshot.mediaReadinessScores[imageProductId]! > 0);
+  assert.ok(snapshot.mediaReadinessScores[videoProductId]! > 0);
+});
