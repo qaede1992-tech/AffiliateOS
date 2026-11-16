@@ -411,6 +411,106 @@ test("scores only current rights-verified persisted media for target platform re
 });
 
 
+test("builds one publication-readiness snapshot from a bulk read while separating stored and publishable video", async () => {
+  const secondProductId = "22222222-2222-4222-8222-222222222222";
+  const noMediaProductId = "33333333-3333-4333-8333-333333333333";
+  const verifiedAt = new Date(Date.now() - 1_000).toISOString();
+  const rights = {
+    sourcePublisher: "Example publisher",
+    rightsStatus: "verified" as const,
+    rightsBasis: "user_owned" as const,
+    rightsEvidenceUrl: "https://publisher.example.test/rights",
+    rightsVerifiedAt: verifiedAt
+  };
+  const assets: ProductMediaAsset[] = [
+    {
+      id: "44444444-4444-4444-8444-444444444444",
+      productId: product.id,
+      kind: "image",
+      bucket: "affiliate-media",
+      objectKey: `products/${product.id}/image.jpg`,
+      mimeType: "image/jpeg",
+      byteSize: 1024,
+      width: 1080,
+      height: 1080,
+      sha256: "a".repeat(64),
+      sourceUrl: "https://cdn.example.test/image.jpg",
+      ...rights,
+      createdAt: verifiedAt
+    },
+    {
+      id: "55555555-5555-4555-8555-555555555555",
+      productId: product.id,
+      kind: "video",
+      bucket: "affiliate-media",
+      objectKey: `products/${product.id}/unverified.mp4`,
+      mimeType: "video/mp4",
+      byteSize: 2048,
+      width: 1080,
+      height: 1920,
+      durationMs: 15_000,
+      sha256: "b".repeat(64),
+      sourceUrl: "https://cdn.example.test/unverified.mp4",
+      sourcePublisher: null,
+      rightsStatus: "unverified",
+      rightsBasis: null,
+      rightsEvidenceUrl: null,
+      rightsVerifiedAt: null,
+      createdAt: verifiedAt
+    },
+    {
+      id: "66666666-6666-4666-8666-666666666666",
+      productId: secondProductId,
+      kind: "video",
+      bucket: "affiliate-media",
+      objectKey: `products/${secondProductId}/verified.mp4`,
+      mimeType: "video/mp4",
+      byteSize: 4096,
+      width: 1080,
+      height: 1920,
+      durationMs: 15_000,
+      sha256: "c".repeat(64),
+      sourceUrl: "https://cdn.example.test/verified.mp4",
+      ...rights,
+      createdAt: verifiedAt
+    }
+  ];
+  let bulkCalls = 0;
+  let perProductCalls = 0;
+  const repository = {
+    async listByProduct() {
+      perProductCalls += 1;
+      throw new Error("The readiness snapshot must use one bulk repository read.");
+    },
+    async listByProducts(ids: string[]) {
+      bulkCalls += 1;
+      assert.deepEqual(ids, [product.id, secondProductId, noMediaProductId]);
+      return assets.filter((asset) => ids.includes(asset.productId));
+    },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 }
+  );
+
+  const snapshot = await runner.getPublicationReadinessSnapshot(
+    [product.id, secondProductId, noMediaProductId, product.id],
+    ["tiktok"]
+  );
+
+  assert.deepEqual(snapshot.publishableMediaProductIds, [product.id, secondProductId]);
+  assert.deepEqual(snapshot.publishableVideoProductIds, [secondProductId]);
+  assert.deepEqual(snapshot.storedVideoProductIds, [product.id, secondProductId]);
+  assert.equal(snapshot.mediaReadinessScores[noMediaProductId], 0);
+  assert.ok(snapshot.mediaReadinessScores[product.id]! > 0);
+  assert.equal(bulkCalls, 1);
+  assert.equal(perProductCalls, 0);
+});
+
+
 test("counts duplicate catalog candidates as discovered without reporting them as newly saved", async () => {
   const originalFetch = globalThis.fetch;
   const originalInfo = console.info;
