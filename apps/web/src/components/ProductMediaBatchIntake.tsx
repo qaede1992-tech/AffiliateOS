@@ -170,7 +170,7 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
       <label htmlFor="product-media-source-page">Halaman sumber atau produk (HTTPS, opsional)</label>
       <input id="product-media-source-page" type="url" maxLength={2048} value={sourceLandingPageUrl} disabled={running} onChange={(event) => setSourceLandingPageUrl(event.target.value)} placeholder="https://..." />
       <label htmlFor="product-media-source-license">Lisensi atau ketentuan penggunaan (opsional)</label>
-      <input id="product-media-source-license" type="text" maxLength={255} value={sourceLicense} disabled={running} onChange={(event) => setSourceLicense(event.target.value)} placeholder="Contoh: materi resmi program afiliasi — tampilkan tanpa modifikasi" />
+      <input id="product-media-source-license" type="text" maxLength={40} value={sourceLicense} disabled={running} onChange={(event) => setSourceLicense(event.target.value)} placeholder="Contoh: Shopee Affiliate Terms / CC BY 4.0" />
       <label htmlFor="product-media-source-license-url">URL bukti lisensi/izin (HTTPS, opsional)</label>
       <input id="product-media-source-license-url" type="url" maxLength={2048} value={sourceLicenseUrl} disabled={running} onChange={(event) => setSourceLicenseUrl(event.target.value)} placeholder="https://..." />
       <label className="media-rights-confirmation">
