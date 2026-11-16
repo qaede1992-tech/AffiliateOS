@@ -177,6 +177,19 @@ export class PublicationWorker {
         if (content.platform === "instagram") {
           const reservation = await this.dispatchReservations.findByJobProvider(job.id, "instagram-graph");
           if (reservation) {
+            // Recover the crash window after the provider returned a published
+            // post but before the job/content success transaction completed.
+            if (reservation.state === "published" && reservation.externalPostId) {
+              await this.contentService.update(job.contentId, { status: "published", publishedAt: reservation.updatedAt });
+              await this.jobService.succeed(job.id, reservation.externalPostId, now);
+              return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: reservation.externalPostId };
+            }
+            if (reservation.state === "failed") {
+              const error = reservation.lastError ?? "Instagram dispatch was marked failed during reconciliation.";
+              await this.contentService.update(job.contentId, { status: "failed" });
+              await this.jobService.fail(job.id, error, now);
+              return { jobId: job.id, contentId: job.contentId, status: "failed", error };
+            }
             // A durable reservation is a hard dispatch fence. Never silently
             // redispatch after an ambiguous outcome or manual state transition.
             // Rebuild the reconciliation operation when Meta's container ID exists.
