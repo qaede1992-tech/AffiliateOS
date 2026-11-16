@@ -87,3 +87,62 @@ test("published dispatch reservation retains external post ID for restart recove
   assert.equal(published?.state, "published");
   assert.equal(published?.externalPostId, "instagram-post-123");
 });
+
+test("Instagram publisher success without an external post ID is fenced as uncertain", async () => {
+  const { PublisherExecutor } = await import("../src/domain/publisher-executor.js");
+  const repository = new InMemoryPublicationDispatchReservationRepository();
+  const content = {
+    id: "content-1",
+    status: "scheduled",
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    platform: "instagram",
+    contentType: "image",
+    title: "Test",
+    caption: "Test caption",
+    script: null,
+    cta: null,
+    mediaAssetIds: [],
+    productId: null,
+    socialAccountId: "account-1"
+  };
+  const account = {
+    id: "account-1",
+    platform: "instagram",
+    status: "active",
+    accountReference: "instagram-account"
+  };
+  const contentService = {
+    get: async () => content,
+    validatePublicationEligibility: async () => undefined,
+    update: async (_id: string, changes: Record<string, unknown>) => ({ ...content, ...changes })
+  };
+  const socialAccounts = { list: async () => [account] };
+  const publisher = {
+    provider: "instagram-graph",
+    supports: (platform: string) => platform === "instagram",
+    publish: async () => ({ status: "published" as const, externalPostId: "" })
+  };
+  const executor = new PublisherExecutor(
+    contentService as never,
+    socialAccounts as never,
+    [publisher],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    repository
+  );
+
+  await assert.rejects(
+    executor.execute(content.id, new Date("2026-11-16T00:00:00.000Z"), "job-1:instagram-graph", undefined, "job-1"),
+    /without an external post ID; automatic redispatch is blocked/
+  );
+
+  const saved = await repository.findByJobProvider("job-1", "instagram-graph");
+  assert.equal(saved?.state, "uncertain");
+  assert.equal(saved?.externalPostId, undefined);
+  assert.match(saved?.lastError ?? "", /without an external post ID/);
+});
+
