@@ -105,7 +105,7 @@ export class PublisherExecutor {
       if (reservation && this.dispatchReservations) {
         const persisted = await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
           ...reservation, state: result.status === "accepted" ? "accepted" : "published",
-          ...(result.status === "accepted" ? { providerOperationId: result.providerOperationId } : {}),
+          ...(result.status === "accepted" ? { providerOperationId: result.providerOperationId } : { externalPostId: result.externalPostId }),
           updatedAt: new Date().toISOString()
         });
         // The provider may already have accepted the request. If durable state
