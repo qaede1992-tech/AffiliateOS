@@ -1,3 +1,4 @@
+import type { Content } from "@affiliateos/shared";
 import type { SocialPublisher } from "./distribution-engine.js";
 import { InstagramContentPublisher } from "./instagram-content-publisher.js";
 import { InstagramGraphPublishingClient } from "./instagram-graph-publishing-client.js";
