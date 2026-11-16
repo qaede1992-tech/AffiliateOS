@@ -5,6 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import type { PublicationJobRepository } from "./publication-job.js";
 import { PublicationOperationService } from "./publication-operation-service.js";
+import type { PublicationDispatchReservationRepository } from "./publication-dispatch-reservation.js";
 import { InMemoryPublicationOperationRepository, type PublicationOperationRepository } from "./publication-operation.js";
 
 const ACCEPTED_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
@@ -38,7 +39,8 @@ export class PublicationWorker {
     private readonly jobService: PublicationJobService,
     private readonly executor: PublisherExecutor,
     private readonly contentService?: ContentService,
-    operationRepository?: PublicationOperationRepository
+    operationRepository?: PublicationOperationRepository,
+    private readonly dispatchReservations?: PublicationDispatchReservationRepository
   ) {
     this.operations = new PublicationOperationService(operationRepository ?? new InMemoryPublicationOperationRepository());
   }
@@ -169,6 +171,34 @@ export class PublicationWorker {
       if (inFlightOperation) {
         await this.jobService.awaitConfirmation(job.id, now);
         return { jobId: job.id, contentId: job.contentId, status: "awaiting_confirmation" };
+      }
+      if (this.dispatchReservations && this.contentService) {
+        const content = await this.contentService.get(job.contentId);
+        if (content.platform === "instagram") {
+          const reservation = await this.dispatchReservations.findByJobProvider(job.id, "instagram-graph");
+          if (reservation) {
+            // A durable reservation is a hard dispatch fence. Never silently
+            // redispatch after an ambiguous outcome or manual state transition.
+            // Rebuild the reconciliation operation when Meta's container ID exists.
+            if (reservation.providerOperationId && reservation.state === "accepted") {
+              await this.operations.create({
+                contentId: job.contentId,
+                jobId: job.id,
+                provider: reservation.provider,
+                providerOperationId: reservation.providerOperationId
+              }, now);
+            }
+            await this.jobService.awaitConfirmation(job.id, now);
+            return {
+              jobId: job.id,
+              contentId: job.contentId,
+              status: "awaiting_confirmation",
+              error: reservation.state === "uncertain" || reservation.state === "dispatching"
+                ? "Instagram dispatch outcome is uncertain; automatic redispatch is blocked."
+                : undefined
+            };
+          }
+        }
       }
       if (this.contentService) {
         const content = await this.contentService.get(job.contentId);
