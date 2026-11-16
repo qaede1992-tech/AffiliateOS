@@ -17,7 +17,7 @@ export class ProductMediaUploadError extends Error {
     message: string,
     readonly code: "INVALID_PRODUCT_ID" | "PRODUCT_NOT_FOUND" | "INVALID_MEDIA_KIND" |
       "UNSUPPORTED_MEDIA_TYPE" | "INVALID_CONTENT_LENGTH" | "MEDIA_TOO_LARGE" |
-      "CONTENT_LENGTH_MISMATCH" | "UPLOAD_CANCELLED" | "INVALID_MEDIA_BYTES"
+      "CONTENT_LENGTH_MISMATCH" | "UPLOAD_CANCELLED" | "INVALID_MEDIA_BYTES" | "INVALID_SOURCE_METADATA"
   ) {
     super(message);
     this.name = "ProductMediaUploadError";
@@ -54,6 +54,10 @@ export class ProductMediaUploadService {
     body: ReadableStream<Uint8Array>;
     contentLength: number;
     signal?: AbortSignal;
+    sourcePublisher?: string;
+    sourceLandingPageUrl?: string;
+    sourceLicense?: string;
+    sourceLicenseUrl?: string;
   }): Promise<ProductMediaAsset> {
     if (!UUID.test(input.productId)) {
       throw new ProductMediaUploadError("A valid product UUID is required.", "INVALID_PRODUCT_ID");
@@ -61,6 +65,26 @@ export class ProductMediaUploadService {
     if (!(await this.products.findById(input.productId))) {
       throw new ProductMediaUploadError("Product does not exist.", "PRODUCT_NOT_FOUND");
     }
+    const sourcePublisher = input.sourcePublisher?.trim() || "user-provided";
+    const sourceLandingPageUrl = input.sourceLandingPageUrl?.trim() || null;
+    const sourceLicense = input.sourceLicense?.trim() || null;
+    const sourceLicenseUrl = input.sourceLicenseUrl?.trim() || null;
+    if (sourcePublisher.length > 255 || (input.sourcePublisher !== undefined && !sourcePublisher)) {
+      throw new ProductMediaUploadError("Media source publisher is invalid.", "INVALID_SOURCE_METADATA");
+    }
+    for (const value of [sourceLandingPageUrl, sourceLicenseUrl]) {
+      if (!value) continue;
+      try {
+        const parsed = new URL(value);
+        if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password || value.length > 2048) throw new Error("invalid");
+      } catch {
+        throw new ProductMediaUploadError("Media source URLs must be credential-free public HTTPS URLs.", "INVALID_SOURCE_METADATA");
+      }
+    }
+    if ((sourceLicense?.length ?? 0) > 255) {
+      throw new ProductMediaUploadError("Media source license is too long.", "INVALID_SOURCE_METADATA");
+    }
+
     if (input.kind !== "image" && input.kind !== "video") {
       throw new ProductMediaUploadError("A supported product media kind is required.", "INVALID_MEDIA_KIND");
     }
@@ -149,17 +173,17 @@ export class ProductMediaUploadService {
       ...metadata,
       sha256,
       sourceUrl: `user-upload://${id}`,
-      sourcePublisher: "user-provided",
+      sourcePublisher,
       sourceProvider: "user_upload",
       sourceCandidateId: null,
-      sourceLandingPageUrl: null,
+      sourceLandingPageUrl,
       sourceTitle: null,
       sourceQuery: null,
       sourceCreator: null,
       sourceCreatorUrl: null,
-      sourceLicense: null,
+      sourceLicense,
       sourceLicenseVersion: null,
-      sourceLicenseUrl: null,
+      sourceLicenseUrl,
       rightsStatus: "unverified",
       rightsBasis: null,
       rightsEvidenceUrl: null,
