@@ -67,7 +67,9 @@ export class PublisherExecutor {
         const snapshot = {
           content: { id: content.id, platform: content.platform, contentType: content.contentType, title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null, cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [], productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null },
           account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
-          mediaAssets
+          // Persist stable asset identities only; resolved private-storage URLs
+          // are short-lived credentials and must never enter durable snapshots.
+          mediaAssetIds: [...(content.mediaAssetIds ?? [])]
         };
         const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
         const timestamp = now.toISOString();
