@@ -75,3 +75,15 @@ test("dispatch reservation records ambiguous provider outcomes without allowing 
   assert.equal(uncertain?.state, "uncertain");
   assert.equal(await repository.transition("reservation-1", ["uncertain"], reservation({ state: "dispatching" })), undefined);
 });
+
+test("published dispatch reservation retains external post ID for restart recovery", async () => {
+  const repository = new InMemoryPublicationDispatchReservationRepository();
+  await repository.reserve(reservation());
+  await repository.transition("reservation-1", ["reserved"], reservation({ state: "dispatching" }));
+  const published = await repository.transition("reservation-1", ["dispatching"], reservation({
+    state: "published",
+    externalPostId: "instagram-post-123"
+  }));
+  assert.equal(published?.state, "published");
+  assert.equal(published?.externalPostId, "instagram-post-123");
+});
