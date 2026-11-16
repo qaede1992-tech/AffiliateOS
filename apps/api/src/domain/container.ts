@@ -80,7 +80,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
   const publisherRegistry = new SocialPublisherRegistry(socialPublishers);
   const publishers = publisherRegistry.list();
   const affiliatePublicationEligibility = new RepositoryAffiliatePublicationEligibilityValidator(repositories.products, repositories.affiliateOffers, repositories.campaignOffers, repositories.trackingLinks);
-  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility, mediaStorage, repositories.contentProducts, repositories.productMediaAssets);
+  const executor = new PublisherExecutor(content, repositories.socialAccounts, publishers, socialCredentialResolver, repositories.mediaAssets, affiliatePublicationEligibility, mediaStorage, repositories.contentProducts, repositories.productMediaAssets, repositories.publicationDispatchReservations);
   const publisherReadiness = new PublisherReadinessService(publishers, Boolean(socialCredentialResolver), repositories.socialAccounts, socialCredentialResolver);
   const publicationWorker = new PublicationWorker(repositories.publicationJobs, publicationJobs, executor, content, publicationOperationRepository, repositories.publicationDispatchReservations);
   const publicationScheduler = new PublicationScheduler(publicationWorker);
