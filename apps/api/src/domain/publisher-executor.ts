@@ -102,6 +102,17 @@ export class PublisherExecutor {
         }
         throw error;
       }
+      if (reservation && this.dispatchReservations && result.status === "published" && !result.externalPostId?.trim()) {
+        // A provider success without a durable external identifier cannot be
+        // reconciled safely after a restart. Preserve the dispatch fence and
+        // require manual reconciliation instead of recording a false success.
+        await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+          ...reservation, state: "uncertain",
+          lastError: "Instagram publisher returned published without an external post ID.",
+          updatedAt: new Date().toISOString()
+        });
+        throw new Error("Instagram publisher returned published without an external post ID; automatic redispatch is blocked.");
+      }
       if (reservation && this.dispatchReservations) {
         const persisted = await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
           ...reservation, state: result.status === "accepted" ? "accepted" : "published",
