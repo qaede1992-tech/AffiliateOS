@@ -99,10 +99,9 @@ export class PublisherExecutor {
         throw error;
       }
       if (reservation && this.dispatchReservations) {
-        const accepted = result.status === "accepted";
         await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
-          ...reservation, state: accepted ? "accepted" : "published",
-          ...(accepted ? { providerOperationId: result.providerOperationId } : {}),
+          ...reservation, state: result.status === "accepted" ? "accepted" : "published",
+          ...(result.status === "accepted" ? { providerOperationId: result.providerOperationId } : {}),
           updatedAt: new Date().toISOString()
         });
       }
