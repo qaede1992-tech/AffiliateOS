@@ -82,7 +82,7 @@ test("persists declared source provenance while keeping rights unverified", asyn
   assert.equal(calls.saved.length, 1);
   assert.equal(asset.sourcePublisher, "Shopee Affiliate Program");
   assert.equal(asset.sourceLandingPageUrl, "https://shopee.co.id/product/123");
-  assert.equal(asset.sourceLicense, "Display official affiliate creative without modification");
+  assert.equal(asset.sourceLicense, "Shopee Affiliate Terms");
   assert.equal(asset.sourceLicenseUrl, "https://example.com/affiliate-terms");
   assert.equal(asset.rightsStatus, "unverified");
   assert.equal(asset.rightsBasis, null);
