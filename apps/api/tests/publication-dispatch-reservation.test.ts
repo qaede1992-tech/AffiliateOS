@@ -266,3 +266,62 @@ test("Instagram provider timeout moves the durable reservation to uncertain", as
   assert.match(saved?.lastError ?? "", /timed out/);
 });
 
+test("Instagram accepted response persistence failure keeps the dispatch fence", async () => {
+  const { PublisherExecutor } = await import("../src/domain/publisher-executor.js");
+  const backing = new InMemoryPublicationDispatchReservationRepository();
+  const repository = {
+    findByJobProvider: (jobId: string, provider: string) => backing.findByJobProvider(jobId, provider),
+    reserve: (value: PublicationDispatchReservation) => backing.reserve(value),
+    transition: async (id: string, expected: import("../src/domain/publication-dispatch-reservation.js").PublicationDispatchState[], next: PublicationDispatchReservation) => {
+      if (next.state === "accepted") throw new Error("Database unavailable while saving provider acceptance.");
+      return backing.transition(id, expected, next);
+    }
+  };
+  const content = {
+    id: "content-persist",
+    status: "scheduled",
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    platform: "instagram",
+    contentType: "image",
+    mediaAssetIds: [],
+    socialAccountId: "account-persist"
+  };
+  const account = {
+    id: "account-persist",
+    platform: "instagram",
+    status: "active",
+    accountReference: "instagram-account"
+  };
+  const contentService = {
+    get: async () => content,
+    validatePublicationEligibility: async () => undefined,
+    update: async (_id: string, changes: Record<string, unknown>) => ({ ...content, ...changes })
+  };
+  const publisher = {
+    provider: "instagram-graph",
+    supports: (platform: string) => platform === "instagram",
+    publish: async () => ({ status: "accepted" as const, providerOperationId: "meta-container-789" })
+  };
+  const executor = new PublisherExecutor(
+    contentService as never,
+    { list: async () => [account] } as never,
+    [publisher],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    repository as never
+  );
+
+  await assert.rejects(
+    executor.execute(content.id, new Date("2026-11-16T00:00:00.000Z"), "job-persist:instagram-graph", undefined, "job-persist"),
+    /Database unavailable while saving provider acceptance/
+  );
+
+  const saved = await backing.findByJobProvider("job-persist", "instagram-graph");
+  assert.equal(saved?.state, "dispatching");
+  assert.equal(saved?.providerOperationId, undefined);
+});
+
