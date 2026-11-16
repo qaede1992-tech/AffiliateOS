@@ -44,7 +44,9 @@ export class InMemoryPublicationDispatchReservationRepository implements Publica
     return [...this.rows.values()].find((row) => row.jobId === jobId && row.provider === provider);
   }
   async reserve(reservation: PublicationDispatchReservation) {
-    const existing = await this.findByJobProvider(reservation.jobId, reservation.provider);
+    // Keep lookup + insert in one synchronous critical section. Awaiting the
+    // async lookup here would let concurrent callers both observe no row.
+    const existing = [...this.rows.values()].find((row) => row.jobId === reservation.jobId && row.provider === reservation.provider);
     if (existing) return existing;
     this.rows.set(reservation.id, reservation);
     return reservation;
