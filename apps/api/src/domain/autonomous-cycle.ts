@@ -83,15 +83,17 @@ export class AutonomousCycleService {
     const productIds = candidateList.map((candidate) => candidate.product.id);
     // Never trust caller-supplied product IDs as proof of media rights.
     // Without the persisted media/rights repository, fail closed.
-    const videoIds = this.productMediaDiscovery
-      ? await this.productMediaDiscovery.listPublishableVideoProductIds(productIds)
-      : [];
-    const mediaIds = this.productMediaDiscovery
-      ? await this.productMediaDiscovery.listPublishableMediaProductIds(productIds)
-      : [];
-    const mediaReadinessScores = this.productMediaDiscovery
-      ? await this.productMediaDiscovery.listMediaReadinessScores(productIds, input.platforms)
-      : Object.fromEntries(productIds.map((id) => [id, 0]));
+    const readiness = this.productMediaDiscovery
+      ? await this.productMediaDiscovery.getPublicationReadinessSnapshot(productIds, input.platforms)
+      : {
+          publishableVideoProductIds: [],
+          publishableMediaProductIds: [],
+          storedVideoProductIds: [],
+          mediaReadinessScores: Object.fromEntries(productIds.map((id) => [id, 0]))
+        };
+    const videoIds = readiness.publishableVideoProductIds;
+    const mediaIds = readiness.publishableMediaProductIds;
+    const mediaReadinessScores = readiness.mediaReadinessScores;
     const finalPolicies = Object.fromEntries(Object.entries(input.policiesByMarketplace ?? {}).map(([key, value]) => [key, { ...value, requirePublishableMedia: true, requirePublishableVideo: true, requireCommissionSignal: true }]));
     const result = await this.execution.previewSelection({
       ...input,
@@ -240,9 +242,8 @@ export class AutonomousCycleService {
         if (preliminary.selected.length > 0) {
           try {
             const selectedProductIds = preliminary.selected.map((selected) => selected.product.id);
-            existingPublishableMediaIds = new Set(
-              await this.productMediaDiscovery.listPublishableMediaProductIds(selectedProductIds)
-            );
+            const selectedReadiness = await this.productMediaDiscovery.getPublicationReadinessSnapshot(selectedProductIds, input.platforms);
+            existingPublishableMediaIds = new Set(selectedReadiness.publishableMediaProductIds);
           } catch (error) {
             // Fail open for discovery only: inability to inspect existing media must
             // not suppress discovery, while final publication rights remain fail-closed.
@@ -282,8 +283,13 @@ export class AutonomousCycleService {
         }
 
         const productIds = candidateList.map((candidate) => candidate.product.id);
+        let storedVideoIds: string[] = [];
         try {
-          mediaIds = await this.productMediaDiscovery.listPublishableMediaProductIds(productIds);
+          const readiness = await this.productMediaDiscovery.getPublicationReadinessSnapshot(productIds, input.platforms);
+          mediaIds = readiness.publishableMediaProductIds;
+          videoIds = readiness.publishableVideoProductIds;
+          storedVideoIds = readiness.storedVideoProductIds;
+          mediaReadinessScores = readiness.mediaReadinessScores;
         } catch (error) {
           mediaIds = [];
           console.warn(JSON.stringify({
@@ -326,29 +332,13 @@ export class AutonomousCycleService {
           };
         }
 
-        try {
-          // Keep readiness separate from publication rights: an unverified generated video
-          // must not trigger endless rendering, but it must not pass the final publish gate.
-          const storedVideoIds = await this.productMediaDiscovery.listVideoProductIds(productIds);
-          videoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(productIds);
-          for (const id of storedVideoIds) {
-            if (!videoIds.includes(id)) {
-              console.info(JSON.stringify({ event: "autonomous_product_video_rights_unverified", productId: id }));
-            }
+        // The combined persisted snapshot keeps stored-video readiness separate from
+        // publishable rights: unverified video must not cause endless rendering or pass
+        // the final publication gate.
+        for (const id of storedVideoIds) {
+          if (!videoIds.includes(id)) {
+            console.info(JSON.stringify({ event: "autonomous_product_video_rights_unverified", productId: id }));
           }
-        } catch (error) {
-          videoIds = [];
-          console.warn(JSON.stringify({
-            event: "autonomous_product_video_index_failed",
-            errorType: safeErrorType(error)
-          }));
-        }
-
-        try {
-          mediaReadinessScores = await this.productMediaDiscovery.listMediaReadinessScores(productIds, input.platforms);
-        } catch (error) {
-          mediaReadinessScores = Object.fromEntries(productIds.map((id) => [id, 0]));
-          console.warn(JSON.stringify({ event: "autonomous_product_media_readiness_failed", errorType: safeErrorType(error) }));
         }
 
         // Pass 2: final affiliate selection. It requires verified, persisted product media,
@@ -390,7 +380,9 @@ export class AutonomousCycleService {
           }
         }
         try {
-          videoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(productIds);
+          const refreshedReadiness = await this.productMediaDiscovery.getPublicationReadinessSnapshot(productIds, input.platforms);
+          videoIds = refreshedReadiness.publishableVideoProductIds;
+          mediaReadinessScores = refreshedReadiness.mediaReadinessScores;
         } catch (error) {
           videoIds = [];
           console.warn(JSON.stringify({
