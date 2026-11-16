@@ -58,8 +58,9 @@ export class PublisherExecutor {
     if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
 
     try {
-      // Reject ineligible media before reading social credentials from the secret store.
-      const mediaAssets = await this.resolveMediaAssets(content, true);
+      // Apply the new product-media rights gate only to Instagram. Keep TikTok and
+      // other existing publisher paths unchanged during this staged rollout.
+      const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram" && publisher.provider === "instagram-graph");
       const credential = await this.resolveCredential(account);
       let reservation: import("./publication-dispatch-reservation.js").PublicationDispatchReservation | undefined;
       if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
