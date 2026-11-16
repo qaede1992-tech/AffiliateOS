@@ -88,7 +88,7 @@ export class PublisherExecutor {
         if (!dispatching) throw new Error("Instagram dispatch reservation could not be claimed; provider request was not sent.");
         reservation = dispatching;
       }
-      let result;
+      let result: Awaited<ReturnType<SocialPublisher["publish"]>>;
       try {
         result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
       } catch (error) {
@@ -101,11 +101,15 @@ export class PublisherExecutor {
         throw error;
       }
       if (reservation && this.dispatchReservations) {
-        await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+        const persisted = await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
           ...reservation, state: result.status === "accepted" ? "accepted" : "published",
           ...(result.status === "accepted" ? { providerOperationId: result.providerOperationId } : {}),
           updatedAt: new Date().toISOString()
         });
+        // The provider may already have accepted the request. If durable state
+        // cannot be advanced, fail closed: the dispatching reservation remains
+        // a fence and the worker must not issue another provider request.
+        if (!persisted) throw new Error("Instagram provider response could not be persisted; automatic redispatch is blocked.");
       }
     if (result.status === "accepted") {
       return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
