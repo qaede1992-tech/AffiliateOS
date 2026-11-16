@@ -1,4 +1,6 @@
+import { randomUUID, createHash } from "node:crypto";
 import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
+import type { PublicationDispatchReservationRepository } from "./publication-dispatch-reservation.js";
 import type { AffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
 import type { ContentService } from "./content.js";
 import type { MediaAssetRepository } from "./media-asset.js";
@@ -31,10 +33,11 @@ export class PublisherExecutor {
     private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator,
     private readonly mediaStorage?: SupabaseStorageClient,
     private readonly contentProducts?: ContentProductRepository,
-    private readonly productMediaAssets?: ProductMediaAssetRepository
+    private readonly productMediaAssets?: ProductMediaAssetRepository,
+    private readonly dispatchReservations?: PublicationDispatchReservationRepository
   ) {}
 
-  async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval): Promise<PublishExecutionResult> {
+  async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval, jobId?: string): Promise<PublishExecutionResult> {
     const content = await this.contentService.get(contentId);
     if (content.status !== "scheduled") throw new Error("Only scheduled content can be published.");
     await this.contentService.validatePublicationEligibility(content);
@@ -58,7 +61,51 @@ export class PublisherExecutor {
       // Reject ineligible media before reading social credentials from the secret store.
       const mediaAssets = await this.resolveMediaAssets(content, true);
       const credential = await this.resolveCredential(account);
-      const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
+      let reservation: import("./publication-dispatch-reservation.js").PublicationDispatchReservation | undefined;
+      if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
+        if (!jobId || !this.dispatchReservations) throw new Error("Instagram publication requires a durable dispatch reservation repository and job ID.");
+        const snapshot = {
+          content: { id: content.id, platform: content.platform, contentType: content.contentType, title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null, cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [], productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null },
+          account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
+          mediaAssets
+        };
+        const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+        const timestamp = now.toISOString();
+        const proposed: import("./publication-dispatch-reservation.js").PublicationDispatchReservation = {
+          id: randomUUID(), jobId, contentId: content.id, provider: publisher.provider,
+          state: "reserved", idempotencyKey, snapshot, snapshotHash,
+          createdAt: timestamp, updatedAt: timestamp
+        };
+        reservation = await this.dispatchReservations.reserve(proposed);
+        if (reservation.id !== proposed.id || reservation.snapshotHash !== snapshotHash || reservation.idempotencyKey !== idempotencyKey) {
+          throw new Error("An existing Instagram dispatch reservation prevents a new provider request.");
+        }
+        const dispatching = await this.dispatchReservations.transition(reservation.id, ["reserved"], {
+          ...reservation, state: "dispatching", dispatchStartedAt: timestamp, updatedAt: timestamp
+        });
+        if (!dispatching) throw new Error("Instagram dispatch reservation could not be claimed; provider request was not sent.");
+        reservation = dispatching;
+      }
+      let result;
+      try {
+        result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
+      } catch (error) {
+        if (reservation && this.dispatchReservations) {
+          const message = error instanceof Error ? error.message : String(error);
+          await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+            ...reservation, state: "uncertain", lastError: message.slice(0, 1000), updatedAt: new Date().toISOString()
+          });
+        }
+        throw error;
+      }
+      if (reservation && this.dispatchReservations) {
+        const accepted = result.status === "accepted";
+        await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+          ...reservation, state: accepted ? "accepted" : "published",
+          ...(accepted ? { providerOperationId: result.providerOperationId } : {}),
+          updatedAt: new Date().toISOString()
+        });
+      }
     if (result.status === "accepted") {
       return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
     }
