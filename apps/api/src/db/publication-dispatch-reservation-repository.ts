@@ -11,6 +11,7 @@ const toDomain = (row: Row): PublicationDispatchReservation => ({
   snapshot: row.snapshot, snapshotHash: row.snapshotHash,
   dispatchStartedAt: row.dispatchStartedAt ?? undefined,
   providerOperationId: row.providerOperationId ?? undefined,
+  externalPostId: row.externalPostId ?? undefined,
   lastError: row.lastError ?? undefined, resolvedAt: row.resolvedAt ?? undefined,
   createdAt: row.createdAt, updatedAt: row.updatedAt
 });
@@ -19,7 +20,7 @@ const toRow = (value: PublicationDispatchReservation) => ({
   id: value.id, jobId: value.jobId, contentId: value.contentId, provider: value.provider,
   state: value.state, idempotencyKey: value.idempotencyKey, snapshot: value.snapshot,
   snapshotHash: value.snapshotHash, dispatchStartedAt: value.dispatchStartedAt ?? null,
-  providerOperationId: value.providerOperationId ?? null, lastError: value.lastError ?? null,
+  providerOperationId: value.providerOperationId ?? null, externalPostId: value.externalPostId ?? null, lastError: value.lastError ?? null,
   resolvedAt: value.resolvedAt ?? null, createdAt: value.createdAt, updatedAt: value.updatedAt
 });
 
@@ -50,7 +51,7 @@ export class DrizzlePublicationDispatchReservationRepository implements Publicat
     if (allowedExpected.length === 0) return undefined;
     const rows = await this.db.update(publicationDispatchReservations).set({
       state: next.state, dispatchStartedAt: next.dispatchStartedAt ?? null,
-      providerOperationId: next.providerOperationId ?? null, lastError: next.lastError ?? null,
+      providerOperationId: next.providerOperationId ?? null, externalPostId: next.externalPostId ?? null, lastError: next.lastError ?? null,
       resolvedAt: next.resolvedAt ?? null, updatedAt: next.updatedAt
     }).where(and(eq(publicationDispatchReservations.id, id), inArray(publicationDispatchReservations.state, allowedExpected))).returning();
     return rows[0] ? toDomain(rows[0]) : undefined;
