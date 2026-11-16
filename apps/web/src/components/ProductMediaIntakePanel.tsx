@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
+import { ProductMediaBatchIntake } from "./ProductMediaBatchIntake";
 
 export function ProductMediaIntakePanel() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -155,6 +156,7 @@ export function ProductMediaIntakePanel() {
             <label htmlFor="product-media-video-file">File video produk</label>
             <input id="product-media-video-file" type="file" accept="video/mp4,.mp4" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && file.size > 45 * 1024 * 1024) { setVideoFile(null); setError("Ukuran video melebihi batas 45 MiB."); event.currentTarget.value = ""; return; } setVideoFile(file); setError(null); }} />
             <button type="button" onClick={() => void uploadSelectedFiles()} disabled={uploading || (!imageFile && !videoFile)}>{uploading ? "Mengunggah file…" : "Unggah file media"}</button>
+            <ProductMediaBatchIntake products={products} />
             <p className="shopee-import-note">Upload menyimpan aset dengan status hak UNVERIFIED. Upload tidak membuktikan kepemilikan atau lisensi dan tidak membuat aset otomatis siap publikasi. Admin harus memeriksa bukti hak pada panel Verifikasi Hak Media.</p>
             <label htmlFor="product-media-image">URL gambar langsung (opsional)</label>
             <input id="product-media-image" type="url" inputMode="url" placeholder="https://cdn.example.com/product-image.jpg" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} />
