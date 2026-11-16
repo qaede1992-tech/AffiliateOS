@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import type { PublicationDispatchReservation, PublicationDispatchReservationRepository, PublicationDispatchState } from "../domain/publication-dispatch-reservation.js";
+import { canTransitionPublicationDispatch, type PublicationDispatchReservation, type PublicationDispatchReservationRepository, type PublicationDispatchState } from "../domain/publication-dispatch-reservation.js";
 import { publicationDispatchReservations } from "./schema.js";
 
 type DatabaseExecutor = any;
@@ -43,11 +43,16 @@ export class DrizzlePublicationDispatchReservationRepository implements Publicat
   }
 
   async transition(id: string, expected: PublicationDispatchState[], next: PublicationDispatchReservation): Promise<PublicationDispatchReservation | undefined> {
+    // Keep PostgreSQL transitions aligned with the domain state machine. A
+    // conditional UPDATE alone protects against races, but must not permit an
+    // otherwise illegal state jump supplied by a caller.
+    const allowedExpected = expected.filter((state) => canTransitionPublicationDispatch(state, next.state));
+    if (allowedExpected.length === 0) return undefined;
     const rows = await this.db.update(publicationDispatchReservations).set({
       state: next.state, dispatchStartedAt: next.dispatchStartedAt ?? null,
       providerOperationId: next.providerOperationId ?? null, lastError: next.lastError ?? null,
       resolvedAt: next.resolvedAt ?? null, updatedAt: next.updatedAt
-    }).where(and(eq(publicationDispatchReservations.id, id), inArray(publicationDispatchReservations.state, expected))).returning();
+    }).where(and(eq(publicationDispatchReservations.id, id), inArray(publicationDispatchReservations.state, allowedExpected))).returning();
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 }
