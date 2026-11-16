@@ -69,7 +69,9 @@ export class PublisherExecutor {
           account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
           // Persist stable asset identities only; resolved private-storage URLs
           // are short-lived credentials and must never enter durable snapshots.
-          mediaAssetIds: [...(content.mediaAssetIds ?? [])]
+          // Bind the reservation to the exact resolved asset identities sent
+          // to the provider, including any product-scoped assets added by the resolver.
+          mediaAssetIds: mediaAssets.map((asset) => asset.id).sort()
         };
         const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
         const timestamp = now.toISOString();
