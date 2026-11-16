@@ -81,7 +81,7 @@ export class ProductMediaUploadService {
         throw new ProductMediaUploadError("Media source URLs must be credential-free public HTTPS URLs.", "INVALID_SOURCE_METADATA");
       }
     }
-    if ((sourceLicense?.length ?? 0) > 255) {
+    if ((sourceLicense?.length ?? 0) > 40) {
       throw new ProductMediaUploadError("Media source license is too long.", "INVALID_SOURCE_METADATA");
     }
 
