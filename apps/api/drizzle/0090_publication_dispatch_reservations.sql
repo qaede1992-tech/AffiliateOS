@@ -11,6 +11,7 @@ CREATE TABLE public.publication_dispatch_reservations (
   snapshot_hash varchar(128) NOT NULL,
   dispatch_started_at timestamptz,
   provider_operation_id varchar(500),
+  external_post_id varchar(500),
   last_error varchar(2000),
   resolved_at timestamptz,
   created_at timestamptz NOT NULL,
