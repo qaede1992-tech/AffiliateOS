@@ -15,6 +15,10 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
   const [manifest, setManifest] = useState<File | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [sourcePublisher, setSourcePublisher] = useState("");
+  const [sourceLandingPageUrl, setSourceLandingPageUrl] = useState("");
+  const [sourceLicense, setSourceLicense] = useState("");
+  const [sourceLicenseUrl, setSourceLicenseUrl] = useState("");
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<string | null>(null);
@@ -96,7 +100,7 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
         const item = resolved[index]!;
         setProgress(`Mengunggah ${index + 1}/${resolved.length}: ${item.file.name} → ${item.product.name}`);
         try {
-          const asset = await api.uploadProductMedia(item.product.id, item.row.kind, item.file);
+          const asset = await api.uploadProductMedia(item.product.id, item.row.kind, item.file, { sourcePublisher: sourcePublisher.trim() || undefined, sourceLandingPageUrl: sourceLandingPageUrl.trim() || undefined, sourceLicense: sourceLicense.trim() || undefined, sourceLicenseUrl: sourceLicenseUrl.trim() || undefined });
           if (asset.rightsStatus !== "unverified") {
             failures.push(`Baris ${item.row.lineNumber}: status hak yang dikembalikan tidak sesuai kebijakan.`);
           } else {
@@ -117,6 +121,10 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
         setManifest(null);
         setFiles([]);
         setRightsConfirmed(false);
+        setSourcePublisher("");
+        setSourceLandingPageUrl("");
+        setSourceLicense("");
+        setSourceLicenseUrl("");
         const manifestInput = document.getElementById("product-media-batch-manifest") as HTMLInputElement | null;
         const filesInput = document.getElementById("product-media-batch-files") as HTMLInputElement | null;
         if (manifestInput) manifestInput.value = "";
@@ -135,7 +143,7 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
       <strong id="product-media-batch-title">Unggah media banyak produk melalui CSV</strong>
       <small>
         Siapkan CSV dengan kolom externalProductId, filename, kind. Nama file harus sama persis dengan nama file yang dipilih.
-        Maksimal 200 baris per batch. Muat halaman katalog sampai semua ID produk dalam manifest tersedia. CSV hanya memetakan file lokal; tidak ada URL Shopee yang diunduh.
+        Maksimal 200 baris per batch. Muat halaman katalog sampai semua ID produk dalam manifest tersedia. CSV hanya memetakan file lokal; tidak ada URL Shopee yang diunduh. Metadata sumber akan disimpan sebagai deklarasi dan tetap memerlukan pemeriksaan admin.
       </small>
       <pre>externalProductId,filename,kind{"\n"}SP-100,foto-depan.jpg,image{"\n"}SP-100,video-demo.mp4,video{"\n"}SP-200,produk.png,image</pre>
       <label htmlFor="product-media-batch-manifest">CSV pemetaan media</label>
@@ -157,6 +165,14 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
         onChange={(event) => setFiles(Array.from(event.currentTarget.files ?? []))}
       />
       <small>{files.length} file dipilih · gambar JPG/PNG/WebP maks. 10 MiB · video MP4 maks. 45 MiB</small>
+      <label htmlFor="product-media-source-publisher">Asal/pemilik materi (disimpan sebagai deklarasi, bukan verifikasi)</label>
+      <input id="product-media-source-publisher" type="text" maxLength={255} value={sourcePublisher} disabled={running} onChange={(event) => setSourcePublisher(event.target.value)} placeholder="Contoh: Shopee Affiliate Program / nama penjual / milik sendiri" />
+      <label htmlFor="product-media-source-page">Halaman sumber atau produk (HTTPS, opsional)</label>
+      <input id="product-media-source-page" type="url" maxLength={2048} value={sourceLandingPageUrl} disabled={running} onChange={(event) => setSourceLandingPageUrl(event.target.value)} placeholder="https://..." />
+      <label htmlFor="product-media-source-license">Lisensi atau ketentuan penggunaan (opsional)</label>
+      <input id="product-media-source-license" type="text" maxLength={255} value={sourceLicense} disabled={running} onChange={(event) => setSourceLicense(event.target.value)} placeholder="Contoh: materi resmi program afiliasi — tampilkan tanpa modifikasi" />
+      <label htmlFor="product-media-source-license-url">URL bukti lisensi/izin (HTTPS, opsional)</label>
+      <input id="product-media-source-license-url" type="url" maxLength={2048} value={sourceLicenseUrl} disabled={running} onChange={(event) => setSourceLicenseUrl(event.target.value)} placeholder="https://..." />
       <label className="media-rights-confirmation">
         <input
           type="checkbox"
