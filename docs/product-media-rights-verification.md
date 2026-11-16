@@ -136,4 +136,4 @@ Dokumen ini tidak menerapkan workflow, migration, RLS, ACL, Storage, kredensial,
 - `PublisherExecutor.check()` tidak memanggil gate hak product-media pada `main`.
 - `PublicationOperation` saat ini menyimpan content ID, job ID, provider, provider operation ID, status, dan timestamp; belum menyimpan media snapshot.
 - PR #842 menambahkan recheck Instagram untuk container `FINISHED`, tetapi tidak menghilangkan race snapshot. PR tetap Draft.
-- PR #548 adalah dokumentasi saja. Tidak ada perubahan runtime atau database yang dilakukan oleh PR ini.
+- PR #853 adalah dokumentasi saja. Tidak ada perubahan runtime atau database yang dilakukan oleh PR ini.
