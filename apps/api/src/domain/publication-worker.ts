@@ -207,7 +207,7 @@ export class PublicationWorker {
           return { jobId: job.id, contentId: job.contentId, status: "pending_approval" };
         }
       }
-      const result = await this.executor.execute(job.contentId, now, job.idempotencyKey, job.tiktokApproval);
+      const result = await this.executor.execute(job.contentId, now, job.idempotencyKey, job.tiktokApproval, job.id);
       if (result.status === "published" && result.externalPostId) {
         await this.jobService.succeed(job.id, result.externalPostId, now);
         return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: result.externalPostId };
