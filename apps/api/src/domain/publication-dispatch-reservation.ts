@@ -52,7 +52,18 @@ export class InMemoryPublicationDispatchReservationRepository implements Publica
   async transition(id: string, expected: PublicationDispatchState[], next: PublicationDispatchReservation) {
     const current = this.rows.get(id);
     if (!current || !expected.includes(current.state) || !canTransitionPublicationDispatch(current.state, next.state)) return undefined;
-    this.rows.set(id, next);
-    return next;
+    // The reservation's identity, idempotency key and payload snapshot are immutable
+    // after the first insert. Only dispatch/reconciliation fields may advance.
+    const updated: PublicationDispatchReservation = {
+      ...current,
+      state: next.state,
+      dispatchStartedAt: next.dispatchStartedAt,
+      providerOperationId: next.providerOperationId,
+      lastError: next.lastError,
+      resolvedAt: next.resolvedAt,
+      updatedAt: next.updatedAt
+    };
+    this.rows.set(id, updated);
+    return updated;
   }
 }
