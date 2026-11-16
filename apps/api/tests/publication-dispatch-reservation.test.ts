@@ -146,3 +146,67 @@ test("Instagram publisher success without an external post ID is fenced as uncer
   assert.match(saved?.lastError ?? "", /without an external post ID/);
 });
 
+test("publication worker restores a published Instagram reservation after a failed job restart", async () => {
+  const { InMemoryPublicationJobRepository } = await import("../src/domain/publication-job.js");
+  const { PublicationJobService } = await import("../src/domain/publication-job-service.js");
+  const { PublicationWorker } = await import("../src/domain/publication-worker.js");
+  const { InMemoryPublicationOperationRepository } = await import("../src/domain/publication-operation.js");
+
+  const now = new Date("2026-11-16T01:00:00.000Z");
+  const jobs = new InMemoryPublicationJobRepository();
+  await jobs.save({
+    id: "job-1",
+    contentId: "content-1",
+    idempotencyKey: "content:content-1",
+    status: "failed",
+    attemptCount: 1,
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    lastError: "worker stopped before finalizing job",
+    createdAt: "2026-11-15T00:00:00.000Z",
+    updatedAt: "2026-11-16T00:00:00.000Z"
+  });
+
+  const content = {
+    id: "content-1",
+    status: "published",
+    publishedAt: "2026-11-16T00:30:00.000Z",
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    platform: "instagram",
+    contentType: "image",
+    mediaAssetIds: [],
+    socialAccountId: "account-1"
+  };
+  const contentService = {
+    get: async () => content,
+    update: async (_id: string, changes: Record<string, unknown>) => ({ ...content, ...changes }),
+    validatePublicationEligibility: async () => undefined
+  };
+  const executor = {
+    execute: async () => { throw new Error("Executor must not dispatch during reservation recovery."); },
+    check: async () => { throw new Error("No provider reconciliation should be needed for a published reservation."); }
+  };
+  const reservations = new InMemoryPublicationDispatchReservationRepository();
+  await reservations.reserve(reservation({
+    state: "published",
+    externalPostId: "meta-post-456",
+    updatedAt: "2026-11-16T00:30:00.000Z"
+  }));
+  const worker = new PublicationWorker(
+    jobs,
+    new PublicationJobService(jobs),
+    executor as never,
+    contentService as never,
+    new InMemoryPublicationOperationRepository(),
+    reservations
+  );
+
+  const results = await worker.runOnce(now);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.status, "succeeded");
+  assert.equal(results[0]?.externalPostId, "meta-post-456");
+  const savedJob = await jobs.findById("job-1");
+  assert.equal(savedJob?.status, "succeeded");
+  assert.equal(savedJob?.externalPostId, "meta-post-456");
+});
+
