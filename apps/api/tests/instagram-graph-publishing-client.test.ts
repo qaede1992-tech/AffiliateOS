@@ -67,6 +67,32 @@ test("Instagram image publishing persists its container before media_publish", a
   assert.equal(calls.length, 5);
 });
 
+test("Instagram rechecks media rights before publishing a finished container", async () => {
+  let rightsChecks = 0;
+  const calls: string[] = [];
+  const client = new InstagramGraphPublishingClient({
+    accessTokenResolver: async () => "secret-token",
+    assertPublicationRights: async () => {
+      rightsChecks += 1;
+      throw new Error("product media rights were revoked");
+    },
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+      calls.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id" }), { status: 200 });
+      if (url.pathname.endsWith("/container-rights")) return new Response(JSON.stringify({ id: "container-rights", status_code: "FINISHED" }), { status: 200 });
+      if (url.pathname.endsWith("/media_publish")) return new Response(JSON.stringify({ id: "unexpected-publication" }), { status: 200 });
+      throw new Error("Unexpected Instagram request");
+    }
+  });
+  await assert.rejects(() => client.checkPublication({
+    content, account, mediaAssets: [asset],
+    operation: { id: "op-rights", jobId: "job-1", contentId: "content-1", provider: "instagram-graph", providerOperationId: "container-rights", status: "accepted", createdAt: "2026-09-26T00:00:00.000Z", updatedAt: "2026-09-26T00:00:00.000Z" }
+  }), /product media rights were revoked/);
+  assert.equal(rightsChecks, 1);
+  assert.equal(calls.some((call) => call.endsWith("/media_publish")), false);
+});
+
 test("Instagram client rejects non-HTTPS media", async () => {
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
