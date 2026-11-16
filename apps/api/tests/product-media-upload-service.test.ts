@@ -76,7 +76,7 @@ test("persists declared source provenance while keeping rights unverified", asyn
     ...input(),
     sourcePublisher: "Shopee Affiliate Program",
     sourceLandingPageUrl: "https://shopee.co.id/product/123",
-    sourceLicense: "Display official affiliate creative without modification",
+    sourceLicense: "Shopee Affiliate Terms",
     sourceLicenseUrl: "https://example.com/affiliate-terms"
   });
   assert.equal(calls.saved.length, 1);
