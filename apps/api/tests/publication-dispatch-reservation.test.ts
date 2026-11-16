@@ -29,6 +29,17 @@ test("dispatch reservation is unique per job and provider", async () => {
   assert.equal(duplicate.snapshotHash, "sha256-snapshot");
 });
 
+test("concurrent in-memory reservations converge on one job/provider row", async () => {
+  const repository = new InMemoryPublicationDispatchReservationRepository();
+  const results = await Promise.all([
+    repository.reserve(reservation({ id: "reservation-a" })),
+    repository.reserve(reservation({ id: "reservation-b" }))
+  ]);
+
+  assert.equal(results[0]?.id, results[1]?.id);
+  assert.equal((await repository.findByJobProvider("job-1", "instagram-graph"))?.id, results[0]?.id);
+});
+
 test("dispatch reservation transitions use compare-and-set and preserve immutable snapshot", async () => {
   const repository = new InMemoryPublicationDispatchReservationRepository();
   await repository.reserve(reservation());
