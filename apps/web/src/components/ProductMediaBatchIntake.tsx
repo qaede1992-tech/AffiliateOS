@@ -164,7 +164,7 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
           disabled={running}
           onChange={(event) => setRightsConfirmed(event.target.checked)}
         />
-        Seluruh file dibuat sendiri atau disertai izin tertulis untuk penggunaan promosi dan penyuntingan. Pernyataan ini bukan bukti audit; admin tetap wajib memeriksa hak setiap aset.
+        Saya memiliki dasar yang sah untuk mengunggah setiap file. Jika file berasal dari materi resmi Program Afiliasi Shopee, saya hanya akan menampilkannya sesuai ketentuan program dan tidak menyunting atau membuat karya turunan kecuali memiliki izin tertulis. Konfirmasi ini bukan bukti audit; seluruh aset tetap unverified sampai admin memeriksa bukti hak.
       </label>
       <button type="button" onClick={() => void uploadBatch()} disabled={running || !manifest || files.length === 0 || !rightsConfirmed}>
         {running ? "Memproses batch…" : "Validasi dan unggah batch"}
