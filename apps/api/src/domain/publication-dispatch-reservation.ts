@@ -13,6 +13,7 @@ export interface PublicationDispatchReservation {
   snapshotHash: string;
   dispatchStartedAt?: IsoTimestamp;
   providerOperationId?: string;
+  externalPostId?: string;
   lastError?: string;
   resolvedAt?: IsoTimestamp;
   createdAt: IsoTimestamp;
@@ -61,6 +62,7 @@ export class InMemoryPublicationDispatchReservationRepository implements Publica
       state: next.state,
       dispatchStartedAt: next.dispatchStartedAt,
       providerOperationId: next.providerOperationId,
+      externalPostId: next.externalPostId,
       lastError: next.lastError,
       resolvedAt: next.resolvedAt,
       updatedAt: next.updatedAt
