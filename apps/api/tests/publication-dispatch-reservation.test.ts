@@ -210,3 +210,59 @@ test("publication worker restores a published Instagram reservation after a fail
   assert.equal(savedJob?.externalPostId, "meta-post-456");
 });
 
+test("Instagram provider timeout moves the durable reservation to uncertain", async () => {
+  const { PublisherExecutor } = await import("../src/domain/publisher-executor.js");
+  const repository = new InMemoryPublicationDispatchReservationRepository();
+  const content = {
+    id: "content-timeout",
+    status: "scheduled",
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    platform: "instagram",
+    contentType: "image",
+    mediaAssetIds: [],
+    socialAccountId: "account-timeout"
+  };
+  const account = {
+    id: "account-timeout",
+    platform: "instagram",
+    status: "active",
+    accountReference: "instagram-account"
+  };
+  const contentService = {
+    get: async () => content,
+    validatePublicationEligibility: async () => undefined,
+    update: async (_id: string, changes: Record<string, unknown>) => ({ ...content, ...changes })
+  };
+  let publishCalls = 0;
+  const publisher = {
+    provider: "instagram-graph",
+    supports: (platform: string) => platform === "instagram",
+    publish: async () => {
+      publishCalls += 1;
+      throw new Error("Meta request timed out after dispatch.");
+    }
+  };
+  const executor = new PublisherExecutor(
+    contentService as never,
+    { list: async () => [account] } as never,
+    [publisher],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    repository
+  );
+
+  await assert.rejects(
+    executor.execute(content.id, new Date("2026-11-16T00:00:00.000Z"), "job-timeout:instagram-graph", undefined, "job-timeout"),
+    /Meta request timed out/
+  );
+
+  const saved = await repository.findByJobProvider("job-timeout", "instagram-graph");
+  assert.equal(publishCalls, 1);
+  assert.equal(saved?.state, "uncertain");
+  assert.match(saved?.lastError ?? "", /timed out/);
+});
+
