@@ -325,3 +325,87 @@ test("Instagram accepted response persistence failure keeps the dispatch fence",
   assert.equal(saved?.providerOperationId, undefined);
 });
 
+test("two publication workers competing for one Instagram job dispatch through the provider only once", async () => {
+  const { InMemoryPublicationJobRepository } = await import("../src/domain/publication-job.js");
+  const { PublicationJobService } = await import("../src/domain/publication-job-service.js");
+  const { PublicationWorker } = await import("../src/domain/publication-worker.js");
+  const { PublisherExecutor } = await import("../src/domain/publisher-executor.js");
+
+  const now = new Date("2026-11-16T02:00:00.000Z");
+  const jobs = new InMemoryPublicationJobRepository();
+  await jobs.save({
+    id: "job-concurrent",
+    contentId: "content-concurrent",
+    idempotencyKey: "content:content-concurrent",
+    status: "pending",
+    attemptCount: 0,
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    createdAt: "2026-11-15T00:00:00.000Z",
+    updatedAt: "2026-11-15T00:00:00.000Z"
+  });
+
+  let contentStatus = "scheduled";
+  const content = {
+    id: "content-concurrent",
+    status: "scheduled",
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    platform: "instagram",
+    contentType: "image",
+    mediaAssetIds: [],
+    socialAccountId: "account-concurrent"
+  };
+  const contentService = {
+    get: async () => ({ ...content, status: contentStatus }),
+    validatePublicationEligibility: async () => undefined,
+    update: async (_id: string, changes: Record<string, unknown>) => {
+      if (typeof changes.status === "string") contentStatus = changes.status;
+      return { ...content, status: contentStatus, ...changes };
+    }
+  };
+  const account = {
+    id: "account-concurrent",
+    platform: "instagram",
+    status: "active",
+    accountReference: "instagram-account"
+  };
+  const reservations = new InMemoryPublicationDispatchReservationRepository();
+  let publishCalls = 0;
+  const publisher = {
+    provider: "instagram-graph",
+    supports: (platform: string) => platform === "instagram",
+    publish: async () => {
+      publishCalls += 1;
+      // Hold the first dispatch open long enough for the competing worker to
+      // reach its claim attempt. The durable job claim must exclude it.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { status: "published" as const, externalPostId: "meta-post-concurrent" };
+    }
+  };
+  const executor = new PublisherExecutor(
+    contentService as never,
+    { list: async () => [account] } as never,
+    [publisher],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    reservations
+  );
+  const jobService = new PublicationJobService(jobs);
+  const operations = new (await import("../src/domain/publication-operation.js")).InMemoryPublicationOperationRepository();
+  const workerA = new PublicationWorker(jobs, jobService, executor, contentService as never, operations, reservations);
+  const workerB = new PublicationWorker(jobs, jobService, executor, contentService as never, operations, reservations);
+
+  const results = await Promise.all([workerA.runOnce(now), workerB.runOnce(now)]);
+  const savedJob = await jobs.findById("job-concurrent");
+  const savedReservation = await reservations.findByJobProvider("job-concurrent", "instagram-graph");
+
+  assert.equal(publishCalls, 1);
+  assert.equal(savedReservation?.state, "published");
+  assert.equal(savedReservation?.externalPostId, "meta-post-concurrent");
+  assert.equal(savedJob?.status, "succeeded");
+  assert.equal(savedJob?.externalPostId, "meta-post-concurrent");
+  assert.equal(results.flat().filter((result) => result.status === "succeeded").length, 1);
+});
