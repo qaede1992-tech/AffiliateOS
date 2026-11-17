@@ -16,3 +16,6 @@ test("does not classify invalid counts as a media blocker", () => {
   assert.equal(getMediaUnavailableReasonCode(0.5), undefined);
   assert.equal(getMediaUnavailableReasonCode(Number.NaN), undefined);
 });
+test("does not report a rights blocker when the readiness snapshot is unavailable", () => {
+  assert.equal(getMediaUnavailableReasonCode(0, false), undefined);
+});
