@@ -5,6 +5,7 @@ import type { PublicationJob } from "./publication-job.js";
 import { PublicationJobService } from "./publication-job-service.js";
 import type { PublicationJobRepository } from "./publication-job.js";
 import { PublicationOperationService } from "./publication-operation-service.js";
+import type { PublicationDispatchReservationRepository } from "./publication-dispatch-reservation.js";
 import { InMemoryPublicationOperationRepository, type PublicationOperationRepository } from "./publication-operation.js";
 
 const ACCEPTED_RECONCILIATION_DELAY_MS = 2 * 60 * 1000;
@@ -38,7 +39,8 @@ export class PublicationWorker {
     private readonly jobService: PublicationJobService,
     private readonly executor: PublisherExecutor,
     private readonly contentService?: ContentService,
-    operationRepository?: PublicationOperationRepository
+    operationRepository?: PublicationOperationRepository,
+    private readonly dispatchReservations?: PublicationDispatchReservationRepository
   ) {
     this.operations = new PublicationOperationService(operationRepository ?? new InMemoryPublicationOperationRepository());
   }
@@ -75,9 +77,17 @@ export class PublicationWorker {
     if (job.status !== "failed" || !this.contentService) return false;
     try {
       const content = await this.contentService.get(job.contentId);
+      // A durable Instagram reservation must be reconciled even when an earlier
+      // worker attempt marked the job failed after the provider accepted or
+      // published the post. Skipping on content.status === "published" here
+      // would strand the reservation before process() can restore job success.
+      if (content.platform === "instagram" && this.dispatchReservations) {
+        const reservation = await this.dispatchReservations.findByJobProvider(job.id, "instagram-graph");
+        if (reservation) return false;
+      }
       // A failed job is retryable only while its content remains scheduled or
       // failed (the latter is reset to scheduled by prepareRetry). Draft or
-      // already-published content must not be retried by the worker.
+      // already-published content without a dispatch reservation must not retry.
       return content.status !== "scheduled" && content.status !== "failed";
     } catch {
       // A missing content record cannot be published; avoid retrying it forever.
@@ -170,6 +180,50 @@ export class PublicationWorker {
         await this.jobService.awaitConfirmation(job.id, now);
         return { jobId: job.id, contentId: job.contentId, status: "awaiting_confirmation" };
       }
+      if (this.dispatchReservations && this.contentService) {
+        const content = await this.contentService.get(job.contentId);
+        if (content.platform === "instagram") {
+          const reservation = await this.dispatchReservations.findByJobProvider(job.id, "instagram-graph");
+          if (reservation) {
+            // Recover the crash window after the provider returned a published
+            // post but before the job/content success transaction completed.
+            if (reservation.state === "published" && reservation.externalPostId) {
+              await this.contentService.update(job.contentId, { status: "published", publishedAt: reservation.updatedAt });
+              await this.jobService.succeed(job.id, reservation.externalPostId, now);
+              return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: reservation.externalPostId };
+            }
+            if (reservation.state === "failed") {
+              const error = reservation.lastError ?? "Instagram dispatch was marked failed during reconciliation.";
+              await this.contentService.update(job.contentId, { status: "failed" });
+              await this.jobService.fail(job.id, error, now);
+              return { jobId: job.id, contentId: job.contentId, status: "failed", error };
+            }
+            // A reservation left in "reserved" proves the provider request was
+            // never claimed. Allow PublisherExecutor to verify the immutable
+            // snapshot and atomically claim reserved -> dispatching. Every later
+            // state remains a hard fence until reconciliation resolves it.
+            if (reservation.state !== "reserved") {
+              if (reservation.providerOperationId && reservation.state === "accepted") {
+                await this.operations.create({
+                  contentId: job.contentId,
+                  jobId: job.id,
+                  provider: reservation.provider,
+                  providerOperationId: reservation.providerOperationId
+                }, now);
+              }
+              await this.jobService.awaitConfirmation(job.id, now);
+              return {
+                jobId: job.id,
+                contentId: job.contentId,
+                status: "awaiting_confirmation",
+                error: reservation.state === "uncertain" || reservation.state === "dispatching"
+                  ? "Instagram dispatch outcome is uncertain; automatic redispatch is blocked."
+                  : undefined
+              };
+            }
+          }
+        }
+      }
       if (this.contentService) {
         const content = await this.contentService.get(job.contentId);
         if (content.platform === "tiktok" && (!job.confirmedAt || !job.tiktokApproval)) {
@@ -177,7 +231,7 @@ export class PublicationWorker {
           return { jobId: job.id, contentId: job.contentId, status: "pending_approval" };
         }
       }
-      const result = await this.executor.execute(job.contentId, now, job.idempotencyKey, job.tiktokApproval);
+      const result = await this.executor.execute(job.contentId, now, job.idempotencyKey, job.tiktokApproval, job.id);
       if (result.status === "published" && result.externalPostId) {
         await this.jobService.succeed(job.id, result.externalPostId, now);
         return { jobId: job.id, contentId: job.contentId, status: "succeeded", externalPostId: result.externalPostId };

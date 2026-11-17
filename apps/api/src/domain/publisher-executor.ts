@@ -1,4 +1,6 @@
+import { randomUUID, createHash } from "node:crypto";
 import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
+import type { PublicationDispatchReservationRepository } from "./publication-dispatch-reservation.js";
 import type { AffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
 import type { ContentService } from "./content.js";
 import type { MediaAssetRepository } from "./media-asset.js";
@@ -31,10 +33,11 @@ export class PublisherExecutor {
     private readonly affiliatePublicationEligibility?: AffiliatePublicationEligibilityValidator,
     private readonly mediaStorage?: SupabaseStorageClient,
     private readonly contentProducts?: ContentProductRepository,
-    private readonly productMediaAssets?: ProductMediaAssetRepository
+    private readonly productMediaAssets?: ProductMediaAssetRepository,
+    private readonly dispatchReservations?: PublicationDispatchReservationRepository
   ) {}
 
-  async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval): Promise<PublishExecutionResult> {
+  async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval, jobId?: string): Promise<PublishExecutionResult> {
     const content = await this.contentService.get(contentId);
     if (content.status !== "scheduled") throw new Error("Only scheduled content can be published.");
     await this.contentService.validatePublicationEligibility(content);
@@ -55,10 +58,73 @@ export class PublisherExecutor {
     if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
 
     try {
-      // Reject ineligible media before reading social credentials from the secret store.
-      const mediaAssets = await this.resolveMediaAssets(content, true);
+      // Apply the new product-media rights gate only to Instagram. Keep TikTok and
+      // other existing publisher paths unchanged during this staged rollout.
+      const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram" && publisher.provider === "instagram-graph");
       const credential = await this.resolveCredential(account);
-      const result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
+      let reservation: import("./publication-dispatch-reservation.js").PublicationDispatchReservation | undefined;
+      if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
+        if (!jobId || !this.dispatchReservations) throw new Error("Instagram publication requires a durable dispatch reservation repository and job ID.");
+        const snapshot = {
+          content: { id: content.id, platform: content.platform, contentType: content.contentType, title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null, cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [], productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null },
+          account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
+          // Persist stable asset identities only; resolved private-storage URLs
+          // are short-lived credentials and must never enter durable snapshots.
+          // Bind the reservation to the exact resolved asset identities sent
+          // to the provider, including any product-scoped assets added by the resolver.
+          mediaAssetIds: mediaAssets.map((asset) => asset.id).sort()
+        };
+        const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+        const timestamp = now.toISOString();
+        const proposed: import("./publication-dispatch-reservation.js").PublicationDispatchReservation = {
+          id: randomUUID(), jobId, contentId: content.id, provider: publisher.provider,
+          state: "reserved", idempotencyKey, snapshot, snapshotHash,
+          createdAt: timestamp, updatedAt: timestamp
+        };
+        reservation = await this.dispatchReservations.reserve(proposed);
+        if (reservation.snapshotHash !== snapshotHash || reservation.idempotencyKey !== idempotencyKey) {
+          throw new Error("An existing Instagram dispatch reservation prevents a new provider request.");
+        }
+        const dispatching = await this.dispatchReservations.transition(reservation.id, ["reserved"], {
+          ...reservation, state: "dispatching", dispatchStartedAt: timestamp, updatedAt: timestamp
+        });
+        if (!dispatching) throw new Error("Instagram dispatch reservation could not be claimed; provider request was not sent.");
+        reservation = dispatching;
+      }
+      let result: Awaited<ReturnType<SocialPublisher["publish"]>>;
+      try {
+        result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
+      } catch (error) {
+        if (reservation && this.dispatchReservations) {
+          const message = error instanceof Error ? error.message : String(error);
+          await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+            ...reservation, state: "uncertain", lastError: message.slice(0, 1000), updatedAt: new Date().toISOString()
+          });
+        }
+        throw error;
+      }
+      if (reservation && this.dispatchReservations && result.status === "published" && !result.externalPostId?.trim()) {
+        // A provider success without a durable external identifier cannot be
+        // reconciled safely after a restart. Preserve the dispatch fence and
+        // require manual reconciliation instead of recording a false success.
+        await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+          ...reservation, state: "uncertain",
+          lastError: "Instagram publisher returned published without an external post ID.",
+          updatedAt: new Date().toISOString()
+        });
+        throw new Error("Instagram publisher returned published without an external post ID; automatic redispatch is blocked.");
+      }
+      if (reservation && this.dispatchReservations) {
+        const persisted = await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+          ...reservation, state: result.status === "accepted" ? "accepted" : "published",
+          ...(result.status === "accepted" ? { providerOperationId: result.providerOperationId } : { externalPostId: result.externalPostId }),
+          updatedAt: new Date().toISOString()
+        });
+        // The provider may already have accepted the request. If durable state
+        // cannot be advanced, fail closed: the dispatching reservation remains
+        // a fence and the worker must not issue another provider request.
+        if (!persisted) throw new Error("Instagram provider response could not be persisted; automatic redispatch is blocked.");
+      }
     if (result.status === "accepted") {
       return { content, account, publisher, provider: publisher.provider ?? content.platform, providerOperationId: result.providerOperationId, status: "accepted" };
     }
@@ -79,7 +145,9 @@ export class PublisherExecutor {
     if (!publisher) throw new Error(`No publisher adapter is available for provider ${operation.provider}.`);
     if (!publisher.checkPublication) throw new Error(`Publisher ${operation.provider} does not support publication status checks.`);
     // Validate configured media references before reading social credentials.
-    const mediaAssets = await this.resolveMediaAssets(content);
+    // Revalidate product-media provenance on every Instagram reconciliation pass,
+    // immediately before the adapter can call media_publish for a FINISHED container.
+    const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram" && operation.provider === "instagram-graph");
     const credential = await this.resolveCredential(account);
     const result = await publisher.checkPublication({ content, account, credential, mediaAssets, operation });
     return { content, account, result };
