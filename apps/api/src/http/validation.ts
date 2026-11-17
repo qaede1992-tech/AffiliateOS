@@ -41,6 +41,7 @@ export const importShopeeAffiliateFeedSchema = z.object({ affiliateId: entityId,
 export const importShopeeAffiliateCsvSchema = z.object({ affiliateId: entityId, csv: z.string().min(1).max(1_048_576), sourceReference: z.string().trim().min(1).max(255).optional() });
 const productMediaUrl = z.string().trim().url().max(2048).refine(isPublicMediaUrl, "Product media URLs must be credential-free public HTTPS URLs.");
 export const productMediaParamsSchema = z.object({ productId: entityId });
+export const generateProductImageSchema = z.object({ referenceAssetId: entityId, style: z.enum(["studio", "lifestyle", "minimal"]) });
 export const productMediaRightsParamsSchema = z.object({ productId: entityId, assetId: entityId });
 export const productMediaCandidateListQuerySchema = z.object({ status: z.enum(["pending", "approved", "rejected"]).optional() });
 export const productMediaCandidateReviewParamsSchema = z.object({ productId: entityId, candidateId: entityId });
