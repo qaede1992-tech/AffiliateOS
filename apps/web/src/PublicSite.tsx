@@ -156,7 +156,7 @@ function ShopPage() {
   const [items, setItems] = useState<PublicShopItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pageSize = 24;
@@ -179,12 +179,12 @@ function ShopPage() {
       fetch(apiOrigin + "/api/v1/public/shop?" + params.toString(), { signal: controller.signal })
         .then(async (response) => {
           if (!response.ok) throw new Error("Katalog produk belum dapat dimuat.");
-          return response.json() as Promise<{ data: PublicShopItem[]; total: number }>;
+          return response.json() as Promise<{ data: PublicShopItem[]; hasMore: boolean }>;
         })
         .then((payload) => {
           if (controller.signal.aborted) return;
           setItems(payload.data ?? []);
-          setTotal(Number(payload.total ?? 0));
+          setHasMore(payload.hasMore === true);
         })
         .catch((cause: unknown) => {
           if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -228,7 +228,7 @@ function ShopPage() {
       />
       {loading ? <p role="status">Memuat produk…</p> : null}
       {error ? <p className="public-shop-message" role="alert">{error}</p> : null}
-      {!loading && !error && total === 0 ? (
+      {!loading && !error && items.length === 0 ? (
         <p className="public-shop-message">
           {searchQuery.trim() ? "Tidak ada produk yang cocok dengan nomor atau nama tersebut." : "Belum ada produk dengan tautan afiliasi aktif. Silakan kembali lagi nanti."}
         </p>
@@ -269,11 +269,11 @@ function ShopPage() {
           );
         })}
       </div>
-      {!loading && !error && total > pageSize ? (
+      {!loading && !error && (hasMore || page > 1) ? (
         <nav className="public-shop-pagination" aria-label="Navigasi katalog">
           <button type="button" className="public-primary-button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Sebelumnya</button>
-          <span>Halaman {page} dari {Math.ceil(total / pageSize)} · {total.toLocaleString("id-ID")} produk</span>
-          <button type="button" className="public-primary-button" disabled={page >= Math.ceil(total / pageSize)} onClick={() => setPage((value) => value + 1)}>Berikutnya</button>
+          <span>Halaman {page}</span>
+          <button type="button" className="public-primary-button" disabled={!hasMore} onClick={() => setPage((value) => value + 1)}>Berikutnya</button>
         </nav>
       ) : null}
       <p className="public-shop-disclosure">Sebagian tautan merupakan tautan afiliasi. Jika Anda membeli melalui tautan tersebut, kami mungkin menerima komisi tanpa biaya tambahan bagi Anda.</p>
