@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Campaign, Content, CreateContentRequest, CreateSocialAccountRequest, Product, SocialAccount, SocialAccountView, UpdateContentRequest } from "@affiliateos/shared";
 import { DomainError } from "./errors.js";
 import { isPublicMediaUrl, type MediaAssetRepository } from "./media-asset.js";
-import type { Repository, SocialAccountRepository } from "./repository.js";
+import type { ContentRepository, Repository, SocialAccountRepository } from "./repository.js";
 
 const now = () => new Date().toISOString();
 
@@ -18,8 +18,9 @@ function isOpaqueCredentialReference(value: string): boolean { return /^(?:[a-z]
 export function validateOpaqueCredentialReference(value: string | undefined): void { if (value !== undefined && (!value.trim() || !isOpaqueCredentialReference(value.trim()))) throw new DomainError("INVALID_SOCIAL_CREDENTIAL_REFERENCE", "Social credential references must be opaque secret-manager references.", 400); }
 
 export class ContentService {
-  constructor(private readonly contents: Repository<Content>, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>, private readonly mediaAssets?: MediaAssetRepository) {}
+  constructor(private readonly contents: ContentRepository, private readonly campaigns: Repository<Campaign>, private readonly products: Repository<Product>, private readonly mediaAssets?: MediaAssetRepository) {}
   async list(campaignId?: string) { const items = await this.contents.list(); if (campaignId) { await this.getCampaign(campaignId); return items.filter((item) => item.campaignId === campaignId); } return items; }
+  async listPage(input: { cursor?: string; limit: number; campaignId?: string }) { if (input.campaignId) await this.getCampaign(input.campaignId); const rows = this.contents.listPage ? await this.contents.listPage({ ...(input.cursor ? { afterId: input.cursor } : {}), limit: input.limit + 1, ...(input.campaignId ? { campaignId: input.campaignId } : {}) }) : (await this.list(input.campaignId)).filter((item) => !input.cursor || item.id > input.cursor).sort((a, b) => a.id.localeCompare(b.id)).slice(0, input.limit + 1); const hasMore = rows.length > input.limit; const items = rows.slice(0, input.limit); return { items, hasMore, nextCursor: hasMore ? items[items.length - 1]?.id : undefined }; }
   async get(id: string) { const content = await this.contents.findById(id); if (!content) throw new DomainError("CONTENT_NOT_FOUND", "The content does not exist.", 404); return content; }
   async validateProductForPublication(productId: string): Promise<Product> {
     const product = await this.products.findById(productId);
