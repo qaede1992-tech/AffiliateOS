@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { MAX_PUBLICATION_JOB_ATTEMPTS, type PublicationJob } from "../domain/publication-job.js";
 import type { PublicationJobRepository } from "../domain/repository.js";
 import { content, publicationJobs } from "./schema.js";
