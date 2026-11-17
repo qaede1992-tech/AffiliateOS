@@ -26,10 +26,15 @@ describe("autonomous cycle", () => {
         return { selected: [], rejected: [], audit: [], outcomes: [] };
       }
     } as unknown as AutonomousExecutionService;
+    let readinessSnapshotCalls = 0;
     const discovery = {
       async discover(product: { id: string }) { calls.push("discover:" + product.id); return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
       async getPublicationReadinessSnapshot() {
         calls.push("readiness-snapshot");
+        readinessSnapshotCalls += 1;
+        if (readinessSnapshotCalls === 1) return {
+          publishableMediaProductIds: [], publishableVideoProductIds: [], storedVideoProductIds: [], mediaReadinessScores: {}
+        };
         return {
           publishableMediaProductIds: ["selected-image", "media-rejected"],
           publishableVideoProductIds: [],
@@ -45,6 +50,7 @@ describe("autonomous cycle", () => {
     assert.ok(result);
     assert.deepEqual(calls, [
       "preliminary-selection",
+      "readiness-snapshot",
       "discover:selected-image",
       "discover:media-rejected",
       "readiness-snapshot",
@@ -69,6 +75,7 @@ describe("autonomous cycle", () => {
       },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
+    let readinessSnapshotCalls = 0;
     const discovery = {
       async discover() {
         return {
@@ -83,8 +90,9 @@ describe("autonomous cycle", () => {
         };
       },
       async getPublicationReadinessSnapshot() {
+        readinessSnapshotCalls += 1;
         return {
-          publishableMediaProductIds: [product.id],
+          publishableMediaProductIds: readinessSnapshotCalls === 1 ? [] : [product.id],
           publishableVideoProductIds: [],
           storedVideoProductIds: [],
           mediaReadinessScores: { [product.id]: 85 }
@@ -535,14 +543,16 @@ describe("autonomous cycle", () => {
       }
     } as unknown as AutonomousExecutionService;
     let discoveryCount = 0;
+    let readinessSnapshotCalls = 0;
     const discovery = {
       async discover() {
         discoveryCount += 1;
         return { productId: product.id, pageFetched: false, hasVideo: true, stored: [], skipped: [] };
       },
       async getPublicationReadinessSnapshot() {
+        readinessSnapshotCalls += 1;
         return {
-          publishableMediaProductIds: [product.id],
+          publishableMediaProductIds: readinessSnapshotCalls === 1 ? [] : [product.id],
           publishableVideoProductIds: [product.id],
           storedVideoProductIds: [product.id],
           mediaReadinessScores: { [product.id]: 100 }
@@ -678,7 +688,7 @@ describe("autonomous cycle", () => {
     assert.equal(service.skipReason, "no_publishable_candidates");
     assert.equal(previewSelectionCalls, 1);
     assert.equal(videoIndexCalls, 0);
-    assert.equal(readinessCalls, 1);
+    assert.equal(readinessCalls, 2);
     assert.equal(runOnceCalls, 0);
     assert.equal(explorationCalls, 0);
     assert.equal(optimizationCalls, 0);
@@ -749,6 +759,7 @@ describe("autonomous cycle", () => {
     assert.deepEqual(
       events.map((entry) => entry.event).sort(),
       [
+        "autonomous_existing_media_index_failed",
         "autonomous_product_media_readiness_snapshot_failed",
         "autonomous_product_promo_video_failed",
         "autonomous_product_video_index_failed"
