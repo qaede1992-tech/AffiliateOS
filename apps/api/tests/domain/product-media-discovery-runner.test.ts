@@ -443,7 +443,7 @@ test("counts duplicate catalog candidates as discovered without reporting them a
       { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
       { maxImageBytes: 1024, maxVideoBytes: 1024 },
       undefined,
-      { async saveMany() { return []; } },
+      { async saveMany() { return []; }, async listPendingByProduct() { return []; } },
       { fetchImpl: catalogFetch as typeof fetch }
     );
     const result = await runner.discover({
@@ -591,7 +591,7 @@ test("persists catalog search cooldown and invalidates it when product identity 
     assetRepository,
     { maxImageBytes: 1024, maxVideoBytes: 1024 },
     undefined,
-    { async saveMany(records: unknown[]) { return records; } } as never,
+    { async saveMany(records: unknown[]) { return records; }, async listPendingByProduct() { return []; } } as never,
     { fetchImpl },
     attemptRepository
   );
