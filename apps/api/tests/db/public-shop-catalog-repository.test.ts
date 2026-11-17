@@ -3,24 +3,24 @@ import test from "node:test";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { createPostgresRepositories } from "../../src/db/repositories.js";
 
-function createCatalogRepository(capture: (query: unknown) => void) {
+function createCatalogRepository(capture: (query: unknown) => void, rowCount = 1) {
   const repositories = createPostgresRepositories({
     execute: async (query: unknown) => {
       capture(query);
       return {
-        rows: [{
-          id: "product-1",
-          reference_number: 42,
+        rows: Array.from({ length: rowCount }, (_, index) => ({
+          id: `product-${index + 1}`,
+          reference_number: 42 + index,
           name: "Lampu Uji",
           category: "Elektronik",
           price_cents: 125000,
           currency: "IDR",
           rating_milli: 4900,
           review_count: 8,
-          tracking_code: "track-1",
+          tracking_code: `track-${index + 1}`,
           image_url: null,
           video_url: null,
-        }]
+        }))
       };
     }
   } as never);
@@ -65,6 +65,15 @@ test("Public Shop SQL filters eligible offers, deduplicates products and fetches
     page: 2,
     pageSize: 24
   });
+});
+
+test("Public Shop reports another page from the extra sentinel row without returning it", async () => {
+  const catalog = createCatalogRepository(() => {}, 25);
+  const page = await catalog.listPage({ query: "", page: 1, pageSize: 24 });
+  assert.equal(page.data.length, 24);
+  assert.equal(page.data[0]?.id, "product-1");
+  assert.equal(page.data[23]?.id, "product-24");
+  assert.equal(page.hasMore, true);
 });
 
 test("Public Shop SQL uses an exact reference-number predicate for numeric searches", async () => {
