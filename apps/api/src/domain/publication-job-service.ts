@@ -19,6 +19,38 @@ export class PublicationJobService {
     return this.jobs.list();
   }
 
+  async listPendingApprovalPage(input: { cursor?: string; limit: number }) {
+    let after: { scheduledAt: string; id: string } | undefined;
+    if (input.cursor) {
+      try {
+        const decoded = Buffer.from(input.cursor, "base64url").toString("utf8");
+        if (Buffer.from(decoded).toString("base64url") !== input.cursor) throw new Error("Invalid cursor encoding");
+        const parsed = JSON.parse(decoded) as { scheduledAt?: unknown; id?: unknown };
+        if (typeof parsed.scheduledAt !== "string" || !Number.isFinite(Date.parse(parsed.scheduledAt)) ||
+            typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.id)) {
+          throw new Error("Invalid cursor payload");
+        }
+        after = { scheduledAt: parsed.scheduledAt, id: parsed.id };
+      } catch {
+        throw new Error("Publication approval cursor is invalid.");
+      }
+    }
+    const rows = this.jobs.listPendingApprovalPage
+      ? await this.jobs.listPendingApprovalPage(after, input.limit + 1)
+      : (await this.jobs.list()).filter((job) => job.status === "pending_approval" &&
+          (!after || job.scheduledAt > after.scheduledAt || (job.scheduledAt === after.scheduledAt && job.id > after.id)))
+          .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id))
+          .slice(0, input.limit + 1);
+    const hasMore = rows.length > input.limit;
+    const items = rows.slice(0, input.limit);
+    const last = items.at(-1);
+    return {
+      items,
+      hasMore,
+      nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ scheduledAt: last.scheduledAt, id: last.id })).toString("base64url") : null
+    };
+  }
+
   async get(id: EntityId): Promise<PublicationJob | undefined> {
     return this.jobs.findById(id);
   }

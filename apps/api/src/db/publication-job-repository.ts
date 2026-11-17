@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
 import { MAX_PUBLICATION_JOB_ATTEMPTS, type PublicationJob } from "../domain/publication-job.js";
 import type { PublicationJobRepository } from "../domain/repository.js";
 import { content, publicationJobs } from "./schema.js";
@@ -30,6 +30,22 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
 
   async list(): Promise<PublicationJob[]> {
     const rows = await this.db.select().from(publicationJobs);
+    return rows.map(toPublicationJob);
+  }
+
+  async listPendingApprovalPage(after: { scheduledAt: string; id: string } | undefined, limit: number): Promise<PublicationJob[]> {
+    const afterCondition = after
+      ? or(
+          gt(publicationJobs.scheduledAt, after.scheduledAt),
+          and(eq(publicationJobs.scheduledAt, after.scheduledAt), gt(publicationJobs.id, after.id))
+        )
+      : undefined;
+    const rows = await this.db.select().from(publicationJobs)
+      .where(afterCondition
+        ? and(eq(publicationJobs.status, "pending_approval"), afterCondition)
+        : eq(publicationJobs.status, "pending_approval"))
+      .orderBy(asc(publicationJobs.scheduledAt), asc(publicationJobs.id))
+      .limit(Math.max(0, limit));
     return rows.map(toPublicationJob);
   }
 

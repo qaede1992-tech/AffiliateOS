@@ -97,6 +97,12 @@ export class InMemoryMediaAssetRepository implements MediaAssetRepository {
 export class InMemoryPublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
+  async listPendingApprovalPage(after: { scheduledAt: string; id: string } | undefined, limit: number) {
+    return [...this.jobs.values()]
+      .filter((job) => job.status === "pending_approval" && (!after || job.scheduledAt > after.scheduledAt || (job.scheduledAt === after.scheduledAt && job.id > after.id)))
+      .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id))
+      .slice(0, Math.max(0, limit));
+  }
   async nextWakeAt(lockTimeoutMs: number) {
     let earliest = Number.POSITIVE_INFINITY;
     const retryDelay = (attempt: number) => Math.min(3600000, 60000 * 2 ** Math.max(0, attempt - 1));
@@ -248,5 +254,5 @@ export interface CampaignOfferRepository { listByCampaign(campaignId: EntityId):
 export interface TrackingLinkRepository extends Repository<TrackingLink> { listPage?(input: { afterId?: string; limit: number; campaignId?: string }): Promise<TrackingLink[]>; findByCode(code: string): Promise<TrackingLink | undefined>; listByCampaign(campaignId: EntityId): Promise<TrackingLink[]>; }
 export interface ClickRepository extends Repository<Click> { countByTrackingLinks?(trackingLinkIds: string[]): Promise<Record<string, number>>; listByTrackingLink(trackingLinkId: EntityId): Promise<Click[]>; findByIdempotencyKey(trackingLinkId: EntityId, idempotencyKey: string): Promise<Click | undefined>; countByTrackingLink(trackingLinkId: EntityId): Promise<number>; }
 export interface SocialAccountRepository extends Repository<SocialAccount> { findByPlatformAccount(platform: string, accountReference: string): Promise<SocialAccount | undefined>; }
-export interface PublicationJobRepository extends Repository<PublicationJob> { findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>; saveIfAbsent?(job: PublicationJob): Promise<PublicationJob>; claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>; transition?(id: EntityId, expected: PublicationJob["status"][], job: PublicationJob): Promise<PublicationJob | undefined>; }
+export interface PublicationJobRepository extends Repository<PublicationJob> { listPendingApprovalPage?(after: { scheduledAt: string; id: string } | undefined, limit: number): Promise<PublicationJob[]>; findByIdempotencyKey(key: string): Promise<PublicationJob | undefined>; saveIfAbsent?(job: PublicationJob): Promise<PublicationJob>; claimDue?(id: EntityId, now: Date, lockTimeoutMs: number): Promise<PublicationJob | undefined>; transition?(id: EntityId, expected: PublicationJob["status"][], job: PublicationJob): Promise<PublicationJob | undefined>; }
 export interface TransactionManager { run<T>(work: (repositories: Pick<RepositorySet, "conversions" | "commissions">) => Promise<T>): Promise<T>; runMarketplaceImport?<T>(work: (repositories: Pick<RepositorySet, "affiliates" | "offers" | "marketplaceConnections" | "affiliateAccounts" | "products" | "affiliateOffers">) => Promise<T>): Promise<T>; }

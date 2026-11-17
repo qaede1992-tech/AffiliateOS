@@ -81,6 +81,7 @@ export const shopeeCommissionReportSchema = z.object({
   })).min(1).max(1000)
 });
 
+export const publicationJobCollectionQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(25), cursor: z.string().min(1).max(512).optional() }).strict();
 export const publicationJobIdSchema = z.object({ jobId: entityId });
 
 export const tiktokPublicationApprovalSchema = z.object({
