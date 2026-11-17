@@ -61,6 +61,7 @@ export class InMemoryRepository<T extends { id: EntityId }> {
   async list(): Promise<T[]> { return [...this.entities.values()]; }
   async findById(id: EntityId): Promise<T | undefined> { return this.entities.get(id); }
   async save(entity: T): Promise<T> { this.entities.set(entity.id, entity); return entity; }
+  async listPage(input: { afterId?: string; limit: number; campaignId?: string }): Promise<T[]> { return [...this.entities.values()].filter((item) => (!input.afterId || item.id > input.afterId) && (!input.campaignId || (item as { campaignId?: string }).campaignId === input.campaignId)).sort((a, b) => a.id.localeCompare(b.id)).slice(0, input.limit); }
 }
 export class InMemoryContentProductRepository implements ContentProductRepository {
   private readonly entities = new Map<string, ContentProduct>();
