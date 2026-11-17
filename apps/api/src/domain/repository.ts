@@ -9,6 +9,7 @@ import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 import type { ProductMediaDiscoveryAttemptRepository } from "./product-media-discovery-attempt.js";
 
+export interface ContentRepository extends Repository<Content> { listPage?(input: { afterId?: string; limit: number; campaignId?: string }): Promise<Content[]>; }
 export interface ContentProductRepository { listByContent(contentId: EntityId): Promise<ContentProduct[]>; replaceForContent(contentId: EntityId, items: ContentProduct[]): Promise<ContentProduct[]>; }
 export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffiliateLinkIntakeRepository {
   private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
@@ -234,7 +235,7 @@ export interface RepositorySet {
   affiliates: Repository<Affiliate>; offers: Repository<Offer>; conversions: ConversionRepository; commissions: CommissionRepository;
   marketplaceConnections: MarketplaceConnectionRepository; affiliateAccounts: AffiliateAccountRepository; products: ProductCatalogRepository; affiliateOffers: AffiliateOfferRepository;
   campaigns: Repository<Campaign>; campaignOffers: CampaignOfferRepository; trackingLinks: TrackingLinkRepository; clicks: ClickRepository;
-  contents: Repository<Content>; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; productMediaAssets?: ProductMediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
+  contents: ContentRepository; contentProducts: ContentProductRepository; mediaAssets: MediaAssetRepository; productMediaAssets?: ProductMediaAssetRepository; socialAccounts: SocialAccountRepository; publicationJobs: PublicationJobRepository; publicationOperations: PublicationOperationRepository; autonomousRuns?: AutonomousRunRepository;
 }
 export interface ConversionRepository extends Repository<Conversion> { findByIdempotencyKey(idempotencyKey: string): Promise<Conversion | undefined>; }
 export interface CommissionRepository extends Repository<Commission> { findByConversionId(conversionId: EntityId): Promise<Commission | undefined>; }
