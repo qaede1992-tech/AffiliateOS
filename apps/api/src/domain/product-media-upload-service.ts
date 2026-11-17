@@ -149,7 +149,23 @@ export class ProductMediaUploadService {
 
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const existing = await this.assets.findByProductAndHash(input.productId, sha256);
-    if (existing) return existing;
+    if (existing) {
+      // A content hash identifies the same bytes, not the same provenance.
+      // Never silently imply that a new declaration was saved when deduplication
+      // returns an asset whose source metadata belongs to an earlier upload.
+      const sameProvenance =
+        (existing.sourcePublisher ?? "user-provided") === sourcePublisher &&
+        (existing.sourceLandingPageUrl ?? null) === sourceLandingPageUrl &&
+        (existing.sourceLicense ?? null) === sourceLicense &&
+        (existing.sourceLicenseUrl ?? null) === sourceLicenseUrl;
+      if (!sameProvenance) {
+        throw new ProductMediaUploadError(
+          "Identical media already exists for this product with different source metadata; the existing declaration was retained.",
+          "INVALID_SOURCE_METADATA"
+        );
+      }
+      return existing;
+    }
 
     const metadata = extractProductMediaTechnicalMetadata(input.mimeType, bytes);
     const id = randomUUID();
