@@ -75,10 +75,15 @@ export async function assertProductMediaRightsForPublication(
     const bucket = media.reference.slice(0, separator);
     const objectKey = media.reference.slice(separator + 1);
     const segments = objectKey.split("/");
-    // Existing content-scoped and other legacy storage namespaces keep
-    // their established publisher path. Only products/<productId>/ assets
-    // created by the product-media ingestion workflow use this rights gate.
-    if (segments[0] !== "products") continue;
+    // Product-linked promotional content must never fall back to untracked
+    // content-scoped uploads: those objects have no persisted product-rights row.
+    // Organic content without a linked product retains the legacy upload path.
+    if (segments[0] !== "products") {
+      if (linkedIds.size > 0) {
+        throw new Error("Product-linked content cannot publish unverified content-scoped media; attach a rights-verified product asset.");
+      }
+      continue;
+    }
 
     const productId = segments[1] ?? "";
     if (!productId || !linkedIds.has(productId)) {
@@ -107,7 +112,7 @@ export async function assertProductMediaRightsForPublication(
     const matches = persisted.filter((asset) =>
       linkedIds.has(asset.productId) && asset.sourceUrl === reference
     );
-    if (matches.length === 0) continue;
+    if (matches.length === 0 && linkedIds.size === 0) continue;
     if (matches.length !== 1 || !hasCurrentVerifiedRights(matches[0]!)) {
       throw new Error("Product media rights are missing, ambiguous, unverified, or revoked; publication is blocked.");
     }

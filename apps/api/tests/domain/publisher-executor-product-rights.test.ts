@@ -139,16 +139,30 @@ test("keeps legacy external URL media publishable without changing the TikTok di
   assert.equal(fixture.getProviderCalls(), 1);
 });
 
-test("keeps legacy content-scoped storage media publishable while product media rights remain unverified", async () => {
+test("blocks product-linked content-scoped storage media without a product rights record", async () => {
   const legacyUpload: MediaAsset = {
     ...media,
     source: "object-storage",
     reference: `affiliate-media/content/${contentId}/legacy-tiktok-video.mp4`
   };
   const fixture = await setup("unverified", legacyUpload);
-  const result = await fixture.execute(new Date("2026-11-02T01:00:00.000Z"));
-  assert.equal(result.status, "published");
-  assert.equal(fixture.getProviderCalls(), 1);
+  await assert.rejects(
+    fixture.execute(new Date("2026-11-02T01:00:00.000Z")),
+    /cannot publish unverified content-scoped media/
+  );
+  assert.equal(fixture.getProviderCalls(), 0);
+});
+
+test("blocks unregistered external URLs on product-linked promotional content", async () => {
+  const unregisteredUrl: MediaAsset = {
+    ...media, source: "url", reference: "https://cdn.example.com/unregistered-product-video.mp4"
+  };
+  const fixture = await setup("verified", unregisteredUrl);
+  await assert.rejects(
+    fixture.execute(new Date("2026-11-02T01:00:00.000Z")),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+  assert.equal(fixture.getProviderCalls(), 0);
 });
 
 test("checks product-media rights before resolving social credentials", async () => {
