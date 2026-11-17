@@ -143,7 +143,7 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
       <strong id="product-media-batch-title">Unggah media banyak produk melalui CSV</strong>
       <small>
         Siapkan CSV dengan kolom externalProductId, filename, kind. Nama file harus sama persis dengan nama file yang dipilih.
-        Maksimal 200 baris per batch. Muat halaman katalog sampai semua ID produk dalam manifest tersedia. CSV hanya memetakan file lokal; tidak ada URL Shopee yang diunduh. Metadata sumber akan disimpan sebagai deklarasi dan tetap memerlukan pemeriksaan admin.
+        Maksimal 200 baris per batch. Muat halaman katalog sampai semua ID produk dalam manifest tersedia. CSV hanya memetakan file lokal; tidak ada URL Shopee yang diunduh. Jangan unggah file hasil scraping/ekstraksi otomatis dari Shopee. Izin menggunakan tautan afiliasi atau akses akun afiliasi tidak otomatis memberi hak memakai foto/video milik penjual. Unggah hanya file buatan sendiri atau file yang diberikan pemilik/penjual dengan izin penggunaan yang jelas. Metadata sumber hanya deklarasi dan tetap memerlukan bukti serta pemeriksaan admin.
       </small>
       <pre>externalProductId,filename,kind{"\n"}SP-100,foto-depan.jpg,image{"\n"}SP-100,video-demo.mp4,video{"\n"}SP-200,produk.png,image</pre>
       <label htmlFor="product-media-batch-manifest">CSV pemetaan media</label>
@@ -166,11 +166,11 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
       />
       <small>{files.length} file dipilih · gambar JPG/PNG/WebP maks. 10 MiB · video MP4 maks. 45 MiB</small>
       <label htmlFor="product-media-source-publisher">Asal/pemilik materi (disimpan sebagai deklarasi, bukan verifikasi)</label>
-      <input id="product-media-source-publisher" type="text" maxLength={255} value={sourcePublisher} disabled={running} onChange={(event) => setSourcePublisher(event.target.value)} placeholder="Contoh: Shopee Affiliate Program / nama penjual / milik sendiri" />
+      <input id="product-media-source-publisher" type="text" maxLength={255} value={sourcePublisher} disabled={running} onChange={(event) => setSourcePublisher(event.target.value)} placeholder="Contoh: nama penjual yang memberi izin / milik sendiri" />
       <label htmlFor="product-media-source-page">Halaman sumber atau produk (HTTPS, opsional)</label>
       <input id="product-media-source-page" type="url" maxLength={2048} value={sourceLandingPageUrl} disabled={running} onChange={(event) => setSourceLandingPageUrl(event.target.value)} placeholder="https://..." />
       <label htmlFor="product-media-source-license">Lisensi atau ketentuan penggunaan (opsional)</label>
-      <input id="product-media-source-license" type="text" maxLength={40} value={sourceLicense} disabled={running} onChange={(event) => setSourceLicense(event.target.value)} placeholder="Contoh: Shopee Affiliate Terms / CC BY 4.0" />
+      <input id="product-media-source-license" type="text" maxLength={40} value={sourceLicense} disabled={running} onChange={(event) => setSourceLicense(event.target.value)} placeholder="Contoh: izin tertulis penjual / CC BY 4.0" />
       <label htmlFor="product-media-source-license-url">URL bukti lisensi/izin (HTTPS, opsional)</label>
       <input id="product-media-source-license-url" type="url" maxLength={2048} value={sourceLicenseUrl} disabled={running} onChange={(event) => setSourceLicenseUrl(event.target.value)} placeholder="https://..." />
       <label className="media-rights-confirmation">
@@ -180,7 +180,7 @@ export function ProductMediaBatchIntake({ products }: ProductMediaBatchIntakePro
           disabled={running}
           onChange={(event) => setRightsConfirmed(event.target.checked)}
         />
-        Saya memiliki dasar yang sah untuk mengunggah setiap file. Jika file berasal dari materi resmi Program Afiliasi Shopee, saya hanya akan menampilkannya sesuai ketentuan program dan tidak menyunting atau membuat karya turunan kecuali memiliki izin tertulis. Konfirmasi ini bukan bukti audit; seluruh aset tetap unverified sampai admin memeriksa bukti hak.
+        Saya memiliki hak atau izin yang sah untuk menggunakan setiap file pada konten promosi. Akses akun afiliasi atau izin membagikan tautan produk bukan izin memakai foto/video milik penjual. Saya tidak mengunggah materi yang diperoleh melalui scraping/ekstraksi otomatis dari Shopee. Konfirmasi ini bukan bukti audit; seluruh aset tetap unverified sampai admin memeriksa bukti hak.
       </label>
       <button type="button" onClick={() => void uploadBatch()} disabled={running || !manifest || files.length === 0 || !rightsConfirmed}>
         {running ? "Memproses batch…" : "Validasi dan unggah batch"}
