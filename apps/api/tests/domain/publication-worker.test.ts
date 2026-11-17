@@ -431,7 +431,9 @@ describe("PublicationWorker", () => {
     assert.deepEqual(results, []);
     assert.equal(stored?.status, "pending");
     assert.equal(stored?.attemptCount, 0);
-    it("recovers an unclaimed Instagram reservation after a crash without redispatching ambiguous states", async () => {
+  });
+
+  it("recovers an unclaimed Instagram reservation after a crash without redispatching ambiguous states", async () => {
     const { contentService, socialAccounts, jobs, jobService } = await setup();
     const instagramAccount: SocialAccount = {
       id: "instagram-account", platform: "instagram", accountReference: "instagram-ref", status: "active", connection: {},
