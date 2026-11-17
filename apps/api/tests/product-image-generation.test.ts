@@ -108,7 +108,7 @@ test("AI product image editing rejects a reference asset from another product", 
   assert.equal(harness.providerCalls, 0);
 });
 
-test("AI-generated derivatives can pass rights verification but remain identity-pending", () => {
+test("AI-generated derivatives remain blocked until audited identity approval", () => {
   const generated = makeReference({
     sourceUrl: `generated:openai-image-edit:${referenceId}`,
     sourceProvider: "openai",
@@ -119,7 +119,7 @@ test("AI-generated derivatives can pass rights verification but remain identity-
     rightsVerifiedAt: new Date(Date.now() - 1000).toISOString(),
     identityStatus: "pending"
   });
-  assert.equal(hasCurrentVerifiedRights(generated), true);
+  assert.equal(hasCurrentVerifiedRights(generated), false);
   assert.equal(generated.identityStatus, "pending");
 });
 
