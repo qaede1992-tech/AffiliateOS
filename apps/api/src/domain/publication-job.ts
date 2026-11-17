@@ -23,6 +23,7 @@ export interface PublicationJob {
 
 export interface PublicationJobRepository {
   list(): Promise<PublicationJob[]>;
+  listPendingApprovalPage?(after: { scheduledAt: string; id: string } | undefined, limit: number): Promise<PublicationJob[]>;
   nextWakeAt?(lockTimeoutMs: number): Promise<Date | undefined>;
   listClaimable?(now: Date, lockTimeoutMs: number, limit: number): Promise<PublicationJob[]>;
   findById(id: EntityId): Promise<PublicationJob | undefined>;
@@ -64,6 +65,13 @@ export class InMemoryPublicationJobRepository implements PublicationJobRepositor
         return scheduled <= nowDate.getTime() && claimable && !lockFresh;
       })
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      .slice(0, Math.max(0, limit));
+  }
+
+  async listPendingApprovalPage(after: { scheduledAt: string; id: string } | undefined, limit: number) {
+    return [...this.jobs.values()]
+      .filter((job) => job.status === "pending_approval" && (!after || job.scheduledAt > after.scheduledAt || (job.scheduledAt === after.scheduledAt && job.id > after.id)))
+      .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id))
       .slice(0, Math.max(0, limit));
   }
 
