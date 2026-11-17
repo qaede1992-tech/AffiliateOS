@@ -431,7 +431,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get<{ Querystring: { query?: string; page?: string | number; pageSize?: string | number } }>("/api/v1/public/shop", async (request, reply) => {
     const query = publicShopQuerySchema.parse(request.query);
-    let catalog: { data: PublicShopCatalogItem[]; total: number; page: number; pageSize: number };
+    let catalog: { data: PublicShopCatalogItem[]; hasMore: boolean; page: number; pageSize: number };
     if (services.publicShopCatalog) {
       catalog = await services.publicShopCatalog.listPage(query);
     } else if (services.publicShopCatalogFallbackAllowed === true) {
@@ -477,7 +477,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       const offset = (query.page - 1) * query.pageSize;
       catalog = {
         data: items.slice(offset, offset + query.pageSize),
-        total: items.length,
+        hasMore: items.length > offset + query.pageSize,
         page: query.page,
         pageSize: query.pageSize
       };
