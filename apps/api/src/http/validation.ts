@@ -112,6 +112,8 @@ export const createShopeeAffiliateLinkIntakeSchema = z.object({
 });
 export const shopeeAffiliateLinkIntakeParamsSchema = z.object({ intakeId: entityId });
 
+export const reviewProductMediaIdentitySchema = z.object({ status: z.enum(["verified", "rejected"]), reason: nonEmptyText.max(1000) });
+
 export const publicShopQuerySchema = z.object({
   query: z.string().trim().max(200).default(""),
   page: z.coerce.number().int().min(1).max(100).default(1),
