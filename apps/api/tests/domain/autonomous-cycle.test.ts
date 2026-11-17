@@ -760,4 +760,78 @@ describe("autonomous cycle", () => {
     ));
   });
 
+
+  it("reuses existing verified product media without repeating external discovery", async () => {
+    const product = { id: "already-publishable-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
+    };
+    const calls: string[] = [];
+    const execution = {
+      async previewSelection(input: { requirePublishableMedia?: boolean }) {
+        calls.push(input.requirePublishableMedia ? "media-ready-selection" : "preliminary-selection");
+        return { selected: [{ product: product as never, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+      },
+      async runOnce() {
+        calls.push("final-execution");
+        return { selected: [], rejected: [], audit: [], outcomes: [] };
+      }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async getPublicationReadinessSnapshot() {
+        calls.push("readiness-snapshot");
+        return {
+          publishableMediaProductIds: [product.id],
+          publishableVideoProductIds: [],
+          storedVideoProductIds: [],
+          mediaReadinessScores: { [product.id]: 90 }
+        };
+      },
+      async discover() {
+        calls.push("external-discovery");
+        return { productId: product.id, pageFetched: true, hasVideo: false, stored: [], skipped: [] };
+      },
+      async generatePromoVideo() { return { generated: true }; },
+      async listPublishableVideoProductIds() { return []; }
+    };
+    const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
+
+    const result = await service.runOnce({ publicationEnabled: false });
+
+    assert.ok(result);
+    assert.equal(calls.includes("external-discovery"), false);
+    assert.equal(calls.filter((call) => call === "readiness-snapshot").length >= 2, true);
+  });
+
+  it("does not launch external media discovery when the persisted rights index is unavailable", async () => {
+    const product = { id: "rights-index-unavailable-product" };
+    const provider: AutonomousCandidateProvider = {
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
+    };
+    let discoveryCalls = 0;
+    const execution = {
+      async previewSelection() {
+        return { selected: [{ product: product as never, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+      },
+      async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async getPublicationReadinessSnapshot() {
+        throw new Error("database unavailable");
+      },
+      async listPublishableMediaProductIds() {
+        throw new Error("database unavailable");
+      },
+      async discover() {
+        discoveryCalls += 1;
+        return { productId: product.id, pageFetched: true, hasVideo: false, stored: [], skipped: [] };
+      }
+    };
+    const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
+
+    await service.runOnce({ publicationEnabled: false });
+
+    assert.equal(discoveryCalls, 0);
+  });
+
 });
