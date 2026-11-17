@@ -198,26 +198,29 @@ export class PublicationWorker {
               await this.jobService.fail(job.id, error, now);
               return { jobId: job.id, contentId: job.contentId, status: "failed", error };
             }
-            // A durable reservation is a hard dispatch fence. Never silently
-            // redispatch after an ambiguous outcome or manual state transition.
-            // Rebuild the reconciliation operation when Meta's container ID exists.
-            if (reservation.providerOperationId && reservation.state === "accepted") {
-              await this.operations.create({
-                contentId: job.contentId,
+            // A reservation left in "reserved" proves the provider request was
+            // never claimed. Allow PublisherExecutor to verify the immutable
+            // snapshot and atomically claim reserved -> dispatching. Every later
+            // state remains a hard fence until reconciliation resolves it.
+            if (reservation.state !== "reserved") {
+              if (reservation.providerOperationId && reservation.state === "accepted") {
+                await this.operations.create({
+                  contentId: job.contentId,
+                  jobId: job.id,
+                  provider: reservation.provider,
+                  providerOperationId: reservation.providerOperationId
+                }, now);
+              }
+              await this.jobService.awaitConfirmation(job.id, now);
+              return {
                 jobId: job.id,
-                provider: reservation.provider,
-                providerOperationId: reservation.providerOperationId
-              }, now);
+                contentId: job.contentId,
+                status: "awaiting_confirmation",
+                error: reservation.state === "uncertain" || reservation.state === "dispatching"
+                  ? "Instagram dispatch outcome is uncertain; automatic redispatch is blocked."
+                  : undefined
+              };
             }
-            await this.jobService.awaitConfirmation(job.id, now);
-            return {
-              jobId: job.id,
-              contentId: job.contentId,
-              status: "awaiting_confirmation",
-              error: reservation.state === "uncertain" || reservation.state === "dispatching"
-                ? "Instagram dispatch outcome is uncertain; automatic redispatch is blocked."
-                : undefined
-            };
           }
         }
       }
