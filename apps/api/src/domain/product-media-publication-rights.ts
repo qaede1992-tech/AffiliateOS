@@ -19,6 +19,20 @@ export const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
     !asset.sourcePublisher?.trim()
   ) return false;
 
+  // AI-edited derivatives require two independent approvals: rights to use
+  // the source material and an audited human confirmation of product identity.
+  // Rights verification alone must never make a generated product image publishable.
+  if (
+    asset.sourceProvider === "openai" &&
+    asset.sourceUrl.startsWith("generated:openai-image-edit:") &&
+    (
+      asset.identityStatus !== "verified" ||
+      !asset.identityReviewedBy?.trim() ||
+      !asset.identityReviewedAt ||
+      !asset.identityReviewReason?.trim()
+    )
+  ) return false;
+
   try {
     const evidence = new URL(asset.rightsEvidenceUrl);
     const verifiedAt = Date.parse(asset.rightsVerifiedAt);
