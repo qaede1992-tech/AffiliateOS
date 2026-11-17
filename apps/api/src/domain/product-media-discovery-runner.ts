@@ -269,11 +269,29 @@ export class ProductMediaDiscoveryRunner {
           videoUrl: product.videoUrl ?? "",
           query
         })).digest("hex");
-        let shouldSearch = true;
+        // A pending candidate already represents completed discovery work. Re-querying
+        // external catalogs while an operator review is outstanding adds provider
+        // traffic and candidate writes without improving publication readiness.
+        let hasPendingCandidate = false;
+        let candidateLookupFailed = false;
+        try {
+          if (this.catalogCandidates) {
+            hasPendingCandidate = (await this.catalogCandidates.listPendingByProduct(product.id, 1)).length > 0;
+          }
+        } catch (error) {
+          candidateLookupFailed = true;
+          skipped.push({ url: product.productUrl, reason: "catalog_pending_candidate_check_unavailable" });
+          console.warn(JSON.stringify({
+            event: "product_media_pending_candidate_check_failed",
+            productId: product.id,
+            errorType: safeErrorType(error)
+          }));
+        }
+        let shouldSearch = !hasPendingCandidate && !candidateLookupFailed;
         let claimed = false;
         let leaseUntil: string | undefined;
-        let catalogOutcome: ProductMediaDiscoveryOutcome = "no_results";
-        if (this.discoveryAttempts) {
+        let catalogOutcome: ProductMediaDiscoveryOutcome = candidateLookupFailed ? "provider_error" : hasPendingCandidate ? "success" : "no_results";
+        if (shouldSearch && this.discoveryAttempts) {
           const now = new Date();
           leaseUntil = new Date(now.getTime() + 15 * 60_000).toISOString();
           try {
@@ -437,7 +455,13 @@ export class ProductMediaDiscoveryRunner {
               }));
             }
           }
-        } else if (this.discoveryAttempts && !claimed) {
+        } else if (hasPendingCandidate) {
+          skipped.push({ url: product.productUrl, reason: "catalog_discovery_skipped_pending_review" });
+          console.info(JSON.stringify({
+            event: "product_media_catalog_search_skipped_pending_review",
+            productId: product.id
+          }));
+        } else if (!candidateLookupFailed && this.discoveryAttempts && !claimed) {
           console.info(JSON.stringify({ event: "product_media_catalog_search_skipped_cooldown", productId: product.id }));
         }
       }

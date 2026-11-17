@@ -443,7 +443,7 @@ test("counts duplicate catalog candidates as discovered without reporting them a
       { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
       { maxImageBytes: 1024, maxVideoBytes: 1024 },
       undefined,
-      { async saveMany() { return []; } },
+      { async saveMany() { return []; }, async listPendingByProduct() { return []; } },
       { fetchImpl: catalogFetch as typeof fetch }
     );
     const result = await runner.discover({
@@ -493,7 +493,7 @@ test("does not expose catalog persistence errors in discovery logs or skipped re
       { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
       { maxImageBytes: 1024, maxVideoBytes: 1024 },
       undefined,
-      { async saveMany() { throw new Error("insert into product_media_candidates values ($1) -- private-media-index-marker"); } },
+      { async saveMany() { throw new Error("insert into product_media_candidates values ($1) -- private-media-index-marker"); }, async listPendingByProduct() { return []; } },
       { fetchImpl: (async () => new Response("{}", { status: 403 })) as typeof fetch }
     );
     const result = await runner.discover({
@@ -591,7 +591,7 @@ test("persists catalog search cooldown and invalidates it when product identity 
     assetRepository,
     { maxImageBytes: 1024, maxVideoBytes: 1024 },
     undefined,
-    { async saveMany(records: unknown[]) { return records; } } as never,
+    { async saveMany(records: unknown[]) { return records; }, async listPendingByProduct() { return []; } } as never,
     { fetchImpl },
     attemptRepository
   );
@@ -740,4 +740,56 @@ test("applies a persistent cooldown to empty generic product-page discovery and 
   const changed = await runner.discover({ ...product, name: "Demo product updated" }, true);
   assert.equal(changed.pageFetched, true);
   assert.equal(fetchCount, 2);
+});
+
+
+test("skips external catalog calls and discovery writes while a media candidate awaits review", async () => {
+  let providerCalls = 0;
+  let saveCalls = 0;
+  let claimCalls = 0;
+  let pendingLookups = 0;
+  const candidateRepository = {
+    async listPendingByProduct() {
+      pendingLookups++;
+      return [{ id: "pending-candidate" }];
+    },
+    async saveMany() {
+      saveCalls++;
+      return [];
+    }
+  };
+  const attemptRepository = {
+    async claim() {
+      claimCalls++;
+      return true;
+    },
+    async complete() {}
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { return asset; }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    candidateRepository as never,
+    { fetchImpl: (async () => {
+      providerCalls++;
+      return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch },
+    attemptRepository
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456"
+  }, true);
+
+  assert.equal(pendingLookups, 1);
+  assert.equal(providerCalls, 0, "pending review must suppress Openverse and Wikimedia requests");
+  assert.equal(claimCalls, 0, "pending review must not create a discovery lease");
+  assert.equal(saveCalls, 0, "pending review must not write duplicate candidates");
+  assert.ok(result.skipped.some((item) => item.reason === "catalog_discovery_skipped_pending_review"));
 });
