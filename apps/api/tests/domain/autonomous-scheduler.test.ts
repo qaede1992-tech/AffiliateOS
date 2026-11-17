@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { AutonomousCycleResult, AutonomousCycleService } from "../../src/domain/autonomous-cycle.js";
-import { AutonomousScheduler } from "../../src/domain/autonomous-scheduler.js";
+import { AutonomousScheduler, safeAutonomousErrorType } from "../../src/domain/autonomous-scheduler.js";
 
 const result = (): AutonomousCycleResult => ({
   startedAt: "2026-09-21T00:00:00.000Z",
@@ -164,7 +164,7 @@ describe("AutonomousScheduler", () => {
     });
 
     assert.equal(await scheduler.runNow(), undefined);
-    assert.equal(scheduler.status.lastError, "cycle failure");
+    assert.equal(scheduler.status.lastError, "Error");
     assert.equal(scheduler.status.active, false);
     assert.equal(scheduler.status.lastCompletedAt, "2026-09-21T00:00:00.000Z");
   });
@@ -198,5 +198,17 @@ describe("AutonomousScheduler", () => {
   it("rejects intervals below five minutes", () => {
     const cycle = { runOnce: async () => undefined } as unknown as AutonomousCycleService;
     assert.throws(() => new AutonomousScheduler(cycle, {}, { intervalMs: 299_999 }), /at least 5 minutes/);
+  });
+});
+
+
+describe("safeAutonomousErrorType", () => {
+  it("stores only a validated error type instead of raw exception details", () => {
+    const error = new Error("Failed query: SELECT * FROM private_table; params: private-marker");
+    error.name = "DatabaseError";
+    assert.equal(safeAutonomousErrorType(error), "DatabaseError");
+    assert.equal(safeAutonomousErrorType(new Error("private details")), "Error");
+    assert.equal(safeAutonomousErrorType("private details"), "UnknownError");
+    assert.equal(safeAutonomousErrorType(Object.assign(new Error("private details"), { name: "Error; SELECT secrets" })), "UnknownError");
   });
 });
