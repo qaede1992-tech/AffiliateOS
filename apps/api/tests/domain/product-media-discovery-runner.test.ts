@@ -493,7 +493,7 @@ test("does not expose catalog persistence errors in discovery logs or skipped re
       { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
       { maxImageBytes: 1024, maxVideoBytes: 1024 },
       undefined,
-      { async saveMany() { throw new Error("insert into product_media_candidates values ($1) -- private-media-index-marker"); } },
+      { async saveMany() { throw new Error("insert into product_media_candidates values ($1) -- private-media-index-marker"); }, async listPendingByProduct() { return []; } },
       { fetchImpl: (async () => new Response("{}", { status: 403 })) as typeof fetch }
     );
     const result = await runner.discover({
