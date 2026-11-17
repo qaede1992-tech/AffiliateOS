@@ -33,6 +33,22 @@ export class DrizzlePublicationJobRepository implements PublicationJobRepository
     return rows.map(toPublicationJob);
   }
 
+  async listPendingApprovalPage(after: { scheduledAt: string; id: string } | undefined, limit: number): Promise<PublicationJob[]> {
+    const afterCondition = after
+      ? or(
+          gt(publicationJobs.scheduledAt, after.scheduledAt),
+          and(eq(publicationJobs.scheduledAt, after.scheduledAt), gt(publicationJobs.id, after.id))
+        )
+      : undefined;
+    const rows = await this.db.select().from(publicationJobs)
+      .where(afterCondition
+        ? and(eq(publicationJobs.status, "pending_approval"), afterCondition)
+        : eq(publicationJobs.status, "pending_approval"))
+      .orderBy(asc(publicationJobs.scheduledAt), asc(publicationJobs.id))
+      .limit(Math.max(0, limit));
+    return rows.map(toPublicationJob);
+  }
+
   async nextWakeAt(lockTimeoutMs: number): Promise<Date | undefined> {
     const retryAt = sql`GREATEST(
       ${publicationJobs.scheduledAt},
