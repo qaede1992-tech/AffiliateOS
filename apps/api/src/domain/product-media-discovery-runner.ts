@@ -275,7 +275,9 @@ export class ProductMediaDiscoveryRunner {
         let hasPendingCandidate = false;
         let candidateLookupFailed = false;
         try {
-          hasPendingCandidate = (await this.catalogCandidates.listPendingByProduct(product.id, 1)).length > 0;
+          if (this.catalogCandidates) {
+            hasPendingCandidate = (await this.catalogCandidates.listPendingByProduct(product.id, 1)).length > 0;
+          }
         } catch (error) {
           candidateLookupFailed = true;
           skipped.push({ url: product.productUrl, reason: "catalog_pending_candidate_check_unavailable" });
