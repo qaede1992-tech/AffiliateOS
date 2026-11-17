@@ -688,3 +688,55 @@ test("stops repeating an Openverse 403 across products while retaining Wikimedia
     resetOpenverseCircuitForTests();
   }
 });
+
+
+test("skips external catalog calls and discovery writes while a media candidate awaits review", async () => {
+  let providerCalls = 0;
+  let saveCalls = 0;
+  let claimCalls = 0;
+  let pendingLookups = 0;
+  const candidateRepository = {
+    async listPendingByProduct() {
+      pendingLookups++;
+      return [{ id: "pending-candidate" }];
+    },
+    async saveMany() {
+      saveCalls++;
+      return [];
+    }
+  };
+  const attemptRepository = {
+    async claim() {
+      claimCalls++;
+      return true;
+    },
+    async complete() {}
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { return asset; }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    candidateRepository as never,
+    { fetchImpl: (async () => {
+      providerCalls++;
+      return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch },
+    attemptRepository
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456"
+  }, true);
+
+  assert.equal(pendingLookups, 1);
+  assert.equal(providerCalls, 0, "pending review must suppress Openverse and Wikimedia requests");
+  assert.equal(claimCalls, 0, "pending review must not create a discovery lease");
+  assert.equal(saveCalls, 0, "pending review must not write duplicate candidates");
+  assert.ok(result.skipped.some((item) => item.reason === "catalog_discovery_skipped_pending_review"));
+});
