@@ -53,9 +53,12 @@ const classifyMediaSkipReason = (reason: string): string => {
 
 /** A zero count means no persisted product media currently passes the publication-rights gate. */
 export const getMediaUnavailableReasonCode = (
-  publishableMediaProductCount: number
+  publishableMediaProductCount: number,
+  readinessSnapshotAvailable = true
 ): "media_unavailable_rights_unverified" | undefined =>
-  Number.isSafeInteger(publishableMediaProductCount) && publishableMediaProductCount === 0
+  readinessSnapshotAvailable &&
+  Number.isSafeInteger(publishableMediaProductCount) &&
+  publishableMediaProductCount === 0
     ? "media_unavailable_rights_unverified"
     : undefined;
 
@@ -301,12 +304,14 @@ export class AutonomousCycleService {
 
         const productIds = candidateList.map((candidate) => candidate.product.id);
         let storedVideoIds: string[] = [];
+        let readinessSnapshotAvailable = false;
         try {
           const readiness = await this.productMediaDiscovery.getPublicationReadinessSnapshot(productIds, input.platforms);
           mediaIds = readiness.publishableMediaProductIds;
           videoIds = readiness.publishableVideoProductIds;
           storedVideoIds = readiness.storedVideoProductIds;
           mediaReadinessScores = readiness.mediaReadinessScores;
+          readinessSnapshotAvailable = true;
         } catch (error) {
           mediaIds = [];
           videoIds = [];
@@ -343,7 +348,7 @@ export class AutonomousCycleService {
           console.info(JSON.stringify({
             event: "autonomous_cycle_skipped",
             reason: "no_publishable_candidates",
-            reasonCode: getMediaUnavailableReasonCode(mediaIds.length),
+            reasonCode: getMediaUnavailableReasonCode(mediaIds.length, readinessSnapshotAvailable),
             catalogCandidateCount: candidateList.length
           }));
           return {
