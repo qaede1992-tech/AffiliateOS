@@ -51,6 +51,7 @@ import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { ProductMediaDiscoveryRunner } from "./product-media-discovery-runner.js";
 import { ProductMediaIngestionService, type ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import { ProductMediaCandidateImportService } from "./product-media-candidate-import.js";
+import type { ProductImageGenerationService } from "./product-image-generation.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
 
