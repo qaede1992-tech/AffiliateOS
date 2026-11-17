@@ -113,7 +113,7 @@ test("blocks unknown storage namespaces on product-linked promotional content", 
   const legacy = { ...media, reference: "affiliate-media/legacy/video.mp4" };
   await assert.rejects(
     assertProductMediaRightsForPublication([legacy], [productId], repository()),
-    /rights are missing, ambiguous, unverified, or revoked/
+    /cannot publish unverified content-scoped media/
   );
 });
 

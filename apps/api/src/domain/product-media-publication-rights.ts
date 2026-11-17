@@ -48,10 +48,9 @@ export const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
 };
 
 /**
- * Re-checks only product-scoped object-storage media immediately before
- * provider dispatch. Existing content-scoped uploads and externally hosted
- * media retain their pre-existing publisher path; they are not treated as
- * product-media assets. New product media must match a persisted rights row.
+ * Re-checks product-linked media immediately before provider dispatch.
+ * Product-linked content must use persisted rights-verified product assets;
+ * non-product organic content retains its legacy content-scoped/external path. New product media must match a persisted rights row.
  */
 export async function assertProductMediaRightsForPublication(
   mediaAssets: MediaAsset[],
