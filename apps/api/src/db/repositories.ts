@@ -248,20 +248,19 @@ class DrizzlePublicShopCatalogRepository implements PublicShopCatalogRepository 
             OR (NOT ${numericQuery} AND p.name ILIKE ${pattern} ESCAPE E'\\\\'))
         ORDER BY p.id, ao.created_at DESC, ao.id DESC
       ),
-      counted AS (SELECT count(*)::integer AS total FROM eligible),
-      page_rows AS (SELECT * FROM eligible ORDER BY reference_number ASC NULLS LAST, id ASC LIMIT ${input.pageSize} OFFSET ${offset})
-      SELECT page_rows.*, counted.total FROM counted LEFT JOIN page_rows ON true
+      page_rows AS (SELECT * FROM eligible ORDER BY reference_number ASC NULLS LAST, id ASC LIMIT ${input.pageSize + 1} OFFSET ${offset})
+      SELECT * FROM page_rows
     `);
     const rows = Array.isArray(result) ? result : (result as { rows?: Record<string, unknown>[] }).rows ?? [];
-    const total = Number(rows[0]?.total ?? 0);
-    const data = rows.filter((row: Record<string, unknown>) => row.id != null).map((row: Record<string, unknown>) => ({
+    const hasMore = rows.length > input.pageSize;
+    const data = rows.slice(0, input.pageSize).filter((row: Record<string, unknown>) => row.id != null).map((row: Record<string, unknown>) => ({
       id: String(row.id), referenceNumber: row.reference_number == null ? null : Number(row.reference_number), name: String(row.name),
       category: row.category == null ? null : String(row.category), priceCents: row.price_cents == null ? null : Number(row.price_cents),
       currency: row.currency == null ? null : String(row.currency), ratingMilli: row.rating_milli == null ? null : Number(row.rating_milli),
       reviewCount: row.review_count == null ? null : Number(row.review_count), trackingCode: String(row.tracking_code),
       imageUrl: row.image_url == null ? undefined : String(row.image_url), videoUrl: row.video_url == null ? undefined : String(row.video_url)
     }));
-    return { data, total, page: input.page, pageSize: input.pageSize };
+    return { data, hasMore, page: input.page, pageSize: input.pageSize };
   }
 }
 const createRepositories = (db: DatabaseExecutor): RepositorySet => ({
