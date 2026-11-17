@@ -88,6 +88,7 @@ export class TrackingService {
     if (campaignId) await this.getCampaign(campaignId);
     return campaignId ? this.links.listByCampaign(campaignId) : this.links.list();
   }
+  async listPage(input: { cursor?: string; limit: number; campaignId?: string }) { if (input.campaignId) await this.getCampaign(input.campaignId); const rows = this.links.listPage ? await this.links.listPage({ ...(input.cursor ? { afterId: input.cursor } : {}), limit: input.limit + 1, ...(input.campaignId ? { campaignId: input.campaignId } : {}) }) : (await this.list(input.campaignId)).filter((item) => !input.cursor || item.id > input.cursor).sort((a, b) => a.id.localeCompare(b.id)).slice(0, input.limit + 1); const hasMore = rows.length > input.limit; const items = rows.slice(0, input.limit); return { items, hasMore, nextCursor: hasMore ? items[items.length - 1]?.id : undefined }; }
   private async getCampaign(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
   async create(input: CreateTrackingLinkRequest) {
     const offer = await this.affiliateOffers.findById(input.affiliateOfferId);
@@ -146,6 +147,7 @@ export class TrackingService {
       throw error;
     }
   }
+  async statsPage(ids: string[]): Promise<TrackingLinkStats[]> { const counts = this.clicks.countByTrackingLinks ? await this.clicks.countByTrackingLinks(ids) : Object.fromEntries(await Promise.all(ids.map(async (id) => [id, await this.clicks.countByTrackingLink(id)] as const))); return ids.map((linkId) => ({ linkId, clickCount: counts[linkId] ?? 0 })); }
   async stats(id: string): Promise<TrackingLinkStats> { await this.get(id); return { linkId: id, clickCount: await this.clicks.countByTrackingLink(id) }; }
 }
 
