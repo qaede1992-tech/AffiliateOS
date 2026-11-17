@@ -51,6 +51,14 @@ const classifyMediaSkipReason = (reason: string): string => {
   return "other";
 };
 
+/** A zero count means no persisted product media currently passes the publication-rights gate. */
+export const getMediaUnavailableReasonCode = (
+  publishableMediaProductCount: number
+): "media_unavailable_rights_unverified" | undefined =>
+  Number.isSafeInteger(publishableMediaProductCount) && publishableMediaProductCount === 0
+    ? "media_unavailable_rights_unverified"
+    : undefined;
+
 export class AutonomousCycleService {
   private running = false;
   private lastSkipReason?: AutonomousCycleSkipReason;
@@ -335,6 +343,7 @@ export class AutonomousCycleService {
           console.info(JSON.stringify({
             event: "autonomous_cycle_skipped",
             reason: "no_publishable_candidates",
+            reasonCode: getMediaUnavailableReasonCode(mediaIds.length),
             catalogCandidateCount: candidateList.length
           }));
           return {
