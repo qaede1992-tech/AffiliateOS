@@ -221,7 +221,7 @@ export interface PublicShopCatalogItem {
 }
 export interface PublicShopCatalogPage {
   data: PublicShopCatalogItem[];
-  total: number;
+  hasMore: boolean;
   page: number;
   pageSize: number;
 }

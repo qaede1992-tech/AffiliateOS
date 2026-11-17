@@ -1387,7 +1387,7 @@ test("GET /api/v1/public/shop returns a bounded paginated catalog envelope", asy
   try {
     const response = await app.inject({ method: "GET", url: "/api/v1/public/shop" });
     assert.equal(response.statusCode, 200);
-    assert.deepEqual(response.json(), { data: [], total: 0, page: 1, pageSize: 24 });
+    assert.deepEqual(response.json(), { data: [], hasMore: false, page: 1, pageSize: 24 });
   } finally {
     await app.close();
   }
@@ -1424,7 +1424,7 @@ test("GET /api/v1/public/shop loads media evidence only for the returned page an
           trackingCode: "TRACK25",
           imageUrl: "https://cdn.example.com/lampu.jpg"
         }],
-        total: 25,
+        hasMore: false,
         page: 2,
         pageSize: 24
       };
@@ -1453,7 +1453,7 @@ test("GET /api/v1/public/shop loads media evidence only for the returned page an
         name: "Lampu Uji",
         trackingCode: "TRACK25"
       }],
-      total: 25,
+      hasMore: false,
       page: 2,
       pageSize: 24
     });

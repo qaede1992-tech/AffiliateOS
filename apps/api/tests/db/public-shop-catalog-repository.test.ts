@@ -3,25 +3,24 @@ import test from "node:test";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { createPostgresRepositories } from "../../src/db/repositories.js";
 
-function createCatalogRepository(capture: (query: unknown) => void) {
+function createCatalogRepository(capture: (query: unknown) => void, rowCount = 1) {
   const repositories = createPostgresRepositories({
     execute: async (query: unknown) => {
       capture(query);
       return {
-        rows: [{
-          id: "product-1",
-          reference_number: 42,
+        rows: Array.from({ length: rowCount }, (_, index) => ({
+          id: `product-${index + 1}`,
+          reference_number: 42 + index,
           name: "Lampu Uji",
           category: "Elektronik",
           price_cents: 125000,
           currency: "IDR",
           rating_milli: 4900,
           review_count: 8,
-          tracking_code: "track-1",
+          tracking_code: `track-${index + 1}`,
           image_url: null,
           video_url: null,
-          total: 37
-        }]
+        }))
       };
     }
   } as never);
@@ -29,7 +28,7 @@ function createCatalogRepository(capture: (query: unknown) => void) {
   return repositories.publicShopCatalog;
 }
 
-test("Public Shop SQL filters eligible offers, deduplicates products, counts and bounds the ordered page", async () => {
+test("Public Shop SQL filters eligible offers, deduplicates products and fetches one extra row to detect another page", async () => {
   let captured: unknown;
   const catalog = createCatalogRepository((query) => { captured = query; });
   const page = await catalog.listPage({ query: "lampu", page: 2, pageSize: 24 });
@@ -44,10 +43,10 @@ test("Public Shop SQL filters eligible offers, deduplicates products, counts and
   assert.match(compiled.sql, /ESCAPE E'\\\\'/);
   assert.match(compiled.sql, /t\.status = 'active'/);
   assert.match(compiled.sql, /ORDER BY p\.id, ao\.created_at DESC, ao\.id DESC/);
-  assert.match(compiled.sql, /count\(\*\)::integer AS total/i);
+  assert.doesNotMatch(compiled.sql, /count\(\*\)/i);
   assert.match(compiled.sql, /ORDER BY reference_number ASC NULLS LAST, id ASC LIMIT \$\d+ OFFSET \$\d+/);
   assert.ok(compiled.params.includes("%lampu%"));
-  assert.ok(compiled.params.includes(24));
+  assert.ok(compiled.params.includes(25));
   assert.deepEqual(page, {
     data: [{
       id: "product-1",
@@ -62,10 +61,19 @@ test("Public Shop SQL filters eligible offers, deduplicates products, counts and
       imageUrl: undefined,
       videoUrl: undefined
     }],
-    total: 37,
+    hasMore: false,
     page: 2,
     pageSize: 24
   });
+});
+
+test("Public Shop reports another page from the extra sentinel row without returning it", async () => {
+  const catalog = createCatalogRepository(() => {}, 25);
+  const page = await catalog.listPage({ query: "", page: 1, pageSize: 24 });
+  assert.equal(page.data.length, 24);
+  assert.equal(page.data[0]?.id, "product-1");
+  assert.equal(page.data[23]?.id, "product-24");
+  assert.equal(page.hasMore, true);
 });
 
 test("Public Shop SQL uses an exact reference-number predicate for numeric searches", async () => {
