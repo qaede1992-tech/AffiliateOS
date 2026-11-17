@@ -70,6 +70,34 @@ test("uploads product media without creating content and leaves rights unverifie
   assert.equal(asset.byteSize, png.byteLength);
 });
 
+test("persists declared source provenance while keeping rights unverified", async () => {
+  const { service, calls } = makeHarness();
+  const asset = await service.uploadStream({
+    ...input(),
+    sourcePublisher: "Shopee Affiliate Program",
+    sourceLandingPageUrl: "https://shopee.co.id/product/123",
+    sourceLicense: "Shopee Affiliate Terms",
+    sourceLicenseUrl: "https://example.com/affiliate-terms"
+  });
+  assert.equal(calls.saved.length, 1);
+  assert.equal(asset.sourcePublisher, "Shopee Affiliate Program");
+  assert.equal(asset.sourceLandingPageUrl, "https://shopee.co.id/product/123");
+  assert.equal(asset.sourceLicense, "Shopee Affiliate Terms");
+  assert.equal(asset.sourceLicenseUrl, "https://example.com/affiliate-terms");
+  assert.equal(asset.rightsStatus, "unverified");
+  assert.equal(asset.rightsBasis, null);
+  assert.equal(asset.rightsEvidenceUrl, null);
+});
+
+test("rejects invalid provenance URLs and blank source publishers before storage", async () => {
+  const { service, calls } = makeHarness();
+  await assert.rejects(service.uploadStream({ ...input(), sourceLandingPageUrl: "http://shopee.co.id/item" }), (error: unknown) =>
+    error instanceof ProductMediaUploadError && error.code === "INVALID_SOURCE_METADATA");
+  await assert.rejects(service.uploadStream({ ...input(), sourcePublisher: "   " }), (error: unknown) =>
+    error instanceof ProductMediaUploadError && error.code === "INVALID_SOURCE_METADATA");
+  assert.equal(calls.uploads.length, 0);
+});
+
 test("rejects unknown products before writing storage", async () => {
   const { service, calls } = makeHarness({ productExists: false });
   await assert.rejects(service.uploadStream(input()), (error: unknown) =>
@@ -94,6 +122,26 @@ test("deduplicates identical media for the same product", async () => {
   const { service, calls } = makeHarness({ prior });
   const result = await service.uploadStream(input());
   assert.equal(result.id, prior.id);
+  assert.equal(calls.uploads.length, 0);
+});
+
+test("does not silently accept duplicate media with conflicting source provenance", async () => {
+  const prior: ProductMediaAsset = {
+    id: "asset-id", productId, kind: "image", bucket: "affiliate-media", objectKey: "products/existing.png",
+    mimeType: "image/png", byteSize: png.byteLength, sha256: "hash", sourceUrl: "user-upload://prior",
+    sourcePublisher: "Earlier publisher", sourceLandingPageUrl: "https://example.com/old",
+    sourceLicense: "Earlier license", sourceLicenseUrl: "https://example.com/old-license",
+    rightsStatus: "unverified", rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null,
+    createdAt: new Date().toISOString()
+  };
+  const { service, calls } = makeHarness({ prior });
+  await assert.rejects(
+    service.uploadStream({
+      ...input(), sourcePublisher: "New publisher", sourceLandingPageUrl: "https://example.com/new",
+      sourceLicense: "New license", sourceLicenseUrl: "https://example.com/new-license"
+    }),
+    (error: unknown) => error instanceof ProductMediaUploadError && error.code === "INVALID_SOURCE_METADATA"
+  );
   assert.equal(calls.uploads.length, 0);
 });
 

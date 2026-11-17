@@ -174,7 +174,11 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
             mimeType: declaredMimeType.trim().toLowerCase(),
             body,
             contentLength,
-            signal: abortController.signal
+            signal: abortController.signal,
+            ...(typeof request.headers["x-media-source-publisher"] === "string" ? { sourcePublisher: request.headers["x-media-source-publisher"] } : {}),
+            ...(typeof request.headers["x-media-source-landing-page-url"] === "string" ? { sourceLandingPageUrl: request.headers["x-media-source-landing-page-url"] } : {}),
+            ...(typeof request.headers["x-media-source-license"] === "string" ? { sourceLicense: request.headers["x-media-source-license"] } : {}),
+            ...(typeof request.headers["x-media-source-license-url"] === "string" ? { sourceLicenseUrl: request.headers["x-media-source-license-url"] } : {})
           });
           auditSecurityEvent(request.log, request, "product_media_uploaded", {
             productId,
@@ -194,6 +198,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
             }
             if (error.code === "UNSUPPORTED_MEDIA_TYPE") {
               return reply.status(415).send({ error: "UNSUPPORTED_MEDIA_TYPE", message: "The declared product media type is not supported." });
+            }
+            if (error.code === "INVALID_SOURCE_METADATA") {
+              return reply.status(400).send({ error: "INVALID_SOURCE_METADATA", message: "Media source metadata must contain valid publisher text and credential-free HTTPS URLs." });
             }
             return reply.status(400).send({ error: "INVALID_PRODUCT_MEDIA_UPLOAD", message: "The product media upload failed validation." });
           }
