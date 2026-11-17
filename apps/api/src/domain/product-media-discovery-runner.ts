@@ -454,6 +454,7 @@ export class ProductMediaDiscoveryRunner {
             }
           }
         } else if (hasPendingCandidate) {
+          skipped.push({ url: product.productUrl, reason: "catalog_discovery_skipped_pending_review" });
           console.info(JSON.stringify({
             event: "product_media_catalog_search_skipped_pending_review",
             productId: product.id
