@@ -68,6 +68,27 @@ export interface ProductMediaRightsAudit {
   createdAt: string;
 }
 
+
+export interface ProductMediaIdentityReviewCommand {
+  status: "verified" | "rejected";
+  actorId: string;
+  actorRole: "admin";
+  reason: string;
+}
+
+export interface ProductMediaIdentityAudit {
+  id: string;
+  assetId: string;
+  productId: string;
+  actorId: string;
+  actorRole: string;
+  action: "verify" | "reject";
+  reason: string;
+  previousIdentityStatus: string;
+  newIdentityStatus: string;
+  createdAt: string;
+}
+
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
@@ -90,6 +111,9 @@ export interface ProductMediaAssetRepository {
    */
   reviewRights?(assetId: string, productId: string, review: ProductMediaRightsReviewCommand): Promise<ProductMediaAsset | undefined>;
   listRightsAudits?(productId: string, assetId: string): Promise<ProductMediaRightsAudit[]>;
+  /** Atomically persists an identity decision and its immutable audit record. */
+  reviewIdentity?(assetId: string, productId: string, review: ProductMediaIdentityReviewCommand): Promise<ProductMediaAsset | undefined>;
+  listIdentityAudits?(productId: string, assetId: string): Promise<ProductMediaIdentityAudit[]>;
 }
 
 export interface ProductMediaIngestionPolicy {
