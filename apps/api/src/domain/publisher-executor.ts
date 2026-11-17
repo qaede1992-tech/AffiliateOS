@@ -82,7 +82,7 @@ export class PublisherExecutor {
           createdAt: timestamp, updatedAt: timestamp
         };
         reservation = await this.dispatchReservations.reserve(proposed);
-        if (reservation.id !== proposed.id || reservation.snapshotHash !== snapshotHash || reservation.idempotencyKey !== idempotencyKey) {
+        if (reservation.snapshotHash !== snapshotHash || reservation.idempotencyKey !== idempotencyKey) {
           throw new Error("An existing Instagram dispatch reservation prevents a new provider request.");
         }
         const dispatching = await this.dispatchReservations.transition(reservation.id, ["reserved"], {
