@@ -125,6 +125,26 @@ test("deduplicates identical media for the same product", async () => {
   assert.equal(calls.uploads.length, 0);
 });
 
+test("does not silently accept duplicate media with conflicting source provenance", async () => {
+  const prior: ProductMediaAsset = {
+    id: "asset-id", productId, kind: "image", bucket: "affiliate-media", objectKey: "products/existing.png",
+    mimeType: "image/png", byteSize: png.byteLength, sha256: "hash", sourceUrl: "user-upload://prior",
+    sourcePublisher: "Earlier publisher", sourceLandingPageUrl: "https://example.com/old",
+    sourceLicense: "Earlier license", sourceLicenseUrl: "https://example.com/old-license",
+    rightsStatus: "unverified", rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null,
+    createdAt: new Date().toISOString()
+  };
+  const { service, calls } = makeHarness({ prior });
+  await assert.rejects(
+    service.uploadStream({
+      ...input(), sourcePublisher: "New publisher", sourceLandingPageUrl: "https://example.com/new",
+      sourceLicense: "New license", sourceLicenseUrl: "https://example.com/new-license"
+    }),
+    (error: unknown) => error instanceof ProductMediaUploadError && error.code === "INVALID_SOURCE_METADATA"
+  );
+  assert.equal(calls.uploads.length, 0);
+});
+
 test("removes stored object when asset metadata persistence fails", async () => {
   const { service, calls } = makeHarness({ saveError: new Error("database unavailable") });
   await assert.rejects(service.uploadStream(input()), /database unavailable/);
