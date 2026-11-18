@@ -66,7 +66,7 @@ export class PublisherExecutor {
       if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
         if (!jobId || !this.dispatchReservations) throw new Error("Instagram publication requires a durable dispatch reservation repository and job ID.");
         const configuredMediaAssets = await Promise.all((content.mediaAssetIds ?? []).map((id) => this.mediaAssets?.findById(id)));
-        if (configuredMediaAssets.length === 0 || configuredMediaAssets.some((asset) => !asset)) throw new Error("Instagram reservation requires all configured source media records.");
+        if (configuredMediaAssets.some((asset) => !asset)) throw new Error("Instagram reservation requires all configured source media records.");
         const rawMediaAssets = configuredMediaAssets as NonNullable<(typeof configuredMediaAssets)[number]>[];
         const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
         const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
@@ -75,7 +75,7 @@ export class PublisherExecutor {
           content: { id: content.id, platform: content.platform, contentType: content.contentType, title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null, cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [], productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null },
           account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
           mediaAssetIds: mediaAssets.map((asset) => asset.id).sort(),
-          mediaIntegrity
+          ...(rawMediaAssets.length > 0 ? { mediaIntegrity } : {})
         };
         const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
         const timestamp = now.toISOString();
