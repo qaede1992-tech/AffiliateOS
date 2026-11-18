@@ -1,3 +1,4 @@
+import type { Content } from "@affiliateos/shared";
 import type { SocialPublisher } from "./distribution-engine.js";
 import { InstagramContentPublisher } from "./instagram-content-publisher.js";
 import { InstagramGraphPublishingClient } from "./instagram-graph-publishing-client.js";
@@ -5,6 +6,7 @@ import { TikTokContentPublisher } from "./tiktok-content-publisher.js";
 import { TikTokContentPostingClient } from "./tiktok-content-posting-client.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 import type { MediaAsset } from "./media-asset.js";
+import type { PublicationOperation } from "./publication-operation.js";
 
 export type OfficialSocialPublisherRuntimeConfiguration = {
   credentialResolver?: SocialCredentialResolver;
@@ -16,6 +18,7 @@ export type OfficialSocialPublisherRuntimeConfiguration = {
     fetchImpl?: typeof fetch;
     graphBaseUrl?: string;
     mediaUrlResolver?: (asset: MediaAsset) => Promise<string>;
+    assertPublicationRights?: (input: { content: Content; operation: PublicationOperation }) => Promise<void>;
   };
 };
 
@@ -29,8 +32,7 @@ export function createOfficialSocialPublishers(
 ): SocialPublisher[] {
   const resolver = configuration.credentialResolver;
   if (!resolver) return [];
-
-  return [
+  const publishers: SocialPublisher[] = [
     new TikTokContentPublisher(
       new TikTokContentPostingClient({
         accessTokenResolver: async (account) => {
@@ -40,19 +42,29 @@ export function createOfficialSocialPublishers(
         fetchImpl: configuration.tiktok?.fetchImpl,
         baseUrl: configuration.tiktok?.baseUrl
       })
-    ),
-    new InstagramContentPublisher(
-      new InstagramGraphPublishingClient({
-        accessTokenResolver: async (account) => {
-          const value = await resolver.resolve(account.credentialReference ?? "");
-          return readAccessToken(value, "Instagram");
-        },
-        fetchImpl: configuration.instagram?.fetchImpl,
-        graphBaseUrl: configuration.instagram?.graphBaseUrl,
-        mediaUrlResolver: configuration.instagram?.mediaUrlResolver
-      })
     )
   ];
+
+  // Keep TikTok independent: missing Instagram rights revalidation disables
+  // only the Instagram adapter, never the already-configured TikTok flow.
+  if (configuration.instagram?.assertPublicationRights) {
+    publishers.push(
+      new InstagramContentPublisher(
+        new InstagramGraphPublishingClient({
+          accessTokenResolver: async (account) => {
+            const value = await resolver.resolve(account.credentialReference ?? "");
+            return readAccessToken(value, "Instagram");
+          },
+          fetchImpl: configuration.instagram.fetchImpl,
+          graphBaseUrl: configuration.instagram.graphBaseUrl,
+          mediaUrlResolver: configuration.instagram.mediaUrlResolver,
+          assertPublicationRights: configuration.instagram.assertPublicationRights
+        })
+      )
+    );
+  }
+
+  return publishers;
 }
 
 function readAccessToken(value: unknown, provider: string): string {
