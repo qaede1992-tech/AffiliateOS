@@ -415,6 +415,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           shopName: row.shopName,
           salesSourceText: row.soldCount.sourceText,
           salesQuality: row.soldCount.quality,
+          ...(row.brand || row.model || row.sku || row.variant ? { productIdentity: { ...(row.brand ? { brand: row.brand } : {}), ...(row.model ? { model: row.model } : {}), ...(row.sku ? { sku: row.sku } : {}), ...(row.variant ? { variant: row.variant } : {}) } } : {}),
           dataQuality: {
             soldCount: row.soldCount.quality,
             reviewCount: row.reviewCount.quality,
