@@ -117,6 +117,18 @@ export class PublisherExecutor {
         });
         throw new Error("Instagram publisher returned published without an external post ID; automatic redispatch is blocked.");
       }
+      if (reservation && this.dispatchReservations && result.status === "accepted" && !result.providerOperationId?.trim()) {
+        // An accepted response without a provider operation ID cannot be polled
+        // or reconciled. The provider may already have created the container,
+        // so preserve the dispatch fence instead of storing an untrackable
+        // accepted operation or allowing a later worker to redispatch.
+        await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+          ...reservation, state: "uncertain",
+          lastError: "Instagram publisher returned accepted without a provider operation ID.",
+          updatedAt: new Date().toISOString()
+        });
+        throw new Error("Instagram publisher returned accepted without a provider operation ID; automatic redispatch is blocked.");
+      }
       if (reservation && this.dispatchReservations) {
         const persisted = await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
           ...reservation, state: result.status === "accepted" ? "accepted" : "published",
