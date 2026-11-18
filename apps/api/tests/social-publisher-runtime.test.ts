@@ -11,9 +11,17 @@ test("official social publishers stay disabled without a credential resolver", (
   assert.deepEqual(createOfficialSocialPublishers({}), []);
 });
 
-test("official social publishers are composed when a credential resolver is configured", () => {
+test("missing Instagram rights revalidation disables only Instagram and preserves TikTok", () => {
   const resolver = new InMemorySocialCredentialResolver();
   const publishers = createOfficialSocialPublishers({ credentialResolver: resolver });
+  assert.equal(publishers.length, 1);
+  assert.equal(publishers[0]?.supports("tiktok"), true);
+  assert.equal(publishers.some((publisher) => publisher.supports("instagram")), false);
+});
+
+test("official social publishers are composed when a credential resolver is configured", () => {
+  const resolver = new InMemorySocialCredentialResolver();
+  const publishers = createOfficialSocialPublishers({ credentialResolver: resolver, instagram: { assertPublicationRights: async () => undefined } });
   assert.equal(publishers.length, 2);
   assert.equal(publishers.filter((publisher) => publisher.supports("tiktok")).length, 1);
   assert.equal(publishers.filter((publisher) => publisher.supports("instagram")).length, 1);
@@ -22,7 +30,7 @@ test("official social publishers are composed when a credential resolver is conf
 test("runtime credential values may be opaque access-token records without exposing references", async () => {
   const resolver = new InMemorySocialCredentialResolver();
   resolver.set("vault://social/tiktok/account-1", { accessToken: "runtime-only-token" });
-  const publishers = createOfficialSocialPublishers({ credentialResolver: resolver });
+  const publishers = createOfficialSocialPublishers({ credentialResolver: resolver, instagram: { assertPublicationRights: async () => undefined } });
   const tiktok = publishers.find((publisher) => publisher.supports("tiktok"));
   assert.ok(tiktok);
   assert.equal(tiktok.provider, "tiktok-content-posting");
@@ -114,6 +122,7 @@ test("Instagram resolves Supabase object-storage media to signed HTTPS and recor
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "test-token",
+    assertPublicationRights: async () => undefined,
     mediaUrlResolver: async () => "https://storage.example/signed/photo.jpg?token=temporary",
     graphBaseUrl: "https://graph.instagram.com/v25.0",
     fetchImpl: async (input, init) => {
