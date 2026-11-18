@@ -458,7 +458,7 @@ export class ProductMediaDiscoveryRunner {
               }));
             }
           }
-        } else if (this.discoveryAttempts && !claimed) {
+        } else if (this.discoveryAttempts && !claimed && !hasPendingCandidate && !candidateLookupFailed) {
           console.info(JSON.stringify({ event: "product_media_catalog_search_skipped_cooldown", productId: product.id }));
         }
       }
