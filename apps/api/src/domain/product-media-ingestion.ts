@@ -195,6 +195,19 @@ export class ProductMediaIngestionService {
     );
     for (const candidate of orderedCandidates) {
       try {
+        // Provider candidate IDs are immutable provenance keys. Reuse a previously
+        // ingested asset before downloading the same bytes again.
+        if (candidate.provenance && this.assets.findBySourceCandidateId) {
+          const existingCandidateAsset = await this.assets.findBySourceCandidateId(candidate.provenance.candidateId);
+          if (existingCandidateAsset) {
+            if (existingCandidateAsset.productId !== input.productId) {
+              skipped.push({ url: candidate.url, reason: "candidate_asset_product_mismatch" });
+              continue;
+            }
+            stored.push(existingCandidateAsset);
+            continue;
+          }
+        }
         const limit = candidate.kind === "video" ? this.policy.maxVideoBytes : this.policy.maxImageBytes;
         const response = await this.fetcher(candidate.url, {
           maxBytes: limit,
