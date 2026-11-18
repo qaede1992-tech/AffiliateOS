@@ -1,8 +1,8 @@
 FROM node:24-alpine AS build
 WORKDIR /app
-# blitz.cloud Free builds do not expose Docker build arguments; production CI
-# overrides this public fallback through the release workflow.
-ARG VITE_API_URL=https://affiliateos.affiliateos.blitz.cloud
+# Staging builds use the canonical Staging API hostname rather than the legacy
+# .blitz.cloud alias, which fails CORS preflight.
+ARG VITE_API_URL=https://affiliateos-staging-mainline.affiliateos.prod.page
 RUN test -n "$VITE_API_URL"
 ENV VITE_API_URL=$VITE_API_URL
 COPY package.json package-lock.json ./
