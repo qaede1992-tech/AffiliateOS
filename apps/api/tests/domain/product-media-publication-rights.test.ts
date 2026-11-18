@@ -93,17 +93,32 @@ test("blocks an external URL when it is registered as unverified product media",
   );
 });
 
-test("preserves existing externally hosted media while applying rights checks only to product-scoped objects", async () => {
+test("blocks unregistered external media on product-linked promotional content", async () => {
   const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/legacy-video.mp4" };
-  await assert.doesNotReject(assertProductMediaRightsForPublication([external], [productId], repository()));
+  await assert.rejects(
+    assertProductMediaRightsForPublication([external], [productId], repository()),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
 });
 
-test("preserves legacy content-scoped uploads for the existing publisher resolver", async () => {
+test("blocks content-scoped uploads on product-linked promotional content", async () => {
   const contentOwned = { ...media, reference: "affiliate-media/content/11111111-1111-4111-8111-111111111111/video.mp4" };
-  await assert.doesNotReject(assertProductMediaRightsForPublication([contentOwned], [productId], repository()));
+  await assert.rejects(
+    assertProductMediaRightsForPublication([contentOwned], [productId], repository()),
+    /cannot publish unverified content-scoped media/
+  );
 });
 
-test("does not mistake non-product object namespaces for product-media assets", async () => {
+test("blocks unknown storage namespaces on product-linked promotional content", async () => {
   const legacy = { ...media, reference: "affiliate-media/legacy/video.mp4" };
-  await assert.doesNotReject(assertProductMediaRightsForPublication([legacy], [productId], repository()));
+  await assert.rejects(
+    assertProductMediaRightsForPublication([legacy], [productId], repository()),
+    /cannot publish unverified content-scoped media/
+  );
+});
+
+test("preserves legacy external and content-scoped media for non-product organic content", async () => {
+  const external = { ...media, source: "url" as const, reference: "https://cdn.example.test/legacy-video.mp4" };
+  const contentOwned = { ...media, reference: "affiliate-media/content/11111111-1111-4111-8111-111111111111/video.mp4" };
+  await assert.doesNotReject(assertProductMediaRightsForPublication([external, contentOwned], []));
 });
