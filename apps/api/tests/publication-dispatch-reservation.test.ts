@@ -419,3 +419,61 @@ test("two publication workers competing for one Instagram job dispatch through t
   assert.equal(savedJob?.externalPostId, "meta-post-concurrent");
   assert.equal(results.flat().filter((result) => result.status === "succeeded").length, 1);
 });
+
+
+test("Instagram accepted response without a provider operation ID is fenced as uncertain", async () => {
+  const { PublisherExecutor } = await import("../src/domain/publisher-executor.js");
+  const repository = new InMemoryPublicationDispatchReservationRepository();
+  const content = {
+    id: "content-accepted-missing-id",
+    status: "scheduled",
+    scheduledAt: "2026-11-15T00:00:00.000Z",
+    platform: "instagram",
+    contentType: "image",
+    mediaAssetIds: [],
+    socialAccountId: "account-accepted-missing-id"
+  };
+  const account = {
+    id: "account-accepted-missing-id",
+    platform: "instagram",
+    status: "active",
+    accountReference: "instagram-account"
+  };
+  const contentService = {
+    get: async () => content,
+    validatePublicationEligibility: async () => undefined,
+    update: async (_id: string, changes: Record<string, unknown>) => ({ ...content, ...changes })
+  };
+  let publishCalls = 0;
+  const publisher = {
+    provider: "instagram-graph",
+    supports: (platform: string) => platform === "instagram",
+    publish: async () => {
+      publishCalls += 1;
+      return { status: "accepted" as const };
+    }
+  };
+  const executor = new PublisherExecutor(
+    contentService as never,
+    { list: async () => [account] } as never,
+    [publisher],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    repository
+  );
+
+  await assert.rejects(
+    executor.execute(content.id, new Date("2026-11-16T00:00:00.000Z"), "job-accepted-missing-id:instagram-graph", undefined, "job-accepted-missing-id"),
+    /accepted without a provider operation ID; automatic redispatch is blocked/
+  );
+
+  const saved = await repository.findByJobProvider("job-accepted-missing-id", "instagram-graph");
+  assert.equal(publishCalls, 1);
+  assert.equal(saved?.state, "uncertain");
+  assert.equal(saved?.providerOperationId, undefined);
+  assert.match(saved?.lastError ?? "", /accepted without a provider operation ID/);
+});
