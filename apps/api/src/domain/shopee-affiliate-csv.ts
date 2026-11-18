@@ -19,6 +19,10 @@ export type ParsedShopeeAffiliateCsvRow = {
   affiliateUrl: string;
   imageUrl?: string;
   videoUrl?: string;
+  brand?: string;
+  model?: string;
+  sku?: string;
+  variant?: string;
 };
 
 export type ShopeeAffiliateCsvParseResult = {
@@ -26,6 +30,7 @@ export type ShopeeAffiliateCsvParseResult = {
   errors: Array<{ row: number; message: string }>;
 };
 
+const IDENTITY_HEADERS = { brand: ["Merek", "Brand", "brand"], model: ["Model", "model"], sku: ["SKU", "sku"], variant: ["Varian", "Variant", "variant"] } as const;
 const REQUIRED_HEADERS = ["ID Produk", "Nama Produk", "Harga", "Penjualan", "Nama Toko", "Komisi hingga", "Komisi", "Link Produk", "Link Komisi Ekstra"] as const;
 
 function parseCsvRecords(input: string): string[][] {
@@ -188,6 +193,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const videoUrl = (record[indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
       const categoryHeaders = ["category", "category_name", "kategori", "kategori_produk"].filter((header) => indexes.has(header));
       const category = categoryHeaders.length === 1 ? (record[indexes.get(categoryHeaders[0]!) ?? -1] ?? "").trim() : "";
+    const identity = Object.fromEntries(Object.entries(identityHeaders).flatMap(([key, matches]) => { const header = matches[0]; const value = header ? (record[indexes.get(header)!] ?? "").trim() : ""; return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
       const ratingText = (record[indexes.get("rating_milli") ?? -1] ?? "").trim();
       const reviewValueText = (record[indexes.get("review_count_value") ?? -1] ?? "").trim();
       const reviewQualityText = (record[indexes.get("review_count_quality") ?? -1] ?? "").trim();
@@ -264,6 +270,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
   if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom wajib tidak ditemukan: ${missing.join(", ")}.` }] };
   const indexes = new Map(headers.map((header, index) => [header, index]));
   const categoryHeaders = ["Kategori", "Kategori Produk", "category", "category_name"].filter((header) => indexes.has(header));
+  const identityHeaders = Object.fromEntries(Object.entries(IDENTITY_HEADERS).map(([key, aliases]) => [key, aliases.filter((header) => indexes.has(header))])) as Record<keyof typeof IDENTITY_HEADERS, string[]>;
+  if (Object.values(identityHeaders).some((matches) => matches.length > 1)) return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom untuk setiap identitas produk (merek/brand, model, SKU, varian)." }] };
   if (categoryHeaders.length > 1) return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom kategori agar sumber data tidak ambigu." }] };
   const ratingHeadersPresent = ["Rating", "Rating Produk", "Penilaian"].filter((header) => indexes.has(header));
   const reviewHeadersPresent = ["Jumlah Ulasan", "Ulasan", "Review Count"].filter((header) => indexes.has(header));
@@ -305,6 +313,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (ratingText && ratingMilli === null) problems.push("Rating harus berupa angka antara 0 dan 5");
     if (reviewText && reviewCount.quality === "missing") problems.push("Jumlah ulasan tidak dapat dibaca");
     if (category.length > 120) problems.push("Kategori maksimal 120 karakter");
+    for (const value of Object.values(identity)) if (value.length > 120) problems.push("Identitas produk maksimal 120 karakter");
     if (commissionAmountRupiah === null && get("Komisi")) problems.push("Komisi tidak dapat dibaca");
     if (commissionRateBps === null && get("Komisi hingga")) problems.push("Persentase komisi tidak dapat dibaca");
     if (priceRupiah !== null && commissionAmountRupiah !== null && commissionAmountRupiah > priceRupiah) problems.push("Komisi tidak boleh melebihi harga produk");
@@ -315,7 +324,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (externalProductId && seenIds.has(externalProductId)) problems.push("ID Produk duplikat dalam file");
     if (externalProductId) seenIds.add(externalProductId);
     if (problems.length > 0) { errors.push({ row: rowNumber, message: problems.join("; ") + "." }); return; }
-    rows.push({ externalProductId, name, shopName: get("Nama Toko"), ...(category ? { category } : {}), priceRupiah: priceRupiah!, soldCount, reviewCount, ...(ratingMilli !== null ? { ratingMilli } : {}), commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl, ...(imageUrl ? { imageUrl } : {}), ...(videoUrl ? { videoUrl } : {}) });
+    rows.push({ externalProductId, name, shopName: get("Nama Toko"), ...(category ? { category } : {}), priceRupiah: priceRupiah!, soldCount, reviewCount, ...(ratingMilli !== null ? { ratingMilli } : {}), commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl, ...(imageUrl ? { imageUrl } : {}), ...(videoUrl ? { videoUrl } : {}), ...identity });
   });
   return { rows, errors };
 }
