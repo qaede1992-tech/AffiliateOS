@@ -65,7 +65,10 @@ export class InstagramGraphPublishingClient implements InstagramContentPublisher
     if (status === "FINISHED") {
       // Re-check rights immediately before Meta publishes the finished container.
       // PUBLISHED containers take the reconciliation-only path below.
-      await this.configuration.assertPublicationRights?.({ content: input.content, operation: input.operation });
+      if (!this.configuration.assertPublicationRights) {
+        throw new Error("Instagram publication rights revalidation is not configured; final publication is blocked.");
+      }
+      await this.configuration.assertPublicationRights({ content: input.content, operation: input.operation });
       const externalPostId = await this.publishContainer(accountId, input.operation.providerOperationId, accessToken);
       return { status: "published", externalPostId };
     }

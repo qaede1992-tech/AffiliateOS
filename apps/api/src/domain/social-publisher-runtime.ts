@@ -32,6 +32,9 @@ export function createOfficialSocialPublishers(
 ): SocialPublisher[] {
   const resolver = configuration.credentialResolver;
   if (!resolver) return [];
+  if (!configuration.instagram?.assertPublicationRights) {
+    throw new Error("Instagram publication rights revalidation is required when official social publishers are enabled.");
+  }
 
   return [
     new TikTokContentPublisher(

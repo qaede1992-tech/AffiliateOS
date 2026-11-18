@@ -35,6 +35,7 @@ test("Instagram image publishing persists its container before media_publish", a
   const calls: string[] = [];
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
+    assertPublicationRights: async () => undefined,
     fetchImpl: async (input, init) => {
       calls.push(String(input));
       if (new URL(String(input)).pathname.endsWith("/me")) return new Response(JSON.stringify({ user_id: "canonical-ig-id", username: "test" }), { status: 200 });
