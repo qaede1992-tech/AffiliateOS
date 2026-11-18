@@ -104,11 +104,54 @@ export class PublicationWorker {
       if (reconciliationEligibleAt(operation) > now.getTime()) continue;
       try {
         const checked = await this.executor.check(operation);
-        const transitionTo = checked.result.status === "processing"
+        let effectiveResult = checked.result;
+        if (this.dispatchReservations && operation.provider === "instagram-graph") {
+          const reservation = await this.dispatchReservations.findByJobProvider(operation.jobId, operation.provider);
+          if (reservation) {
+            if (reservation.state === "published" && reservation.externalPostId) {
+              // A previous worker may have persisted the reservation but crashed
+              // before advancing the publication operation. The reservation is
+              // the durable source of truth and must not be regressed by a stale
+              // provider check.
+              effectiveResult = { status: "published", externalPostId: reservation.externalPostId };
+            } else if (reservation.state === "failed") {
+              effectiveResult = { status: "failed", error: reservation.lastError ?? "Instagram dispatch was marked failed." };
+            } else if (reservation.state === "accepted" || reservation.state === "needs_reconciliation") {
+              if (checked.result.status === "published") {
+                const resolvedAt = now.toISOString();
+                const saved = await this.dispatchReservations.transition(reservation.id, [reservation.state], {
+                  ...reservation, state: "published", externalPostId: checked.result.externalPostId,
+                  resolvedAt, updatedAt: resolvedAt
+                });
+                if (!saved) {
+                  results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "skipped" });
+                  continue;
+                }
+              } else if (checked.result.status === "failed") {
+                const resolvedAt = now.toISOString();
+                const saved = await this.dispatchReservations.transition(reservation.id, [reservation.state], {
+                  ...reservation, state: "failed", lastError: checked.result.error.slice(0, 1000),
+                  resolvedAt, updatedAt: resolvedAt
+                });
+                if (!saved) {
+                  results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "skipped" });
+                  continue;
+                }
+              }
+            } else {
+              // A reservation in a dispatch-fenced or pre-dispatch state cannot
+              // be resolved by an operation check that lacks matching durable
+              // acceptance state. Keep the job pending for explicit recovery.
+              results.push({ jobId: operation.jobId, contentId: operation.contentId, status: "awaiting_confirmation" });
+              continue;
+            }
+          }
+        }
+        const transitionTo = effectiveResult.status === "processing"
           ? { status: "processing" as const }
-          : checked.result.status === "published"
-            ? { status: "published" as const, externalPostId: checked.result.externalPostId }
-            : { status: "failed" as const, error: checked.result.error };
+          : effectiveResult.status === "published"
+            ? { status: "published" as const, externalPostId: effectiveResult.externalPostId }
+            : { status: "failed" as const, error: effectiveResult.error };
         const transitioned = await this.operations.transition(operation.id, transitionTo.status, {
           externalPostId: transitionTo.status === "published" ? transitionTo.externalPostId : undefined,
           error: transitionTo.status === "failed" ? transitionTo.error : undefined
