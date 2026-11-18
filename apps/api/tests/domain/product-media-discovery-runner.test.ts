@@ -146,9 +146,10 @@ test("continues discovering catalog images when an existing video has unverified
     createdAt: "2026-10-30T00:00:00.000Z"
   };
   const assets: ProductMediaAsset[] = [existingVideo];
+  let listByProductCalls = 0;
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
   const repository = {
-    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async listByProduct(id: string) { listByProductCalls += 1; return assets.filter((asset) => asset.productId === id); },
     async findByProductAndHash(id: string, hash: string) { return assets.find((asset) => asset.productId === id && asset.sha256 === hash); },
     async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
   };
@@ -172,6 +173,8 @@ test("continues discovering catalog images when an existing video has unverified
   assert.deepEqual(fetched, ["https://cdn.example.test/catalog-image.png"]);
   assert.equal(result.pageFetched, false);
   assert.equal(result.hasVideo, true);
+  assert.equal(listByProductCalls, 1, "reuse the initial asset snapshot instead of issuing a second database read");
+  assert.equal(result.stored.length, 2, "return both pre-existing and newly ingested media");
   assert.equal(assets.some((asset) => asset.kind === "image"), true);
   assert.equal(assets.find((asset) => asset.kind === "video")?.rightsStatus, "unverified");
 });
