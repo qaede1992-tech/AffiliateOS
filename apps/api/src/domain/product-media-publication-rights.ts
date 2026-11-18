@@ -1,4 +1,5 @@
 import type { MediaAsset } from "./media-asset.js";
+import type { PublicationOperation } from "./publication-operation.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
 
 const VERIFIED_BASES = new Set([
@@ -131,5 +132,22 @@ export async function assertProductMediaRightsForPublication(
     if (matches.length !== 1 || !hasCurrentVerifiedRights(matches[0]!)) {
       throw new Error("Product media rights are missing, ambiguous, unverified, or revoked; publication is blocked.");
     }
+  }
+}
+
+
+/**
+ * An Instagram media container is created from scheduled content before final
+ * publication. If content changes while the container is in flight, block the
+ * final publish because the current media references may no longer describe it.
+ */
+export function assertContentUnchangedSincePublicationOperation(
+  content: Pick<{ updatedAt: string }, "updatedAt">,
+  operation: Pick<PublicationOperation, "createdAt">
+): void {
+  const contentUpdatedAt = Date.parse(content.updatedAt);
+  const operationCreatedAt = Date.parse(operation.createdAt);
+  if (!Number.isFinite(contentUpdatedAt) || !Number.isFinite(operationCreatedAt) || contentUpdatedAt > operationCreatedAt) {
+    throw new Error("Content changed after Instagram media container creation; final publication is blocked.");
   }
 }
