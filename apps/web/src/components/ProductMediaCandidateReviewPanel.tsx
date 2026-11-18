@@ -7,10 +7,14 @@ type AuditMap = Record<string, ProductMediaCandidateReviewAuditView[]>;
 
 export function ProductMediaCandidateReviewPanel() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [panelVisible, setPanelVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [productsCursor, setProductsCursor] = useState<string | null>(null);
   const [productsHaveMore, setProductsHaveMore] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsLoaded, setProductsLoaded] = useState(false);
   const [productId, setProductId] = useState("");
   const [status, setStatus] = useState<CandidateStatus>("pending");
   const [candidates, setCandidates] = useState<ProductMediaCandidateView[]>([]);
@@ -24,24 +28,60 @@ export function ProductMediaCandidateReviewPanel() {
   const sequence = useRef(0);
 
   useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setPanelVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [checkingRole]);
+
+  useEffect(() => {
+    if (!panelVisible) return;
     let active = true;
-    api.me().then(async (user) => {
+    api.me().then((user) => {
       if (!active) return;
-      if (user.role !== "admin") return;
-      setIsAdmin(true);
-      const response = await api.productsPage({ limit: 25 });
-      if (!active) return;
-      setProducts(response.data);
-      setProductsCursor(response.nextCursor);
-      setProductsHaveMore(response.hasMore);
-      setProductId(response.data[0]?.id ?? "");
+      if (user.role === "admin") setIsAdmin(true);
     }).catch((requestError: unknown) => {
       if (active) setError(requestError instanceof Error ? requestError.message : "Hak akses admin tidak dapat diverifikasi.");
     }).finally(() => { if (active) setCheckingRole(false); });
     return () => { active = false; };
-  }, []);
+  }, [panelVisible]);
 
-  const loadMoreProducts = async () => { if (!productsCursor) return; try { const page = await api.productsPage({ cursor: productsCursor, limit: 25 }); setProducts((current) => [...current, ...page.data]); setProductsCursor(page.nextCursor); setProductsHaveMore(page.hasMore); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Produk berikutnya gagal dimuat."); } };
+  const loadProducts = async () => {
+    if (productsLoaded || productsLoading) return;
+    setProductsLoading(true);
+    setError(null);
+    try {
+      const page = await api.productsPage({ limit: 25 });
+      setProducts(page.data);
+      setProductsCursor(page.nextCursor);
+      setProductsHaveMore(page.hasMore);
+      setProductsLoaded(true);
+      setProductId((current) => current || page.data[0]?.id || "");
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : "Daftar produk tidak dapat dimuat.");
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
+  const loadMoreProducts = async () => {
+    if (!productsCursor || productsLoading) return;
+    setProductsLoading(true);
+    try {
+      const page = await api.productsPage({ cursor: productsCursor, limit: 25 });
+      setProducts((current) => [...current, ...page.data]);
+      setProductsCursor(page.nextCursor);
+      setProductsHaveMore(page.hasMore);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Produk berikutnya gagal dimuat.");
+    } finally {
+      setProductsLoading(false);
+    }
+  };
 
   const loadCandidates = async (selectedProductId: string, selectedStatus: CandidateStatus) => {
     const requestId = ++sequence.current;
@@ -85,8 +125,8 @@ export function ProductMediaCandidateReviewPanel() {
   };
 
   useEffect(() => {
-    if (isAdmin && productId) void loadCandidates(productId, status);
-  }, [isAdmin, productId, status]);
+    if (panelVisible && isAdmin && productId) void loadCandidates(productId, status);
+  }, [panelVisible, isAdmin, productId, status]);
 
   const reviewCandidate = async (candidate: ProductMediaCandidateView, decision: "approved" | "rejected") => {
     const reason = reasons[candidate.id]?.trim() ?? "";
@@ -127,11 +167,11 @@ export function ProductMediaCandidateReviewPanel() {
     }
   };
 
-  if (checkingRole) return <section className="panel"><p>Memeriksa akses administrator…</p></section>;
+  if (checkingRole) return <section className="panel" ref={panelRef}><p>Memeriksa akses administrator…</p></section>;
   if (!isAdmin) return null;
 
   return (
-    <section className="panel product-media-candidate-panel">
+    <section className="panel product-media-candidate-panel" ref={panelRef}>
       <div className="panel-heading">
         <div><p className="eyebrow">Product media governance</p><h3>Review kandidat media</h3></div>
         <span>{candidates.length} kandidat</span>
@@ -140,12 +180,13 @@ export function ProductMediaCandidateReviewPanel() {
       <div className="product-media-candidate-toolbar">
         <label>
           Produk
-          <select aria-label="Pilih produk untuk review media" value={productId} onChange={(event) => setProductId(event.target.value)}>
-            <option value="">Pilih produk</option>
+          <select aria-label="Pilih produk untuk review media" value={productId} onFocus={() => void loadProducts()} onChange={(event) => setProductId(event.target.value)} disabled={!productsLoaded && productsLoading}>
+            <option value="">{productsLoaded ? "Pilih produk" : "Muat daftar produk terlebih dahulu"}</option>
             {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
           </select>
         </label>
-        {productsHaveMore && <button type="button" className="secondary-button" onClick={() => void loadMoreProducts()}>Muat 25 produk berikutnya</button>}
+        {!productsLoaded && <button type="button" onClick={() => void loadProducts()} disabled={productsLoading}>{productsLoading ? "Memuat produk…" : "Muat daftar produk"}</button>}
+        {productsHaveMore && <button type="button" className="secondary-button" onClick={() => void loadMoreProducts()} disabled={productsLoading}>{productsLoading ? "Memuat…" : "Muat 25 produk berikutnya"}</button>}
         <div className="product-media-candidate-tabs" role="tablist" aria-label="Status kandidat media">
           <button type="button" role="tab" aria-selected={status === "pending"} className={status === "pending" ? "active" : ""} onClick={() => setStatus("pending")}>Menunggu review</button>
           <button type="button" role="tab" aria-selected={status === "approved"} className={status === "approved" ? "active" : ""} onClick={() => setStatus("approved")}>Disetujui</button>
