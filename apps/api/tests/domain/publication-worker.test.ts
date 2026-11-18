@@ -1,4 +1,6 @@
 import { describe, it } from "node:test";
+import { createHash } from "node:crypto";
+import { InMemoryPublicationDispatchReservationRepository } from "../../src/domain/publication-dispatch-reservation.js";
 import assert from "node:assert/strict";
 import type { Content, Product, SocialAccount } from "@affiliateos/shared";
 import { ContentService } from "../../src/domain/content.js";
@@ -35,8 +37,8 @@ const setup = async (scheduledAt = "2026-09-20T10:00:00.000Z") => {
   return { contentService, socialAccounts, jobs, jobService, content };
 };
 
-const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = [], operationRepository?: import("../../src/domain/publication-operation.js").PublicationOperationRepository) =>
-  new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers), contentService, operationRepository);
+const workerFor = (contentService: ContentService, socialAccounts: InMemorySocialAccountRepository, jobs: InMemoryPublicationJobRepository, jobService: PublicationJobService, publishers: SocialPublisher[] = [], operationRepository?: import("../../src/domain/publication-operation.js").PublicationOperationRepository, dispatchReservations?: InMemoryPublicationDispatchReservationRepository) =>
+  new PublicationWorker(jobs, jobService, new PublisherExecutor(contentService, socialAccounts, publishers, undefined, undefined, undefined, undefined, undefined, undefined, dispatchReservations), contentService, operationRepository, dispatchReservations);
 
 const approval = {
   privacyLevel: "SELF_ONLY",
@@ -279,6 +281,106 @@ describe("PublicationWorker", () => {
     assert.equal((await operations.findByProviderOperation("restart-safe-provider", "restart-safe-operation"))?.status, "published");
   });
 
+  it("resolves an accepted Instagram dispatch reservation before completing a published operation", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const instagramAccount = { ...account, id: "instagram-reconcile-account", platform: "instagram" as const };
+    await socialAccounts.save(instagramAccount);
+    const instagramContent = await contentService.update(content.id, {
+      platform: "instagram", socialAccountId: instagramAccount.id
+    });
+    const job = await jobService.enqueue(instagramContent);
+    await jobService.claim(job.id, new Date("2026-09-20T11:00:00.000Z"));
+    await jobService.awaitConfirmation(job.id, new Date("2026-09-20T11:00:00.000Z"));
+    const reservations = new InMemoryPublicationDispatchReservationRepository();
+    await reservations.reserve({
+      id: "instagram-reservation-reconcile",
+      jobId: job.id,
+      contentId: instagramContent.id,
+      provider: "instagram-graph",
+      state: "accepted",
+      idempotencyKey: job.idempotencyKey,
+      snapshot: { contentId: instagramContent.id },
+      snapshotHash: createHash("sha256").update(instagramContent.id).digest("hex"),
+      providerOperationId: "meta-container-reconcile",
+      createdAt: "2026-09-20T10:00:00.000Z",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+    const operations = new InMemoryPublicationOperationRepository();
+    const operation = await operations.save({
+      id: "instagram-operation-reconcile",
+      contentId: instagramContent.id,
+      jobId: job.id,
+      provider: "instagram-graph",
+      providerOperationId: "meta-container-reconcile",
+      status: "accepted",
+      createdAt: "2026-09-20T10:00:00.000Z",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async () => { throw new Error("reconciliation must not dispatch a new post"); },
+      checkPublication: async () => ({ status: "published", externalPostId: "instagram-post-reconciled" })
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations, reservations);
+    const results = await worker.runOnce(new Date("2026-09-20T11:30:00.000Z"));
+    assert.equal(results[0]?.status, "succeeded");
+    assert.equal((await reservations.findByJobProvider(job.id, "instagram-graph"))?.state, "published");
+    assert.equal((await reservations.findByJobProvider(job.id, "instagram-graph"))?.externalPostId, "instagram-post-reconciled");
+    assert.equal((await operations.findById(operation.id))?.status, "published");
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+  });
+
+  it("marks an accepted Instagram dispatch reservation failed when provider reconciliation proves failure", async () => {
+    const { contentService, socialAccounts, jobs, jobService, content } = await setup();
+    const instagramAccount = { ...account, id: "instagram-failed-account", platform: "instagram" as const };
+    await socialAccounts.save(instagramAccount);
+    const instagramContent = await contentService.update(content.id, {
+      platform: "instagram", socialAccountId: instagramAccount.id
+    });
+    const job = await jobService.enqueue(instagramContent);
+    await jobService.claim(job.id, new Date("2026-09-20T11:00:00.000Z"));
+    await jobService.awaitConfirmation(job.id, new Date("2026-09-20T11:00:00.000Z"));
+    const reservations = new InMemoryPublicationDispatchReservationRepository();
+    await reservations.reserve({
+      id: "instagram-reservation-failed",
+      jobId: job.id,
+      contentId: instagramContent.id,
+      provider: "instagram-graph",
+      state: "accepted",
+      idempotencyKey: job.idempotencyKey,
+      snapshot: { contentId: instagramContent.id },
+      snapshotHash: createHash("sha256").update(instagramContent.id).digest("hex"),
+      providerOperationId: "meta-container-failed",
+      createdAt: "2026-09-20T10:00:00.000Z",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+    const operations = new InMemoryPublicationOperationRepository();
+    const operation = await operations.save({
+      id: "instagram-operation-failed",
+      contentId: instagramContent.id,
+      jobId: job.id,
+      provider: "instagram-graph",
+      providerOperationId: "meta-container-failed",
+      status: "accepted",
+      createdAt: "2026-09-20T10:00:00.000Z",
+      updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async () => { throw new Error("reconciliation must not dispatch a new post"); },
+      checkPublication: async () => ({ status: "failed", error: "Meta rejected the container." })
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], operations, reservations);
+    const results = await worker.runOnce(new Date("2026-09-20T11:30:00.000Z"));
+    assert.equal(results[0]?.status, "failed");
+    assert.equal((await reservations.findByJobProvider(job.id, "instagram-graph"))?.state, "failed");
+    assert.match((await reservations.findByJobProvider(job.id, "instagram-graph"))?.lastError ?? "", /Meta rejected/);
+    assert.equal((await operations.findById(operation.id))?.status, "failed");
+    assert.equal((await jobs.findById(job.id))?.status, "failed");
+  });
+
   it("does not regress a published operation when concurrent reconciliation has a stale failed check", async () => {
     const { contentService, socialAccounts, jobs, jobService, content } = await setup();
     const operations = new InMemoryPublicationOperationRepository();
@@ -430,4 +532,48 @@ describe("PublicationWorker", () => {
     assert.equal(stored?.status, "pending");
     assert.equal(stored?.attemptCount, 0);
   });
+
+  it("recovers an unclaimed Instagram reservation after a crash without redispatching ambiguous states", async () => {
+    const { contentService, socialAccounts, jobs, jobService } = await setup();
+    const instagramAccount: SocialAccount = {
+      id: "instagram-account", platform: "instagram", accountReference: "instagram-ref", status: "active", connection: {},
+      createdAt: "2026-09-20T00:00:00.000Z", updatedAt: "2026-09-20T00:00:00.000Z"
+    };
+    await socialAccounts.save(instagramAccount);
+    const content = await contentService.create({
+      productId: product.id, platform: "instagram", contentType: "affiliate-promotion",
+      status: "scheduled", scheduledAt: "2026-09-20T10:00:00.000Z", socialAccountId: instagramAccount.id
+    });
+    const job = await jobService.enqueue(content);
+    const snapshot = {
+      content: {
+        id: content.id, platform: content.platform, contentType: content.contentType,
+        title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null,
+        cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [],
+        productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null
+      },
+      account: { id: instagramAccount.id, platform: instagramAccount.platform, accountReference: instagramAccount.accountReference },
+      mediaAssetIds: []
+    };
+    const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+    const reservations = new InMemoryPublicationDispatchReservationRepository();
+    await reservations.reserve({
+      id: "crash-window-reservation", jobId: job.id, contentId: content.id, provider: "instagram-graph",
+      state: "reserved", idempotencyKey: job.idempotencyKey, snapshot, snapshotHash,
+      createdAt: "2026-09-20T10:00:00.000Z", updatedAt: "2026-09-20T10:00:00.000Z"
+    });
+    let publishes = 0;
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async () => { publishes += 1; return { status: "published", externalPostId: "instagram-post-recovered" }; }
+    };
+    const worker = workerFor(contentService, socialAccounts, jobs, jobService, [publisher], undefined, reservations);
+    const results = await worker.runOnce(new Date("2026-09-20T11:00:00.000Z"));
+    assert.equal(results[0]?.status, "succeeded");
+    assert.equal(publishes, 1);
+    assert.equal((await reservations.findByJobProvider(job.id, "instagram-graph"))?.state, "published");
+    assert.equal((await jobs.findById(job.id))?.status, "succeeded");
+  });
+
 });
