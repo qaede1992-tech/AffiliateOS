@@ -284,6 +284,19 @@ function validateAffiliateUrl(value: string): void {
 
 function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined, existing?: ProductDiscoverySignals, existingProduct?: Pick<Product, "soldCount" | "reviewCount" | "ratingMilli">): ProductDiscoverySignals | undefined {
   const source = metadata ?? {};
+  const rawIdentity = source.productIdentity && typeof source.productIdentity === "object" && !Array.isArray(source.productIdentity)
+    ? source.productIdentity as Record<string, unknown>
+    : source;
+  const identityValue = (key: "brand" | "model" | "sku" | "variant"): string | undefined => {
+    const value = rawIdentity[key];
+    return typeof value === "string" && value.trim().length > 0 && value.trim().length <= 120 ? value.trim() : undefined;
+  };
+  const productIdentity = {
+    ...(identityValue("brand") ?? existing?.productIdentity?.brand ? { brand: identityValue("brand") ?? existing?.productIdentity?.brand } : {}),
+    ...(identityValue("model") ?? existing?.productIdentity?.model ? { model: identityValue("model") ?? existing?.productIdentity?.model } : {}),
+    ...(identityValue("sku") ?? existing?.productIdentity?.sku ? { sku: identityValue("sku") ?? existing?.productIdentity?.sku } : {}),
+    ...(identityValue("variant") ?? existing?.productIdentity?.variant ? { variant: identityValue("variant") ?? existing?.productIdentity?.variant } : {})
+  };
   const audienceReachScore = numberInRange(source.audienceReachScore, 0, 100) ?? existing?.audienceReachScore;
   const viewCount = nonNegativeInteger(source.viewCount) ?? existing?.viewCount;
   const impressionCount = nonNegativeInteger(source.impressionCount) ?? existing?.impressionCount;
@@ -301,8 +314,9 @@ function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined
     ...(typeof rawQuality.source === "string" ? { source: rawQuality.source } : typeof source.source === "string" ? { source: source.source } : existing?.dataQuality?.source ? { source: existing.dataQuality.source } : {}),
     ...(typeof rawQuality.capturedAt === "string" ? { capturedAt: rawQuality.capturedAt } : existing?.dataQuality?.capturedAt ? { capturedAt: existing.dataQuality.capturedAt } : {})
   };
-  if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined && Object.keys(dataQuality).length === 0) return undefined;
-  return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt, ...(Object.keys(dataQuality).length ? { dataQuality } : {}) };
+  const hasProductIdentity = Object.keys(productIdentity).length > 0;
+  if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined && Object.keys(dataQuality).length === 0 && !hasProductIdentity) return undefined;
+  return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt, ...(Object.keys(dataQuality).length ? { dataQuality } : {}), ...(hasProductIdentity ? { productIdentity } : {}) };
 }
 function numberInRange(value: unknown, min: number, max: number): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : undefined; }
 function nonNegativeInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined; }
