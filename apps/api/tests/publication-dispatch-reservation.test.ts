@@ -450,7 +450,7 @@ test("Instagram accepted response without a provider operation ID is fenced as u
     supports: (platform: string) => platform === "instagram",
     publish: async () => {
       publishCalls += 1;
-      return { status: "accepted" as const };
+      return { status: "accepted" } as never;
     }
   };
   const executor = new PublisherExecutor(
