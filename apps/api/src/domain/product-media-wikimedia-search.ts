@@ -128,6 +128,20 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
 
   const categorySource = identity.category?.trim() ?? "";
   const matchedCategory = categoryQueries.find(({ pattern }) => pattern.test(source) || (categorySource.length > 0 && pattern.test(categorySource)));
+
+  // When the CSV supplies an explicit brand/model/SKU, keep that identifier in
+  // the Commons query. A category-only query can return unrelated products and
+  // discards the strongest identity signal. Append the normalized category to
+  // keep the single provider request focused without increasing egress.
+  const explicitIdentifiers = [identity.brand, identity.model, identity.sku]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .map((part) => part.trim());
+  if (explicitIdentifiers.length > 0) {
+    const terms = [...explicitIdentifiers, identity.variant?.trim(), matchedCategory?.query]
+      .filter((part): part is string => typeof part === "string" && part.length > 0);
+    return [terms.join(" ").slice(0, 200)];
+  }
+
   if (matchedCategory) return [matchedCategory.query];
 
   const stopWords = new Set([
