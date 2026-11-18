@@ -56,6 +56,8 @@ try {
 
   await client.query("BEGIN");
   try {
+    // Migration 0090 is newer than 0060 and is replayed in this scenario.
+    await client.query("DROP TABLE IF EXISTS public.publication_dispatch_reservations");
     await client.query("DROP INDEX IF EXISTS public.campaigns_test_created_idx");
     await client.query("DROP INDEX IF EXISTS public.autonomous_runs_test_created_idx");
     await client.query("ALTER TABLE public.campaigns DROP COLUMN IF EXISTS is_test");
