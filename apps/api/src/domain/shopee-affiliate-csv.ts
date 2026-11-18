@@ -18,6 +18,10 @@ export type ParsedShopeeAffiliateCsvRow = {
   affiliateUrl: string;
   imageUrl?: string;
   videoUrl?: string;
+  brand?: string;
+  model?: string;
+  sku?: string;
+  variant?: string;
 };
 
 export type ShopeeAffiliateCsvParseResult = {
@@ -25,6 +29,8 @@ export type ShopeeAffiliateCsvParseResult = {
   errors: Array<{ row: number; message: string }>;
 };
 
+const IDENTITY_HEADERS = { brand: ["Merek", "Brand", "brand"], model: ["Model", "model"], sku: ["SKU", "sku"], variant: ["Varian", "Variant", "variant"] } as const;
+const PREVIEW_IDENTITY_HEADERS = ["brand", "model", "sku", "variant"] as const;
 const REQUIRED_HEADERS = ["ID Produk", "Nama Produk", "Harga", "Penjualan", "Nama Toko", "Komisi hingga", "Komisi", "Link Produk", "Link Komisi Ekstra"] as const;
 
 function parseCsvRecords(input: string): string[][] {
@@ -160,6 +166,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const missing = previewHeaders.filter((header) => !initialHeaders.includes(header));
     if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom format preview tidak ditemukan: ${missing.join(", ")}.` }] };
     const indexes = new Map(initialHeaders.map((header, index) => [header, index]));
+    if (PREVIEW_IDENTITY_HEADERS.some((header) => indexes.has(header) && initialHeaders.filter((item) => item === header).length > 1)) return { rows: [], errors: [{ row: 1, message: "Header identitas produk duplikat." }] };
     if (indexes.has("review_count_value") !== indexes.has("review_count_quality")) {
       return { rows: [], errors: [{ row: 1, message: "review_count_value dan review_count_quality harus disediakan bersama." }] };
     }
@@ -185,6 +192,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const affiliateUrl = get("affiliate_url");
       const imageUrl = (record[indexes.get("image_url") ?? -1] ?? "").trim();
       const videoUrl = (record[indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
+      const identity = Object.fromEntries(PREVIEW_IDENTITY_HEADERS.flatMap((key) => { const value = (record[indexes.get(key) ?? -1] ?? "").trim(); return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
       const ratingText = (record[indexes.get("rating_milli") ?? -1] ?? "").trim();
       const reviewValueText = (record[indexes.get("review_count_value") ?? -1] ?? "").trim();
       const reviewQualityText = (record[indexes.get("review_count_quality") ?? -1] ?? "").trim();
@@ -219,6 +227,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       if (!isShopeeUrl(affiliateUrl)) rowProblems.push("affiliate_url bukan URL HTTPS Shopee yang valid");
       if (imageUrl && !isHttpsMediaUrl(imageUrl)) rowProblems.push("image_url harus berupa URL HTTPS yang valid tanpa kredensial");
       if (videoUrl && !isHttpsMediaUrl(videoUrl)) rowProblems.push("video_url harus berupa URL HTTPS yang valid tanpa kredensial");
+      for (const value of Object.values(identity)) if (value.length > 120) rowProblems.push("Identitas produk maksimal 120 karakter");
       if (id && seenPreviewIds.has(id)) rowProblems.push("external_product_id duplikat dalam file");
       if (id) seenPreviewIds.add(id);
       if (rowProblems.length > 0) { previewErrors.push({ row: rowNumber, message: rowProblems.join("; ") + "." }); return; }
@@ -241,6 +250,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
         affiliateUrl,
         ...(imageUrl ? { imageUrl } : {}),
         ...(videoUrl ? { videoUrl } : {}),
+        ...identity,
       });
     });
     if (previewErrors.length > 0) return { rows: [], errors: previewErrors };
@@ -257,6 +267,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
   const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
   if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom wajib tidak ditemukan: ${missing.join(", ")}.` }] };
   const indexes = new Map(headers.map((header, index) => [header, index]));
+  const identityHeaders = Object.fromEntries(Object.entries(IDENTITY_HEADERS).map(([key, aliases]) => [key, aliases.filter((header) => indexes.has(header))])) as Record<keyof typeof IDENTITY_HEADERS, string[]>;
+  if (Object.values(identityHeaders).some((matches) => matches.length > 1)) return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom untuk setiap identitas produk (merek/brand, model, SKU, varian)." }] };
   const ratingHeadersPresent = ["Rating", "Rating Produk", "Penilaian"].filter((header) => indexes.has(header));
   const reviewHeadersPresent = ["Jumlah Ulasan", "Ulasan", "Review Count"].filter((header) => indexes.has(header));
   if (ratingHeadersPresent.length > 1 || reviewHeadersPresent.length > 1) {
@@ -282,6 +294,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const affiliateUrl = get("Link Komisi Ekstra");
     const imageUrl = (record[indexes.get("Link Gambar") ?? indexes.get("image_url") ?? -1] ?? "").trim();
     const videoUrl = (record[indexes.get("Link Video") ?? indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
+    const identity = Object.fromEntries(Object.entries(identityHeaders).flatMap(([key, matches]) => { const header = matches[0]; const value = header ? (record[indexes.get(header)!] ?? "").trim() : ""; return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
     const ratingHeader = ["Rating", "Rating Produk", "Penilaian"].find((header) => indexes.has(header));
     const reviewHeader = ["Jumlah Ulasan", "Ulasan", "Review Count"].find((header) => indexes.has(header));
     const ratingText = ratingHeader ? (record[indexes.get(ratingHeader)!] ?? "").trim() : "";
@@ -302,10 +315,11 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (!isShopeeUrl(affiliateUrl)) problems.push("Link Komisi Ekstra bukan URL HTTPS Shopee yang valid");
     if (imageUrl && !isHttpsMediaUrl(imageUrl)) problems.push("Link Gambar harus berupa URL HTTPS yang valid tanpa kredensial");
     if (videoUrl && !isHttpsMediaUrl(videoUrl)) problems.push("Link Video harus berupa URL HTTPS yang valid tanpa kredensial");
+    for (const value of Object.values(identity)) if (value.length > 120) problems.push("Identitas produk maksimal 120 karakter");
     if (externalProductId && seenIds.has(externalProductId)) problems.push("ID Produk duplikat dalam file");
     if (externalProductId) seenIds.add(externalProductId);
     if (problems.length > 0) { errors.push({ row: rowNumber, message: problems.join("; ") + "." }); return; }
-    rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount, reviewCount, ...(ratingMilli !== null ? { ratingMilli } : {}), commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl, ...(imageUrl ? { imageUrl } : {}), ...(videoUrl ? { videoUrl } : {}) });
+    rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount, reviewCount, ...(ratingMilli !== null ? { ratingMilli } : {}), commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl, ...(imageUrl ? { imageUrl } : {}), ...(videoUrl ? { videoUrl } : {}), ...identity });
   });
   return { rows, errors };
 }
