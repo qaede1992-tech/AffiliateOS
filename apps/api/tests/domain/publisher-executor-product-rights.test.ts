@@ -5,6 +5,7 @@ import type { MediaAsset } from "../../src/domain/media-asset.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "../../src/domain/product-media-ingestion.js";
 import { ContentService } from "../../src/domain/content.js";
 import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
+import { InMemoryPublicationDispatchReservationRepository } from "../../src/domain/publication-dispatch-reservation.js";
 import {
   InMemoryMediaAssetRepository,
   InMemoryProductCatalogRepository,
@@ -47,14 +48,14 @@ const productMedia = (rightsStatus: ProductMediaAsset["rightsStatus"]): ProductM
   rightsVerifiedAt: "2026-11-02T00:00:00.000Z", createdAt: "2026-11-02T00:00:00.000Z"
 });
 
-async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configuredMedia: MediaAsset = media, credentialResolver?: SocialCredentialResolver) {
+async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configuredMedia: MediaAsset = media, credentialResolver?: SocialCredentialResolver, platform: "instagram" | "tiktok" = "instagram") {
   const contents = new InMemoryRepository<Content>();
-  await contents.save(content);
+  await contents.save({ ...content, platform });
   const products = new InMemoryProductCatalogRepository();
   await products.save(product);
   const contentService = new ContentService(contents, new InMemoryRepository<any>(), products);
   const socialAccounts = new InMemorySocialAccountRepository();
-  await socialAccounts.save(credentialResolver ? { ...account, credentialReference: "social-credential-1" } : account);
+  await socialAccounts.save({ ...account, platform, ...(credentialResolver ? { credentialReference: "social-credential-1" } : {}) });
   const mediaAssets = new InMemoryMediaAssetRepository();
   await mediaAssets.save(configuredMedia);
   const contentProducts = {
@@ -70,7 +71,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
   let providerCalls = 0;
   let providerCheckCalls = 0;
   const publisher: SocialPublisher = {
-    provider: "test-publisher",
+    provider: platform === "instagram" ? "instagram-graph" : "test-publisher",
     supports: () => true,
     async publish({ mediaAssets: sent }) {
       providerCalls += 1;
@@ -87,23 +88,25 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
     bucketName: "affiliate-media",
     async createSignedUrl() { return "https://project.supabase.co/storage/v1/object/sign/affiliate-media/video.mp4?token=temporary"; }
   };
+  const dispatchReservations = platform === "instagram" ? new InMemoryPublicationDispatchReservationRepository() : undefined;
   const executor = new PublisherExecutor(
     contentService, socialAccounts, [publisher], credentialResolver, mediaAssets, undefined, storage,
-    contentProducts, productMediaAssets
+    contentProducts, productMediaAssets, dispatchReservations
   );
-  return { executor, contentService, getProviderCalls: () => providerCalls, getProviderCheckCalls: () => providerCheckCalls };
+  const execute = (now: Date) => executor.execute(contentId, now, "test-idempotency-key", undefined, platform === "instagram" ? "job-1" : undefined);
+  return { executor, execute, contentService, getProviderCalls: () => providerCalls, getProviderCheckCalls: () => providerCheckCalls };
 }
 
 test("publisher re-reads current product-media rights immediately before provider dispatch", async () => {
   const unverified = await setup("unverified");
   await assert.rejects(
-    unverified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z")),
+    unverified.execute(new Date("2026-11-02T01:00:00.000Z")),
     /rights are missing, ambiguous, unverified, or revoked/
   );
   assert.equal(unverified.getProviderCalls(), 0);
 
   const verified = await setup("verified");
-  const result = await verified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  const result = await verified.execute(new Date("2026-11-02T01:00:00.000Z"));
   assert.equal(result.status, "published");
   assert.equal(verified.getProviderCalls(), 1);
 });
@@ -113,13 +116,13 @@ test("blocks registered product source URLs without current verified rights befo
   const productSourceUrl: MediaAsset = { ...media, source: "url", reference: "https://cdn.example.com/video.mp4" };
   const unverified = await setup("unverified", productSourceUrl);
   await assert.rejects(
-    unverified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z")),
+    unverified.execute(new Date("2026-11-02T01:00:00.000Z")),
     /rights are missing, ambiguous, unverified, or revoked/
   );
   assert.equal(unverified.getProviderCalls(), 0);
 
   const verified = await setup("verified", productSourceUrl);
-  const result = await verified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  const result = await verified.execute(new Date("2026-11-02T01:00:00.000Z"));
   assert.equal(result.status, "published");
   assert.equal(verified.getProviderCalls(), 1);
 });
@@ -130,22 +133,36 @@ test("keeps legacy external URL media publishable without changing the TikTok di
     source: "url",
     reference: "https://cdn.example.com/legacy-tiktok-video.mp4"
   };
-  const fixture = await setup("unverified", legacyUrl);
-  const result = await fixture.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  const fixture = await setup("unverified", legacyUrl, undefined, "tiktok");
+  const result = await fixture.execute(new Date("2026-11-02T01:00:00.000Z"));
   assert.equal(result.status, "published");
   assert.equal(fixture.getProviderCalls(), 1);
 });
 
-test("keeps legacy content-scoped storage media publishable while product media rights remain unverified", async () => {
+test("blocks product-linked content-scoped storage media without a product rights record", async () => {
   const legacyUpload: MediaAsset = {
     ...media,
     source: "object-storage",
     reference: `affiliate-media/content/${contentId}/legacy-tiktok-video.mp4`
   };
   const fixture = await setup("unverified", legacyUpload);
-  const result = await fixture.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
-  assert.equal(result.status, "published");
-  assert.equal(fixture.getProviderCalls(), 1);
+  await assert.rejects(
+    fixture.execute(new Date("2026-11-02T01:00:00.000Z")),
+    /cannot publish unverified content-scoped media/
+  );
+  assert.equal(fixture.getProviderCalls(), 0);
+});
+
+test("blocks unregistered external URLs on product-linked promotional content", async () => {
+  const unregisteredUrl: MediaAsset = {
+    ...media, source: "url", reference: "https://cdn.example.com/unregistered-product-video.mp4"
+  };
+  const fixture = await setup("verified", unregisteredUrl);
+  await assert.rejects(
+    fixture.execute(new Date("2026-11-02T01:00:00.000Z")),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+  assert.equal(fixture.getProviderCalls(), 0);
 });
 
 test("checks product-media rights before resolving social credentials", async () => {
@@ -155,7 +172,7 @@ test("checks product-media rights before resolving social credentials", async ()
   };
   const unverified = await setup("unverified", media, rejectedResolver);
   await assert.rejects(
-    unverified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z")),
+    unverified.execute(new Date("2026-11-02T01:00:00.000Z")),
     /rights are missing, ambiguous, unverified, or revoked/
   );
   assert.equal(rejectedCredentialReads, 0);
@@ -166,7 +183,7 @@ test("checks product-media rights before resolving social credentials", async ()
     async resolve() { verifiedCredentialReads += 1; return { accessToken: "test-only" }; }
   };
   const verified = await setup("verified", media, verifiedResolver);
-  const result = await verified.executor.execute(contentId, new Date("2026-11-02T01:00:00.000Z"));
+  const result = await verified.execute(new Date("2026-11-02T01:00:00.000Z"));
   assert.equal(result.status, "published");
   assert.equal(verifiedCredentialReads, 1);
   assert.equal(verified.getProviderCalls(), 1);
@@ -177,7 +194,7 @@ const reconciliationOperation = {
   id: "operation-1",
   jobId: "job-1",
   contentId,
-  provider: "test-publisher",
+  provider: "instagram-graph",
   providerOperationId: "provider-operation-1",
   status: "accepted" as const,
   createdAt: "2026-11-02T00:00:00.000Z",

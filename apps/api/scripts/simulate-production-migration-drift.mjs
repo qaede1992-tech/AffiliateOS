@@ -35,6 +35,9 @@ try {
     // order before reapplying 0068. Also roll back schema effects of later migrations
     // whose ledger rows are removed, so their DDL can be exercised again safely.
     // Never run this simulation against production.
+    // Migration 0090 adds the durable publication dispatch reservation table.
+    // Its ledger row is removed below, so roll back this additive schema effect too.
+    await client.query("DROP TABLE IF EXISTS public.publication_dispatch_reservations");
     await client.query("DROP TABLE IF EXISTS public.content_products");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS tiktok_approval");
