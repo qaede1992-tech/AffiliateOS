@@ -160,6 +160,7 @@ export interface PublicationMediaIntegritySnapshot {
 export async function createPublicationMediaIntegritySnapshot(mediaAssets: MediaAsset[], linkedProductIds: string[], repository?: ProductMediaAssetRepository): Promise<PublicationMediaIntegritySnapshot> {
   const mediaSnapshot = mediaAssets.map(a => ({id:a.id,contentId:a.contentId,kind:a.kind,source:a.source,reference:a.reference,mimeType:a.mimeType??null,byteSize:a.byteSize??null,durationSeconds:a.durationSeconds??null,widthPx:a.widthPx??null,heightPx:a.heightPx??null,hasAudio:a.hasAudio??null,createdAt:a.createdAt,updatedAt:a.updatedAt})).sort((a,b)=>a.id.localeCompare(b.id));
   const uniqueProductIds=[...new Set(linkedProductIds)];
+  if (mediaAssets.length === 0) return { mediaAssets: mediaSnapshot, productMediaAssets: [] };
   if(uniqueProductIds.length && !repository) throw new Error("Product media repository is unavailable for immutable publication snapshot.");
   const products=repository&&uniqueProductIds.length ? repository.listByProducts ? await repository.listByProducts(uniqueProductIds) : (await Promise.all(uniqueProductIds.map(id=>repository.listByProduct(id)))).flat() : [];
   const matched=new Map<string,ProductMediaAsset>();
