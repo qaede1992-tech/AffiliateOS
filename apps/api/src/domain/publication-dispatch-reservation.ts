@@ -30,8 +30,10 @@ const transitions: Record<PublicationDispatchState, PublicationDispatchState[]> 
   reserved: ["dispatching", "safe_to_retry", "failed"],
   dispatching: ["accepted", "published", "uncertain", "needs_reconciliation", "failed"],
   accepted: ["needs_reconciliation", "published", "failed"],
-  uncertain: ["needs_reconciliation", "accepted", "safe_to_retry"],
-  needs_reconciliation: ["accepted", "published", "failed", "safe_to_retry"],
+  // Ambiguous provider outcomes must never become retryable without a separate,
+  // auditable proof that the provider did not publish the content.
+  uncertain: ["needs_reconciliation", "accepted"],
+  needs_reconciliation: ["accepted", "published", "failed"],
   safe_to_retry: ["reserved", "failed"],
   published: ["published"],
   failed: ["failed"]

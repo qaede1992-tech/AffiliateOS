@@ -76,6 +76,16 @@ test("dispatch reservation records ambiguous provider outcomes without allowing 
   assert.equal(await repository.transition("reservation-1", ["uncertain"], reservation({ state: "dispatching" })), undefined);
 });
 
+test("ambiguous dispatch outcomes cannot be marked safe to retry without reconciliation proof", async () => {
+  const repository = new InMemoryPublicationDispatchReservationRepository();
+  await repository.reserve(reservation());
+  await repository.transition("reservation-1", ["reserved"], reservation({ state: "dispatching" }));
+  await repository.transition("reservation-1", ["dispatching"], reservation({ state: "uncertain" }));
+  assert.equal(await repository.transition("reservation-1", ["uncertain"], reservation({ state: "safe_to_retry" })), undefined);
+  await repository.transition("reservation-1", ["uncertain"], reservation({ state: "needs_reconciliation" }));
+  assert.equal(await repository.transition("reservation-1", ["needs_reconciliation"], reservation({ state: "safe_to_retry" })), undefined);
+});
+
 test("published dispatch reservation retains external post ID for restart recovery", async () => {
   const repository = new InMemoryPublicationDispatchReservationRepository();
   await repository.reserve(reservation());
