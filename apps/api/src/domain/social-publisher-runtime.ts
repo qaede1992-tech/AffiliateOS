@@ -32,11 +32,7 @@ export function createOfficialSocialPublishers(
 ): SocialPublisher[] {
   const resolver = configuration.credentialResolver;
   if (!resolver) return [];
-  if (!configuration.instagram?.assertPublicationRights) {
-    throw new Error("Instagram publication rights revalidation is required when official social publishers are enabled.");
-  }
-
-  return [
+  const publishers: SocialPublisher[] = [
     new TikTokContentPublisher(
       new TikTokContentPostingClient({
         accessTokenResolver: async (account) => {
@@ -46,20 +42,29 @@ export function createOfficialSocialPublishers(
         fetchImpl: configuration.tiktok?.fetchImpl,
         baseUrl: configuration.tiktok?.baseUrl
       })
-    ),
-    new InstagramContentPublisher(
-      new InstagramGraphPublishingClient({
-        accessTokenResolver: async (account) => {
-          const value = await resolver.resolve(account.credentialReference ?? "");
-          return readAccessToken(value, "Instagram");
-        },
-        fetchImpl: configuration.instagram?.fetchImpl,
-        graphBaseUrl: configuration.instagram?.graphBaseUrl,
-        mediaUrlResolver: configuration.instagram?.mediaUrlResolver,
-        assertPublicationRights: configuration.instagram?.assertPublicationRights
-      })
     )
   ];
+
+  // Keep TikTok independent: missing Instagram rights revalidation disables
+  // only the Instagram adapter, never the already-configured TikTok flow.
+  if (configuration.instagram?.assertPublicationRights) {
+    publishers.push(
+      new InstagramContentPublisher(
+        new InstagramGraphPublishingClient({
+          accessTokenResolver: async (account) => {
+            const value = await resolver.resolve(account.credentialReference ?? "");
+            return readAccessToken(value, "Instagram");
+          },
+          fetchImpl: configuration.instagram.fetchImpl,
+          graphBaseUrl: configuration.instagram.graphBaseUrl,
+          mediaUrlResolver: configuration.instagram.mediaUrlResolver,
+          assertPublicationRights: configuration.instagram.assertPublicationRights
+        })
+      )
+    );
+  }
+
+  return publishers;
 }
 
 function readAccessToken(value: unknown, provider: string): string {

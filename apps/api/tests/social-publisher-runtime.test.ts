@@ -11,9 +11,12 @@ test("official social publishers stay disabled without a credential resolver", (
   assert.deepEqual(createOfficialSocialPublishers({}), []);
 });
 
-test("official social publishers require an Instagram rights revalidation callback", () => {
+test("missing Instagram rights revalidation disables only Instagram and preserves TikTok", () => {
   const resolver = new InMemorySocialCredentialResolver();
-  assert.throws(() => createOfficialSocialPublishers({ credentialResolver: resolver }), /rights revalidation is required/i);
+  const publishers = createOfficialSocialPublishers({ credentialResolver: resolver });
+  assert.equal(publishers.length, 1);
+  assert.equal(publishers[0]?.supports("tiktok"), true);
+  assert.equal(publishers.some((publisher) => publisher.supports("instagram")), false);
 });
 
 test("official social publishers are composed when a credential resolver is configured", () => {
