@@ -8,7 +8,7 @@ import { publisherSupportsContent, type PublicationCheckResult, type SocialPubli
 import type { PublicationOperation } from "./publication-operation.js";
 import type { ContentProductRepository, SocialAccountRepository } from "./repository.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
-import { assertProductMediaRightsForPublication } from "./product-media-publication-rights.js";
+import { assertProductMediaRightsForPublication, createPublicationMediaIntegritySnapshot } from "./product-media-publication-rights.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
 import { resolvePublisherMediaAssets } from "./publisher-media-resolver.js";
@@ -65,14 +65,17 @@ export class PublisherExecutor {
       let reservation: import("./publication-dispatch-reservation.js").PublicationDispatchReservation | undefined;
       if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
         if (!jobId || !this.dispatchReservations) throw new Error("Instagram publication requires a durable dispatch reservation repository and job ID.");
+        const configuredMediaAssets = await Promise.all((content.mediaAssetIds ?? []).map((id) => this.mediaAssets?.findById(id)));
+        if (configuredMediaAssets.length === 0 || configuredMediaAssets.some((asset) => !asset)) throw new Error("Instagram reservation requires all configured source media records.");
+        const rawMediaAssets = configuredMediaAssets as NonNullable<(typeof configuredMediaAssets)[number]>[];
+        const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
+        const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
+        const mediaIntegrity = await createPublicationMediaIntegritySnapshot(rawMediaAssets, linkedProductIds, this.productMediaAssets);
         const snapshot = {
           content: { id: content.id, platform: content.platform, contentType: content.contentType, title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null, cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [], productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null },
           account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
-          // Persist stable asset identities only; resolved private-storage URLs
-          // are short-lived credentials and must never enter durable snapshots.
-          // Bind the reservation to the exact resolved asset identities sent
-          // to the provider, including any product-scoped assets added by the resolver.
-          mediaAssetIds: mediaAssets.map((asset) => asset.id).sort()
+          mediaAssetIds: mediaAssets.map((asset) => asset.id).sort(),
+          mediaIntegrity
         };
         const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
         const timestamp = now.toISOString();

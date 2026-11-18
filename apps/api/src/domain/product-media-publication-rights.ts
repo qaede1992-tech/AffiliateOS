@@ -151,3 +151,31 @@ export function assertContentUnchangedSincePublicationOperation(
     throw new Error("Content changed after Instagram media container creation; final publication is blocked.");
   }
 }
+
+
+export interface PublicationMediaIntegritySnapshot {
+  mediaAssets: Array<{ id:string; contentId:string; kind:string; source:string; reference:string; mimeType:string|null; byteSize:number|null; durationSeconds:number|null; widthPx:number|null; heightPx:number|null; hasAudio:boolean|null; createdAt:string; updatedAt:string }>;
+  productMediaAssets: Array<{ id:string; productId:string; bucket:string; objectKey:string; mimeType:string; byteSize:number; sha256:string; sourceUrl:string; sourcePublisher:string|null; sourceProvider:string|null; sourceCandidateId:string|null }>;
+}
+export async function createPublicationMediaIntegritySnapshot(mediaAssets: MediaAsset[], linkedProductIds: string[], repository?: ProductMediaAssetRepository): Promise<PublicationMediaIntegritySnapshot> {
+  const mediaSnapshot = mediaAssets.map(a => ({id:a.id,contentId:a.contentId,kind:a.kind,source:a.source,reference:a.reference,mimeType:a.mimeType??null,byteSize:a.byteSize??null,durationSeconds:a.durationSeconds??null,widthPx:a.widthPx??null,heightPx:a.heightPx??null,hasAudio:a.hasAudio??null,createdAt:a.createdAt,updatedAt:a.updatedAt})).sort((a,b)=>a.id.localeCompare(b.id));
+  const uniqueProductIds=[...new Set(linkedProductIds)];
+  if(uniqueProductIds.length && !repository) throw new Error("Product media repository is unavailable for immutable publication snapshot.");
+  const products=repository&&uniqueProductIds.length ? repository.listByProducts ? await repository.listByProducts(uniqueProductIds) : (await Promise.all(uniqueProductIds.map(id=>repository.listByProduct(id)))).flat() : [];
+  const matched=new Map<string,ProductMediaAsset>();
+  for(const media of mediaAssets){
+    const separator=media.reference.indexOf("/");
+    const bucket=separator>0?media.reference.slice(0,separator):"";
+    const key=separator>0?media.reference.slice(separator+1):"";
+    const matches=products.filter(a=>media.source==="url"?a.sourceUrl===media.reference:media.source==="object-storage"&&a.bucket===bucket&&a.objectKey===key);
+    if(matches.length>1) throw new Error("Publication media maps to ambiguous product-media records.");
+    if(matches.length===1) matched.set(matches[0]!.id,matches[0]!);
+    if(uniqueProductIds.length&&media.source==="url"&&matches.length!==1) throw new Error("Product-linked external media has no unique persisted product-media identity.");
+    if(uniqueProductIds.length&&media.source==="object-storage"&&key.startsWith("products/")&&matches.length!==1) throw new Error("Product-scoped media has no unique persisted product-media identity.");
+  }
+  const productSnapshot=[...matched.values()].map(a=>({id:a.id,productId:a.productId,bucket:a.bucket,objectKey:a.objectKey,mimeType:a.mimeType,byteSize:a.byteSize,sha256:a.sha256,sourceUrl:a.sourceUrl,sourcePublisher:a.sourcePublisher,sourceProvider:a.sourceProvider??null,sourceCandidateId:a.sourceCandidateId??null})).sort((a,b)=>a.id.localeCompare(b.id));
+  return {mediaAssets:mediaSnapshot,productMediaAssets:productSnapshot};
+}
+export function assertPublicationMediaIntegritySnapshot(expected: unknown,current: PublicationMediaIntegritySnapshot): void {
+  if(!expected||typeof expected!=="object"||JSON.stringify(expected)!==JSON.stringify(current)) throw new Error("Instagram media identity or bytes changed after container creation; final publication is blocked.");
+}

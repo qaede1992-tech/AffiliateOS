@@ -28,7 +28,7 @@ import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
-import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication } from "./domain/product-media-publication-rights.js";
+import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
     ? error.name
@@ -98,10 +98,11 @@ const services = createServices(
         }
         const mediaAssets = configuredAssets as NonNullable<(typeof configuredAssets)[number]>[];
         const linkedProducts = await persistence.repositories.contentProducts.listByContent(content.id);
-        const linkedProductIds = [...new Set([
-          ...linkedProducts.map((item) => item.productId),
-          ...(content.productId ? [content.productId] : [])
-        ])];
+        const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
+        const reservation = await persistence.repositories.publicationDispatchReservations?.findByJobProvider(operation.jobId, operation.provider);
+        if (!reservation || reservation.contentId !== content.id || reservation.state === "failed") throw new Error("Instagram publication reservation is missing or invalid; final publication is blocked.");
+        const currentIntegrity = await createPublicationMediaIntegritySnapshot(mediaAssets, linkedProductIds, persistence.repositories.productMediaAssets);
+        assertPublicationMediaIntegritySnapshot((reservation.snapshot as {mediaIntegrity?:unknown}).mediaIntegrity, currentIntegrity);
         await assertProductMediaRightsForPublication(mediaAssets, linkedProductIds, persistence.repositories.productMediaAssets);
       }
     }
