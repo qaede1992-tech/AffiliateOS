@@ -193,7 +193,6 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const videoUrl = (record[indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
       const categoryHeaders = ["category", "category_name", "kategori", "kategori_produk"].filter((header) => indexes.has(header));
       const category = categoryHeaders.length === 1 ? (record[indexes.get(categoryHeaders[0]!) ?? -1] ?? "").trim() : "";
-    const identity = Object.fromEntries(Object.entries(identityHeaders).flatMap(([key, matches]) => { const header = matches[0]; const value = header ? (record[indexes.get(header)!] ?? "").trim() : ""; return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
       const ratingText = (record[indexes.get("rating_milli") ?? -1] ?? "").trim();
       const reviewValueText = (record[indexes.get("review_count_value") ?? -1] ?? "").trim();
       const reviewQualityText = (record[indexes.get("review_count_quality") ?? -1] ?? "").trim();
@@ -299,6 +298,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const imageUrl = (record[indexes.get("Link Gambar") ?? indexes.get("image_url") ?? -1] ?? "").trim();
     const videoUrl = (record[indexes.get("Link Video") ?? indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
     const category = categoryHeaders.length === 1 ? (record[indexes.get(categoryHeaders[0]!) ?? -1] ?? "").trim() : "";
+    const identity = Object.fromEntries(Object.entries(identityHeaders).flatMap(([key, matches]) => { const header = matches[0]; const value = header ? (record[indexes.get(header)!] ?? "").trim() : ""; return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
     const ratingHeader = ["Rating", "Rating Produk", "Penilaian"].find((header) => indexes.has(header));
     const reviewHeader = ["Jumlah Ulasan", "Ulasan", "Review Count"].find((header) => indexes.has(header));
     const ratingText = ratingHeader ? (record[indexes.get(ratingHeader)!] ?? "").trim() : "";
