@@ -34,6 +34,8 @@ try {
     // rows in this ephemeral test database, so Drizzle can reapply 0067 in timestamp
     // order before reapplying 0068. Also roll back schema effects of later migrations
     // whose ledger rows are removed, so their DDL can be exercised again safely.
+    // Migration 0090 adds the durable publication dispatch reservation table.
+    await client.query("DROP TABLE IF EXISTS public.publication_dispatch_reservations");
     // Never run this simulation against production.
     await client.query("DROP TABLE IF EXISTS public.content_products");
     await client.query("ALTER TABLE public.publication_jobs DROP COLUMN IF EXISTS confirmed_at");
