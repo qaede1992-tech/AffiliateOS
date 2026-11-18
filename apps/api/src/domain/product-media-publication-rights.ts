@@ -182,7 +182,7 @@ const canonicalJson = (value: unknown): string => {
     const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
     return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
   }
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 };
 export function assertPublicationMediaIntegritySnapshot(expected: unknown,current: PublicationMediaIntegritySnapshot): void {
   if(!expected||typeof expected!=="object"||canonicalJson(expected)!==canonicalJson(current)) throw new Error("Instagram media identity or bytes changed after container creation; final publication is blocked.");
