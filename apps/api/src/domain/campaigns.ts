@@ -57,6 +57,25 @@ export class CampaignService {
     const last = items.at(-1);
     return { items, hasMore, nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ id: last.id })).toString("base64url") : null };
   }
+  async listPage(input: { cursor?: string; limit: number }) {
+    let afterId: string | undefined;
+    if (input.cursor) {
+      try {
+        const decoded = Buffer.from(input.cursor, "base64url").toString("utf8");
+        if (Buffer.from(decoded).toString("base64url") !== input.cursor) throw new Error("Invalid cursor encoding");
+        const parsed = JSON.parse(decoded) as { id?: unknown };
+        if (typeof parsed.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.id)) throw new Error("Invalid cursor payload");
+        afterId = parsed.id;
+      } catch { throw new DomainError("INVALID_CAMPAIGN_COLLECTION_CURSOR", "Cursor pagination value is invalid.", 400); }
+    }
+    const rows = this.campaigns.listPage
+      ? await this.campaigns.listPage({ ...(afterId ? { afterId } : {}), limit: input.limit + 1 })
+      : (await this.campaigns.list()).filter((campaign) => !afterId || campaign.id > afterId).sort((a, b) => a.id.localeCompare(b.id)).slice(0, input.limit + 1);
+    const hasMore = rows.length > input.limit;
+    const items = rows.slice(0, input.limit);
+    const last = items.at(-1);
+    return { items, hasMore, nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ id: last.id })).toString("base64url") : null };
+  }
   async get(id: string) { const campaign = await this.campaigns.findById(id); if (!campaign) throw new DomainError("CAMPAIGN_NOT_FOUND", "The campaign does not exist.", 404); return campaign; }
   async create(input: CreateCampaignRequest) {
     validateCampaignDates(input.startAt, input.endAt);
