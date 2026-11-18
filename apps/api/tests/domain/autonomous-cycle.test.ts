@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { AutonomousCycleService, type AutonomousCandidateProvider } from "../../src/domain/autonomous-cycle.js";
+import { AutonomousCycleService, getMediaUnavailableReasonCode, type AutonomousCandidateProvider } from "../../src/domain/autonomous-cycle.js";
 import type { AutonomousCycleLock } from "../../src/domain/autonomous-cycle-lock.js";
 import type { AutonomousExecutionService } from "../../src/domain/autonomous-execution.js";
 
@@ -845,4 +845,15 @@ describe("autonomous cycle", () => {
     assert.equal(discoveryCalls, 0);
   });
 
+});
+
+
+describe("media unavailable reason code", () => {
+  it("reports rights-unverified only when a readiness snapshot confirms zero publishable media", () => {
+    assert.equal(getMediaUnavailableReasonCode(0, true), "media_unavailable_rights_unverified");
+    assert.equal(getMediaUnavailableReasonCode(1, true), undefined);
+    assert.equal(getMediaUnavailableReasonCode(0, false), undefined);
+    assert.equal(getMediaUnavailableReasonCode(-1, true), undefined);
+    assert.equal(getMediaUnavailableReasonCode(0.5, true), undefined);
+  });
 });
