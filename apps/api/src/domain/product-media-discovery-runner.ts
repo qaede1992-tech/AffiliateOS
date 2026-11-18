@@ -261,6 +261,7 @@ export class ProductMediaDiscoveryRunner {
       if (this.catalogCandidates) {
         const identity = {
           name: product.name,
+          ...(product.category?.trim() ? { category: product.category } : {}),
           ...(product.discoverySignals?.productIdentity?.brand ? { brand: product.discoverySignals.productIdentity.brand } : {}),
           ...(product.discoverySignals?.productIdentity?.model ? { model: product.discoverySignals.productIdentity.model } : {}),
           ...(product.discoverySignals?.productIdentity?.sku ? { sku: product.discoverySignals.productIdentity.sku } : {}),
