@@ -292,7 +292,7 @@ describe("PublicationWorker", () => {
     await jobService.claim(job.id, new Date("2026-09-20T11:00:00.000Z"));
     await jobService.awaitConfirmation(job.id, new Date("2026-09-20T11:00:00.000Z"));
     const reservations = new InMemoryPublicationDispatchReservationRepository();
-    const reservation = await reservations.reserve({
+    await reservations.reserve({
       id: "instagram-reservation-reconcile",
       jobId: job.id,
       contentId: instagramContent.id,
