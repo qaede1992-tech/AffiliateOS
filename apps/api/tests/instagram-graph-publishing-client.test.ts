@@ -115,6 +115,7 @@ test("Instagram video publishing waits for a finished container before media_pub
   let status = "IN_PROGRESS";
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "secret-token",
+    assertPublicationRights: async () => undefined,
     fetchImpl: async (input, init) => {
       const url = new URL(String(input));
       calls.push(url.toString());

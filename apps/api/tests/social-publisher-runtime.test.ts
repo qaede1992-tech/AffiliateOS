@@ -27,7 +27,7 @@ test("official social publishers are composed when a credential resolver is conf
 test("runtime credential values may be opaque access-token records without exposing references", async () => {
   const resolver = new InMemorySocialCredentialResolver();
   resolver.set("vault://social/tiktok/account-1", { accessToken: "runtime-only-token" });
-  const publishers = createOfficialSocialPublishers({ credentialResolver: resolver });
+  const publishers = createOfficialSocialPublishers({ credentialResolver: resolver, instagram: { assertPublicationRights: async () => undefined } });
   const tiktok = publishers.find((publisher) => publisher.supports("tiktok"));
   assert.ok(tiktok);
   assert.equal(tiktok.provider, "tiktok-content-posting");
@@ -119,6 +119,7 @@ test("Instagram resolves Supabase object-storage media to signed HTTPS and recor
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const client = new InstagramGraphPublishingClient({
     accessTokenResolver: async () => "test-token",
+    assertPublicationRights: async () => undefined,
     mediaUrlResolver: async () => "https://storage.example/signed/photo.jpg?token=temporary",
     graphBaseUrl: "https://graph.instagram.com/v25.0",
     fetchImpl: async (input, init) => {
