@@ -122,6 +122,21 @@ test("rejects non-image files returned from the Commons file namespace", async (
 });
 
 
+test("keeps explicit product identifiers in a single category-focused Commons query", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Hanasui Mattedorable Lipstick",
+    brand: "Hanasui",
+    model: "Mattedorable",
+    category: "Lipstick"
+  }), ["Hanasui Mattedorable cosmetics and skincare"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Duzi Pure Susu Kuda Bubuk",
+    brand: "Duzi Pure",
+    sku: "DP-SKB-200",
+    category: "Susu bubuk"
+  }), ["Duzi Pure DP-SKB-200 milk powder"]);
+});
+
 test("prioritizes lipstick holder intent over generic cosmetics category", () => {
   assert.deepEqual(buildWikimediaCommonsQueries({
     name: "Rak Lipstick / Rak Tempat Lipstick / Rak Meja Lipstick / Rak Lipstick Slot Top006"
