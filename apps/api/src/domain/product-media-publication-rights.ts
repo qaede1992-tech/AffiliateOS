@@ -176,6 +176,14 @@ export async function createPublicationMediaIntegritySnapshot(mediaAssets: Media
   const productSnapshot=[...matched.values()].map(a=>({id:a.id,productId:a.productId,bucket:a.bucket,objectKey:a.objectKey,mimeType:a.mimeType,byteSize:a.byteSize,sha256:a.sha256,sourceUrl:a.sourceUrl,sourcePublisher:a.sourcePublisher,sourceProvider:a.sourceProvider??null,sourceCandidateId:a.sourceCandidateId??null})).sort((a,b)=>a.id.localeCompare(b.id));
   return {mediaAssets:mediaSnapshot,productMediaAssets:productSnapshot};
 }
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+};
 export function assertPublicationMediaIntegritySnapshot(expected: unknown,current: PublicationMediaIntegritySnapshot): void {
-  if(!expected||typeof expected!=="object"||JSON.stringify(expected)!==JSON.stringify(current)) throw new Error("Instagram media identity or bytes changed after container creation; final publication is blocked.");
+  if(!expected||typeof expected!=="object"||canonicalJson(expected)!==canonicalJson(current)) throw new Error("Instagram media identity or bytes changed after container creation; final publication is blocked.");
 }
