@@ -168,6 +168,18 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     individualProductLookups += 1;
     return originalSingleLookup(marketplaceId, externalProductId);
   };
+  let productWriteBatches = 0;
+  let offerWriteBatches = 0;
+  const originalProductBatchWrite = products.upsertManyByMarketplaceProduct.bind(products);
+  const originalOfferBatchWrite = affiliateOffers.saveManyById.bind(affiliateOffers);
+  products.upsertManyByMarketplaceProduct = async (entities) => {
+    productWriteBatches += 1;
+    return originalProductBatchWrite(entities);
+  };
+  affiliateOffers.saveManyById = async (entities) => {
+    offerWriteBatches += 1;
+    return originalOfferBatchWrite(entities);
+  };
   const affiliateId = "00000000-0000-4000-8000-000000000091";
   await affiliates.save({
     id: affiliateId,
@@ -218,6 +230,8 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   assert.equal(reimportWithoutMediaColumns.changed, false);
   assert.equal(batchProductLookups, 2);
   assert.equal(individualProductLookups, 0);
+  assert.equal(productWriteBatches, 1, "unchanged reimport must not issue a product upsert");
+  assert.equal(offerWriteBatches, 1, "unchanged reimport must not issue an offer upsert");
   const saved = await products.findByMarketplaceProduct(
     (await connections.findBySlug("shopee-affiliate-feed"))!.id,
     baseItem.externalProductId
