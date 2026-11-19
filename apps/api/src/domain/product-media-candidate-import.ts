@@ -113,6 +113,11 @@ export class ProductMediaCandidateImportService {
       throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The affiliate offer recorded by the latest eligibility evidence no longer has an active, usable link.", 409);
     }
 
+    const mediaUrl = candidate.mediaKind === "video" ? candidate.videoUrl : candidate.imageUrl;
+    if (!mediaUrl || (candidate.mediaKind === "video" ? candidate.imageUrl !== null : candidate.videoUrl !== null)) {
+      throw new ProductMediaCandidateImportError("CANDIDATE_NOT_APPROVED", "The candidate media kind and URL fields are inconsistent.", 409);
+    }
+
     // Idempotency must not bypass current product/selection/offer eligibility.
     const existing = await assets.findBySourceCandidateId?.(candidate.id);
     if (existing) {
@@ -127,7 +132,7 @@ export class ProductMediaCandidateImportService {
       nonMediaEligibilityPassed: true,
       candidates: [{
         kind: candidate.mediaKind,
-        url: candidate.mediaKind === "video" ? candidate.videoUrl! : candidate.imageUrl!,
+        url: mediaUrl,
         source: "catalog",
         provenance: {
           provider: candidate.provider,
