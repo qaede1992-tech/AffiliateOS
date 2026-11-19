@@ -1,4 +1,4 @@
-import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, timestamp, uniqueIndex, uuid, varchar, real } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, index, integer, jsonb, pgTable, primaryKey, timestamp, uniqueIndex, uuid, varchar, real } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 const timestamps = { createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull() };
@@ -159,6 +159,8 @@ export const productMediaCandidates = pgTable("product_media_candidates", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_candidates_product_provider_hash_unique").on(table.productId, table.provider, table.candidateHash),
+  check("product_media_candidates_media_kind_check", sql`((media_kind = 'image' AND image_url IS NOT NULL AND video_url IS NULL) OR (media_kind = 'video' AND image_url IS NULL AND video_url IS NOT NULL))`),
+  check("product_media_candidates_media_kind_allowed_check", sql`media_kind IN ('image', 'video')`),
   index("product_media_candidates_product_kind_review_idx").on(table.productId, table.mediaKind, table.reviewStatus),
   index("product_media_candidates_product_review_idx").on(table.productId, table.reviewStatus, table.createdAt.desc())
 ]);
