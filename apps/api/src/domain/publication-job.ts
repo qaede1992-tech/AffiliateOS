@@ -23,6 +23,7 @@ export interface PublicationJob {
 
 export interface PublicationJobRepository {
   list(): Promise<PublicationJob[]>;
+  listPendingApprovalPage?(input: { after?: { scheduledAt: string; id: EntityId }; limit: number }): Promise<PublicationJob[]>;
   nextWakeAt?(lockTimeoutMs: number): Promise<Date | undefined>;
   listClaimable?(now: Date, lockTimeoutMs: number, limit: number): Promise<PublicationJob[]>;
   findById(id: EntityId): Promise<PublicationJob | undefined>;
@@ -36,6 +37,14 @@ export interface PublicationJobRepository {
 export class InMemoryPublicationJobRepository implements PublicationJobRepository {
   private readonly jobs = new Map<EntityId, PublicationJob>();
   async list() { return [...this.jobs.values()]; }
+  async listPendingApprovalPage(input: { after?: { scheduledAt: string; id: EntityId }; limit: number }) {
+    return [...this.jobs.values()]
+      .filter((job) => job.status === "pending_approval" && (!input.after ||
+        job.scheduledAt < input.after.scheduledAt ||
+        (job.scheduledAt === input.after.scheduledAt && job.id < input.after.id)))
+      .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt) || b.id.localeCompare(a.id))
+      .slice(0, Math.max(0, input.limit));
+  }
   async nextWakeAt(lockTimeoutMs: number) {
     let earliest = Number.POSITIVE_INFINITY;
     for (const job of this.jobs.values()) {
