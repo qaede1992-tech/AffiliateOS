@@ -26,7 +26,7 @@ export interface ProductMediaCandidateImportDependencies {
   ingestion: ProductMediaIngestionService;
   audits: AutonomousDecisionAuditReader;
   preMediaEligibility?: Pick<PreMediaEligibilityRepository, "listLatestByProduct">;
-  listProducts(): Promise<Product[]>;
+  findProductById(productId: string): Promise<Product | undefined>;
   listAffiliateOffers(): Promise<AffiliateOffer[]>;
   now?: () => Date;
   selectionMaxAgeMs?: number;
@@ -81,8 +81,7 @@ export class ProductMediaCandidateImportService {
     }
 
     const now = this.now();
-    const products = await this.dependencies.listProducts();
-    const product = products.find((item) => item.id === productId);
+    const product = await this.dependencies.findProductById(productId);
     if (!product || product.status !== "active") {
       throw new ProductMediaCandidateImportError("PRODUCT_NOT_ELIGIBLE", "The product is no longer active.", 409);
     }
