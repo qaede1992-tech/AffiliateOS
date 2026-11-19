@@ -252,7 +252,7 @@ export class ShopeeAffiliateLinkIntakeService {
       let url: URL;
       try { url = new URL(productUrl); } catch { continue; }
       if (url.protocol !== "https:" || !(url.hostname === "shopee.co.id" || url.hostname.endsWith(".shopee.co.id") || url.hostname === "shopee.com" || url.hostname.endsWith(".shopee.com"))) continue;
-      const match = /\\/product\\/(\\d+)\\/(\\d+)(?:[/?#]|$)/i.exec(url.pathname) ?? /-i\\.(\\d+)\\.(\\d+)(?:[/?#]|$)/i.exec(url.pathname);
+      const match = /\/product\/(\d+)\/(\d+)(?:[/?#]|$)/i.exec(url.pathname) ?? /-i\.(\d+)\.(\d+)(?:[/?#]|$)/i.exec(url.pathname);
       if (match?.[1] && match[2]) identities.set(`${match[1]}:${match[2]}`, { shopId: match[1], itemId: match[2] });
     }
     if (identities.size === 0) return [];
