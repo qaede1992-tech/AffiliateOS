@@ -10,6 +10,7 @@ export interface ShopeeAffiliateLinkIntake {
 export interface ShopeeAffiliateLinkIntakeRepository {
   findByUrlHash(hash: string): Promise<ShopeeAffiliateLinkIntake | undefined>;
   findByProductIdentity(shopId: string, itemId: string): Promise<ShopeeAffiliateLinkIntake | undefined>;
+  findManyByProductIdentities?(identities: Array<{ shopId: string; itemId: string }>): Promise<ShopeeAffiliateLinkIntake[]>;
   findById(id: string): Promise<ShopeeAffiliateLinkIntake | undefined>;
   saveIfAbsent(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
   update(intake: ShopeeAffiliateLinkIntake): Promise<ShopeeAffiliateLinkIntake>;
@@ -242,23 +243,38 @@ export class ShopeeAffiliateLinkIntakeService {
   }
 
   async reconcileVerifiedOffer(productUrl: string) {
-    let url: URL;
-    try { url = new URL(productUrl); } catch { return undefined; }
-    if (url.protocol !== "https:" || !(url.hostname === "shopee.co.id" || url.hostname.endsWith(".shopee.co.id") || url.hostname === "shopee.com" || url.hostname.endsWith(".shopee.com"))) return undefined;
-    const match = /\/product\/(\d+)\/(\d+)(?:[/?#]|$)/i.exec(url.pathname) ?? /-i\.(\d+)\.(\d+)(?:[/?#]|$)/i.exec(url.pathname);
-    if (!match?.[1] || !match[2]) return undefined;
-    const existing = await this.repository.findByProductIdentity(match[1], match[2]);
-    if (!existing) return undefined;
-    // Repeated imports of an already reconciled feed offer must be read-only.
-    if (existing.status === "imported" && existing.sourceMetadata.verifiedOfferSource === "shopee-affiliate-feed") {
-      return existing;
+    return (await this.reconcileVerifiedOffers([productUrl]))[0];
+  }
+
+  async reconcileVerifiedOffers(productUrls: string[]) {
+    const identities = new Map<string, { shopId: string; itemId: string }>();
+    for (const productUrl of productUrls) {
+      let url: URL;
+      try { url = new URL(productUrl); } catch { continue; }
+      if (url.protocol !== "https:" || !(url.hostname === "shopee.co.id" || url.hostname.endsWith(".shopee.co.id") || url.hostname === "shopee.com" || url.hostname.endsWith(".shopee.com"))) continue;
+      const match = /\\/product\\/(\\d+)\\/(\\d+)(?:[/?#]|$)/i.exec(url.pathname) ?? /-i\\.(\\d+)\\.(\\d+)(?:[/?#]|$)/i.exec(url.pathname);
+      if (match?.[1] && match[2]) identities.set(`${match[1]}:${match[2]}`, { shopId: match[1], itemId: match[2] });
     }
-    const updated: ShopeeAffiliateLinkIntake = {
-      ...existing, status: "imported", reason: undefined,
-      sourceMetadata: { ...existing.sourceMetadata, verifiedOfferSource: "shopee-affiliate-feed", offerDataVerifiedAt: new Date().toISOString() },
-      updatedAt: new Date().toISOString()
-    };
-    return this.repository.update(updated);
+    if (identities.size === 0) return [];
+    const pairs = [...identities.values()];
+    const existingRows = this.repository.findManyByProductIdentities
+      ? await this.repository.findManyByProductIdentities(pairs)
+      : (await Promise.all(pairs.map(({ shopId, itemId }) => this.repository.findByProductIdentity(shopId, itemId)))).filter((row): row is ShopeeAffiliateLinkIntake => Boolean(row));
+    const results: ShopeeAffiliateLinkIntake[] = [];
+    for (const existing of existingRows) {
+      if (existing.status === "imported" && existing.sourceMetadata.verifiedOfferSource === "shopee-affiliate-feed") {
+        results.push(existing);
+        continue;
+      }
+      const timestamp = new Date().toISOString();
+      const updated: ShopeeAffiliateLinkIntake = {
+        ...existing, status: "imported", reason: undefined,
+        sourceMetadata: { ...existing.sourceMetadata, verifiedOfferSource: "shopee-affiliate-feed", offerDataVerifiedAt: timestamp },
+        updatedAt: timestamp
+      };
+      results.push(await this.repository.update(updated));
+    }
+    return results;
   }
   get(id: string) { return this.repository.findById(id); }
 }
