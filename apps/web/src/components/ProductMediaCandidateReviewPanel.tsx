@@ -167,7 +167,11 @@ export function ProductMediaCandidateReviewPanel() {
             return (
               <article className="product-media-candidate-card" key={candidate.id}>
                 <div className="product-media-candidate-preview">
-                  <img src={candidate.imageUrl} alt={candidate.title} loading="lazy" referrerPolicy="no-referrer" />
+                  {candidate.mediaKind === "video" && candidate.videoUrl ? (
+                    <video src={candidate.videoUrl} aria-label={candidate.title} controls preload="metadata" />
+                  ) : candidate.imageUrl ? (
+                    <img src={candidate.imageUrl} alt={candidate.title} loading="lazy" referrerPolicy="no-referrer" />
+                  ) : <p>Pratinjau media tidak tersedia.</p>}
                 </div>
                 <div className="product-media-candidate-content">
                   <div className="product-media-candidate-title-row">
