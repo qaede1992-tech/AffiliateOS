@@ -27,7 +27,7 @@ export interface ProductMediaCandidateImportDependencies {
   audits: AutonomousDecisionAuditReader;
   preMediaEligibility?: Pick<PreMediaEligibilityRepository, "listLatestByProduct">;
   findProductById(productId: string): Promise<Product | undefined>;
-  listAffiliateOffers(): Promise<AffiliateOffer[]>;
+  findAffiliateOfferById(offerId: string): Promise<AffiliateOffer | undefined>;
   now?: () => Date;
   selectionMaxAgeMs?: number;
 }
@@ -107,8 +107,10 @@ export class ProductMediaCandidateImportService {
       eligibleOfferId = successfulOutcome.offerId;
     }
 
-    const offers = await this.dependencies.listAffiliateOffers();
-    if (!eligibleOfferId || !offers.some((offer) => offer.id === eligibleOfferId && isUsableAffiliateOffer(offer, productId, now))) {
+    const eligibleOffer = eligibleOfferId
+      ? await this.dependencies.findAffiliateOfferById(eligibleOfferId)
+      : undefined;
+    if (!eligibleOffer || !isUsableAffiliateOffer(eligibleOffer, productId, now)) {
       throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The affiliate offer recorded by the latest eligibility evidence no longer has an active, usable link.", 409);
     }
 
