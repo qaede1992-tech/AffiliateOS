@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
+type ProductMediaAssetsResponse = Awaited<ReturnType<typeof api.productMediaAssets>>["data"];
 
 export function ProductMediaIntakePanel() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -11,6 +12,8 @@ export function ProductMediaIntakePanel() {
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [storedAssets, setStoredAssets] = useState<ProductMediaAssetsResponse>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +67,18 @@ export function ProductMediaIntakePanel() {
     setRightsConfirmed(false);
     setUploadFile(null);
     setNotice(null);
+    setStoredAssets([]);
+    if (!selectedId) return;
+    let active = true;
+    setAssetsLoading(true);
+    void api.productMediaAssets(selectedId).then((response) => {
+      if (active) setStoredAssets(response.data);
+    }).catch((requestError) => {
+      if (active) setError(requestError instanceof Error ? requestError.message : "Status media tersimpan tidak dapat dimuat.");
+    }).finally(() => {
+      if (active) setAssetsLoading(false);
+    });
+    return () => { active = false; };
   }, [selectedId]);
 
   const saveMedia = async () => {
@@ -125,6 +140,8 @@ export function ProductMediaIntakePanel() {
     setUploading(true); setError(null); setNotice(null);
     try {
       const asset = await api.uploadProductMedia(selectedProduct.id, uploadFile, kind);
+      const refreshedAssets = await api.productMediaAssets(selectedProduct.id);
+      setStoredAssets(refreshedAssets.data);
       setNotice(`${kind === "video" ? "Video" : "Gambar"} tersimpan di penyimpanan privat AffiliateOS (SHA-256 ${asset.sha256.slice(0, 12)}…). Status hak tetap ${asset.rightsStatus}; admin harus memeriksa bukti izin sebelum aset dapat digunakan untuk publikasi.`);
       setUploadFile(null);
       const input = document.getElementById("product-media-file") as HTMLInputElement | null;
@@ -151,6 +168,14 @@ export function ProductMediaIntakePanel() {
             {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.imageUrl || product.videoUrl ? "media tersedia" : "tanpa media"}</option>)}
           </select>
           {selectedProduct && <>
+            <div className="shopee-file-summary" aria-live="polite">
+              <strong>Status aset media tersimpan</strong>
+              {assetsLoading ? <small>Memeriksa aset produk…</small> : storedAssets.length === 0
+                ? <small>Belum ada file media tersimpan di penyimpanan AffiliateOS.</small>
+                : <ul>{storedAssets.map((asset) => <li key={asset.id}>
+                    <small>{asset.kind === "video" ? "Video" : "Gambar"} · {asset.mimeType} · {(asset.byteSize / 1024 / 1024).toFixed(2)} MiB · Hak: {asset.rightsStatus === "verified" ? "terverifikasi" : asset.rightsStatus === "revoked" ? "dicabut" : "menunggu verifikasi"}</small>
+                  </li>)}</ul>}
+            </div>
             <div className="shopee-file-summary">
               <strong>{selectedProduct.name}</strong>
               <small>ID produk: {selectedProduct.externalProductId} · <a href={selectedProduct.productUrl} target="_blank" rel="noreferrer">Buka halaman produk</a></small>
