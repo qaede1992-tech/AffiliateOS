@@ -90,6 +90,7 @@ export interface ProductMediaIdentityAudit {
 
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
+  findByProductAndSourceUrl?(productId: string, sourceUrl: string): Promise<ProductMediaAsset | undefined>;
   findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
   attachCandidateProvenance?(
     productId: string,
@@ -205,6 +206,16 @@ export class ProductMediaIngestionService {
               continue;
             }
             stored.push(existingCandidateAsset);
+            continue;
+          }
+        }
+        // URL-only sources (for example product-page Open Graph media) have no
+        // provider candidate ID. Reuse the product-scoped asset before fetching
+        // bytes so repeated discovery attempts do not spend egress downloading it.
+        if (!candidate.provenance && this.assets.findByProductAndSourceUrl) {
+          const existingSourceAsset = await this.assets.findByProductAndSourceUrl(input.productId, candidate.url);
+          if (existingSourceAsset) {
+            stored.push(existingSourceAsset);
             continue;
           }
         }

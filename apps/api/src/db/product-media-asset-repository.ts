@@ -57,6 +57,14 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
 
+  async findByProductAndSourceUrl(productId: string, sourceUrl: string): Promise<ProductMediaAsset | undefined> {
+    const rows = await this.db.select().from(productMediaAssets).where(and(
+      eq(productMediaAssets.productId, productId),
+      eq(productMediaAssets.sourceUrl, sourceUrl)
+    )).limit(1);
+    return rows[0] ? toAsset(rows[0]) : undefined;
+  }
+
   async attachCandidateProvenance(
     productId: string,
     sha256: string,
