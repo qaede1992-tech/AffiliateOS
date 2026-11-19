@@ -5,6 +5,43 @@ import {
   type ProductMediaSearchIdentity
 } from "./product-media-catalog-search.js";
 
+const WIKIMEDIA_FORBIDDEN_COOLDOWN_MS = 6 * 60 * 60_000;
+const WIKIMEDIA_RATE_LIMIT_COOLDOWN_MS = 15 * 60_000;
+const WIKIMEDIA_SERVER_ERROR_COOLDOWN_MS = 2 * 60_000;
+const wikimediaProviderBlocks = new WeakMap<typeof fetch, { status: number; retryAt: number }>();
+
+export class WikimediaCommonsCircuitOpenError extends Error {
+  constructor(readonly status: number, readonly retryAt: string) {
+    super(`Wikimedia Commons is temporarily paused after HTTP ${status}.`);
+    this.name = "WikimediaCommonsCircuitOpenError";
+  }
+}
+
+const assertWikimediaAvailable = (fetchImpl: typeof fetch, now = Date.now()): void => {
+  const blocked = wikimediaProviderBlocks.get(fetchImpl);
+  if (!blocked) return;
+  if (blocked.retryAt <= now) {
+    wikimediaProviderBlocks.delete(fetchImpl);
+    return;
+  }
+  throw new WikimediaCommonsCircuitOpenError(blocked.status, new Date(blocked.retryAt).toISOString());
+};
+
+const recordWikimediaFailure = (fetchImpl: typeof fetch, status: number, now = Date.now()): void => {
+  const cooldownMs = status === 403 ? WIKIMEDIA_FORBIDDEN_COOLDOWN_MS
+    : status === 429 ? WIKIMEDIA_RATE_LIMIT_COOLDOWN_MS
+    : status >= 500 && status <= 599 ? WIKIMEDIA_SERVER_ERROR_COOLDOWN_MS
+    : 0;
+  if (cooldownMs > 0) {
+    wikimediaProviderBlocks.set(fetchImpl, { status, retryAt: now + cooldownMs });
+  }
+};
+
+/** Test-only hook; production callers should rely on the provider cooldown. */
+export const resetWikimediaProviderCircuitForTests = (fetchImpl: typeof fetch): void => {
+  wikimediaProviderBlocks.delete(fetchImpl);
+};
+
 export interface WikimediaCommonsSearchOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -188,6 +225,8 @@ export async function searchWikimediaCommonsProductMedia(
     throw new Error("maxResults must be an integer between 1 and 20.");
   }
 
+  const fetchImpl = options.fetchImpl ?? fetch;
+  assertWikimediaAvailable(fetchImpl);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
   try {
@@ -208,7 +247,8 @@ export async function searchWikimediaCommonsProductMedia(
         iiextmetadatalanguage: "en"
       })) endpoint.searchParams.set(key, value);
 
-      const response = await (options.fetchImpl ?? fetch)(endpoint.toString(), {
+      assertWikimediaAvailable(fetchImpl);
+      const response = await fetchImpl(endpoint.toString(), {
         method: "GET",
         headers: {
           accept: "application/json",
@@ -216,7 +256,10 @@ export async function searchWikimediaCommonsProductMedia(
         },
         signal: controller.signal
       });
-      if (!response.ok) throw new Error(`Wikimedia Commons search failed with HTTP ${response.status}.`);
+      if (!response.ok) {
+        recordWikimediaFailure(fetchImpl, response.status);
+        throw new Error(`Wikimedia Commons search failed with HTTP ${response.status}.`);
+      }
       const payload = await response.json() as WikimediaSearchResponse;
       const pages = Array.isArray(payload.query?.pages) ? payload.query.pages : [];
 
