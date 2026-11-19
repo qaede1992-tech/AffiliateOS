@@ -740,5 +740,34 @@ describe("autonomous cycle", () => {
     assert.equal(readinessSnapshotCalls, 3);
     assert.equal(service.skipReason, undefined);
   });
+  it("does not launch external media discovery when the persisted rights index is unavailable", async () => {
+    const product = { id: "rights-index-unavailable-product" };
+    const candidates = {
+      async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
+    };
+    let discoveryCalls = 0;
+    const execution = {
+      async previewSelection() {
+        return { selected: [{ product: product as never, offerId: "offer-1", score: 90 }], rejected: [], audit: [] };
+      },
+      async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
+    } as unknown as AutonomousExecutionService;
+    const discovery = {
+      async getPublicationReadinessSnapshot() { throw new Error("database unavailable"); },
+      async listPublishableMediaProductIds() { throw new Error("database unavailable"); },
+      async discover() {
+        discoveryCalls += 1;
+        return { productId: product.id, pageFetched: true, hasVideo: false, stored: [], skipped: [] };
+      }
+    };
+    const service = new AutonomousCycleService(
+      candidates as never, execution, undefined, undefined, undefined, undefined, discovery as never
+    );
+
+    await service.runOnce({ publicationEnabled: false });
+
+    assert.equal(discoveryCalls, 0);
+  });
+
 
 });

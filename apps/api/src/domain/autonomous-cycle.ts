@@ -239,13 +239,16 @@ export class AutonomousCycleService {
           storedImageCount: 0,
           storedVideoCount: 0,
           existingMediaSkipCount: 0,
+          discoveryBlockedIndexUnavailableCount: 0,
           skippedReasonCounts: {} as Record<string, number>,
           catalogCandidateCount: 0
         };
         // Reuse already-persisted, rights-verified media instead of fetching product
         // pages or querying external media catalogs again on every autonomous cycle.
-        // The final selection still performs its own full-catalog rights check below.
+        // If the persisted rights index cannot be read, do not launch external discovery:
+        // the final publication gate is fail-closed and this avoids an egress-heavy retry storm.
         let existingPublishableMediaIds = new Set<string>();
+        let existingMediaIndexAvailable = true;
         if (preliminary.selected.length > 0) {
           try {
             const selectedProductIds = preliminary.selected.map((selected) => selected.product.id);
@@ -254,8 +257,7 @@ export class AutonomousCycleService {
               : await this.productMediaDiscovery.listPublishableMediaProductIds(selectedProductIds);
             existingPublishableMediaIds = new Set(selectedMediaIds);
           } catch (error) {
-            // Fail open for discovery only: inability to inspect existing media must
-            // not suppress discovery, while final publication rights remain fail-closed.
+            existingMediaIndexAvailable = false;
             console.warn(JSON.stringify({
               event: "autonomous_existing_media_index_failed",
               errorType: safeErrorType(error)
@@ -265,6 +267,10 @@ export class AutonomousCycleService {
         for (const selected of preliminary.selected) {
           const candidate = candidateList.find((item) => item.product.id === selected.product.id);
           if (!candidate) continue;
+          if (!existingMediaIndexAvailable) {
+            mediaDiscoverySummary.discoveryBlockedIndexUnavailableCount += 1;
+            continue;
+          }
           if (existingPublishableMediaIds.has(candidate.product.id)) {
             mediaDiscoverySummary.existingMediaSkipCount += 1;
             continue;
@@ -321,6 +327,7 @@ export class AutonomousCycleService {
             preliminarySelectedCount: preliminary.selected.length,
             discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
             discoverySkippedExistingMediaCount: mediaDiscoverySummary.existingMediaSkipCount,
+            discoveryBlockedIndexUnavailableCount: mediaDiscoverySummary.discoveryBlockedIndexUnavailableCount,
             discoveryFailedCount: mediaDiscoverySummary.failedCount,
             catalogCandidateCount: mediaDiscoverySummary.catalogCandidateCount,
             storedImageCount: mediaDiscoverySummary.storedImageCount,
@@ -436,6 +443,7 @@ export class AutonomousCycleService {
           preliminarySelectedCount: preliminary.selected.length,
           discoveryAttemptedCount: mediaDiscoverySummary.attemptedCount,
           discoverySkippedExistingMediaCount: mediaDiscoverySummary.existingMediaSkipCount,
+            discoveryBlockedIndexUnavailableCount: mediaDiscoverySummary.discoveryBlockedIndexUnavailableCount,
           discoveryFailedCount: mediaDiscoverySummary.failedCount,
           catalogCandidateCount: mediaDiscoverySummary.catalogCandidateCount,
           storedImageCount: mediaDiscoverySummary.storedImageCount,
