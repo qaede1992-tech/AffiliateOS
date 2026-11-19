@@ -249,6 +249,10 @@ export class ShopeeAffiliateLinkIntakeService {
     if (!match?.[1] || !match[2]) return undefined;
     const existing = await this.repository.findByProductIdentity(match[1], match[2]);
     if (!existing) return undefined;
+    // Repeated imports of an already reconciled feed offer must be read-only.
+    if (existing.status === "imported" && existing.sourceMetadata.verifiedOfferSource === "shopee-affiliate-feed") {
+      return existing;
+    }
     const updated: ShopeeAffiliateLinkIntake = {
       ...existing, status: "imported", reason: undefined,
       sourceMetadata: { ...existing.sourceMetadata, verifiedOfferSource: "shopee-affiliate-feed", offerDataVerifiedAt: new Date().toISOString() },
