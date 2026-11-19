@@ -436,3 +436,34 @@ test("Shopee intake notifies recovery scheduler when a resolving row is created 
   assert.equal(wakeSignals, 2);
   assert.equal(await service.nextStaleResolvingAt(), undefined);
 });
+
+test("reconciling the same verified Shopee feed offer twice does not rewrite the intake", async () => {
+  const baseRepository = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const service = new ShopeeAffiliateLinkIntakeService(baseRepository, async (affiliateUrl) => ({
+    status: "resolved", affiliateUrl, productUrl: "https://shopee.co.id/product/123/456", shopId: "123", itemId: "456"
+  }));
+  await service.submit("https://s.shopee.co.id/reconcile-idempotent");
+  const first = await service.reconcileVerifiedOffer("https://shopee.co.id/product/123/456");
+  assert.equal(first?.status, "imported");
+
+  let writes = 0;
+  const repository = {
+    findByUrlHash: (hash: string) => baseRepository.findByUrlHash(hash),
+    findByProductIdentity: (shopId: string, itemId: string) => baseRepository.findByProductIdentity(shopId, itemId),
+    findById: (id: string) => baseRepository.findById(id),
+    saveIfAbsent: (intake: ShopeeAffiliateLinkIntake) => baseRepository.saveIfAbsent(intake),
+    update: async (intake: ShopeeAffiliateLinkIntake) => { writes += 1; return baseRepository.update(intake); },
+    listStaleResolving: (cutoff: string, limit: number) => baseRepository.listStaleResolving(cutoff, limit),
+    nextStaleResolvingAt: () => baseRepository.nextStaleResolvingAt(),
+    claimStaleResolving: (id: string, expectedUpdatedAt: string, claimedAt: string) => baseRepository.claimStaleResolving(id, expectedUpdatedAt, claimedAt),
+    updateIfResolving: (id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake) => baseRepository.updateIfResolving(id, expectedUpdatedAt, intake)
+  };
+  const readOnlyService = new ShopeeAffiliateLinkIntakeService(repository);
+  const before = await baseRepository.findByProductIdentity("123", "456");
+  const second = await readOnlyService.reconcileVerifiedOffer("https://shopee.co.id/product/123/456");
+  const after = await baseRepository.findByProductIdentity("123", "456");
+
+  assert.equal(second?.id, first?.id);
+  assert.equal(writes, 0, "already imported intake must not be updated again");
+  assert.deepEqual(after, before, "no-op reconciliation must preserve the persisted intake timestamp and metadata");
+});
