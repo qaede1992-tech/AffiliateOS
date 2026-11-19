@@ -574,3 +574,22 @@ test("opens a longer provider-wide cooldown after Wikimedia access is forbidden"
   assert.equal(calls, 1);
   resetWikimediaProviderCircuitForTests(fetchImpl);
 });
+
+test("opens a short provider-wide cooldown after Wikimedia server errors", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("temporarily unavailable", { status: 503 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 503/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 503/
+  );
+  assert.equal(calls, 1);
+  resetWikimediaProviderCircuitForTests(fetchImpl);
+});
