@@ -212,6 +212,8 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     affiliateId,
     items: [{
       ...baseItem,
+      description: "Deskripsi produk yang sudah tersimpan",
+      originalPriceCents: 150000,
       category: "Elektronik",
       imageUrl: "https://cdn.example.test/shopee-product-image.jpg",
       videoUrl: "https://cdn.example.test/shopee-product-video.mp4",
@@ -237,6 +239,8 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     baseItem.externalProductId
   );
   assert.equal(saved?.category, "Elektronik");
+  assert.equal(saved?.description, "Deskripsi produk yang sudah tersimpan");
+  assert.equal(saved?.originalPriceCents, 150000);
   assert.equal(saved?.imageUrl, "https://cdn.example.test/shopee-product-image.jpg");
   assert.equal(saved?.videoUrl, "https://cdn.example.test/shopee-product-video.mp4");
   assert.deepEqual(saved?.discoverySignals?.productIdentity, { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" });
