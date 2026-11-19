@@ -530,3 +530,56 @@ test("does not reuse a provider candidate asset attached to a different product"
   assert.equal(downloads, 0);
   assert.equal(uploads, 0);
 });
+
+
+test("reuses a stored URL-only product media asset before downloading it again", async () => {
+  const existing = {
+    id: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001",
+    productId,
+    kind: "image" as const,
+    bucket: "affiliate-media",
+    objectKey: `products/${productId}/existing.jpg`,
+    mimeType: "image/jpeg" as const,
+    byteSize: 128,
+    sha256: "b".repeat(64),
+    sourceUrl: "https://cdn.example.com/product-image.jpg",
+    sourcePublisher: null,
+    rightsStatus: "unverified" as const,
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    createdAt: "2026-11-19T00:00:00.000Z"
+  };
+  let sourceLookups = 0;
+  let downloads = 0;
+  let uploads = 0;
+  const repository = {
+    findByProductAndSourceUrl: async (id: string, url: string) => {
+      sourceLookups += 1;
+      assert.equal(id, productId);
+      assert.equal(url, existing.sourceUrl);
+      return existing;
+    },
+    findByProductAndHash: async () => undefined,
+    save: async () => { throw new Error("existing source asset must not be saved again"); }
+  } as never;
+  const storage = {
+    upload: async () => { uploads += 1; throw new Error("existing source asset must not upload"); }
+  } as never;
+  const fetcher = (async () => { downloads += 1; throw new Error("existing source asset must not download"); }) as never;
+  const service = new ProductMediaIngestionService(
+    storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher
+  );
+
+  const result = await service.ingest({
+    productId,
+    nonMediaEligibilityPassed: true,
+    candidates: [{ kind: "image", url: existing.sourceUrl, source: "og" }]
+  });
+
+  assert.deepEqual(result, { stored: [existing], skipped: [] });
+  assert.equal(sourceLookups, 1);
+  assert.equal(downloads, 0);
+  assert.equal(uploads, 0);
+  assert.equal(existing.rightsStatus, "unverified");
+});
