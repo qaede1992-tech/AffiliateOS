@@ -258,7 +258,7 @@ export class MarketplaceService {
       }
       const timestamp = now();
       const offer: AffiliateOffer = { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
-      const offerChanged = !existing || ["productId", "conversionOfferId", "externalProductId", "priceCents", "currency", "commissionRateBps", "commissionAmountCents", "availability", "availabilityMetadata", "affiliateUrl", "affiliateLinkExpiresAt", "affiliateLinkStatus", "status"].some((field) => JSON.stringify((existing as any)[field] ?? null) !== JSON.stringify((offer as any)[field] ?? null));
+      const offerChanged = !existing || ["productId", "conversionOfferId", "externalOfferId", "priceCents", "currency", "commissionRateBps", "commissionAmountCents", "availability", "availabilityMetadata", "affiliateUrl", "affiliateLinkExpiresAt", "affiliateLinkStatus", "status"].some((field) => JSON.stringify((existing as any)[field] ?? null) !== JSON.stringify((offer as any)[field] ?? null));
       changed ||= offerChanged;
       if (offerChanged) await this.offers.save(offer);
       importedOffers += 1;
