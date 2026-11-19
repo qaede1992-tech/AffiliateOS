@@ -93,7 +93,38 @@ const requestOnce = async (
   requestImpl: typeof httpsRequest
 ): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; bytes: Uint8Array }> =>
   new Promise((resolve, reject) => {
-    const request = requestImpl({
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let request: ReturnType<typeof httpsRequest> | undefined;
+    let settled = false;
+    const clearDeadline = (): void => {
+      if (deadlineTimer !== undefined) {
+        clearTimeout(deadlineTimer);
+        deadlineTimer = undefined;
+      }
+    };
+    const finishResolve = (value: { status: number; headers: Record<string, string | string[] | undefined>; bytes: Uint8Array }): void => {
+      if (settled) return;
+      settled = true;
+      clearDeadline();
+      resolve(value);
+    };
+    const finishReject = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearDeadline();
+      reject(error);
+    };
+
+    // setTimeout on a Node request is only an inactivity timeout. This separate
+    // absolute deadline remains active from connection setup through the complete
+    // response body, so a slow-drip origin cannot keep this transfer alive forever.
+    deadlineTimer = setTimeout(() => {
+      const error = new Error("Public HTTPS request exceeded the absolute transfer deadline.");
+      if (request && !request.destroyed) request.destroy(error);
+      else finishReject(error);
+    }, timeoutMs);
+
+    request = requestImpl({
       protocol: "https:",
       hostname: url.hostname,
       port: url.port || 443,
@@ -114,13 +145,14 @@ const requestOnce = async (
       const status = response.statusCode ?? 0;
       const headers = response.headers;
       if (status >= 300 && status < 400) {
+        response.once("error", finishReject);
+        response.once("end", () => finishResolve({ status, headers, bytes: new Uint8Array() }));
         response.resume();
-        resolve({ status, headers, bytes: new Uint8Array() });
         return;
       }
       if (status < 200 || status >= 300) {
-        response.resume();
-        reject(new Error(`Public HTTPS request failed (HTTP ${status}).`));
+        response.destroy();
+        finishReject(new Error(`Public HTTPS request failed (HTTP ${status}).`));
         return;
       }
       const chunks: Uint8Array[] = [];
@@ -128,21 +160,23 @@ const requestOnce = async (
       response.on("data", (chunk: Buffer | Uint8Array) => {
         total += chunk.byteLength;
         if (total > maxBytes) {
-          request.destroy(new Error("Public HTTPS response exceeds configured size limit."));
+          const error = new Error("Public HTTPS response exceeds configured size limit.");
+          request?.destroy(error);
+          finishReject(error);
           return;
         }
         chunks.push(new Uint8Array(chunk));
       });
-      response.on("end", () => {
+      response.once("end", () => {
         const bytes = new Uint8Array(total);
         let offset = 0;
         for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-        resolve({ status, headers, bytes });
+        finishResolve({ status, headers, bytes });
       });
-      response.on("error", reject);
+      response.once("error", finishReject);
     });
-    request.setTimeout(timeoutMs, () => request.destroy(new Error("Public HTTPS request timed out.")));
-    request.on("error", reject);
+    request.on("error", finishReject);
+    request.setTimeout(timeoutMs, () => request?.destroy(new Error("Public HTTPS request timed out.")));
     request.end();
   });
 
