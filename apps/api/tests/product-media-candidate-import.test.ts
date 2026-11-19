@@ -97,8 +97,8 @@ function makeService(overrides: {
     },
     findAffiliateOfferById: async (requestedOfferId) => {
       offerLookups++;
-      assert.equal(requestedOfferId, offer.id);
-      return (overrides.affiliateOffer ?? offer).id === requestedOfferId ? (overrides.affiliateOffer ?? offer) : undefined;
+      const currentOffer = overrides.affiliateOffer ?? offer;
+      return currentOffer.id === requestedOfferId ? currentOffer : undefined;
     },
     now: () => now
   });
