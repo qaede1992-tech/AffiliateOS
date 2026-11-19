@@ -10,6 +10,7 @@ export const campaignCollectionQuerySchema = z.object({ limit: z.coerce.number()
 export const contentCollectionQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(25), cursor: entityId.optional(), campaignId: entityId.optional() }).strict();
 export const trackingLinkCollectionQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(25), cursor: entityId.optional(), campaignId: entityId.optional() }).strict();
 export const trackingLinkStatsBatchSchema = z.object({ ids: z.array(entityId).max(50) }).strict();
+export const publicationJobCollectionQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(50).default(25), cursor: z.string().min(1).max(512).optional() }).strict();
 const validDateRange = (value: { startAt?: string; endAt?: string }) => !value.startAt || !value.endAt || Date.parse(value.startAt) <= Date.parse(value.endAt);
 export const createAffiliateSchema = z.object({ name: nonEmptyText.max(200), email: z.string().email().max(320) });
 export const createOfferSchema = z.object({ name: nonEmptyText.max(200), status: z.enum(["active", "inactive"]), commissionRateBps: z.number().int().min(0).max(10000) });
