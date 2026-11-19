@@ -137,7 +137,9 @@ export const productMediaCandidates = pgTable("product_media_candidates", {
   candidateHash: varchar("candidate_hash", { length: 64 }).notNull(),
   query: varchar("query", { length: 500 }).notNull(),
   title: varchar("title", { length: 1000 }).notNull(),
-  imageUrl: varchar("image_url", { length: 2048 }).notNull(),
+  mediaKind: varchar("media_kind", { length: 10 }).notNull().default("image"),
+  imageUrl: varchar("image_url", { length: 2048 }),
+  videoUrl: varchar("video_url", { length: 2048 }),
   landingPageUrl: varchar("landing_page_url", { length: 2048 }).notNull(),
   creator: varchar("creator", { length: 500 }),
   creatorUrl: varchar("creator_url", { length: 2048 }),
@@ -157,6 +159,7 @@ export const productMediaCandidates = pgTable("product_media_candidates", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_candidates_product_provider_hash_unique").on(table.productId, table.provider, table.candidateHash),
+  index("product_media_candidates_product_kind_review_idx").on(table.productId, table.mediaKind, table.reviewStatus),
   index("product_media_candidates_product_review_idx").on(table.productId, table.reviewStatus, table.createdAt.desc())
 ]);
 
