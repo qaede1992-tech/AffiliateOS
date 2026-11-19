@@ -48,7 +48,7 @@ const isUsableAffiliateOffer = (offer: AffiliateOffer, productId: string, now: D
 };
 
 /**
- * Imports only admin-approved image candidates for products with a recent
+ * Imports only admin-approved image or video candidates for products with a recent
  * successful autonomous selection and a currently executable affiliate offer.
  * Importing never verifies rights or makes the resulting asset publishable.
  */
@@ -126,8 +126,8 @@ export class ProductMediaCandidateImportService {
       productId,
       nonMediaEligibilityPassed: true,
       candidates: [{
-        kind: "image",
-        url: candidate.imageUrl,
+        kind: candidate.mediaKind,
+        url: candidate.mediaKind === "video" ? candidate.videoUrl! : candidate.imageUrl!,
         source: "catalog",
         provenance: {
           provider: candidate.provider,
