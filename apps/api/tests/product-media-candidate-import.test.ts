@@ -18,7 +18,7 @@ const product: Product = {
 
 const candidate: ProductMediaCandidateRecord = {
   id: candidateId, productId, provider: "wikimedia_commons", candidateHash: "a".repeat(64),
-  query: "sample product", title: "Sample image", imageUrl: "https://upload.wikimedia.org/sample.jpg",
+  query: "sample product", title: "Sample image", mediaKind: "image", imageUrl: "https://upload.wikimedia.org/sample.jpg", videoUrl: null,
   landingPageUrl: "https://commons.wikimedia.org/wiki/File:Sample.jpg", creator: "Creator",
   creatorUrl: "https://commons.wikimedia.org/wiki/User:Creator", license: "CC-BY-SA",
   licenseVersion: "4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
@@ -57,6 +57,7 @@ function makeService(overrides: {
   preMediaEvidence?: { id: string; cycleId: string; productId: string; marketplaceId: string; offerId?: string; eligible: boolean; score: number; policy: Record<string, unknown>; reasons: string[]; createdAt: string };
 } = {}) {
   let ingestionCalls = 0;
+  let ingestedCandidate: { kind: "image" | "video"; url: string } | undefined;
   let existing = overrides.existingAsset;
   const service = new ProductMediaCandidateImportService({
     candidates: { findById: async () => overrides.candidate ?? candidate } as never,
@@ -67,10 +68,11 @@ function makeService(overrides: {
       save: async (value: ProductMediaAsset) => value
     },
     ingestion: {
-      ingest: async () => {
+      ingest: async (input: { candidates: Array<{ kind: "image" | "video"; url: string }> }) => {
         ingestionCalls++;
-        existing = asset;
-        return { stored: [asset], skipped: [] };
+        ingestedCandidate = input.candidates[0];
+        existing = { ...asset, kind: ingestedCandidate.kind, sourceUrl: ingestedCandidate.url };
+        return { stored: [existing], skipped: [] };
       }
     } as never,
     preMediaEligibility: overrides.preMediaEvidence ? {
@@ -92,7 +94,7 @@ function makeService(overrides: {
     listAffiliateOffers: async () => [overrides.affiliateOffer ?? offer],
     now: () => now
   });
-  return { service, ingestionCalls: () => ingestionCalls };
+  return { service, ingestionCalls: () => ingestionCalls, ingestedCandidate: () => ingestedCandidate };
 }
 
 test("imports only an approved candidate for a recently selected active product", async () => {
@@ -310,4 +312,22 @@ test("rejects when the latest preliminary cycle rejected a product with older po
   await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
     (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
   assert.equal(ingestionCalls(), 0);
+});
+
+
+test("imports an approved video candidate as video without verifying its rights", async () => {
+  const videoUrl = "https://media.example.test/product-demo.mp4";
+  const videoCandidate: ProductMediaCandidateRecord = {
+    ...candidate,
+    mediaKind: "video",
+    imageUrl: null,
+    videoUrl,
+    title: "Sample product video"
+  };
+  const { service, ingestionCalls, ingestedCandidate } = makeService({ candidate: videoCandidate });
+  const result = await service.importApprovedCandidate(productId, candidateId);
+  assert.equal(ingestionCalls(), 1);
+  assert.deepEqual(ingestedCandidate(), { kind: "video", url: videoUrl });
+  assert.equal(result.asset.kind, "video");
+  assert.equal(result.asset.rightsStatus, "unverified");
 });
