@@ -71,8 +71,9 @@ function makeService(overrides: {
       ingest: async (input: { candidates: Array<{ kind: "image" | "video"; url: string }> }) => {
         ingestionCalls++;
         ingestedCandidate = input.candidates[0];
-        existing = { ...asset, kind: ingestedCandidate.kind, sourceUrl: ingestedCandidate.url };
-        return { stored: [existing], skipped: [] };
+        const importedAsset = { ...asset, kind: ingestedCandidate.kind, sourceUrl: ingestedCandidate.url };
+        existing = importedAsset;
+        return { stored: [importedAsset], skipped: [] };
       }
     } as never,
     preMediaEligibility: overrides.preMediaEvidence ? {
