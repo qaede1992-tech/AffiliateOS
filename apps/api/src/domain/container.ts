@@ -125,7 +125,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
         audits: autonomousDecisionAuditRepository,
         ...(preMediaEligibilityRepository ? { preMediaEligibility: preMediaEligibilityRepository } : {}),
         findProductById: (productId) => repositories.products.findById(productId),
-        listAffiliateOffers: () => marketplace.listAffiliateOffers()
+        findAffiliateOfferById: (offerId) => repositories.affiliateOffers.findById(offerId)
       })
     : undefined;
   const defaultOptimizationState = new InMemoryOptimizationStateStore();
