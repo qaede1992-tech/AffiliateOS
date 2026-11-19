@@ -373,7 +373,7 @@ export class ProductMediaDiscoveryRunner {
               id: randomUUID(),
               productId: product.id,
               provider: candidate.provider,
-              candidateHash: createHash("sha256").update("image|" + candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
+              candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
               query: candidate.searchQuery ?? query,
               title: candidate.title,
               mediaKind: "image" as const,
