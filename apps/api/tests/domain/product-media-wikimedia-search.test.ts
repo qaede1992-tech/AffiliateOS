@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildWikimediaCommonsQueries, searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
+import { buildWikimediaCommonsQueries, resetWikimediaProviderCircuitForTests, searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
 
 const identity = { name: "Sony WH-1000XM5 Wireless Headphones" };
 
