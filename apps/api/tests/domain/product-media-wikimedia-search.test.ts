@@ -536,3 +536,41 @@ test("discovers an Omron blood pressure monitor lead from Commons with rights st
   assert.equal(results[0]?.identityStatus, "review_required");
   assert.equal(results[0]?.rightsStatus, "unverified");
 });
+
+test("opens a provider-wide cooldown after Wikimedia rate limiting", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("rate limited", { status: 429 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 429/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 429/
+  );
+  assert.equal(calls, 1, "a known provider-wide rate limit must not trigger another request");
+  resetWikimediaProviderCircuitForTests(fetchImpl);
+});
+
+test("opens a longer provider-wide cooldown after Wikimedia access is forbidden", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("forbidden", { status: 403 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 403/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 403/
+  );
+  assert.equal(calls, 1);
+  resetWikimediaProviderCircuitForTests(fetchImpl);
+});
