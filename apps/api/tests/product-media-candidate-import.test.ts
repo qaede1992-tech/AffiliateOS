@@ -328,7 +328,11 @@ test("imports an approved video candidate as video without verifying its rights"
   const { service, ingestionCalls, ingestedCandidate } = makeService({ candidate: videoCandidate });
   const result = await service.importApprovedCandidate(productId, candidateId);
   assert.equal(ingestionCalls(), 1);
-  assert.deepEqual(ingestedCandidate(), { kind: "video", url: videoUrl });
+  assert.equal(ingestedCandidate()?.kind, "video");
+  assert.equal(ingestedCandidate()?.url, videoUrl);
+  assert.equal(ingestedCandidate()?.source, "catalog");
+  assert.equal(ingestedCandidate()?.provenance?.provider, "wikimedia_commons");
+  assert.equal(ingestedCandidate()?.provenance?.license, "CC-BY-SA");
   assert.equal(result.asset.kind, "video");
   assert.equal(result.asset.rightsStatus, "unverified");
 });
