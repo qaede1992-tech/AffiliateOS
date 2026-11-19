@@ -15,6 +15,7 @@ export class InMemoryShopeeAffiliateLinkIntakeRepository implements ShopeeAffili
   private readonly rows = new Map<string, ShopeeAffiliateLinkIntake>();
   async findByUrlHash(hash: string) { return [...this.rows.values()].find((row) => row.normalizedUrlHash === hash); }
   async findByProductIdentity(shopId: string, itemId: string) { return [...this.rows.values()].find((row) => row.shopId === shopId && row.itemId === itemId); }
+  async findManyByProductIdentities(identities: Array<{ shopId: string; itemId: string }>) { const keys = new Set(identities.map(({ shopId, itemId }) => `${shopId}:${itemId}`)); return [...this.rows.values()].filter((row) => row.shopId && row.itemId && keys.has(`${row.shopId}:${row.itemId}`)); }
   async findById(id: string) { return this.rows.get(id); }
   async saveIfAbsent(intake: ShopeeAffiliateLinkIntake) {
     const existingByUrl = [...this.rows.values()].find((row) => row.normalizedUrlHash === intake.normalizedUrlHash);

@@ -168,6 +168,18 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     individualProductLookups += 1;
     return originalSingleLookup(marketplaceId, externalProductId);
   };
+  let productWriteBatches = 0;
+  let offerWriteBatches = 0;
+  const originalProductBatchWrite = products.upsertManyByMarketplaceProduct.bind(products);
+  const originalOfferBatchWrite = affiliateOffers.saveManyById.bind(affiliateOffers);
+  products.upsertManyByMarketplaceProduct = async (entities) => {
+    productWriteBatches += 1;
+    return originalProductBatchWrite(entities);
+  };
+  affiliateOffers.saveManyById = async (entities) => {
+    offerWriteBatches += 1;
+    return originalOfferBatchWrite(entities);
+  };
   const affiliateId = "00000000-0000-4000-8000-000000000091";
   await affiliates.save({
     id: affiliateId,
@@ -200,6 +212,8 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     affiliateId,
     items: [{
       ...baseItem,
+      description: "Deskripsi produk yang sudah tersimpan",
+      originalPriceCents: 150000,
       category: "Elektronik",
       imageUrl: "https://cdn.example.test/shopee-product-image.jpg",
       videoUrl: "https://cdn.example.test/shopee-product-video.mp4",
@@ -218,11 +232,15 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   assert.equal(reimportWithoutMediaColumns.changed, false);
   assert.equal(batchProductLookups, 2);
   assert.equal(individualProductLookups, 0);
+  assert.equal(productWriteBatches, 1, "unchanged reimport must not issue a product upsert");
+  assert.equal(offerWriteBatches, 1, "unchanged reimport must not issue an offer upsert");
   const saved = await products.findByMarketplaceProduct(
     (await connections.findBySlug("shopee-affiliate-feed"))!.id,
     baseItem.externalProductId
   );
   assert.equal(saved?.category, "Elektronik");
+  assert.equal(saved?.description, "Deskripsi produk yang sudah tersimpan");
+  assert.equal(saved?.originalPriceCents, 150000);
   assert.equal(saved?.imageUrl, "https://cdn.example.test/shopee-product-image.jpg");
   assert.equal(saved?.videoUrl, "https://cdn.example.test/shopee-product-video.mp4");
   assert.deepEqual(saved?.discoverySignals?.productIdentity, { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" });

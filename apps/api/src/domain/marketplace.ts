@@ -196,13 +196,24 @@ export class MarketplaceService {
         const existingProduct = existingProductsByExternalId.get(item.externalProductId.trim());
         const imageUrl = item.imageUrl ?? existingProduct?.imageUrl;
         const videoUrl = item.videoUrl ?? existingProduct?.videoUrl;
-        const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category ?? existingProduct?.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl, videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+        const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description ?? existingProduct?.description, category: item.category ?? existingProduct?.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents ?? existingProduct?.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl, videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
         validateMarketplaceProductInput(productInput);
         const timestamp = now();
-        return { id: existingProduct?.id ?? randomUUID(), marketplaceId: connection.id, externalProductId: item.externalProductId.trim(), name: item.name.trim(), description: item.description?.trim(), category: productInput.category?.trim(), priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: productInput.ratingMilli, reviewCount: productInput.reviewCount ?? 0, soldCount: productInput.soldCount ?? 0, discoverySignals: normalizeDiscoverySignals(productInput.metadata, existingProduct?.discoverySignals, existingProduct), imageUrl, videoUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existingProduct?.createdAt ?? timestamp, updatedAt: timestamp };
+        return { id: existingProduct?.id ?? randomUUID(), marketplaceId: connection.id, externalProductId: item.externalProductId.trim(), name: item.name.trim(), description: productInput.description?.trim(), category: productInput.category?.trim(), priceCents: item.priceCents, originalPriceCents: productInput.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: productInput.ratingMilli, reviewCount: productInput.reviewCount ?? 0, soldCount: productInput.soldCount ?? 0, discoverySignals: normalizeDiscoverySignals(productInput.metadata, existingProduct?.discoverySignals, existingProduct), imageUrl, videoUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existingProduct?.createdAt ?? timestamp, updatedAt: timestamp };
       });
-      const savedProducts = await this.products.upsertManyByMarketplaceProduct(productEntities);
-      const productByExternalId = new Map(savedProducts.map((product) => [product.externalProductId, product]));
+      const productFields: (keyof Product)[] = ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "discoverySignals", "imageUrl", "videoUrl", "productUrl", "status"];
+      const differs = (left: unknown, right: unknown) => JSON.stringify(left ?? null) !== JSON.stringify(right ?? null);
+      const productsToSave = productEntities.filter((entity) => {
+        const existing = existingProductsByExternalId.get(entity.externalProductId);
+        return !existing || productFields.some((field) => differs(existing[field], entity[field]));
+      });
+      // Avoid rewriting unchanged products on every repeated CSV import. The
+      // existing rows remain the authoritative objects for products with no diff.
+      const savedProducts = productsToSave.length
+        ? await this.products.upsertManyByMarketplaceProduct(productsToSave)
+        : [];
+      const productByExternalId = new Map(existingProductsByExternalId);
+      for (const product of savedProducts) productByExternalId.set(product.externalProductId, product);
       const offerIdsToFind = [...externalOfferIds];
       input.items.forEach((item, index) => {
         if (externalOfferIds[index] === `feed:${item.externalProductId}`) offerIdsToFind.push(`csv:${item.externalProductId}`);
@@ -217,36 +228,39 @@ export class MarketplaceService {
         const timestamp = now();
         return { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
       });
-      const productFields: (keyof Product)[] = ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "discoverySignals", "imageUrl", "videoUrl", "productUrl", "status"];
       const offerFields: (keyof AffiliateOffer)[] = ["productId", "conversionOfferId", "externalOfferId", "priceCents", "currency", "commissionRateBps", "commissionAmountCents", "availability", "availabilityMetadata", "affiliateUrl", "affiliateLinkExpiresAt", "affiliateLinkStatus", "status"];
-      const differs = (left: unknown, right: unknown) => JSON.stringify(left ?? null) !== JSON.stringify(right ?? null);
-      const productsChanged = productEntities.some((entity) => {
-        const existing = existingProductsByExternalId.get(entity.externalProductId);
-        return !existing || productFields.some((field) => differs(existing[field], entity[field]));
-      });
-      const offersChanged = offersToSave.some((entity) => {
+      const offersToWrite = offersToSave.filter((entity) => {
         const existing = existingByExternalId.get(entity.externalOfferId ?? "") ??
           (entity.externalOfferId?.startsWith("feed:") ? existingByExternalId.get("csv:" + entity.externalOfferId.slice(5)) : undefined);
         return !existing || offerFields.some((field) => differs(existing[field], entity[field]));
       });
-      const changed = productsChanged || offersChanged;
-      const savedOffers = await this.offers.saveManyById(offersToSave);
-      const savedByExternalId = new Map(savedOffers.map((offer) => [offer.externalOfferId, offer]));
+      const changed = productsToSave.length > 0 || offersToWrite.length > 0;
+      // Keep unchanged offer rows untouched; this avoids needless PostgreSQL
+      // conflict updates, WAL churn, and repeated egress on identical CSV feeds.
+      const savedOffers = offersToWrite.length
+        ? await this.offers.saveManyById(offersToWrite)
+        : [];
+      const savedByExternalId = new Map(existingByExternalId);
+      for (const offer of savedOffers) savedByExternalId.set(offer.externalOfferId ?? "", offer);
       for (const externalOfferId of externalOfferIds) {
         const offer = savedByExternalId.get(externalOfferId);
         if (!offer) throw new Error("Bulk Shopee import did not return every saved affiliate offer.");
         affiliateOfferIds.push(offer.id);
       }
-      importedProducts = savedProducts.length;
-      importedOffers = savedOffers.length;
+      importedProducts = productEntities.length;
+      importedOffers = offersToSave.length;
       return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds, changed };
     }
     let changed = false;
     for (const item of input.items) {
       const existingProduct = await this.products.findByMarketplaceProduct(connection.id, item.externalProductId.trim());
-      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category ?? existingProduct?.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl: item.imageUrl, videoUrl: item.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
-      const productChanged = !existingProduct || ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "imageUrl", "videoUrl", "productUrl", "status"].some((field) => JSON.stringify((existingProduct as any)[field] ?? null) !== JSON.stringify(({ name: item.name.trim(), description: item.description?.trim(), category: productInput.category?.trim(), priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: productInput.ratingMilli, reviewCount: productInput.reviewCount ?? 0, soldCount: productInput.soldCount ?? 0, imageUrl: item.imageUrl ?? existingProduct?.imageUrl, videoUrl: item.videoUrl ?? existingProduct?.videoUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active" } as Record<string, unknown>)[field] ?? null));
-      const product = await this.persistProduct(connection, productInput);
+      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description ?? existingProduct?.description, category: item.category ?? existingProduct?.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents ?? existingProduct?.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl: item.imageUrl ?? existingProduct?.imageUrl, videoUrl: item.videoUrl ?? existingProduct?.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+      const desiredDiscoverySignals = normalizeDiscoverySignals(productInput.metadata, existingProduct?.discoverySignals, existingProduct);
+      const productChanged = !existingProduct || ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "imageUrl", "videoUrl", "productUrl", "status"].some((field) => JSON.stringify((existingProduct as any)[field] ?? null) !== JSON.stringify(({ name: item.name.trim(), description: productInput.description?.trim(), category: productInput.category?.trim(), priceCents: item.priceCents, originalPriceCents: productInput.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: productInput.ratingMilli, reviewCount: productInput.reviewCount ?? 0, soldCount: productInput.soldCount ?? 0, imageUrl: item.imageUrl ?? existingProduct?.imageUrl, videoUrl: item.videoUrl ?? existingProduct?.videoUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active" } as Record<string, unknown>)[field] ?? null))
+        || JSON.stringify(existingProduct.discoverySignals ?? null) !== JSON.stringify(desiredDiscoverySignals ?? null);
+      const product = existingProduct && !productChanged
+        ? existingProduct
+        : await this.persistProduct(connection, productInput);
       changed ||= productChanged;
       importedProducts += 1;
       const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;

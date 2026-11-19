@@ -339,7 +339,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const input = importShopeeAffiliateFeedSchema.parse(request.body);
     const result = await services.marketplace.importShopeeAffiliateFeed(input);
     try {
-      for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
+      await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffers(input.items.map((item) => item.productUrl));
     } finally {
       if (result.changed && result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     }
@@ -388,7 +388,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       }))
     });
     try {
-      for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
+      await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffers(parsed.rows.map((row) => row.productUrl));
     } finally {
       if (result.changed && result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     }
