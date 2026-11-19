@@ -332,3 +332,16 @@ test("imports an approved video candidate as video without verifying its rights"
   assert.equal(result.asset.kind, "video");
   assert.equal(result.asset.rightsStatus, "unverified");
 });
+
+
+test("rejects a video candidate with a conflicting image URL", async () => {
+  const malformed: ProductMediaCandidateRecord = {
+    ...candidate,
+    mediaKind: "video",
+    videoUrl: "https://media.example.test/product-demo.mp4"
+  };
+  const { service, ingestionCalls } = makeService({ candidate: malformed });
+  await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
+    (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "CANDIDATE_NOT_APPROVED");
+  assert.equal(ingestionCalls(), 0);
+});
