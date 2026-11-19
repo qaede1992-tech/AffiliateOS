@@ -467,3 +467,41 @@ test("reconciling the same verified Shopee feed offer twice does not rewrite the
   assert.equal(writes, 0, "already imported intake must not be updated again");
   assert.deepEqual(after, before, "no-op reconciliation must preserve the persisted intake timestamp and metadata");
 });
+
+test("batch verified-offer reconciliation performs one identity lookup for unique product URLs", async () => {
+  const base = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const service = new ShopeeAffiliateLinkIntakeService(base, async (affiliateUrl) => {
+    const itemId = affiliateUrl.endsWith("two") ? "222" : "111";
+    return { status: "resolved", affiliateUrl, productUrl: `https://shopee.co.id/product/123/${itemId}`, shopId: "123", itemId };
+  });
+  await service.submit("https://s.shopee.co.id/one");
+  await service.submit("https://s.shopee.co.id/two");
+  let batchLookups = 0;
+  let singleLookups = 0;
+  const repository = {
+    findByUrlHash: (hash: string) => base.findByUrlHash(hash),
+    findByProductIdentity: (shopId: string, itemId: string) => { singleLookups += 1; return base.findByProductIdentity(shopId, itemId); },
+    findManyByProductIdentities: async (identities: Array<{ shopId: string; itemId: string }>) => {
+      batchLookups += 1;
+      assert.deepEqual(identities, [{ shopId: "123", itemId: "111" }, { shopId: "123", itemId: "222" }]);
+      return Promise.all(identities.map(({ shopId, itemId }) => base.findByProductIdentity(shopId, itemId))).then(rows => rows.filter((row): row is ShopeeAffiliateLinkIntake => Boolean(row)));
+    },
+    findById: (id: string) => base.findById(id),
+    saveIfAbsent: (intake: ShopeeAffiliateLinkIntake) => base.saveIfAbsent(intake),
+    update: (intake: ShopeeAffiliateLinkIntake) => base.update(intake),
+    listStaleResolving: (cutoff: string, limit: number) => base.listStaleResolving(cutoff, limit),
+    nextStaleResolvingAt: () => base.nextStaleResolvingAt(),
+    claimStaleResolving: (id: string, expectedUpdatedAt: string, claimedAt: string) => base.claimStaleResolving(id, expectedUpdatedAt, claimedAt),
+    updateIfResolving: (id: string, expectedUpdatedAt: string, intake: ShopeeAffiliateLinkIntake) => base.updateIfResolving(id, expectedUpdatedAt, intake)
+  };
+  const batchService = new ShopeeAffiliateLinkIntakeService(repository);
+  const result = await batchService.reconcileVerifiedOffers([
+    "https://shopee.co.id/product/123/111",
+    "https://shopee.co.id/product/123/222",
+    "https://shopee.co.id/product/123/111"
+  ]);
+  assert.equal(result.length, 2);
+  assert.equal(batchLookups, 1);
+  assert.equal(singleLookups, 0);
+  assert.ok(result.every(row => row.status === "imported"));
+});
