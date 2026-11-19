@@ -258,7 +258,9 @@ export class MarketplaceService {
       const desiredDiscoverySignals = normalizeDiscoverySignals(productInput.metadata, existingProduct?.discoverySignals, existingProduct);
       const productChanged = !existingProduct || ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "imageUrl", "videoUrl", "productUrl", "status"].some((field) => JSON.stringify((existingProduct as any)[field] ?? null) !== JSON.stringify(({ name: item.name.trim(), description: item.description?.trim(), category: productInput.category?.trim(), priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency.trim().toUpperCase(), ratingMilli: productInput.ratingMilli, reviewCount: productInput.reviewCount ?? 0, soldCount: productInput.soldCount ?? 0, imageUrl: item.imageUrl ?? existingProduct?.imageUrl, videoUrl: item.videoUrl ?? existingProduct?.videoUrl, productUrl: item.productUrl, status: item.availability === "out_of_stock" ? "inactive" : "active" } as Record<string, unknown>)[field] ?? null))
         || JSON.stringify(existingProduct.discoverySignals ?? null) !== JSON.stringify(desiredDiscoverySignals ?? null);
-      const product = productChanged ? await this.persistProduct(connection, productInput) : existingProduct;
+      const product = existingProduct && !productChanged
+        ? existingProduct
+        : await this.persistProduct(connection, productInput);
       changed ||= productChanged;
       importedProducts += 1;
       const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;
