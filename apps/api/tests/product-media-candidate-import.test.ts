@@ -58,6 +58,7 @@ function makeService(overrides: {
 } = {}) {
   let ingestionCalls = 0;
   let productLookups = 0;
+  let offerLookups = 0;
   let existing = overrides.existingAsset;
   const service = new ProductMediaCandidateImportService({
     candidates: { findById: async () => overrides.candidate ?? candidate } as never,
@@ -94,16 +95,21 @@ function makeService(overrides: {
       assert.equal(requestedProductId, productId);
       return (overrides.product ?? product).id === requestedProductId ? (overrides.product ?? product) : undefined;
     },
-    listAffiliateOffers: async () => [overrides.affiliateOffer ?? offer],
+    findAffiliateOfferById: async (requestedOfferId) => {
+      offerLookups++;
+      assert.equal(requestedOfferId, offer.id);
+      return (overrides.affiliateOffer ?? offer).id === requestedOfferId ? (overrides.affiliateOffer ?? offer) : undefined;
+    },
     now: () => now
   });
-  return { service, ingestionCalls: () => ingestionCalls, productLookups: () => productLookups };
+  return { service, ingestionCalls: () => ingestionCalls, productLookups: () => productLookups, offerLookups: () => offerLookups };
 }
 
 test("imports only an approved candidate for a recently selected active product", async () => {
-  const { service, ingestionCalls, productLookups } = makeService();
+  const { service, ingestionCalls, productLookups, offerLookups } = makeService();
   const result = await service.importApprovedCandidate(productId, candidateId);
   assert.equal(productLookups(), 1, "candidate import should fetch only its product by id");
+  assert.equal(offerLookups(), 1, "candidate import should fetch only the eligible offer by id");
   assert.equal(ingestionCalls(), 1);
   assert.equal(result.asset.sourceCandidateId, candidateId);
   assert.equal(result.asset.rightsStatus, "unverified");
