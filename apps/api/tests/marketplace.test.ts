@@ -156,6 +156,18 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   const accounts = new InMemoryAffiliateAccountRepository();
   const affiliateOffers = new InMemoryAffiliateOfferRepository();
   const connections = new InMemoryMarketplaceConnectionRepository();
+  let batchProductLookups = 0;
+  let individualProductLookups = 0;
+  const originalBatchLookup = products.findManyByMarketplaceProducts.bind(products);
+  const originalSingleLookup = products.findByMarketplaceProduct.bind(products);
+  products.findManyByMarketplaceProducts = async (marketplaceId, externalProductIds) => {
+    batchProductLookups += 1;
+    return originalBatchLookup(marketplaceId, externalProductIds);
+  };
+  products.findByMarketplaceProduct = async (marketplaceId, externalProductId) => {
+    individualProductLookups += 1;
+    return originalSingleLookup(marketplaceId, externalProductId);
+  };
   const affiliateId = "00000000-0000-4000-8000-000000000091";
   await affiliates.save({
     id: affiliateId,
@@ -192,6 +204,8 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     affiliateId,
     items: [baseItem]
   });
+  assert.equal(batchProductLookups, 2);
+  assert.equal(individualProductLookups, 0);
   const saved = await products.findByMarketplaceProduct(
     (await connections.findBySlug("shopee-affiliate-feed"))!.id,
     baseItem.externalProductId
