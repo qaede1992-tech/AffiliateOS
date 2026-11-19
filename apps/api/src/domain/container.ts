@@ -124,7 +124,7 @@ export function createServices(repositories: RepositorySet, transactionManager: 
         ingestion: new ProductMediaIngestionService(mediaStorage, repositories.productMediaAssets, mediaUploadPolicy),
         audits: autonomousDecisionAuditRepository,
         ...(preMediaEligibilityRepository ? { preMediaEligibility: preMediaEligibilityRepository } : {}),
-        listProducts: () => marketplace.listProducts(),
+        findProductById: (productId) => repositories.products.findById(productId),
         listAffiliateOffers: () => marketplace.listAffiliateOffers()
       })
     : undefined;
