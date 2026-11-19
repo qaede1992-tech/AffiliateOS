@@ -59,7 +59,7 @@ test("Shopee feed import batches 100 products and offers and keeps IDs stable on
   assert.equal((await products.list()).length, 100);
   assert.equal((await affiliateOffers.list()).length, 100);
   assert.deepEqual(second.affiliateOfferIds, first.affiliateOfferIds);
-  assert.equal(productBulkCalls, 2);
+  assert.equal(productBulkCalls, 1, "identical re-import skips the product upsert");
   assert.equal(offerLookupBatchCalls, 2);
-  assert.equal(offerBulkCalls, 2);
+  assert.equal(offerBulkCalls, 1, "identical re-import skips the offer upsert");
 });
