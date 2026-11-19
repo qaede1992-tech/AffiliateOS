@@ -3,7 +3,7 @@ import type { Content } from "@affiliateos/shared";
 import { api } from "../api/client";
 
 type MediaKind = "image" | "thumbnail" | "video";
-type Props = { content: Content[] };
+type Props = { content: Content[]; hasMore?: boolean; loading?: boolean; onLoadMore?: () => void };
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 45 * 1024 * 1024;
@@ -11,7 +11,7 @@ const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const accepts = (kind: MediaKind) => kind === "video" ? "video/mp4,.mp4" : "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const maxBytes = (kind: MediaKind) => kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
 
-export function MediaUploadPanel({ content }: Props) {
+export function MediaUploadPanel({ content, hasMore = false, loading = false, onLoadMore }: Props) {
   const [contentId, setContentId] = useState("");
   const [kind, setKind] = useState<MediaKind>("image");
   const [file, setFile] = useState<File | null>(null);
@@ -68,6 +68,7 @@ export function MediaUploadPanel({ content }: Props) {
             <option value="">Pilih konten</option>
             {content.map((item) => <option key={item.id} value={item.id}>{item.title || item.contentType} · {item.platform} · {item.status}</option>)}
           </select>
+          {hasMore && <button type="button" disabled={loading || busy} onClick={onLoadMore}>Muat lebih banyak konten</button>}
           <label htmlFor="affiliateos-media-kind">Jenis media</label>
           <select id="affiliateos-media-kind" value={kind} onChange={(event) => { setKind(event.target.value as MediaKind); setFile(null); setError(null); setSuccess(null); const input = document.getElementById("affiliateos-media-file") as HTMLInputElement | null; if (input) input.value = ""; }} disabled={busy}>
             <option value="image">Gambar konten (maks. 10 MiB)</option>
