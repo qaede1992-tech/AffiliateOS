@@ -85,6 +85,34 @@ const resolvePublicAddress = async (hostname: string, resolver: typeof dnsLookup
   return chosen;
 };
 
+const remainingDeadlineMs = (deadlineAt: number): number => {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw new Error("Public HTTPS fetch exceeded its total deadline.");
+  return remaining;
+};
+
+const resolvePublicAddressWithinDeadline = async (
+  hostname: string,
+  resolver: typeof dnsLookup,
+  deadlineAt: number
+): Promise<{ address: string; family: number }> => {
+  const remaining = remainingDeadlineMs(deadlineAt);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      resolvePublicAddress(hostname, resolver),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Public HTTPS fetch exceeded its total deadline during DNS resolution.")),
+          remaining
+        );
+      })
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
+
 const requestOnce = async (
   url: URL,
   address: { address: string; family: number },
@@ -198,10 +226,12 @@ export const fetchPublicHttps = async (
   const resolver = options.resolveHost ?? dnsLookup;
   const blockedHostnames = options.blockedHostnames ?? [];
   const allowedHostnames = options.allowedHosts ?? [];
+  const deadlineAt = Date.now() + timeoutMs;
   let current = validateUrl(rawUrl, blockedHostnames, allowedHostnames);
   for (let redirects = 0; ; redirects++) {
-    const address = await resolvePublicAddress(current.hostname, resolver);
-    const result = await requestOnce(current, address, options.maxBytes, timeoutMs, requestImpl);
+    const address = await resolvePublicAddressWithinDeadline(current.hostname, resolver, deadlineAt);
+    const remainingMs = remainingDeadlineMs(deadlineAt);
+    const result = await requestOnce(current, address, options.maxBytes, remainingMs, requestImpl);
     if (!REDIRECT_STATUSES.has(result.status)) {
       return { url: current.toString(), ...result };
     }
