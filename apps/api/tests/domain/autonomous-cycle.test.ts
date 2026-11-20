@@ -10,6 +10,7 @@ describe("autonomous cycle", () => {
     const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
     let readinessSnapshotCount = 0;
+    const readinessSnapshotProductIds: string[][] = [];
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean; requirePublishableVideo?: boolean }) {
         if (input.requirePublishableMedia === true) {
@@ -28,7 +29,8 @@ describe("autonomous cycle", () => {
       }
     } as unknown as AutonomousExecutionService;
     const discovery = {
-      async getPublicationReadinessSnapshot() {
+      async getPublicationReadinessSnapshot(productIds: string[]) {
+        readinessSnapshotProductIds.push(productIds);
         readinessSnapshotCount += 1;
         calls.push("readiness-snapshot:" + readinessSnapshotCount);
         return {
@@ -58,6 +60,7 @@ describe("autonomous cycle", () => {
       "final-execution"
     ]);
     assert.equal(calls.some((call) => call === "render:media-rejected"), false);
+    assert.deepEqual(readinessSnapshotProductIds, [["selected-image", "media-rejected"], ["selected-image", "media-rejected"], ["selected-image"]]);
   });
 
   it("logs aggregate media discovery outcomes without logging source URLs", async () => {
@@ -737,7 +740,7 @@ describe("autonomous cycle", () => {
 
     assert.ok(result);
     assert.equal(discoveryCalls, 0);
-    assert.equal(readinessSnapshotCalls, 3);
+    assert.equal(readinessSnapshotCalls, 2);
     assert.equal(service.skipReason, undefined);
   });
 
