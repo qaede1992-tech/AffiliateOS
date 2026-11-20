@@ -134,6 +134,7 @@ export class AutonomousCycleService {
 
     try {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
+      const candidateByProductId = new Map(candidateList.map((candidate) => [candidate.product.id, candidate]));
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
 
@@ -263,7 +264,7 @@ export class AutonomousCycleService {
           }
         }
         for (const selected of preliminary.selected) {
-          const candidate = candidateList.find((item) => item.product.id === selected.product.id);
+          const candidate = candidateByProductId.get(selected.product.id);
           if (!candidate) continue;
           if (existingPublishableMediaIds.has(candidate.product.id)) {
             mediaDiscoverySummary.existingMediaSkipCount += 1;
@@ -393,7 +394,7 @@ export class AutonomousCycleService {
         // Pass 3: generate promotional videos only for products that passed final affiliate selection.
         for (const selected of mediaReady.selected) {
           if (videoIds.includes(selected.product.id)) continue;
-          const candidate = candidateList.find((item) => item.product.id === selected.product.id);
+          const candidate = candidateByProductId.get(selected.product.id);
           if (!candidate) continue;
           try {
             const rendered = await this.productMediaDiscovery.generatePromoVideo(candidate.product);
@@ -411,20 +412,36 @@ export class AutonomousCycleService {
             }));
           }
         }
-        try {
-          if (this.productMediaDiscovery.getPublicationReadinessSnapshot) {
-            const refreshedReadiness = await this.productMediaDiscovery.getPublicationReadinessSnapshot(productIds, input.platforms);
-            videoIds = refreshedReadiness.publishableVideoProductIds;
-            mediaReadinessScores = refreshedReadiness.mediaReadinessScores;
-          } else {
-            videoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(productIds);
+        // Only products selected for this video pass can have changed video readiness.
+        // Refresh that bounded subset instead of re-reading media/rights for the full catalog.
+        // If no selected product needs a video, the previous readiness snapshot is still valid.
+        const refreshedProductIds = mediaReady.selected
+          .filter((selected) => !videoIds.includes(selected.product.id))
+          .map((selected) => selected.product.id);
+        if (refreshedProductIds.length > 0) {
+          try {
+            const refreshedProductIdSet = new Set(refreshedProductIds);
+            if (this.productMediaDiscovery.getPublicationReadinessSnapshot) {
+              const refreshedReadiness = await this.productMediaDiscovery.getPublicationReadinessSnapshot(refreshedProductIds, input.platforms);
+              videoIds = [...new Set([
+                ...videoIds.filter((id) => !refreshedProductIdSet.has(id)),
+                ...refreshedReadiness.publishableVideoProductIds
+              ])];
+              mediaReadinessScores = { ...mediaReadinessScores, ...refreshedReadiness.mediaReadinessScores };
+            } else {
+              const refreshedVideoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(refreshedProductIds);
+              videoIds = [...new Set([
+                ...videoIds.filter((id) => !refreshedProductIdSet.has(id)),
+                ...refreshedVideoIds
+              ])];
+            }
+          } catch (error) {
+            videoIds = videoIds.filter((id) => !refreshedProductIds.includes(id));
+            console.warn(JSON.stringify({
+              event: "autonomous_product_video_index_failed",
+              errorType: safeErrorType(error)
+            }));
           }
-        } catch (error) {
-          videoIds = [];
-          console.warn(JSON.stringify({
-            event: "autonomous_product_video_index_failed",
-            errorType: safeErrorType(error)
-          }));
         }
         console.info(JSON.stringify({
           event: "autonomous_media_discovery_summary",
