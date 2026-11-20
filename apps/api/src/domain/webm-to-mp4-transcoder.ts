@@ -85,7 +85,7 @@ export const transcodeWebmToMp4 = async (
     );
 
     const outputStats = await stat(outputPath);
-    if (!outputStats.isFile() || outputStats.size <= 0 || outputStats.size > maxOutputBytes) {
+    if (!outputStats.isFile() || outputStats.size <= 0 || outputStats.size >= maxOutputBytes) {
       throw new Error("Converted MP4 is empty or exceeds the configured output size limit.");
     }
     const output = new Uint8Array(await readFile(outputPath));
