@@ -96,9 +96,9 @@ test("shares one deadline budget across redirect hops", async () => {
     requestCount += 1;
     const currentRequest = new EventEmitter() as EventEmitter & {
       destroyed: boolean;
-      setTimeout: (timeout: number, callback: () => void) => typeof currentRequest;
+      setTimeout: (timeout: number, callback: () => void) => unknown;
       end: () => void;
-      destroy: (error?: Error) => typeof currentRequest;
+      destroy: (error?: Error) => unknown;
     };
     currentRequest.destroyed = false;
     currentRequest.setTimeout = (timeout: number) => {
