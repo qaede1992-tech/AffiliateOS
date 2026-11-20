@@ -329,12 +329,14 @@ export class AutonomousCycleService {
             mediaReadySelectedCount: 0,
             mediaReadyRejectedCount: candidateList.length,
             publishableMediaProductCount: 0,
-            publishableVideoProductCount: 0
+            publishableVideoProductCount: 0,
+            publicationBlockReason: "media_unavailable_rights_unverified"
           }));
           this.lastSkipReason = "no_publishable_candidates";
           console.info(JSON.stringify({
             event: "autonomous_cycle_skipped",
             reason: "no_publishable_candidates",
+            blockReason: "media_unavailable_rights_unverified",
             catalogCandidateCount: candidateList.length
           }));
           return {
