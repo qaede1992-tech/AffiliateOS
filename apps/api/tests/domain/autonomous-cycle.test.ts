@@ -11,6 +11,7 @@ describe("autonomous cycle", () => {
     const calls: string[] = [];
     let videoLookupCount = 0;
     let mediaListCount = 0;
+    const publishableVideoLookupIds: string[][] = [];
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean; requirePublishableVideo?: boolean }) {
         if (input.requirePublishableMedia === true) {
@@ -41,7 +42,7 @@ describe("autonomous cycle", () => {
         videoLookupCount += 1;
         return videoLookupCount === 1 ? [] : ["selected-image"];
       },
-      async listPublishableVideoProductIds() { calls.push("list-publishable-videos"); return []; },
+      async listPublishableVideoProductIds(productIds: string[]) { calls.push("list-publishable-videos"); publishableVideoLookupIds.push(productIds); return []; },
       async generatePromoVideo(product: { id: string }) { calls.push("render:" + product.id); return { generated: true }; }
     };
     const service = new AutonomousCycleService(provider, execution, undefined, undefined, undefined, undefined, discovery as never);
@@ -62,6 +63,7 @@ describe("autonomous cycle", () => {
       "final-execution"
     ]);
     assert.equal(calls.some((call) => call === "render:media-rejected"), false);
+    assert.deepEqual(publishableVideoLookupIds, [["selected-image", "media-rejected"], ["selected-image"]]);
   });
 
   it("logs aggregate media discovery outcomes without logging source URLs", async () => {
