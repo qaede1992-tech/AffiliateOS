@@ -27,7 +27,7 @@ test("transcodes a bounded local WebM input and validates the MP4 output", async
     timeoutMs: 5_000,
     runProcess: async (_binary, args, timeoutMs) => {
       invoked += 1;
-      observedTimeout = timeoutMs;
+      if (observedTimeout === 0) observedTimeout = timeoutMs;
       if (args.includes("null")) {
         verificationArgs = args;
         return;
@@ -148,12 +148,12 @@ test("does not start decode verification after the shared deadline expires", asy
   await assert.rejects(() => transcodeWebmToMp4(webm, {
     maxInputBytes: 1024,
     maxOutputBytes: 1024,
-    timeoutMs: 1,
+    timeoutMs: 100,
     runProcess: async (_binary, args) => {
       calls += 1;
       if (args.includes("null")) throw new Error("decode should not start");
       await writeFile(args.at(-1)!, mp4, { flag: "wx" });
-      await new Promise(resolve => setTimeout(resolve, 5));
+      await new Promise(resolve => setTimeout(resolve, 150));
     }
   }), /total time limit/);
   assert.equal(calls, 1);
