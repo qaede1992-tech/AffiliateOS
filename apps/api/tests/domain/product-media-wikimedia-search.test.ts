@@ -105,7 +105,7 @@ test("discovers Commons WebM videos using the original media URL, not its poster
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     query: {
       pages: [{
-        title: "File:Sony WH-1000XM5 demonstration.webm",
+        title: "File:Sony WH-1000XM5 Wireless Headphones demonstration.webm",
         imageinfo: [{
           url: "https://upload.wikimedia.org/wikipedia/commons/demo.webm",
           thumburl: "https://thumb.wikimedia.org/video-poster.jpg",
