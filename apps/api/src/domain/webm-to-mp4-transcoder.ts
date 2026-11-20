@@ -58,6 +58,14 @@ export const transcodeWebmToMp4 = async (
     throw new Error("Downloaded video does not have a WebM/EBML signature.");
   }
 
+  const deadlineAt = Date.now() + timeoutMs;
+  const runProcess = options.runProcess ?? defaultRunProcess;
+  const runWithinDeadline = async (args: string[]): Promise<void> => {
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) throw new Error("WebM transcode exceeded its total time limit.");
+    await runProcess(options.ffmpegPath ?? process.env.FFMPEG_PATH ?? "ffmpeg", args, remainingMs);
+  };
+
   const workingDir = await mkdtemp(join(tmpdir(), "affiliateos-webm-"));
   try {
     const inputPath = join(workingDir, "source.webm");
@@ -78,11 +86,7 @@ export const transcodeWebmToMp4 = async (
       "-map_metadata", "-1", "-movflags", "+faststart",
       "-fs", String(maxOutputBytes), outputPath
     ];
-    await (options.runProcess ?? defaultRunProcess)(
-      options.ffmpegPath ?? process.env.FFMPEG_PATH ?? "ffmpeg",
-      args,
-      timeoutMs
-    );
+    await runWithinDeadline(args);
 
     const outputStats = await stat(outputPath);
     if (!outputStats.isFile() || outputStats.size <= 0 || outputStats.size >= maxOutputBytes) {
@@ -92,6 +96,15 @@ export const transcodeWebmToMp4 = async (
     if (!isStructurallyValidMedia("video/mp4", output)) {
       throw new Error("FFmpeg output is not a structurally valid MP4.");
     }
+
+    // A box-level check alone can accept an MP4 whose media payload is truncated.
+    // Decode the complete video stream to a null muxer before accepting the file.
+    await runWithinDeadline([
+      "-hide_banner", "-nostdin", "-v", "error", "-xerror",
+      "-protocol_whitelist", "file,pipe",
+      "-threads", "1", "-i", outputPath,
+      "-map", "0:v:0", "-f", "null", "-"
+    ]);
     return output;
   } finally {
     await rm(workingDir, { recursive: true, force: true });
