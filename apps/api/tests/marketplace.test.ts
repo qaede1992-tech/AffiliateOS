@@ -251,7 +251,7 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     (await connections.findBySlug("shopee-affiliate-feed"))!.id,
     baseItem.externalProductId
   );
-  assert.equal(saved?.category, "Elektronik");
+  assert.equal(saved?.category, "Elektronik - diperbarui");
   assert.equal(saved?.description, "Deskripsi produk yang sudah tersimpan");
   assert.equal(saved?.originalPriceCents, 150000);
   assert.equal(saved?.imageUrl, "https://cdn.example.test/shopee-product-image.jpg");
