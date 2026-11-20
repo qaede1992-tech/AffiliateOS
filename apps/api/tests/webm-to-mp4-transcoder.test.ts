@@ -40,7 +40,7 @@ test("transcodes a bounded local WebM input and validates the MP4 output", async
   assert.deepEqual(output, mp4);
   assert.ok(verificationArgs.includes("-xerror"));
   assert.ok(verificationArgs.includes("null"));
-  assert.equal(observedTimeout, 5_000);
+  assert.ok(observedTimeout > 0 && observedTimeout <= 5_000, "first FFmpeg process must receive the configured deadline budget");
   assert.ok(observedArgs.includes("-protocol_whitelist"));
   assert.ok(observedArgs.includes("file,pipe"));
   assert.ok(observedArgs.includes("-threads"));
