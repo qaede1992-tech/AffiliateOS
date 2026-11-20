@@ -663,6 +663,44 @@ test("classifies catalog persistence failures separately and keeps provider erro
 });
 
 
+test("stale pending media candidates do not suppress discovery for an updated product query", async () => {
+  resetOpenverseCircuitForTests();
+  let searchCalls = 0;
+  const fetchImpl = async () => {
+    searchCalls += 1;
+    return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const candidateRepository = {
+    async listPendingByProduct(_productId: string, limit: number) {
+      assert.equal(limit, 100);
+      return [{ query: "Demo product" }];
+    },
+    async saveMany() { return []; }
+  };
+  const assetRepository = {
+    async listByProduct() { return []; },
+    async findByProductAndHash() { return undefined; },
+    async save(asset: ProductMediaAsset) { return asset; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    assetRepository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    candidateRepository as never,
+    { fetchImpl: fetchImpl as typeof fetch }
+  );
+
+  const result = await runner.discover({
+    ...product,
+    name: "Updated demo product",
+    productUrl: "https://shopee.co.id/product/123/456"
+  }, true);
+
+  assert.equal(searchCalls, 1, "updated identity query should run a fresh catalog search");
+  assert.equal(result.candidatesFound, 0);
+});
+
 test("persists catalog search cooldown and invalidates it when product identity changes", async () => {
   resetOpenverseCircuitForTests();
   const attempts = new Map<string, { fingerprint: string; nextRetryAt: string; outcome?: string }>();

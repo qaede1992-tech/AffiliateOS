@@ -279,7 +279,11 @@ export class ProductMediaDiscoveryRunner {
         let candidateLookupFailed = false;
         try {
           if (this.catalogCandidates) {
-            hasPendingCandidate = (await this.catalogCandidates.listPendingByProduct(product.id, 1)).length > 0;
+            const pendingCandidates = await this.catalogCandidates.listPendingByProduct(product.id, 100);
+            // A pending review blocks duplicate searches only for the same identity
+            // query. Product metadata can change while an older candidate awaits review;
+            // that stale candidate must not suppress discovery for the updated product.
+            hasPendingCandidate = pendingCandidates.some((candidate) => candidate.query === query);
           }
         } catch (error) {
           candidateLookupFailed = true;
