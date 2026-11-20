@@ -16,8 +16,9 @@ test("recognizes only the WebM EBML signature", () => {
 });
 
 test("transcodes a bounded local WebM input and validates the MP4 output", async () => {
-  let invoked = false;
+  let invoked = 0;
   let observedArgs: string[] = [];
+  let verificationArgs: string[] = [];
   let observedTimeout = 0;
   const output = await transcodeWebmToMp4(webm, {
     maxInputBytes: 1024,
@@ -25,14 +26,20 @@ test("transcodes a bounded local WebM input and validates the MP4 output", async
     maxDurationSeconds: 20,
     timeoutMs: 5_000,
     runProcess: async (_binary, args, timeoutMs) => {
-      invoked = true;
-      observedArgs = args;
+      invoked += 1;
       observedTimeout = timeoutMs;
+      if (args.includes("null")) {
+        verificationArgs = args;
+        return;
+      }
+      observedArgs = args;
       await writeFile(args.at(-1)!, mp4, { flag: "wx" });
     }
   });
-  assert.equal(invoked, true);
+  assert.equal(invoked, 2, "encoding and full-stream decode verification must both run");
   assert.deepEqual(output, mp4);
+  assert.ok(verificationArgs.includes("-xerror"));
+  assert.ok(verificationArgs.includes("null"));
   assert.equal(observedTimeout, 5_000);
   assert.ok(observedArgs.includes("-protocol_whitelist"));
   assert.ok(observedArgs.includes("file,pipe"));
@@ -118,4 +125,36 @@ test("ingestion stores converted WebM as MP4 without changing rights or provenan
   assert.equal(saved[0]?.sourceCandidateId, "22222222-2222-4222-8222-222222222222");
   assert.equal(saved[0]?.rightsStatus, "unverified");
   assert.equal(saved[0]?.rightsBasis, null);
+});
+
+
+test("rejects an MP4 when the full-stream decode verification fails", async () => {
+  let calls = 0;
+  await assert.rejects(() => transcodeWebmToMp4(webm, {
+    maxInputBytes: 1024,
+    maxOutputBytes: 1024,
+    timeoutMs: 5_000,
+    runProcess: async (_binary, args) => {
+      calls += 1;
+      if (args.includes("null")) throw new Error("decode verification failed");
+      await writeFile(args.at(-1)!, mp4, { flag: "wx" });
+    }
+  }), /decode verification failed/);
+  assert.equal(calls, 2);
+});
+
+test("does not start decode verification after the shared deadline expires", async () => {
+  let calls = 0;
+  await assert.rejects(() => transcodeWebmToMp4(webm, {
+    maxInputBytes: 1024,
+    maxOutputBytes: 1024,
+    timeoutMs: 1,
+    runProcess: async (_binary, args) => {
+      calls += 1;
+      if (args.includes("null")) throw new Error("decode should not start");
+      await writeFile(args.at(-1)!, mp4, { flag: "wx" });
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+  }), /total time limit/);
+  assert.equal(calls, 1);
 });
