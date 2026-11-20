@@ -223,7 +223,9 @@ describe("autonomous cycle", () => {
       async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const execution = {
-      async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
+      async previewSelection() {
+        return { selected: [{ product: product as never, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+      },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
     let readinessSnapshotCount = 0;
@@ -231,7 +233,7 @@ describe("autonomous cycle", () => {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
       async getPublicationReadinessSnapshot() {
         readinessSnapshotCount += 1;
-        if (readinessSnapshotCount === 1) {
+        if (readinessSnapshotCount <= 2) {
           return {
             publishableMediaProductIds: [product.id],
             publishableVideoProductIds: [],
