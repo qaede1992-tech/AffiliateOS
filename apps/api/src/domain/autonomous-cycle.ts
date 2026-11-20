@@ -125,6 +125,7 @@ export class AutonomousCycleService {
 
     try {
       const candidateList = await this.candidates.listCandidates({ resolveAffiliateLinks: true });
+      const candidateByProductId = new Map(candidateList.map((candidate) => [candidate.product.id, candidate]));
       const publicationEnabled = input.publicationEnabled ?? true;
       const scheduledAt = publicationEnabled ? (input.scheduledAt ?? this.deriveScheduledAt(input.publicationDelayMs)) : undefined;
 
@@ -253,7 +254,7 @@ export class AutonomousCycleService {
           }
         }
         for (const selected of preliminary.selected) {
-          const candidate = candidateList.find((item) => item.product.id === selected.product.id);
+          const candidate = candidateByProductId.get(selected.product.id);
           if (!candidate) continue;
           if (existingPublishableMediaIds.has(candidate.product.id)) {
             mediaDiscoverySummary.existingMediaSkipCount += 1;
@@ -371,7 +372,7 @@ export class AutonomousCycleService {
         // Pass 3: generate promotional videos only for products that passed final affiliate selection.
         for (const selected of mediaReady.selected) {
           if (videoIds.includes(selected.product.id)) continue;
-          const candidate = candidateList.find((item) => item.product.id === selected.product.id);
+          const candidate = candidateByProductId.get(selected.product.id);
           if (!candidate) continue;
           try {
             const rendered = await this.productMediaDiscovery.generatePromoVideo(candidate.product);
@@ -389,14 +390,26 @@ export class AutonomousCycleService {
             }));
           }
         }
-        try {
-          videoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(productIds);
-        } catch (error) {
-          videoIds = [];
-          console.warn(JSON.stringify({
-            event: "autonomous_product_video_index_failed",
-            errorType: safeErrorType(error)
-          }));
+        // Only video generation in this pass can change video readiness for selected products.
+        // Refresh that bounded subset instead of querying the entire catalog again.
+        const refreshedProductIds = mediaReady.selected
+          .filter((selected) => !videoIds.includes(selected.product.id))
+          .map((selected) => selected.product.id);
+        if (refreshedProductIds.length > 0) {
+          try {
+            const refreshedProductIdSet = new Set(refreshedProductIds);
+            const refreshedVideoIds = await this.productMediaDiscovery.listPublishableVideoProductIds(refreshedProductIds);
+            videoIds = [...new Set([
+              ...videoIds.filter((id) => !refreshedProductIdSet.has(id)),
+              ...refreshedVideoIds
+            ])];
+          } catch (error) {
+            videoIds = videoIds.filter((id) => !refreshedProductIds.includes(id));
+            console.warn(JSON.stringify({
+              event: "autonomous_product_video_index_failed",
+              errorType: safeErrorType(error)
+            }));
+          }
         }
         console.info(JSON.stringify({
           event: "autonomous_media_discovery_summary",
