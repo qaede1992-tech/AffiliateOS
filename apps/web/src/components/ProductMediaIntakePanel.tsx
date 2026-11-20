@@ -20,6 +20,9 @@ export function ProductMediaIntakePanel() {
   const [notice, setNotice] = useState<string | null>(null);
   const [panelVisible, setPanelVisible] = useState(false);
   const panelRef = useRef<HTMLElement | null>(null);
+  const selectedIdRef = useRef(selectedId);
+
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -137,16 +140,23 @@ export function ProductMediaIntakePanel() {
     const limit = kind === "video" ? 45 * 1024 * 1024 : 10 * 1024 * 1024;
     if (uploadFile.size <= 0 || uploadFile.size > limit) { setError(`Ukuran ${kind === "video" ? "video" : "gambar"} harus lebih dari 0 dan maksimal ${Math.round(limit / 1024 / 1024)} MiB.`); return; }
     if (!rightsConfirmed) { setError("Konfirmasikan hak penggunaan media sebelum mengunggah."); return; }
+    const productId = selectedProduct.id;
     setUploading(true); setError(null); setNotice(null);
     try {
-      const asset = await api.uploadProductMedia(selectedProduct.id, uploadFile, kind);
-      const refreshedAssets = await api.productMediaAssets(selectedProduct.id);
-      setStoredAssets(refreshedAssets.data);
-      setNotice(`${kind === "video" ? "Video" : "Gambar"} tersimpan di penyimpanan privat AffiliateOS (SHA-256 ${asset.sha256.slice(0, 12)}…). Status hak tetap ${asset.rightsStatus}; admin harus memeriksa bukti izin sebelum aset dapat digunakan untuk publikasi.`);
+      const asset = await api.uploadProductMedia(productId, uploadFile, kind);
+      setNotice(`${kind === "video" ? "Video" : "Gambar"} berhasil diunggah ke penyimpanan privat AffiliateOS (SHA-256 ${asset.sha256.slice(0, 12)}…). Status hak tetap ${asset.rightsStatus}; admin harus memeriksa bukti izin sebelum aset dapat digunakan untuk publikasi.`);
       setUploadFile(null);
       const input = document.getElementById("product-media-file") as HTMLInputElement | null;
       if (input) input.value = "";
       setRightsConfirmed(false);
+      try {
+        const refreshedAssets = await api.productMediaAssets(productId);
+        if (selectedIdRef.current === productId) setStoredAssets(refreshedAssets.data);
+      } catch (refreshError) {
+        setError(refreshError instanceof Error
+          ? `Unggahan berhasil, tetapi status aset belum dapat diperbarui: ${refreshError.message}`
+          : "Unggahan berhasil, tetapi status aset belum dapat diperbarui. Muat ulang status media nanti.");
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "File media gagal diunggah.");
     } finally { setUploading(false); }
@@ -164,7 +174,7 @@ export function ProductMediaIntakePanel() {
           <label htmlFor="product-media-search">Cari produk</label>
           <input id="product-media-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nama atau ID produk" />
           <label htmlFor="product-media-product">Pilih produk</label>
-          <select id="product-media-product" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
+          <select id="product-media-product" value={selectedId} onChange={(event) => { selectedIdRef.current = event.target.value; setSelectedId(event.target.value); }} disabled={uploading}>
             {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.imageUrl || product.videoUrl ? "media tersedia" : "tanpa media"}</option>)}
           </select>
           {selectedProduct && <>
