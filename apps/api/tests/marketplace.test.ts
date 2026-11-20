@@ -234,6 +234,19 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   assert.equal(individualProductLookups, 0);
   assert.equal(productWriteBatches, 1, "unchanged reimport must not issue a product upsert");
   assert.equal(offerWriteBatches, 1, "unchanged reimport must not issue an offer upsert");
+  const productOnlyChange = await service.importShopeeAffiliateFeed({
+    affiliateId,
+    items: [{
+      ...baseItem,
+      category: "Elektronik - diperbarui",
+      metadata: { productIdentity: { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" } }
+    }]
+  });
+  assert.equal(productOnlyChange.changed, true, "a product-only change must request an autonomous cycle");
+  assert.equal(productOnlyChange.importedProducts, 1);
+  assert.equal(productOnlyChange.importedOffers, 1, "import counts describe matched feed rows, not only changed rows");
+  assert.equal(productWriteBatches, 2);
+  assert.equal(offerWriteBatches, 1, "product-only changes must not rewrite unchanged offers");
   const saved = await products.findByMarketplaceProduct(
     (await connections.findBySlug("shopee-affiliate-feed"))!.id,
     baseItem.externalProductId
