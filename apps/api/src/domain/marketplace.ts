@@ -248,7 +248,7 @@ export class MarketplaceService {
         affiliateOfferIds.push(offer.id);
       }
       importedProducts = productEntities.length;
-      importedOffers = offersToSave.length;
+      importedOffers = input.items.length;
       return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds, changed };
     }
     let changed = false;
