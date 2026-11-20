@@ -71,7 +71,7 @@ export const transcodeWebmToMp4 = async (
       "-i", inputPath,
       "-map", "0:v:0", "-map", "0:a:0?",
       "-sn", "-dn", "-t", String(maxDurationSeconds),
-      "-vf", "scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease",
+      "-vf", "scale=w='trunc(min(1280,iw)/2)*2':h='trunc(min(1280,ih)/2)*2':force_original_aspect_ratio=decrease",
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
       "-pix_fmt", "yuv420p", "-threads", "1",
       "-c:a", "aac", "-b:a", "96k",
