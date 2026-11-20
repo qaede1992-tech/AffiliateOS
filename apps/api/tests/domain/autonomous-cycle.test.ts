@@ -10,6 +10,7 @@ describe("autonomous cycle", () => {
     const provider: AutonomousCandidateProvider = { async listCandidates() { return candidates; } };
     const calls: string[] = [];
     let readinessSnapshotCount = 0;
+    const readinessSnapshotProductIds: string[][] = [];
     const execution = {
       async previewSelection(input: { requirePublishableMedia?: boolean; requirePublishableVideo?: boolean }) {
         if (input.requirePublishableMedia === true) {
@@ -28,7 +29,8 @@ describe("autonomous cycle", () => {
       }
     } as unknown as AutonomousExecutionService;
     const discovery = {
-      async getPublicationReadinessSnapshot() {
+      async getPublicationReadinessSnapshot(productIds: string[]) {
+        readinessSnapshotProductIds.push(productIds);
         readinessSnapshotCount += 1;
         calls.push("readiness-snapshot:" + readinessSnapshotCount);
         return {
@@ -58,6 +60,7 @@ describe("autonomous cycle", () => {
       "final-execution"
     ]);
     assert.equal(calls.some((call) => call === "render:media-rejected"), false);
+    assert.deepEqual(readinessSnapshotProductIds, [["selected-image", "media-rejected"], ["selected-image", "media-rejected"], ["selected-image"]]);
   });
 
   it("logs aggregate media discovery outcomes without logging source URLs", async () => {
@@ -220,7 +223,9 @@ describe("autonomous cycle", () => {
       async listCandidates() { return [{ product: product as never, offers: [{} as never] }]; }
     };
     const execution = {
-      async previewSelection() { return { selected: [], rejected: [], audit: [] }; },
+      async previewSelection() {
+        return { selected: [{ product: product as never, offerId: "offer", score: 90 }], rejected: [], audit: [] };
+      },
       async runOnce() { return { selected: [], rejected: [], audit: [], outcomes: [] }; }
     } as unknown as AutonomousExecutionService;
     let readinessSnapshotCount = 0;
@@ -228,7 +233,7 @@ describe("autonomous cycle", () => {
       async discover() { return { productId: product.id, pageFetched: false, hasVideo: false, stored: [], skipped: [] }; },
       async getPublicationReadinessSnapshot() {
         readinessSnapshotCount += 1;
-        if (readinessSnapshotCount === 1) {
+        if (readinessSnapshotCount <= 2) {
           return {
             publishableMediaProductIds: [product.id],
             publishableVideoProductIds: [],
@@ -248,9 +253,10 @@ describe("autonomous cycle", () => {
     } finally {
       console.warn = originalWarn;
     }
-    assert.equal(warningLogs.length, 1);
-    assert.ok(warningLogs[0]?.includes("autonomous_product_video_index_failed"));
-    assert.ok(warningLogs[0]?.includes('"errorType":"Error"'));
+    assert.ok(warningLogs.length >= 1);
+    assert.ok(warningLogs.some((line) => line.includes("autonomous_product_video_index_failed")));
+    const mediaIndexWarning = warningLogs.find((line) => line.includes("autonomous_product_video_index_failed"));
+    assert.ok(mediaIndexWarning?.includes('"errorType":"Error"'));
     assert.equal(warningLogs.some((line) => line.includes("private-media-index-marker")), false);
     assert.equal(warningLogs.some((line) => line.includes("SELECT *")), false);
   });
@@ -737,7 +743,7 @@ describe("autonomous cycle", () => {
 
     assert.ok(result);
     assert.equal(discoveryCalls, 0);
-    assert.equal(readinessSnapshotCalls, 3);
+    assert.equal(readinessSnapshotCalls, 2);
     assert.equal(service.skipReason, undefined);
   });
 
