@@ -66,3 +66,23 @@ test("enforces an absolute deadline when a public HTTPS origin continuously slow
   assert.equal(request.destroyed, true, "deadline must actively terminate the underlying request");
   response.stop();
 });
+
+
+test("applies the total fetch deadline while DNS resolution is pending", async () => {
+  let requestStarted = false;
+  const requestImpl = (() => {
+    requestStarted = true;
+    throw new Error("request must not start after DNS exhausts the total deadline");
+  }) as never;
+
+  await assert.rejects(
+    fetchPublicHttps("https://media.example.test/image.jpg", {
+      maxBytes: 1024,
+      timeoutMs: 20,
+      resolveHost: (() => new Promise(() => undefined)) as never,
+      fetchImpl: requestImpl
+    }),
+    /total deadline during DNS resolution/
+  );
+  assert.equal(requestStarted, false);
+});
