@@ -684,10 +684,26 @@ describe("autonomous cycle", () => {
     const optimization = { async run() { optimizationCalls += 1; return undefined; } };
     const service = new AutonomousCycleService(provider, execution, undefined, undefined, optimization as never, exploration as never, discovery as never);
 
-    const result = await service.runOnce({ publicationEnabled: false });
+    const logs: string[] = [];
+    const originalInfo = console.info;
+    console.info = (message?: unknown) => { logs.push(String(message)); };
+    let result;
+    try {
+      result = await service.runOnce({ publicationEnabled: false });
+    } finally {
+      console.info = originalInfo;
+    }
 
     assert.ok(result);
     assert.equal(service.skipReason, "no_publishable_candidates");
+    const blockedEvent = logs.map((line) => {
+      try { return JSON.parse(line) as Record<string, unknown>; } catch { return undefined; }
+    }).find((entry) => entry?.event === "autonomous_cycle_skipped");
+    assert.equal(blockedEvent?.blockReason, "media_unavailable_rights_unverified");
+    const summary = logs.map((line) => {
+      try { return JSON.parse(line) as Record<string, unknown>; } catch { return undefined; }
+    }).find((entry) => entry?.event === "autonomous_media_discovery_summary");
+    assert.equal(summary?.publicationBlockReason, "media_unavailable_rights_unverified");
     assert.equal(previewSelectionCalls, 1);
     assert.equal(readinessSnapshotCalls, 2);
     assert.equal(runOnceCalls, 0);
