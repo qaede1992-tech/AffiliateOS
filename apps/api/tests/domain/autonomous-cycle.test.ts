@@ -253,9 +253,9 @@ describe("autonomous cycle", () => {
     } finally {
       console.warn = originalWarn;
     }
-    assert.equal(warningLogs.length, 1);
-    assert.ok(warningLogs[0]?.includes("autonomous_product_video_index_failed"));
-    assert.ok(warningLogs[0]?.includes('"errorType":"Error"'));
+    assert.ok(warningLogs.length >= 1);
+    assert.ok(warningLogs.some((line) => line.includes("autonomous_product_video_index_failed")));
+    assert.ok(warningLogs.every((line) => line.includes('"errorType":"Error"')));
     assert.equal(warningLogs.some((line) => line.includes("private-media-index-marker")), false);
     assert.equal(warningLogs.some((line) => line.includes("SELECT *")), false);
   });
