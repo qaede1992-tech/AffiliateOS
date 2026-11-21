@@ -119,7 +119,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
     const rows = await this.db.select().from(productMediaCandidateReviewAudits).where(and(
       eq(productMediaCandidateReviewAudits.productId, productId),
       eq(productMediaCandidateReviewAudits.candidateId, candidateId)
-    )).orderBy(desc(productMediaCandidateReviewAudits.createdAt)).limit(Math.max(1, Math.min(50, Math.trunc(limit))));
+    )).orderBy(desc(productMediaCandidateReviewAudits.createdAt)).limit(Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 50);
     return rows.map((row: typeof productMediaCandidateReviewAudits.$inferSelect) => ({
       id: row.id, candidateId: row.candidateId, productId: row.productId, actorId: row.actorId,
       actorRole: "admin", action: row.action as ProductMediaCandidateReviewAudit["action"],
