@@ -126,8 +126,10 @@ export function ProductMediaRightsPanel() {
     productSelectionSequence.current += 1;
     requestSequence.current += 1;
     setAssets([]);
-    setPreviews({});
     setAudits({});
+    setLoadedAuditIds(new Set());
+    setLoadingAuditIds(new Set());
+    setAuditErrors({});
     setBusyAssetId(null);
     setError(null);
     setNotice(null);
