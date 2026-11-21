@@ -431,3 +431,20 @@ test("ignores invalid numeric HTML entities in external attribution metadata", a
   assert.equal(results.length, 1);
   assert.equal(results[0]?.creator, "Example Photographer 😀");
 });
+
+
+test("includes structured brand and model identifiers in a single category-specific Commons query", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah",
+    brand: "Northstar",
+    model: "RB-900",
+    sku: "NS-RB900"
+  }), ["Northstar RB-900 NS-RB900 backpack"]);
+});
+
+test("keeps category-only Commons queries when no model or SKU is available", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah",
+    brand: "Northstar"
+  }), ["backpack"]);
+});
