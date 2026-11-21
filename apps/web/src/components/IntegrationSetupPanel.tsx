@@ -34,6 +34,7 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
   const hasLoadedRef = useRef(false);
   const lastLoadedAtRef = useRef(0);
   const hasInitialData = initialProviders !== undefined && initialConnections !== undefined && initialAffiliates !== undefined;
+  const readinessInFlightRef = useRef<Promise<void> | null>(null);
 
 
 
@@ -61,10 +62,17 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
     return request;
   };
 
-  const refreshReadiness = (): Promise<void> => api.publisherReadiness().then((response) => {
-    setReadiness(response.data);
-    lastLoadedAtRef.current = Date.now();
-  });
+  const refreshReadiness = (): Promise<void> => {
+    if (readinessInFlightRef.current) return readinessInFlightRef.current;
+    const request = api.publisherReadiness().then((response) => {
+      setReadiness(response.data);
+      lastLoadedAtRef.current = Date.now();
+    }).finally(() => {
+      if (readinessInFlightRef.current === request) readinessInFlightRef.current = null;
+    });
+    readinessInFlightRef.current = request;
+    return request;
+  };
 
   useEffect(() => {
     if (initialProviders) setProviders(initialProviders);
