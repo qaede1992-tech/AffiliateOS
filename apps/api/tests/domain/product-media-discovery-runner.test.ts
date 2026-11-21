@@ -671,10 +671,11 @@ test("stale pending media candidates do not suppress discovery for an updated pr
     return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const candidateRepository = {
-    async listPendingByProduct(_productId: string, limit: number) {
-      assert.equal(limit, 100);
-      return [{ query: "Demo product" }];
+    async hasPendingByProductAndQuery(_productId: string, query: string) {
+      assert.equal(query, "Updated demo product");
+      return false;
     },
+    async listPendingByProduct() { throw new Error("targeted lookup should avoid loading pending candidate rows"); },
     async saveMany() { return []; }
   };
   const assetRepository = {
