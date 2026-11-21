@@ -76,7 +76,7 @@ export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus?
       ]);
       setAudits(auditResponse.data);
       setProducts(productResponse.data);
-      if (initialStatus !== undefined) setStatus(initialStatus);
+      if (initialStatus !== undefined && !background) setStatus(initialStatus);
       else setStatus(await api.autonomousStatus());
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load autonomous observability.");
