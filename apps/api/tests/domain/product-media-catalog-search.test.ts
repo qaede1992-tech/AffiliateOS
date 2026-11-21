@@ -288,3 +288,28 @@ test("classifies token endpoint 403 JSON separately from Cloudflare HTML challen
     }
   );
 });
+
+
+test("uses CSV category in discovery query and records the exact provider query", async () => {
+  const categorized = { ...identity, category: "Elektronik Audio" };
+  assert.match(buildProductMediaSearchQuery(categorized), /Elektronik Audio/);
+  let requested = "";
+  const fetchImpl: typeof fetch = async (input) => {
+    requested = new URL(String(input)).searchParams.get("q") ?? "";
+    return new Response(JSON.stringify({ results: [{
+      title: "Sony WH-1000XM5 Wireless Headphones Black",
+      url: "https://images.example.com/sony-category.jpg",
+      foreign_landing_url: "https://source.example.com/photo/category",
+      creator: "Photographer",
+      creator_url: "https://source.example.com/creator",
+      license: "by",
+      license_version: "4.0",
+      license_url: "https://creativecommons.org/licenses/by/4.0/",
+      source: "example"
+    }] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const results = await searchOpenverseProductMedia(categorized, { fetchImpl });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.searchQuery, requested);
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
