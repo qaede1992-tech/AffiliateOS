@@ -71,10 +71,19 @@ const listProducts = (): Promise<ListResponse<Product>> => {
 };
 const listProductsPage = (path: string): Promise<CollectionPage<Product>> => {
   const cached = productPagesCache.get(path);
-  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+  if (cached && cached.expiresAt > Date.now()) {
+    productPagesCache.delete(path);
+    productPagesCache.set(path, cached);
+    return cached.promise;
+  }
   const promise = get<CollectionPage<Product>>(path);
   const entry = { expiresAt: Date.now() + 15_000, promise };
   productPagesCache.set(path, entry);
+  while (productPagesCache.size > 32) {
+    const oldestKey = productPagesCache.keys().next().value as string | undefined;
+    if (!oldestKey || oldestKey === path) break;
+    productPagesCache.delete(oldestKey);
+  }
   void promise.catch(() => { if (productPagesCache.get(path) === entry) productPagesCache.delete(path); });
   return promise;
 };
@@ -83,10 +92,19 @@ const productMediaAssetsCache = new Map<string, { expiresAt: number; promise: Pr
 const invalidateProductMediaAssetsCache = (productId: string) => { productMediaAssetsCache.delete(productId); };
 const listProductMediaAssets = (productId: string): Promise<ListResponse<ProductMediaAssetView>> => {
   const cached = productMediaAssetsCache.get(productId);
-  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+  if (cached && cached.expiresAt > Date.now()) {
+    productMediaAssetsCache.delete(productId);
+    productMediaAssetsCache.set(productId, cached);
+    return cached.promise;
+  }
   const promise = get<ListResponse<ProductMediaAssetView>>(`/api/v1/products/${encodeURIComponent(productId)}/media-assets`);
   const entry = { expiresAt: Date.now() + 10_000, promise };
   productMediaAssetsCache.set(productId, entry);
+  while (productMediaAssetsCache.size > 32) {
+    const oldestKey = productMediaAssetsCache.keys().next().value as string | undefined;
+    if (!oldestKey || oldestKey === productId) break;
+    productMediaAssetsCache.delete(oldestKey);
+  }
   void promise.catch(() => { if (productMediaAssetsCache.get(productId) === entry) productMediaAssetsCache.delete(productId); });
   return promise;
 };
