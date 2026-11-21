@@ -203,8 +203,8 @@ test("Shopee CSV import persists optional product identity through discovery sig
     const affiliate = affiliateResponse.json();
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Merek,Model,SKU,Varian",
-      '456789,"Headphone Bluetooth Noise Cancelling","Rp799.000","250","Toko Audio","8%","Rp63.920","https://shopee.co.id/product/123/456789","https://s.shopee.co.id/identity","SoundBrand","QuietPro X2","SB-QPX2-BLK","Hitam",
-    ].join("\\n");
+      '456789,"Headphone Bluetooth Noise Cancelling","Rp799.000","250","Toko Audio","8%","Rp63.920","https://shopee.co.id/product/123/456789","https://s.shopee.co.id/identity","SoundBrand","QuietPro X2","SB-QPX2-BLK","Hitam"',
+    ].join("\n");
     const imported = await app.inject({
       method: "POST",
       url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
