@@ -8,6 +8,7 @@ export type ParsedShopeeAffiliateCsvRow = {
   externalProductId: string;
   name: string;
   shopName: string;
+  category?: string;
   priceRupiah: number;
   soldCount: ShopeeSalesValue;
   reviewCount: ShopeeSalesValue;
@@ -192,6 +193,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const affiliateUrl = get("affiliate_url");
       const imageUrl = (record[indexes.get("image_url") ?? -1] ?? "").trim();
       const videoUrl = (record[indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
+      const categoryHeaders = ["category", "category_name", "kategori", "kategori_produk"].filter((header) => indexes.has(header));
+      const category = categoryHeaders.length === 1 ? (record[indexes.get(categoryHeaders[0]!) ?? -1] ?? "").trim() : "";
       const identity = Object.fromEntries(PREVIEW_IDENTITY_HEADERS.flatMap((key) => { const value = (record[indexes.get(key) ?? -1] ?? "").trim(); return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
       const ratingText = (record[indexes.get("rating_milli") ?? -1] ?? "").trim();
       const reviewValueText = (record[indexes.get("review_count_value") ?? -1] ?? "").trim();
@@ -206,6 +209,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
             sourceText: reviewQualityText === "lower_bound" ? `${reviewValueText}+` : reviewValueText,
           };
       const rowProblems: string[] = [];
+      if (categoryHeaders.length > 1) rowProblems.push("Gunakan hanya satu kolom kategori agar sumber data tidak ambigu");
+      if (category.length > 120) rowProblems.push("category maksimal 120 karakter");
       const priceValue = Number(price);
       const salesValue = Number(sales);
       const rateValue = Number(rate);
@@ -236,6 +241,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
         externalProductId: id,
         name,
         shopName: shop,
+        ...(category ? { category } : {}),
         priceRupiah: priceValue,
         soldCount: {
           value: salesQuality === "missing" ? null : salesValue,
@@ -267,6 +273,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
   const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
   if (missing.length > 0) return { rows: [], errors: [{ row: 1, message: `Kolom wajib tidak ditemukan: ${missing.join(", ")}.` }] };
   const indexes = new Map(headers.map((header, index) => [header, index]));
+  const categoryHeaders = ["Kategori", "Kategori Produk", "category", "category_name"].filter((header) => indexes.has(header));
+  if (categoryHeaders.length > 1) return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom kategori agar sumber data tidak ambigu." }] };
   const identityHeaders = Object.fromEntries(Object.entries(IDENTITY_HEADERS).map(([key, aliases]) => [key, aliases.filter((header) => indexes.has(header))])) as Record<keyof typeof IDENTITY_HEADERS, string[]>;
   if (Object.values(identityHeaders).some((matches) => matches.length > 1)) return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom untuk setiap identitas produk (merek/brand, model, SKU, varian)." }] };
   const ratingHeadersPresent = ["Rating", "Rating Produk", "Penilaian"].filter((header) => indexes.has(header));
@@ -294,6 +302,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const affiliateUrl = get("Link Komisi Ekstra");
     const imageUrl = (record[indexes.get("Link Gambar") ?? indexes.get("image_url") ?? -1] ?? "").trim();
     const videoUrl = (record[indexes.get("Link Video") ?? indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
+    const category = categoryHeaders.length === 1 ? (record[indexes.get(categoryHeaders[0]!) ?? -1] ?? "").trim() : "";
     const identity = Object.fromEntries(Object.entries(identityHeaders).flatMap(([key, matches]) => { const header = matches[0]; const value = header ? (record[indexes.get(header)!] ?? "").trim() : ""; return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
     const ratingHeader = ["Rating", "Rating Produk", "Penilaian"].find((header) => indexes.has(header));
     const reviewHeader = ["Jumlah Ulasan", "Ulasan", "Review Count"].find((header) => indexes.has(header));
@@ -302,6 +311,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const ratingMilli = ratingText ? parseRatingMilli(ratingText) : null;
     const reviewCount = parseSales(reviewText);
     const problems: string[] = [];
+    if (category.length > 120) problems.push("Kategori maksimal 120 karakter");
     if (!externalProductId) problems.push("ID Produk kosong");
     if (!name) problems.push("Nama Produk kosong");
     if (priceRupiah === null) problems.push("Harga tidak dapat dibaca");
@@ -319,7 +329,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     if (externalProductId && seenIds.has(externalProductId)) problems.push("ID Produk duplikat dalam file");
     if (externalProductId) seenIds.add(externalProductId);
     if (problems.length > 0) { errors.push({ row: rowNumber, message: problems.join("; ") + "." }); return; }
-    rows.push({ externalProductId, name, shopName: get("Nama Toko"), priceRupiah: priceRupiah!, soldCount, reviewCount, ...(ratingMilli !== null ? { ratingMilli } : {}), commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl, ...(imageUrl ? { imageUrl } : {}), ...(videoUrl ? { videoUrl } : {}), ...identity });
+    rows.push({ externalProductId, name, shopName: get("Nama Toko"), ...(category ? { category } : {}), priceRupiah: priceRupiah!, soldCount, reviewCount, ...(ratingMilli !== null ? { ratingMilli } : {}), commissionRateBps, commissionAmountRupiah, productUrl, affiliateUrl, ...(imageUrl ? { imageUrl } : {}), ...(videoUrl ? { videoUrl } : {}), ...identity });
   });
   return { rows, errors };
 }

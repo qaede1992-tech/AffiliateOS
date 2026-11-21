@@ -520,9 +520,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
   app.get("/api/v1/products", async () => list(await services.marketplace.listProducts())); app.get("/api/v1/products/page", async (request) => { const input = productCollectionQuerySchema.parse(request.query); const page = await services.marketplace.listProductsPage(input); return { ...list(page.items), nextCursor: page.nextCursor, hasMore: page.hasMore }; }); app.patch("/api/v1/products/:productId/media", writeGuard, async (request) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     const input = updateProductMediaSchema.parse(request.body);
-    const product = await services.marketplace.updateProductMedia(productId, input);
-    if (input.imageUrl || input.videoUrl) void services.autonomousScheduler.trigger();
-    return product;
+    const result = await services.marketplace.updateProductMediaWithChange(productId, input);
+    if (result.changed && (input.imageUrl || input.videoUrl)) void services.autonomousScheduler.trigger();
+    return result.product;
   });
   app.get("/api/v1/products/:productId/media-candidates", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
@@ -580,7 +580,9 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const { productId, candidateId } = productMediaCandidateReviewParamsSchema.parse(request.params);
     const repository = services.productMediaCandidates;
     if (!repository?.listReviewAudits) return reply.status(503).send({ error: "PRODUCT_MEDIA_CANDIDATE_AUDIT_UNAVAILABLE", message: "Candidate review audit storage is not configured." });
-    return list(await repository.listReviewAudits(productId, candidateId));
+    const requestedLimit = Number((request.query as { limit?: string }).limit ?? 50);
+    const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(50, Math.trunc(requestedLimit))) : 50;
+    return list(await repository.listReviewAudits(productId, candidateId, limit));
   });
   app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);

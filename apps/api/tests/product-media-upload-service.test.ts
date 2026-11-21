@@ -19,8 +19,9 @@ const makeHarness = (overrides: {
   saveError?: Error;
   saveResult?: ProductMediaAsset;
   uploadError?: Error;
+  streamingStorage?: boolean;
 } = {}) => {
-  const calls = { uploads: [] as Array<{ key: string; bytes: Uint8Array; contentType: string }>, removals: [] as string[], saved: [] as ProductMediaAsset[] };
+  const calls = { uploads: [] as Array<{ key: string; bytes: Uint8Array; contentType: string }>, streamedUploads: [] as Array<{ key: string; contentLength: number; contentType: string }>, removals: [] as string[], saved: [] as ProductMediaAsset[] };
   const assets: ProductMediaAssetRepository = {
     async findByProductAndHash() { return overrides.prior; },
     async findBySourceCandidateId() { return undefined; },
@@ -40,6 +41,17 @@ const makeHarness = (overrides: {
         if (overrides.uploadError) throw overrides.uploadError;
         return { bucket: "affiliate-media", key: input.key };
       },
+      ...(overrides.streamingStorage ? {
+        async uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number }) {
+          calls.streamedUploads.push({ key: input.key, contentLength: input.contentLength, contentType: input.contentType });
+          const reader = input.body.getReader();
+          let total = 0;
+          try { while (true) { const part = await reader.read(); if (part.done) break; total += part.value?.byteLength ?? 0; } }
+          finally { reader.releaseLock(); }
+          assert.equal(total, input.contentLength);
+          return { bucket: "affiliate-media", key: input.key };
+        }
+      } : {}),
       async remove(key) { calls.removals.push(key); }
     },
     { maxImageBytes: 1024 * 1024, maxVideoBytes: 2 * 1024 * 1024 }
@@ -202,4 +214,15 @@ test("removes a losing storage object when a concurrent insert returns the winni
   const result = await service.uploadStream(input());
   assert.equal(result.id, winner.id);
   assert.deepEqual(calls.removals, [calls.uploads[0]!.key]);
+});
+
+
+test("uses the streaming Storage adapter after validating bounded media bytes", async () => {
+  const { service, calls } = makeHarness({ streamingStorage: true });
+  const asset = await service.uploadStream(input());
+  assert.equal(calls.uploads.length, 0);
+  assert.equal(calls.streamedUploads.length, 1);
+  assert.equal(calls.streamedUploads[0]?.contentLength, png.byteLength);
+  assert.equal(calls.streamedUploads[0]?.contentType, "image/png");
+  assert.equal(asset.rightsStatus, "unverified");
 });

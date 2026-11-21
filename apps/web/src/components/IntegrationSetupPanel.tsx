@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Affiliate, ImportShopeeAffiliateFeedRequest, MarketplaceConnectionView, MarketplaceProviderInfo, SocialAccountView } from "@affiliateos/shared";
 import { api, socialOAuthRedirectUri } from "../api/client";
 
 type Readiness = { platform: string; status: string; reason?: string };
 
-export function IntegrationSetupPanel() {
-  const [providers, setProviders] = useState<MarketplaceProviderInfo[]>([]);
-  const [connections, setConnections] = useState<MarketplaceConnectionView[]>([]);
-  const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
+export function IntegrationSetupPanel({ initialProviders, initialConnections, initialAffiliates }: {
+  initialProviders?: MarketplaceProviderInfo[];
+  initialConnections?: MarketplaceConnectionView[];
+  initialAffiliates?: Affiliate[];
+} = {}) {
+  const [providers, setProviders] = useState<MarketplaceProviderInfo[]>(initialProviders ?? []);
+  const [connections, setConnections] = useState<MarketplaceConnectionView[]>(initialConnections ?? []);
+  const [affiliates, setAffiliates] = useState<Affiliate[]>(initialAffiliates ?? []);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccountView[]>([]);
   const [readiness, setReadiness] = useState<Readiness[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -24,32 +28,88 @@ export function IntegrationSetupPanel() {
   const [testAffiliateUrl, setTestAffiliateUrl] = useState("");
   const [testImageUrl, setTestImageUrl] = useState("");
   const [testCommissionPercent, setTestCommissionPercent] = useState("");
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const isNearViewportRef = useRef(false);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
+  const hasLoadedRef = useRef(false);
+  const lastLoadedAtRef = useRef(0);
+  const hasInitialData = initialProviders !== undefined && initialConnections !== undefined && initialAffiliates !== undefined;
+  const readinessInFlightRef = useRef<Promise<void> | null>(null);
 
-  const load = async () => {
-    const [p, c, a, s, r] = await Promise.all([
-      api.marketplaceProviders(), api.marketplaceConnections(), api.affiliates(),
-      api.socialAccounts(), api.publisherReadiness()
-    ]);
-    setProviders(p.data); setConnections(c.data); setAffiliates(a.data); setSocialAccounts(s.data); setReadiness(r.data);
+
+
+  const load = (force = false): Promise<void> => {
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+    if (!force && hasLoadedRef.current && Date.now() - lastLoadedAtRef.current < 15_000) return Promise.resolve();
+    const coreRequest = force || !hasInitialData
+      ? Promise.all([api.marketplaceProviders(), api.marketplaceConnections(), api.affiliates()])
+        .then(([p, c, a]) => ({ providers: p.data, connections: c.data, affiliates: a.data }))
+      : Promise.resolve({
+        providers: initialProviders ?? [],
+        connections: initialConnections ?? [],
+        affiliates: initialAffiliates ?? []
+      });
+    const request = Promise.all([coreRequest, api.socialAccounts(), api.publisherReadiness()])
+      .then(([core, s, r]) => {
+        setProviders(core.providers); setConnections(core.connections); setAffiliates(core.affiliates);
+        setSocialAccounts(s.data); setReadiness(r.data);
+        hasLoadedRef.current = true;
+        lastLoadedAtRef.current = Date.now();
+      }).finally(() => {
+        if (loadInFlightRef.current === request) loadInFlightRef.current = null;
+      });
+    loadInFlightRef.current = request;
+    return request;
+  };
+
+  const refreshReadiness = (): Promise<void> => {
+    if (readinessInFlightRef.current) return readinessInFlightRef.current;
+    const request = api.publisherReadiness().then((response) => {
+      setReadiness(response.data);
+      lastLoadedAtRef.current = Date.now();
+    }).finally(() => {
+      if (readinessInFlightRef.current === request) readinessInFlightRef.current = null;
+    });
+    readinessInFlightRef.current = request;
+    return request;
   };
 
   useEffect(() => {
+    if (initialProviders) setProviders(initialProviders);
+    if (initialConnections) setConnections(initialConnections);
+    if (initialAffiliates) setAffiliates(initialAffiliates);
+  }, [initialProviders, initialConnections, initialAffiliates]);
+
+  useEffect(() => {
     let disposed = false;
-    const refreshReadiness = () => {
-      void load().catch((e: unknown) => {
+    const refreshIfVisible = () => {
+      if (!isNearViewportRef.current || document.visibilityState !== "visible") return;
+      const request = hasLoadedRef.current ? refreshReadiness() : load();
+      void request.catch((e: unknown) => {
         if (!disposed) setError(e instanceof Error ? e.message : "Unable to load integration setup.");
       });
     };
-    refreshReadiness();
-    const handleFocus = () => refreshReadiness();
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") refreshReadiness();
-    };
+    const section = sectionRef.current;
+    if (!section) return;
+    let observer: IntersectionObserver | undefined;
+    if (typeof IntersectionObserver === "undefined") {
+      isNearViewportRef.current = true;
+      refreshIfVisible();
+    } else {
+      observer = new IntersectionObserver((entries) => {
+        isNearViewportRef.current = entries.some((entry) => entry.isIntersecting);
+        refreshIfVisible();
+      }, { rootMargin: "200px" });
+      observer.observe(section);
+    }
+    const handleFocus = () => refreshIfVisible();
+    const handleVisibility = () => refreshIfVisible();
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibility);
-    const intervalId = window.setInterval(refreshReadiness, 30_000);
+    const intervalId = window.setInterval(refreshIfVisible, 120_000);
     return () => {
       disposed = true;
+      observer?.disconnect();
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
       window.clearInterval(intervalId);
@@ -58,7 +118,7 @@ export function IntegrationSetupPanel() {
 
   const run = async (key: string, action: () => Promise<unknown>, success: string) => {
     setBusy(key); setError(null); setMessage(null);
-    try { await action(); setMessage(success); await load(); }
+    try { await action(); setMessage(success); await load(true); }
     catch (e) { setError(e instanceof Error ? e.message : "Operation failed."); }
     finally { setBusy(null); }
   };
@@ -121,7 +181,7 @@ export function IntegrationSetupPanel() {
   };
 
   return (
-    <section className="workspace-grid" id="integrations">
+    <section className="workspace-grid" id="integrations" ref={sectionRef}>
       <article className="panel">
         <div className="panel-heading"><div><p className="eyebrow">Production setup</p><h3>Marketplace & social integrations</h3></div></div>
         <p>Connect only through configured official providers. AffiliateOS never asks this dashboard to store marketplace or social secrets.</p>

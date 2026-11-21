@@ -5,6 +5,7 @@ import { extractProductMediaTechnicalMetadata } from "./product-media-technical-
 
 export interface ProductMediaUploadStorage {
   upload(input: { key: string; bytes: Uint8Array; contentType: string }): Promise<{ bucket: string; key: string }>;
+  uploadStream?(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<{ bucket: string; key: string }>;
   remove(key: string): Promise<void>;
 }
 
@@ -100,8 +101,11 @@ export class ProductMediaUploadService {
       throw new ProductMediaUploadError("Product media exceeds the configured size limit.", "MEDIA_TOO_LARGE");
     }
 
+    // Content-Length is validated and bounded above, so allocate exactly one
+    // buffer and copy each chunk directly into it instead of retaining chunks
+    // and allocating a second contiguous buffer after the stream completes.
+    const bytes = new Uint8Array(input.contentLength);
     const reader = input.body.getReader();
-    const chunks: Uint8Array[] = [];
     let total = 0;
     const cancelOnAbort = () => { void reader.cancel().catch(() => {}); };
     input.signal?.addEventListener("abort", cancelOnAbort, { once: true });
@@ -121,7 +125,7 @@ export class ProductMediaUploadService {
         if (total > input.contentLength) {
           throw new ProductMediaUploadError("Uploaded bytes exceed Content-Length.", "CONTENT_LENGTH_MISMATCH");
         }
-        chunks.push(part.value);
+        bytes.set(part.value, total - part.value.byteLength);
       }
     } catch (error) {
       try { await reader.cancel(error); } catch {}
@@ -137,12 +141,6 @@ export class ProductMediaUploadService {
       throw new ProductMediaUploadError("Uploaded bytes do not match Content-Length.", "CONTENT_LENGTH_MISMATCH");
     }
 
-    const bytes = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
     if (!isStructurallyValidMedia(input.mimeType, bytes)) {
       throw new ProductMediaUploadError("Media bytes do not match the declared MIME type.", "INVALID_MEDIA_BYTES");
     }
@@ -172,7 +170,23 @@ export class ProductMediaUploadService {
     const objectKey = `products/${input.productId}/${sha256}-${id}.${EXTENSION[input.mimeType]}`;
     let stored: { bucket: string; key: string };
     try {
-      stored = await this.storage.upload({ key: objectKey, bytes, contentType: input.mimeType });
+      if (this.storage.uploadStream) {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          }
+        });
+        stored = await this.storage.uploadStream({
+          key: objectKey,
+          body,
+          contentType: input.mimeType,
+          contentLength: bytes.byteLength,
+          signal: input.signal
+        });
+      } else {
+        stored = await this.storage.upload({ key: objectKey, bytes, contentType: input.mimeType });
+      }
     } catch (error) {
       try { await this.storage.remove(objectKey); } catch {}
       throw error;

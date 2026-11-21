@@ -15,7 +15,9 @@ export class AutonomousExplorationEvaluationRunner {
   ) {}
 
   async run(): Promise<ExplorationEvaluationRunResult> {
-    const audits = await this.reader.list({ selected: true, limit: 500 });
+    const audits = this.reader.listPendingExplorationEvaluations
+      ? await this.reader.listPendingExplorationEvaluations(100)
+      : await this.reader.list({ selected: true, limit: 500 });
     let evaluated = 0;
     let skipped = 0;
     let failed = 0;
