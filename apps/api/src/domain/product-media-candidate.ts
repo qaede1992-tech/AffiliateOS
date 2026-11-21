@@ -31,7 +31,7 @@ export interface ProductMediaCandidateRepository {
   listPendingByProduct(productId: string, limit?: number): Promise<ProductMediaCandidateRecord[]>;
   listByProductAndReviewStatus?(productId: string, status: ProductMediaCandidateRecord["reviewStatus"], limit?: number): Promise<ProductMediaCandidateRecord[]>;
   review(candidateId: string, productId: string, command: ProductMediaCandidateReviewCommand): Promise<ProductMediaCandidateRecord | undefined>;
-  listReviewAudits(productId: string, candidateId: string): Promise<ProductMediaCandidateReviewAudit[]>;
+  listReviewAudits(productId: string, candidateId: string, limit?: number): Promise<ProductMediaCandidateReviewAudit[]>;
 }
 
 
