@@ -277,6 +277,11 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     }
   };
 
+  const handleMarketplaceImport = async () => {
+    await refreshMarketplaceConnections();
+    if (marketplaceVerificationLoaded) await loadMarketplaceVerification(false);
+  };
+
   const metrics = useMemo(() => {
     if (!data) return [];
     return [
@@ -380,7 +385,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
         <IntegrationSetupPanel />
 
         <section className="workspace-grid">
-          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={loadDashboard} />
+          <ShopeeCsvImportPanel affiliates={data.affiliates} onImported={handleMarketplaceImport} />
           <ProductMediaIntakePanel />
         </section>
 
@@ -399,11 +404,11 @@ This will allow AffiliateOS to use this marketplace connection for operational w
               <input aria-label="Nilai konversi dalam rupiah" type="number" min="0.01" step="0.01" placeholder="Nilai konversi (IDR)" value={conversionAmount} onChange={(event) => setConversionAmount(event.target.value)} required />
               <button type="submit" disabled={isCreatingConversion || data.affiliates.length === 0 || !data.offers.some((offer) => offer.status === "active")}>{isCreatingConversion ? "Menyimpan..." : "Catat konversi"}</button>
             </form>
-            {data.conversions.length === 0 ? <p className="empty">No conversions recorded yet.</p> : <div className="record-list">{data.conversions.slice(0, 5).map((conversion) => <div className="record" key={conversion.id}><div><strong>{money(conversion.amountCents)}</strong><small>{conversion.id.slice(0, 8)}</small></div><span className={`badge ${conversion.status}`}>{conversion.status}</span></div>)}</div>}
+            {activityLoading ? <p className="empty">Memuat aktivitas konversi…</p> : activityError ? <div className="error-message" role="alert"><p>{activityError}</p><button type="button" onClick={() => void refreshActivityData()}>Coba lagi</button></div> : data.conversions.length === 0 ? <p className="empty">No conversions recorded yet.</p> : <div className="record-list">{data.conversions.slice(0, 5).map((conversion) => <div className="record" key={conversion.id}><div><strong>{money(conversion.amountCents)}</strong><small>{conversion.id.slice(0, 8)}</small></div><span className={`badge ${conversion.status}`}>{conversion.status}</span></div>)}</div>}
           </article>
           <article className="panel" id="commissions">
             <div className="panel-heading"><div><p className="eyebrow">Earnings</p><h3>Commissions</h3></div><span>{data.commissions.length} total</span></div>
-            {data.commissions.length === 0 ? <p className="empty">No commissions recorded yet.</p> : <div className="record-list">{data.commissions.slice(0, 5).map((commission) => <div className="record" key={commission.id}><div><strong>{money(commission.amountCents)}</strong><small>{commission.id.slice(0, 8)}</small></div><span className={`badge ${commission.status}`}>{commission.status}</span></div>)}</div>}
+            {activityLoading ? <p className="empty">Memuat komisi…</p> : activityError ? <p className="analytics-note">Riwayat komisi belum dapat dimuat.</p> : data.commissions.length === 0 ? <p className="empty">No commissions recorded yet.</p> : <div className="record-list">{data.commissions.slice(0, 5).map((commission) => <div className="record" key={commission.id}><div><strong>{money(commission.amountCents)}</strong><small>{commission.id.slice(0, 8)}</small></div><span className={`badge ${commission.status}`}>{commission.status}</span></div>)}</div>}
           </article>
         </section>
 
