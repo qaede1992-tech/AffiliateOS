@@ -67,6 +67,10 @@ npm run db:generate
 
 `db:verify` is the recommended local smoke test against a running, disposable PostgreSQL database because it applies migrations before verification. For a release database that must not be mutated by the verification step, use `npm run db:verify:applied` after the release migration has been applied. Do **not** edit a migration that may already have been applied; add a new, sequential migration and journal entry instead.
 
+## Product media and AI image editing
+
+Product media is stored in the private Supabase Storage bucket and remains rights-unverified until an authorized operator completes the rights review. AI product image editing is opt-in through `AI_PRODUCT_IMAGE_GENERATION_ENABLED=false` (default) and a deployment-managed `OPENAI_API_KEY`. It requires a private, rights-verified, user-owned product reference image; it edits the background and composition while explicitly instructing the model to preserve the physical product. Generated derivatives are always saved with `rightsStatus=unverified`. A rights-only approval does not establish product identity: AI derivatives remain blocked from video generation and publication until a separate product-identity review is implemented and passed. The API endpoint is `POST /api/v1/products/:productId/media-generate` with `referenceAssetId` and one of the `studio`, `lifestyle`, or `minimal` styles. The service does not fetch marketplace pages, scrape Shopee, or publish generated media.
+
 ## API
 
 All application endpoints are under `/api/v1`. The API includes affiliate, offer, conversion, commission, marketplace, campaign, tracking, attribution, analytics, content, social-account, and OAuth workflows plus liveness/readiness endpoints.
