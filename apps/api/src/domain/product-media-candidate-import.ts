@@ -26,8 +26,8 @@ export interface ProductMediaCandidateImportDependencies {
   ingestion: ProductMediaIngestionService;
   audits: AutonomousDecisionAuditReader;
   preMediaEligibility?: Pick<PreMediaEligibilityRepository, "listLatestByProduct">;
-  listProducts(): Promise<Product[]>;
-  listAffiliateOffers(): Promise<AffiliateOffer[]>;
+  findProductById(productId: string): Promise<Product | undefined>;
+  findAffiliateOfferById(offerId: string): Promise<AffiliateOffer | undefined>;
   now?: () => Date;
   selectionMaxAgeMs?: number;
 }
@@ -81,8 +81,7 @@ export class ProductMediaCandidateImportService {
     }
 
     const now = this.now();
-    const products = await this.dependencies.listProducts();
-    const product = products.find((item) => item.id === productId);
+    const product = await this.dependencies.findProductById(productId);
     if (!product || product.status !== "active") {
       throw new ProductMediaCandidateImportError("PRODUCT_NOT_ELIGIBLE", "The product is no longer active.", 409);
     }
@@ -108,8 +107,10 @@ export class ProductMediaCandidateImportService {
       eligibleOfferId = successfulOutcome.offerId;
     }
 
-    const offers = await this.dependencies.listAffiliateOffers();
-    if (!eligibleOfferId || !offers.some((offer) => offer.id === eligibleOfferId && isUsableAffiliateOffer(offer, productId, now))) {
+    const eligibleOffer = eligibleOfferId
+      ? await this.dependencies.findAffiliateOfferById(eligibleOfferId)
+      : undefined;
+    if (!eligibleOffer || !isUsableAffiliateOffer(eligibleOffer, productId, now)) {
       throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The affiliate offer recorded by the latest eligibility evidence no longer has an active, usable link.", 409);
     }
 
