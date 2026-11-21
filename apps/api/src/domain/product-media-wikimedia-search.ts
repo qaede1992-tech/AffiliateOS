@@ -141,6 +141,7 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
       .filter((part): part is string => typeof part === "string" && part.length > 0);
     return [terms.join(" ").slice(0, 200)];
   }
+  // Keep a supplement brand/name in the query: category-only Commons results are too generic for product identity.
   if (matchedCategory && matchedCategory.query !== "dietary supplement product") return [matchedCategory.query];
 
   const stopWords = new Set([
