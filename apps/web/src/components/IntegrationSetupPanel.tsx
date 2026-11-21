@@ -34,7 +34,6 @@ export function IntegrationSetupPanel({ initialProviders, initialConnections, in
   const hasLoadedRef = useRef(false);
   const lastLoadedAtRef = useRef(0);
   const hasInitialData = initialProviders !== undefined && initialConnections !== undefined && initialAffiliates !== undefined;
-  const hasLoadedRef = useRef(false);
 
 
 
