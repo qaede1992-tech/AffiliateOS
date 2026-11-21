@@ -141,7 +141,7 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
       .filter((part): part is string => typeof part === "string" && part.length > 0);
     return [terms.join(" ").slice(0, 200)];
   }
-  if (matchedCategory) return [matchedCategory.query];
+  if (matchedCategory && matchedCategory.query !== "dietary supplement product") return [matchedCategory.query];
 
   const stopWords = new Set([
     "original", "official", "latest", "terbaru", "untuk", "dengan", "dan",
@@ -151,7 +151,7 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
     .toLowerCase().match(/[a-z]{4,}/g) ?? [];
   const listingNoise = new Set(["rak", "tempat", "meja", "slot", "top", "type", "fast", "charging", "original", "official", "latest", "terbaru", "premium", "pcs", "box", "set"]);
   const useful = [...new Set(tokens.filter((token) => !stopWords.has(token) && !listingNoise.has(token) && !/^[a-z]{2,}\d+[a-z0-9]*$/i.test(token)))].slice(0, 3);
-  return [useful.join(" ") || source.trim().slice(0, 100)];
+  return [useful.join(" ") || matchedCategory?.query || source.trim().slice(0, 100)];
 };
 
 const normalizedLicense = (licenseUrl: string | null, licenseName: string | null): {
