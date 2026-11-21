@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type {
   Affiliate,
@@ -60,28 +60,81 @@ function App() {
   const [marketplaceVerificationLoading, setMarketplaceVerificationLoading] = useState(false);
   const [marketplaceVerificationCursor, setMarketplaceVerificationCursor] = useState<string | null>(null);
   const [marketplaceVerificationHasMore, setMarketplaceVerificationHasMore] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const activitySectionRef = useRef<HTMLElement | null>(null);
+  const activityLoadedRef = useRef(false);
+  const activityRequestRef = useRef<Promise<void> | null>(null);
+
 
   const loadDashboard = async () => {
-    const [affiliates, offers, conversions, commissions, marketplaceProviders, marketplaceConnections, analytics, autonomous] = await Promise.all([
+    const [affiliates, offers, marketplaceProviders, marketplaceConnections, analytics, autonomous] = await Promise.all([
       api.affiliates(),
       api.offers(),
-      api.conversions(),
-      api.commissions(),
       api.marketplaceProviders(),
       api.marketplaceConnections(),
       api.analyticsOverview(),
       api.autonomousStatus()
     ]);
-    setData({
+    setData((previous) => ({
       affiliates: affiliates.data,
       offers: offers.data,
-      conversions: conversions.data,
-      commissions: commissions.data,
+      conversions: previous?.conversions ?? [],
+      commissions: previous?.commissions ?? [],
       marketplaceProviders: marketplaceProviders.data,
       marketplaceConnections: marketplaceConnections.data,
-      affiliateOfferVerification: data?.affiliateOfferVerification ?? [],
+      affiliateOfferVerification: previous?.affiliateOfferVerification ?? [],
       analytics
-    });
+    }));
+    setAutonomousStatus(autonomous);
+  };
+
+  const loadActivityData = (): Promise<void> => {
+    if (activityLoadedRef.current) return Promise.resolve();
+    if (activityRequestRef.current) return activityRequestRef.current;
+    setActivityLoading(true);
+    setActivityError(null);
+    const request = Promise.all([api.conversions(), api.commissions()])
+      .then(([conversions, commissions]) => {
+        setData((previous) => previous ? { ...previous, conversions: conversions.data, commissions: commissions.data } : previous);
+        activityLoadedRef.current = true;
+      })
+      .catch((requestError: unknown) => {
+        setActivityError(requestError instanceof Error ? requestError.message : "Unable to load conversion activity.");
+        throw requestError;
+      })
+      .finally(() => {
+        activityRequestRef.current = null;
+        setActivityLoading(false);
+      });
+    activityRequestRef.current = request;
+    return request;
+  };
+
+  const refreshActivityData = async () => {
+    const [conversions, commissions] = await Promise.all([api.conversions(), api.commissions()]);
+    setData((previous) => previous ? { ...previous, conversions: conversions.data, commissions: commissions.data } : previous);
+    activityLoadedRef.current = true;
+  };
+
+  const refreshAffiliates = async () => {
+    const result = await api.affiliates();
+    setData((previous) => previous ? { ...previous, affiliates: result.data } : previous);
+  };
+
+  const refreshOffers = async () => {
+    const result = await api.offers();
+    setData((previous) => previous ? { ...previous, offers: result.data } : previous);
+  };
+
+  const refreshMarketplaceConnections = async () => {
+    const result = await api.marketplaceConnections();
+    setData((previous) => previous ? { ...previous, marketplaceConnections: result.data } : previous);
+  };
+
+  const refreshAutonomousSummary = async () => {
+    const [analytics, autonomous] = await Promise.all([api.analyticsOverview(), api.autonomousStatus()]);
+    setData((previous) => previous ? { ...previous, analytics } : previous);
     setAutonomousStatus(autonomous);
   };
 
@@ -116,6 +169,22 @@ function App() {
     });
   }, []);
 
+  useEffect(() => {
+    const section = activitySectionRef.current;
+    if (!section || !data) return;
+    if (typeof IntersectionObserver === "undefined") {
+      void loadActivityData().catch(() => undefined);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      void loadActivityData().catch(() => undefined);
+    }, { rootMargin: "160px" });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [data !== null]);
+
   const handleCreateAffiliate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsCreatingAffiliate(true);
@@ -124,7 +193,7 @@ function App() {
       await api.createAffiliate({ name: affiliateName.trim(), email: affiliateEmail.trim() });
       setAffiliateName("");
       setAffiliateEmail("");
-      await loadDashboard();
+      await refreshAffiliates();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create affiliate.");
     } finally {
@@ -144,7 +213,7 @@ function App() {
       });
       setOfferName("");
       setOfferRate("");
-      await loadDashboard();
+      await refreshOffers();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create offer.");
     } finally {
@@ -165,7 +234,7 @@ function App() {
       setConversionAffiliateId("");
       setConversionOfferId("");
       setConversionAmount("");
-      await loadDashboard();
+      await refreshActivityData();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create conversion.");
     } finally {
@@ -186,7 +255,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     setError(null);
     try {
       await api.marketplaceSetEnabled(connection.slug, enable);
-      await loadDashboard();
+      await refreshMarketplaceConnections();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to change marketplace connection state.");
     } finally {
@@ -200,7 +269,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
     try {
       const response = await api.runAutonomousCycle();
       if (response.status === "failed") throw new Error(response.error ?? "Autonomous cycle failed.");
-      await loadDashboard();
+      await refreshAutonomousSummary();
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to run autonomous cycle.");
     } finally {
@@ -316,7 +385,7 @@ This will allow AffiliateOS to use this marketplace connection for operational w
         </section>
 
         <section className="workspace-grid">
-          <article className="panel" id="conversions">
+          <article className="panel" id="conversions" ref={activitySectionRef}>
             <div className="panel-heading"><div><p className="eyebrow">Activity</p><h3>Recent conversions</h3></div><span>{data.conversions.length} total</span></div>
             <form className="affiliate-form" onSubmit={handleCreateConversion}>
               <select aria-label="Affiliate" value={conversionAffiliateId} onChange={(event) => setConversionAffiliateId(event.target.value)} required>
