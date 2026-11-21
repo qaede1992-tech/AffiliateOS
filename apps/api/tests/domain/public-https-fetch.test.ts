@@ -69,7 +69,6 @@ test("enforces an absolute deadline when a public HTTPS origin continuously slow
 
 
 test("bounds DNS resolution by the same total fetch deadline", async () => {
-  let resolverSettled = false;
   await assert.rejects(
     fetchPublicHttps("https://media.example.test/image.jpg", {
       maxBytes: 1024,
@@ -81,8 +80,6 @@ test("bounds DNS resolution by the same total fetch deadline", async () => {
   );
   // The stalled resolver is only a test double; the production Resolver path
   // calls Resolver.cancel() when this same deadline expires.
-  resolverSettled = true;
-  assert.equal(resolverSettled, true);
 });
 
 test("shares one total deadline across multiple redirect hops", async () => {
