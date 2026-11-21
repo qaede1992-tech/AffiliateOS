@@ -442,3 +442,89 @@ test("keeps brand/model identity and category context in one Wikimedia query", (
   });
   assert.deepEqual(queries, ["ExampleBrand TB-100 water bottle"]);
 });
+
+
+test("maps additional Indonesian marketplace categories to focused Wikimedia queries", () => {
+  const cases: Array<[string, string]> = [
+    ["Unisex Premium Sweater Half Zipper Fleece", "clothing and fashion accessories"],
+    ["Aksesoris Mobil Jaring Taruh Hp Rapi Dan Kuat", "automotive accessories"],
+    ["Lepet Filter Gantung Aquascape XP06 Free Batu", "aquarium equipment"],
+    ["Ternak Syams Goata Base Susu Kambing Etawa Bubuk", "milk powder"],
+    ["GOODBABY Keranjang Tirisan Multifungsi 6 In1 Baskom Saringan Sayuran", "colander"],
+    ["Tifale Food Kontainer Kotak Penyimpanan Makanan", "food container"],
+    ["Omron Wrist Blood Pressure Monitor HEM 6161", "blood pressure monitor"],
+    ["NIIMBOT B1 Printer Label Bluetooth", "label printer"],
+    ["Sepatu Sneakers Fashion", "sneakers"],
+    ["Flimeal Meal Replacement Coklat Susu", "dietary supplement product"],
+    ["Teh Tjap Solo Jumbo Teh Tubruk", "tea and coffee"],
+    ["GOGOMART Sikat Sepatu Multifungsi", "shoe cleaning brush"],
+    ["Masker Duckbill Isi 50pcs Facemask", "protective face mask"],
+    ["Tisu Wajah 3 Ply", "facial tissue"],
+    ["JOODUTP Filter Kran Air Kain", "water faucet filter"],
+    ["Kahf Antiperspirant Deodorant Roll On", "deodorant"],
+    ["RINSO Cair Anti Noda", "household cleaning products"],
+    ["Scarlite Perfume Unisex", "perfume bottle"],
+    ["Hanasui Mattedorable Lipstick", "cosmetics and skincare"],
+    ["INVEN Bulu Mata Tanpa Lem", "false eyelashes"],
+    ["Rak Penyimpanan Serbaguna Plastik", "household storage rack"],
+    ["Keset Lantai Motif Karakter", "floor mat"],
+    ["MamyPoko Pants Diaper", "baby diaper"],
+    ["Joyko Permanent Marker Dual Tip", "permanent marker pen"],
+    ["Shampo Makarizo Sachet", "shampoo bottle"],
+    ["HAN RIVER Kipas Angin 3in1", "electric fan"],
+    ["Dapurmanja Panci Masak Stainless Steel", "cookware"],
+    ["GOODBABY Sarung Tangan Plastik Sekali Pakai", "disposable gloves"]
+  ];
+  for (const [name, expected] of cases) {
+    assert.deepEqual(buildWikimediaCommonsQueries({ name }), [expected], name);
+  }
+});
+
+test("uses the imported CSV category when the listing title is generic", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({
+    name: "Item 3pcs Premium",
+    category: "Fashion > Bags > Backpack"
+  }), ["backpack"]);
+});
+
+test("accepts canonical HTTP Creative Commons license metadata and normalizes it to HTTPS", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: [{ title: "File:Milk powder.jpg", imageinfo: [{
+      thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/milk-powder.jpg",
+      descriptionurl: "https://commons.wikimedia.org/wiki/File:Milk_powder.jpg",
+      mime: "image/jpeg",
+      extmetadata: {
+        LicenseShortName: { value: "CC BY-SA 3.0" },
+        LicenseUrl: { value: "http://creativecommons.org/licenses/by-sa/3.0/" },
+        Artist: { value: "Example Photographer" }
+      }
+    }]}]}
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  const results = await searchWikimediaCommonsProductMedia({ name: "Zeelandia Vanilla Milk Powder" }, { fetchImpl, timeoutMs: 1000 });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.license, "by-sa");
+  assert.equal(results[0]?.licenseVersion, "3.0");
+  assert.equal(results[0]?.licenseUrl, "https://creativecommons.org/licenses/by-sa/3.0/");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
+
+test("rejects license URLs outside the canonical Creative Commons host", async () => {
+  const invalidLicenseUrls = [
+    "http://creativecommons.org.evil.example/licenses/by/4.0/",
+    "https://evil.example/creativecommons.org/licenses/by/4.0/",
+    "https://user:password@creativecommons.org/licenses/by/4.0/",
+    "ftp://creativecommons.org/licenses/by/4.0/"
+  ];
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: invalidLicenseUrls.map((licenseUrl, index) => ({
+      title: "File:Sony WH-1000XM5 Wireless Headphones " + index + ".jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/thumb-" + index + ".jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_" + index + ".jpg",
+        mime: "image/jpeg",
+        extmetadata: { LicenseShortName: { value: "CC BY 4.0" }, LicenseUrl: { value: licenseUrl } }
+      }]
+    }))}
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
+});
