@@ -81,7 +81,16 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
     .join(" ");
   if (!source.trim()) return [];
 
-  const matchedCategory = categoryQueries.find(({ pattern }) => pattern.test(source));
+  const categorySource = identity.category?.trim() ?? "";
+  const matchedCategory = categoryQueries.find(({ pattern }) => pattern.test(source) || (categorySource.length > 0 && pattern.test(categorySource)));
+  const explicitIdentifiers = [identity.brand, identity.model, identity.sku]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+    .map((part) => part.trim());
+  if (explicitIdentifiers.length > 0) {
+    const terms = [...explicitIdentifiers, identity.variant?.trim(), matchedCategory?.query]
+      .filter((part): part is string => typeof part === "string" && part.length > 0);
+    return [terms.join(" ").slice(0, 200)];
+  }
   if (matchedCategory) return [matchedCategory.query];
 
   const stopWords = new Set([
@@ -195,6 +204,7 @@ export async function searchWikimediaCommonsProductMedia(
 
         const candidate: ProductMediaCatalogCandidate = {
           provider: "wikimedia_commons",
+          searchQuery: query,
           title,
           imageUrl,
           landingPageUrl,
