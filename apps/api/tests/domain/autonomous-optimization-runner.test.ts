@@ -29,6 +29,31 @@ const executorFor = (outcomeId: string): AutonomousCampaignActionExecutor => ({
 } as unknown as AutonomousCampaignActionExecutor);
 
 describe("AutonomousOptimizationRunner", () => {
+  it("uses latest-only feedback for optimization guards instead of loading full snapshot history", async () => {
+    const campaign = { ...metrics("c1", 100, 8), productId: "p1", marketplaceId: "m1" };
+    let requestedContext: unknown;
+    const feedback = {
+      async getSignals(context?: unknown) {
+        requestedContext = context;
+        return new Map();
+      }
+    };
+    const analytics = { async overview() { return overview(campaign); }, async campaign() { return campaign; } };
+    const runner = new AutonomousOptimizationRunner(
+      analytics, { async get() { return undefined; } }, { async save() {} },
+      { async execute() { throw new Error("no action expected"); } } as unknown as AutonomousCampaignActionExecutor,
+      undefined, {}, 60 * 60_000, feedback
+    );
+
+    await runner.run(new Date("2026-09-23T02:00:00.000Z"), { allowMutations: false });
+
+    assert.deepEqual(requestedContext, {
+      observationKey: "autonomous-optimization-actions",
+      historyMode: "latest"
+    });
+  });
+
+
   it("captures baseline and immediate observed metrics for an executed action", async () => {
     const baseline = metrics("c1", 100, 8);
     const observed = metrics("c1", 101, 9);
