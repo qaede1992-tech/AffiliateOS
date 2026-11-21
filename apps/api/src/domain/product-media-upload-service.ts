@@ -5,6 +5,7 @@ import { extractProductMediaTechnicalMetadata } from "./product-media-technical-
 
 export interface ProductMediaUploadStorage {
   upload(input: { key: string; bytes: Uint8Array; contentType: string }): Promise<{ bucket: string; key: string }>;
+  uploadStream?(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<{ bucket: string; key: string }>;
   remove(key: string): Promise<void>;
 }
 
@@ -172,7 +173,23 @@ export class ProductMediaUploadService {
     const objectKey = `products/${input.productId}/${sha256}-${id}.${EXTENSION[input.mimeType]}`;
     let stored: { bucket: string; key: string };
     try {
-      stored = await this.storage.upload({ key: objectKey, bytes, contentType: input.mimeType });
+      if (this.storage.uploadStream) {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          }
+        });
+        stored = await this.storage.uploadStream({
+          key: objectKey,
+          body,
+          contentType: input.mimeType,
+          contentLength: bytes.byteLength,
+          signal: input.signal
+        });
+      } else {
+        stored = await this.storage.upload({ key: objectKey, bytes, contentType: input.mimeType });
+      }
     } catch (error) {
       try { await this.storage.remove(objectKey); } catch {}
       throw error;
