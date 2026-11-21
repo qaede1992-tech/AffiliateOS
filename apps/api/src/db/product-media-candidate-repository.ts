@@ -115,11 +115,11 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
     });
   }
 
-  async listReviewAudits(productId: string, candidateId: string): Promise<ProductMediaCandidateReviewAudit[]> {
+  async listReviewAudits(productId: string, candidateId: string, limit = 50): Promise<ProductMediaCandidateReviewAudit[]> {
     const rows = await this.db.select().from(productMediaCandidateReviewAudits).where(and(
       eq(productMediaCandidateReviewAudits.productId, productId),
       eq(productMediaCandidateReviewAudits.candidateId, candidateId)
-    )).orderBy(desc(productMediaCandidateReviewAudits.createdAt)).limit(50);
+    )).orderBy(desc(productMediaCandidateReviewAudits.createdAt)).limit(Math.max(1, Math.min(50, Math.trunc(limit))));
     return rows.map((row: typeof productMediaCandidateReviewAudits.$inferSelect) => ({
       id: row.id, candidateId: row.candidateId, productId: row.productId, actorId: row.actorId,
       actorRole: "admin", action: row.action as ProductMediaCandidateReviewAudit["action"],
