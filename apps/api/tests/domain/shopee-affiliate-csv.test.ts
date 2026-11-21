@@ -371,3 +371,30 @@ test("rejects preview review counts without an explicit quality classification",
   assert.equal(result.rows.length, 0);
   assert.match(result.errors[0]?.message ?? "", /review_count_quality harus exact, lower_bound, atau missing/);
 });
+
+
+test("preserves Shopee product category from affiliate CSV rows", () => {
+  const csv = [
+    headers + ",Kategori",
+    "106,Produk Kategori,55000,850,Toko,8%,4400,https://shopee.co.id/product/1/106,https://s.shopee.co.id/abc,Elektronik",
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.rows[0]?.category, "Elektronik");
+});
+
+test("preserves category in normalized preview CSV and rejects ambiguous category columns", () => {
+  const base = "index,external_product_id,name,price_idr,sold_count_value,sold_count_quality,shop_name,commission_rate_bps,commission_amount_idr,product_url,affiliate_url";
+  const valid = parseShopeeAffiliateCsv([
+    base + ",category",
+    "0,107,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/107,https://s.shopee.co.id/abc,Elektronik"
+  ].join("\\n"));
+  assert.equal(valid.errors.length, 0);
+  assert.equal(valid.rows[0]?.category, "Elektronik");
+  const invalid = parseShopeeAffiliateCsv([
+    base + ",category,kategori",
+    "0,108,Produk Preview,55000,850,exact,Toko,800,4400,https://shopee.co.id/product/1/108,https://s.shopee.co.id/abc,Elektronik,Electronics"
+  ].join("\\n"));
+  assert.equal(invalid.rows.length, 0);
+  assert.match(invalid.errors[0]?.message ?? "", /hanya satu kolom kategori/);
+});
