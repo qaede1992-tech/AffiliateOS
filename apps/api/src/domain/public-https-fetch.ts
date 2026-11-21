@@ -267,10 +267,8 @@ export const fetchPublicHttps = async (
   const deadlineAt = performance.now() + timeoutMs;
   let current = validateUrl(rawUrl, blockedHostnames, allowedHostnames);
   for (let redirects = 0; ; redirects++) {
-    const budgetForDns = remainingBudget(deadlineAt);
     const address = await resolvePublicAddress(current.hostname, resolver, deadlineAt);
-    const budgetForRequest = remainingBudget(deadlineAt);
-    const result = await requestOnce(current, address, options.maxBytes, Math.min(budgetForDns + budgetForRequest, remainingBudget(deadlineAt)), requestImpl);
+    const result = await requestOnce(current, address, options.maxBytes, remainingBudget(deadlineAt), requestImpl);
     if (!REDIRECT_STATUSES.has(result.status)) {
       return { url: current.toString(), ...result };
     }
