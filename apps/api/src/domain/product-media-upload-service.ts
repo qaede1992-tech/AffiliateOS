@@ -101,8 +101,11 @@ export class ProductMediaUploadService {
       throw new ProductMediaUploadError("Product media exceeds the configured size limit.", "MEDIA_TOO_LARGE");
     }
 
+    // Content-Length is validated and bounded above, so allocate exactly one
+    // buffer and copy each chunk directly into it instead of retaining chunks
+    // and allocating a second contiguous buffer after the stream completes.
+    const bytes = new Uint8Array(input.contentLength);
     const reader = input.body.getReader();
-    const chunks: Uint8Array[] = [];
     let total = 0;
     const cancelOnAbort = () => { void reader.cancel().catch(() => {}); };
     input.signal?.addEventListener("abort", cancelOnAbort, { once: true });
@@ -122,7 +125,7 @@ export class ProductMediaUploadService {
         if (total > input.contentLength) {
           throw new ProductMediaUploadError("Uploaded bytes exceed Content-Length.", "CONTENT_LENGTH_MISMATCH");
         }
-        chunks.push(part.value);
+        bytes.set(part.value, total - part.value.byteLength);
       }
     } catch (error) {
       try { await reader.cancel(error); } catch {}
@@ -138,12 +141,6 @@ export class ProductMediaUploadService {
       throw new ProductMediaUploadError("Uploaded bytes do not match Content-Length.", "CONTENT_LENGTH_MISMATCH");
     }
 
-    const bytes = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
     if (!isStructurallyValidMedia(input.mimeType, bytes)) {
       throw new ProductMediaUploadError("Media bytes do not match the declared MIME type.", "INVALID_MEDIA_BYTES");
     }
