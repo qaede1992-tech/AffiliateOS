@@ -8,6 +8,7 @@
 import { isIP } from "node:net";
 export interface ProductMediaSearchIdentity {
   name: string;
+  category?: string | null;
   brand?: string | null;
   model?: string | null;
   sku?: string | null;
@@ -16,6 +17,8 @@ export interface ProductMediaSearchIdentity {
 
 export interface ProductMediaCatalogCandidate {
   provider: "openverse" | "wikimedia_commons";
+  /** Exact provider query used to discover this candidate, when available. */
+  searchQuery?: string;
   title: string;
   imageUrl: string;
   landingPageUrl: string;
@@ -68,7 +71,7 @@ const overlap = (expected: Set<string>, actual: Set<string>): number => {
 
 /** Builds a bounded, descriptive query without embedding marketplace URLs. */
 export const buildProductMediaSearchQuery = (identity: ProductMediaSearchIdentity): string => {
-  const parts = [identity.brand, identity.name, identity.model, identity.sku, identity.variant]
+  const parts = [identity.brand, identity.name, identity.model, identity.sku, identity.variant, identity.category]
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0);
   return [...new Set(parts.map((part) => part.trim()))].join(" ").slice(0, 200);
 };
@@ -370,6 +373,7 @@ export async function searchOpenverseProductMedia(
       if (identityMatch.status === "rejected") return [];
       return [{
         provider: "openverse" as const,
+        searchQuery: query,
         title,
         imageUrl,
         landingPageUrl,
