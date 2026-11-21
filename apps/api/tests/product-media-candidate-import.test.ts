@@ -57,6 +57,8 @@ function makeService(overrides: {
   preMediaEvidence?: { id: string; cycleId: string; productId: string; marketplaceId: string; offerId?: string; eligible: boolean; score: number; policy: Record<string, unknown>; reasons: string[]; createdAt: string };
 } = {}) {
   let ingestionCalls = 0;
+  let productLookups = 0;
+  let offerLookups = 0;
   let ingestedCandidate: { kind: "image" | "video"; url: string } | undefined;
   let existing = overrides.existingAsset;
   const service = new ProductMediaCandidateImportService({
@@ -91,16 +93,27 @@ function makeService(overrides: {
         }
       }]
     },
-    listProducts: async () => [overrides.product ?? product],
-    listAffiliateOffers: async () => [overrides.affiliateOffer ?? offer],
+    findProductById: async (requestedProductId) => {
+      productLookups++;
+      assert.equal(requestedProductId, productId);
+      const currentProduct = overrides.product ?? product;
+      return currentProduct.id === requestedProductId ? currentProduct : undefined;
+    },
+    findAffiliateOfferById: async (requestedOfferId) => {
+      offerLookups++;
+      const currentOffer = overrides.affiliateOffer ?? offer;
+      return currentOffer.id === requestedOfferId ? currentOffer : undefined;
+    },
     now: () => now
   });
-  return { service, ingestionCalls: () => ingestionCalls, ingestedCandidate: () => ingestedCandidate };
+  return { service, ingestionCalls: () => ingestionCalls, ingestedCandidate: () => ingestedCandidate, productLookups: () => productLookups, offerLookups: () => offerLookups };
 }
 
 test("imports only an approved candidate for a recently selected active product", async () => {
-  const { service, ingestionCalls } = makeService();
+  const { service, ingestionCalls, productLookups, offerLookups } = makeService();
   const result = await service.importApprovedCandidate(productId, candidateId);
+  assert.equal(productLookups(), 1, "candidate import should fetch only its product by id");
+  assert.equal(offerLookups(), 1, "candidate import should fetch only the eligible offer by id");
   assert.equal(ingestionCalls(), 1);
   assert.equal(result.asset.sourceCandidateId, candidateId);
   assert.equal(result.asset.rightsStatus, "unverified");
