@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Product } from "@affiliateos/shared";
 import { api } from "../api/client";
 import { ProductMediaBatchIntake } from "./ProductMediaBatchIntake";
 
 export function ProductMediaIntakePanel() {
+  const [panelVisible, setPanelVisible] = useState(false);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -15,7 +17,7 @@ export function ProductMediaIntakePanel() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -39,9 +41,21 @@ export function ProductMediaIntakePanel() {
   };
 
   useEffect(() => {
+    const element = panelRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === "undefined") { setPanelVisible(true); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setPanelVisible(true);
+    }, { rootMargin: "160px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!panelVisible) return;
     const timer = window.setTimeout(() => { void loadProducts(search); }, 250);
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [search, panelVisible]);
 
   const selectedProduct = products.find((product) => product.id === selectedId);
   const missingMediaCount = products.filter((product) => !product.imageUrl && !product.videoUrl).length;
@@ -127,7 +141,7 @@ export function ProductMediaIntakePanel() {
   };
 
   return (
-    <article className="panel shopee-import-panel" id="product-media-intake">
+    <article className="panel shopee-import-panel" id="product-media-intake" ref={panelRef}>
       <div className="panel-heading">
         <div><p className="eyebrow">Kelengkapan katalog</p><h3>Media Produk</h3></div>
         <span className="badge">{missingMediaCount} tanpa media di halaman</span>
