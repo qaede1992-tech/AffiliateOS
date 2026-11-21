@@ -53,14 +53,14 @@ const money = (cents: number) => new Intl.NumberFormat("id-ID", {
 const shortId = (value: string) => value.slice(0, 8);
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString() : "—";
 
-export function AutonomousObservabilityPanel() {
+export function AutonomousObservabilityPanel({ initialStatus }: { initialStatus?: AutonomousStatus | null } = {}) {
   const [panelVisible, setPanelVisible] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
   const [audits, setAudits] = useState<DecisionAudit[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [runs, setRuns] = useState<AutonomousRun[]>([]);
   const [readiness, setReadiness] = useState<PublisherReadiness[]>([]);
-  const [status, setStatus] = useState<AutonomousStatus | null>(null);
+  const [status, setStatus] = useState<AutonomousStatus | null>(initialStatus ?? null);
   const [selectedFilter, setSelectedFilter] = useState<"all" | "selected" | "rejected">("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,14 +70,14 @@ export function AutonomousObservabilityPanel() {
     if (background) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
-      const [auditResponse, productResponse, autonomousStatus] = await Promise.all([
+      const [auditResponse, productResponse] = await Promise.all([
         api.autonomousDecisionAudits(100),
-        api.productsPage({ limit: 50 }),
-        api.autonomousStatus()
+        api.productsPage({ limit: 50 })
       ]);
       setAudits(auditResponse.data);
       setProducts(productResponse.data);
-      setStatus(autonomousStatus);
+      if (initialStatus !== undefined) setStatus(initialStatus);
+      else setStatus(await api.autonomousStatus());
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load autonomous observability.");
     } finally {
@@ -100,6 +100,10 @@ export function AutonomousObservabilityPanel() {
   useEffect(() => {
     if (panelVisible) void load();
   }, [panelVisible]);
+
+  useEffect(() => {
+    if (initialStatus !== undefined) setStatus(initialStatus);
+  }, [initialStatus]);
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const filtered = useMemo(
