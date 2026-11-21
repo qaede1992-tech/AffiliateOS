@@ -382,7 +382,9 @@ export class ProductMediaDiscoveryRunner {
               productId: product.id,
               provider: candidate.provider,
               candidateHash: createHash("sha256").update(candidate.mediaKind + "|" + candidate.landingPageUrl + "|" + (candidate.imageUrl ?? candidate.videoUrl ?? "")).digest("hex"),
-              query: candidate.searchQuery ?? query,
+              // Store the canonical product identity query used by the pending-candidate guard.
+              // Provider-specific category queries must not bypass duplicate-search suppression.
+              query,
               title: candidate.title,
               mediaKind: candidate.mediaKind,
               imageUrl: candidate.imageUrl,
