@@ -112,9 +112,18 @@ function App() {
   };
 
   const refreshActivityData = async () => {
-    const [conversions, commissions] = await Promise.all([api.conversions(), api.commissions()]);
-    setData((previous) => previous ? { ...previous, conversions: conversions.data, commissions: commissions.data } : previous);
-    activityLoadedRef.current = true;
+    setActivityLoading(true);
+    setActivityError(null);
+    try {
+      const [conversions, commissions] = await Promise.all([api.conversions(), api.commissions()]);
+      setData((previous) => previous ? { ...previous, conversions: conversions.data, commissions: commissions.data } : previous);
+      activityLoadedRef.current = true;
+    } catch (requestError) {
+      setActivityError(requestError instanceof Error ? requestError.message : "Unable to refresh conversion activity.");
+      throw requestError;
+    } finally {
+      setActivityLoading(false);
+    }
   };
 
   const refreshAffiliates = async () => {
