@@ -8,7 +8,7 @@ type CandidateRow = typeof productMediaCandidates.$inferSelect;
 
 const toCandidate = (row: CandidateRow): ProductMediaCandidateRecord => ({
   id: row.id, productId: row.productId, provider: row.provider, candidateHash: row.candidateHash,
-  query: row.query, title: row.title, imageUrl: row.imageUrl, landingPageUrl: row.landingPageUrl,
+  query: row.query, title: row.title, mediaKind: row.mediaKind as ProductMediaCandidateRecord["mediaKind"], imageUrl: row.imageUrl, videoUrl: row.videoUrl, landingPageUrl: row.landingPageUrl,
   creator: row.creator, creatorUrl: row.creatorUrl, license: row.license,
   licenseVersion: row.licenseVersion, licenseUrl: row.licenseUrl, sourcePublisher: row.sourcePublisher,
   identityScore: row.identityScore, identityStatus: row.identityStatus as ProductMediaCandidateRecord["identityStatus"],
@@ -30,6 +30,8 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
     if (candidates.length === 0) return [];
     const rows = await this.db.insert(productMediaCandidates).values(candidates.map((candidate) => ({
       ...candidate,
+      imageUrl: candidate.mediaKind === "image" ? candidate.imageUrl : null,
+      videoUrl: candidate.mediaKind === "video" ? candidate.videoUrl : null,
       creator: candidate.creator ?? null,
       creatorUrl: candidate.creatorUrl ?? null,
       license: candidate.license ?? null,
@@ -44,7 +46,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       target: [productMediaCandidates.productId, productMediaCandidates.provider, productMediaCandidates.candidateHash],
       setWhere: and(eq(productMediaCandidates.reviewStatus, "pending"), eq(productMediaCandidates.rightsStatus, "unverified")),
       set: {
-        query: sql`excluded.query`, title: sql`excluded.title`, imageUrl: sql`excluded.image_url`,
+        query: sql`excluded.query`, title: sql`excluded.title`, mediaKind: sql`excluded.media_kind`, imageUrl: sql`excluded.image_url`, videoUrl: sql`excluded.video_url`,
         landingPageUrl: sql`excluded.landing_page_url`, creator: sql`excluded.creator`, creatorUrl: sql`excluded.creator_url`,
         license: sql`excluded.license`, licenseVersion: sql`excluded.license_version`, licenseUrl: sql`excluded.license_url`,
         sourcePublisher: sql`excluded.source_publisher`, identityScore: sql`excluded.identity_score`,
