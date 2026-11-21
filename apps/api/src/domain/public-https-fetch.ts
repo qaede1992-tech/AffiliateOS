@@ -115,7 +115,7 @@ const resolvePublicAddress = async (
   // dns.lookup() has no cancellation API. Use a dedicated Resolver instead so
   // a deadline can cancel outstanding A/AAAA queries rather than leaving DNS
   // work running after the fetch has already failed.
-  const resolverInstance = new Resolver({ timeout: remainingBudget(deadlineAt), tries: 1 });
+  const resolverInstance = new Resolver({ timeout: remainingBudget(deadlineAt) + 1_000, tries: 1 });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const query = async (family: 4 | 6): Promise<Array<{ address: string; family: number }>> => {
     try {
