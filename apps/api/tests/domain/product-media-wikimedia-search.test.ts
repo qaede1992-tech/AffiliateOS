@@ -431,3 +431,14 @@ test("ignores invalid numeric HTML entities in external attribution metadata", a
   assert.equal(results.length, 1);
   assert.equal(results[0]?.creator, "Example Photographer 😀");
 });
+
+
+test("keeps brand/model identity and category context in one Wikimedia query", () => {
+  const queries = buildWikimediaCommonsQueries({
+    name: "Tumbler stainless steel 1 liter",
+    brand: "ExampleBrand",
+    model: "TB-100",
+    category: "Water Bottle"
+  });
+  assert.deepEqual(queries, ["ExampleBrand TB-100 water bottle"]);
+});
