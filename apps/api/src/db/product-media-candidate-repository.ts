@@ -57,6 +57,16 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
     return rows.map(toCandidate);
   }
 
+  async hasPendingByProductAndQuery(productId: string, query: string): Promise<boolean> {
+    const rows = await this.db.select({ id: productMediaCandidates.id }).from(productMediaCandidates)
+      .where(and(
+        eq(productMediaCandidates.productId, productId),
+        eq(productMediaCandidates.reviewStatus, "pending"),
+        eq(productMediaCandidates.query, query)
+      )).limit(1);
+    return rows.length > 0;
+  }
+
   async listPendingByProduct(productId: string, limit = 20): Promise<ProductMediaCandidateRecord[]> {
     const boundedLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
     const rows = await this.db.select().from(productMediaCandidates)
