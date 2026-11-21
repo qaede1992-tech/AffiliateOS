@@ -61,7 +61,7 @@ test("enforces an absolute deadline when a public HTTPS origin continuously slow
       resolveHost: (async () => [{ address: "8.8.8.8", family: 4 }]) as never,
       fetchImpl: requestImpl
     }),
-    /absolute transfer deadline/
+    /total time budget/
   );
   assert.equal(request.destroyed, true, "deadline must actively terminate the underlying request");
   response.stop();
