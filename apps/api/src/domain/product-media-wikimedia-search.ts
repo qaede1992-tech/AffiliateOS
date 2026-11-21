@@ -82,7 +82,17 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
   if (!source.trim()) return [];
 
   const matchedCategory = categoryQueries.find(({ pattern }) => pattern.test(source));
-  if (matchedCategory) return [matchedCategory.query];
+  if (matchedCategory) {
+    // When structured identifiers exist, search for them together with the
+    // product category in one request. This avoids broad category-only results
+    // while still letting the downstream title matcher reject identifier misses.
+    const structuredIdentifiers = [identity.brand, identity.model, identity.sku]
+      .filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+    if (identity.model?.trim() || identity.sku?.trim()) {
+      return [[...structuredIdentifiers, matchedCategory.query].join(" ").slice(0, 200)];
+    }
+    return [matchedCategory.query];
+  }
 
   const stopWords = new Set([
     "original", "official", "latest", "terbaru", "untuk", "dengan", "dan",
