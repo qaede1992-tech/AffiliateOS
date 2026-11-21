@@ -539,20 +539,25 @@ test("counts duplicate catalog candidates as discovered without reporting them a
   }), { status: 200, headers: { "content-type": "application/json" } });
   console.info = (message?: unknown) => { messages.push(String(message)); };
   try {
+    const savedCandidates: Array<{ query: string }> = [];
     const runner = new ProductMediaDiscoveryRunner(
       { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
       { async listByProduct() { return []; }, async findByProductAndHash() { return undefined; }, async save() { throw new Error("No asset ingestion expected"); } },
       { maxImageBytes: 1024, maxVideoBytes: 1024 },
       undefined,
-      { async listPendingByProduct() { return []; }, async saveMany() { return []; } },
+      {
+        async listPendingByProduct() { return []; },
+        async saveMany(records: Array<{ query: string }>) { savedCandidates.push(...records); return []; }
+      },
       { fetchImpl: catalogFetch as typeof fetch }
     );
     const result = await runner.discover({
       ...product,
-      name: "cat food",
+      name: "cat food premium 1kg",
       productUrl: "https://shopee.co.id/product/123/456"
     }, true);
     assert.equal(result.candidatesFound, 1);
+    assert.equal(savedCandidates[0]?.query, "cat food premium 1kg", "pending suppression must store the canonical identity query, not Wikimedia's category query");
     const completed = messages.map((message) => JSON.parse(message) as Record<string, unknown>)
       .find((message) => message.event === "product_media_catalog_search_completed");
     assert.equal(completed?.acceptedCount, 1);
