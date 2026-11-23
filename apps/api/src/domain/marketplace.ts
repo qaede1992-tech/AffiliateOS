@@ -239,6 +239,19 @@ export class MarketplaceService {
         const timestamp = now();
         return { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
       });
+      const productFields: (keyof Product)[] = ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "discoverySignals", "imageUrl", "videoUrl", "productUrl", "status"];
+      const offerFields: (keyof AffiliateOffer)[] = ["productId", "conversionOfferId", "externalOfferId", "priceCents", "currency", "commissionRateBps", "commissionAmountCents", "availability", "availabilityMetadata", "affiliateUrl", "affiliateLinkExpiresAt", "affiliateLinkStatus", "status"];
+      const differs = (left: unknown, right: unknown) => JSON.stringify(left ?? null) !== JSON.stringify(right ?? null);
+      const productsChanged = productEntities.some((entity) => {
+        const existing = existingProductsByExternalId.get(entity.externalProductId);
+        return !existing || productFields.some((field) => differs(existing[field], entity[field]));
+      });
+      const offersChanged = offersToSave.some((entity) => {
+        const existing = existingByExternalId.get(entity.externalOfferId ?? "") ??
+          (entity.externalOfferId?.startsWith("feed:") ? existingByExternalId.get("csv:" + entity.externalOfferId.slice(5)) : undefined);
+        return !existing || offerFields.some((field) => differs(existing[field], entity[field]));
+      });
+      const changed = productsChanged || offersChanged;
       const savedOffers = await this.offers.saveManyById(offersToSave);
       const savedByExternalId = new Map(savedOffers.map((offer) => [offer.externalOfferId, offer]));
       for (const externalOfferId of externalOfferIds) {
@@ -248,12 +261,16 @@ export class MarketplaceService {
       }
       importedProducts = savedProducts.length;
       importedOffers = savedOffers.length;
-      return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds };
+      return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds, changed };
     }
+    let changed = false;
     for (const item of input.items) {
       const existingProduct = await this.products.findByMarketplaceProduct(connection.id, item.externalProductId.trim());
       const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category ?? existingProduct?.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl: item.imageUrl, videoUrl: item.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
       const product = await this.persistProduct(connection, productInput);
+      const productFields: (keyof Product)[] = ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "discoverySignals", "imageUrl", "videoUrl", "productUrl", "status"];
+      const differs = (left: unknown, right: unknown) => JSON.stringify(left ?? null) !== JSON.stringify(right ?? null);
+      changed ||= !existingProduct || productFields.some((field) => differs(existingProduct[field], product[field]));
       importedProducts += 1;
       const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;
       let existing = await this.offers.findByAccountOffer(account.id, externalOfferId);
@@ -264,11 +281,13 @@ export class MarketplaceService {
       }
       const timestamp = now();
       const offer: AffiliateOffer = { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
+      const offerFields: (keyof AffiliateOffer)[] = ["productId", "conversionOfferId", "externalOfferId", "priceCents", "currency", "commissionRateBps", "commissionAmountCents", "availability", "availabilityMetadata", "affiliateUrl", "affiliateLinkExpiresAt", "affiliateLinkStatus", "status"];
+      changed ||= !existing || offerFields.some((field) => differs(existing[field], offer[field]));
       await this.offers.save(offer);
       importedOffers += 1;
       affiliateOfferIds.push(offer.id);
     }
-    return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds };
+    return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds, changed };
   }
 
   async generateAffiliateLink(connectionSlug: string, externalProductId: string, externalOfferId: string): Promise<AffiliateOffer> { const normalizedOfferId = externalOfferId.trim(); if (!normalizedOfferId) throw new DomainError("INVALID_MARKETPLACE_OFFER", "Affiliate link generation requires an external offer id.", 400); const { provider } = await this.providerFor(connectionSlug); const offers = await this.getOffers(connectionSlug, externalProductId); const offer = offers.find((item) => item.externalOfferId === normalizedOfferId);
