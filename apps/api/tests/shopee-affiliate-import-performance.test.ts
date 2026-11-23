@@ -76,8 +76,8 @@ test("Shopee feed import batches 100 products and offers and keeps IDs stable on
   assert.equal(offerBulkCalls, 2, "only changed offers are written");
 
   const changedProductRequest = {
-    ...request,
-    items: items.map((item, index) => index === 1 ? { ...item, name: "Updated CSV performance product 002" } : item)
+    ...changedRequest,
+    items: changedRequest.items.map((item, index) => index === 1 ? { ...item, name: "Updated CSV performance product 002" } : item)
   };
   const changedProduct = await service.importShopeeAffiliateFeed(changedProductRequest);
   assert.equal(changedProduct.changed, true);
