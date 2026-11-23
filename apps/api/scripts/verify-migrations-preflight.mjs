@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
-import { findPublicSchemaDefaultAclGrants, PUBLIC_SCHEMA_DEFAULT_ACL_QUERY } from "./public-schema-privilege-audit.mjs";
+import {\n  findPublicSchemaDefaultAclGrants,\n  migrationCreatesFunctionOrProcedure,\n  PUBLIC_SCHEMA_DEFAULT_ACL_QUERY,\n  PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY\n} from "./public-schema-privilege-audit.mjs";
 import {
   classifyMigrationLedger,
   findCompensatedHistoricalMigrationGaps
@@ -49,22 +49,6 @@ const client = new Client({ connectionString, connectionTimeoutMillis: 10000 });
 await client.connect();
 try {
   await client.query("SET default_transaction_read_only = on");
-
-  // Fail closed before any production migration if newly created public-schema
-  // objects could inherit privileges for anon, authenticated, or PUBLIC.
-  const { rows: defaultAclRows } = await client.query(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY);
-  const unsafeDefaultAclGrants = findPublicSchemaDefaultAclGrants(defaultAclRows);
-  if (unsafeDefaultAclGrants.length > 0) {
-    const details = unsafeDefaultAclGrants
-      .map(({ schemaName, creatorRole, objectType, grantee, privilegeType }) =>
-        `${schemaName} creator=${creatorRole} object=${objectType} grantee=${grantee} privilege=${privilegeType}`
-      )
-      .join("; ");
-    throw new Error(
-      "Public-schema default ACL preflight failed; future objects may inherit privileges for anon, authenticated, or PUBLIC. " +
-      `Review and revoke unintended defaults before applying migrations: ${details}`
-    );
-  }
 
   const { rows: ledgerTables } = await client.query(
     "SELECT table_schema FROM information_schema.tables WHERE table_name = '__drizzle_migrations' ORDER BY table_schema"
@@ -115,6 +99,32 @@ try {
     latestAppliedTimestamp
   } = classifyMigrationLedger({ trackedMigrations, appliedTimestamps });
   pendingMigrationTags = pendingMigrations.map((migration) => migration.tag);
+
+  // Audit only defaults that apply to this migration connection's role.
+  // PostgreSQL's implicit PUBLIC function EXECUTE default is relevant only
+  // when this pending suffix actually creates a function or procedure.
+  const pendingMigrationSql = await Promise.all(pendingMigrations.map((migration) =>
+    readFile(new URL(`${migration.tag}.sql`, new URL("../drizzle/", import.meta.url)), "utf8")
+  ));
+  const pendingCreatesCallable = pendingMigrationSql.some(migrationCreatesFunctionOrProcedure);
+  const { rows: explicitDefaultAclRows } = await client.query(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY);
+  const defaultAclRows = [...explicitDefaultAclRows];
+  if (pendingCreatesCallable) {
+    const { rows: implicitFunctionAclRows } = await client.query(PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY);
+    defaultAclRows.push(...implicitFunctionAclRows);
+  }
+  const unsafeDefaultAclGrants = findPublicSchemaDefaultAclGrants(defaultAclRows);
+  if (unsafeDefaultAclGrants.length > 0) {
+    const details = unsafeDefaultAclGrants
+      .map(({ schemaName, creatorRole, objectType, grantee, privilegeType }) =>
+        `${schemaName} creator=${creatorRole} object=${objectType} grantee=${grantee} privilege=${privilegeType}`
+      )
+      .join("; ");
+    throw new Error(
+      "Migration-role default ACL preflight failed; pending public-schema objects could inherit privileges for anon, authenticated, or PUBLIC. " +
+      `Review the migration role's default privileges before applying migrations: ${details}`
+    );
+  }
 
   const compensationMigration = trackedMigrations.find(
     (migration) => migration.tag === "0059_reconcile_missing_tiktok_and_content_products"
