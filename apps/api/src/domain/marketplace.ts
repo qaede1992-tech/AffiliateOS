@@ -270,11 +270,21 @@ export class MarketplaceService {
     let changed = false;
     for (const item of input.items) {
       const existingProduct = await this.products.findByMarketplaceProduct(connection.id, item.externalProductId.trim());
-      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description, category: item.category ?? existingProduct?.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl: item.imageUrl, videoUrl: item.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
-      const product = await this.persistProduct(connection, productInput);
-      const productFields: (keyof Product)[] = ["name", "description", "category", "priceCents", "originalPriceCents", "currency", "ratingMilli", "reviewCount", "soldCount", "discoverySignals", "imageUrl", "videoUrl", "productUrl", "status"];
+      const productInput: MarketplaceProductInput = { externalProductId: item.externalProductId, name: item.name, description: item.description ?? existingProduct?.description, category: item.category ?? existingProduct?.category, priceCents: item.priceCents, originalPriceCents: item.originalPriceCents ?? existingProduct?.originalPriceCents, currency: item.currency, ratingMilli: item.ratingMilli ?? existingProduct?.ratingMilli, reviewCount: item.reviewCount ?? existingProduct?.reviewCount, soldCount: item.soldCount ?? existingProduct?.soldCount, imageUrl: item.imageUrl ?? existingProduct?.imageUrl, videoUrl: item.videoUrl ?? existingProduct?.videoUrl, productUrl: item.productUrl, availability: item.availability, metadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" } };
+      const desiredProduct = {
+        name: item.name.trim(), description: productInput.description?.trim(), category: productInput.category?.trim(),
+        priceCents: item.priceCents, originalPriceCents: productInput.originalPriceCents,
+        currency: item.currency.trim().toUpperCase(), ratingMilli: productInput.ratingMilli,
+        reviewCount: productInput.reviewCount ?? 0, soldCount: productInput.soldCount ?? 0,
+        discoverySignals: normalizeDiscoverySignals(productInput.metadata, existingProduct?.discoverySignals, existingProduct),
+        imageUrl: productInput.imageUrl, videoUrl: productInput.videoUrl, productUrl: item.productUrl,
+        status: item.availability === "out_of_stock" ? "inactive" : "active"
+      };
+      const productFields = Object.keys(desiredProduct) as Array<keyof typeof desiredProduct>;
       const differs = (left: unknown, right: unknown) => JSON.stringify(left ?? null) !== JSON.stringify(right ?? null);
-      changed ||= !existingProduct || productFields.some((field) => differs(existingProduct[field], product[field]));
+      const productChanged = !existingProduct || productFields.some((field) => differs(existingProduct[field], desiredProduct[field]));
+      const product = existingProduct && !productChanged ? existingProduct : await this.persistProduct(connection, productInput);
+      changed ||= productChanged;
       importedProducts += 1;
       const externalOfferId = item.externalOfferId?.trim() || `feed:${item.externalProductId}`;
       let existing = await this.offers.findByAccountOffer(account.id, externalOfferId);
@@ -286,8 +296,9 @@ export class MarketplaceService {
       const timestamp = now();
       const offer: AffiliateOffer = { id: existing?.id ?? randomUUID(), productId: product.id, conversionOfferId: conversionOffer.id, affiliateAccountId: account.id, externalOfferId, priceCents: item.priceCents, currency: item.currency.trim().toUpperCase(), commissionRateBps: item.commissionRateBps, commissionAmountCents: item.commissionAmountCents, availability: item.availability, availabilityMetadata: { ...(item.metadata ?? {}), source: "shopee-affiliate-feed" }, affiliateUrl: item.affiliateUrl, affiliateLinkStatus: "active", status: item.availability === "out_of_stock" ? "inactive" : "active", createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
       const offerFields: (keyof AffiliateOffer)[] = ["productId", "conversionOfferId", "externalOfferId", "priceCents", "currency", "commissionRateBps", "commissionAmountCents", "availability", "availabilityMetadata", "affiliateUrl", "affiliateLinkExpiresAt", "affiliateLinkStatus", "status"];
-      changed ||= !existing || offerFields.some((field) => differs(existing[field], offer[field]));
-      await this.offers.save(offer);
+      const offerChanged = !existing || offerFields.some((field) => differs(existing[field], offer[field]));
+      changed ||= offerChanged;
+      if (offerChanged) await this.offers.save(offer);
       importedOffers += 1;
       affiliateOfferIds.push(offer.id);
     }
