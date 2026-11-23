@@ -645,7 +645,7 @@ test("stale pending media candidates do not suppress discovery for changed produ
   }, true);
 
   assert.equal(checkedQuery, "Updated demo product");
-  assert.equal(providerCalls, 2, "a changed identity query should search both configured catalog providers");
+  assert.equal(providerCalls, 1, "a changed identity query should start a fresh catalog search");
   assert.equal(result.candidatesFound, 0);
 });
 
