@@ -235,11 +235,28 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   assert.equal(individualProductLookups, 0);
   assert.equal(productWriteBatches, 1, "unchanged product reimport skips upsert");
   assert.equal(offerWriteBatches, 1, "unchanged offer reimport skips upsert");
+
+  const productOnlyChange = await service.importShopeeAffiliateFeed({
+    affiliateId,
+    items: [{
+      ...baseItem,
+      category: "Elektronik - diperbarui",
+      imageUrl: "https://cdn.example.test/shopee-product-image.jpg",
+      videoUrl: "https://cdn.example.test/shopee-product-video.mp4",
+      metadata: { productIdentity: { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" } }
+    }]
+  });
+  assert.equal(productOnlyChange.changed, true, "a product-only change must request an autonomous cycle");
+  assert.equal(productOnlyChange.importedProducts, 1);
+  assert.equal(productOnlyChange.importedOffers, 1, "counts describe matched feed rows, not only changed offers");
+  assert.equal(productWriteBatches, 2);
+  assert.equal(offerWriteBatches, 1, "product-only changes must not rewrite unchanged offers");
+
   const saved = await products.findByMarketplaceProduct(
     (await connections.findBySlug("shopee-affiliate-feed"))!.id,
     baseItem.externalProductId
   );
-  assert.equal(saved?.category, "Elektronik");
+  assert.equal(saved?.category, "Elektronik - diperbarui");
   assert.equal(saved?.imageUrl, "https://cdn.example.test/shopee-product-image.jpg");
   assert.equal(saved?.videoUrl, "https://cdn.example.test/shopee-product-video.mp4");
   assert.deepEqual(saved?.discoverySignals?.productIdentity, { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" });
