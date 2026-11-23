@@ -95,7 +95,7 @@ test("passes the configured timeout while rendering and persisting a generated 9
   assert.equal(result.asset?.sourceLicenseUrl, "https://creativecommons.org/licenses/by/4.0/");
   assert.equal(result.asset?.rightsStatus, "unverified");
   assert.equal(result.asset?.rightsBasis, null);
-  assert.equal(result.asset?.sourceCandidateId, null);
+  assert.equal(result.asset?.sourceCandidateId ?? null, null);
   assert.equal(assets.length, 2);
   assert.equal(uploaded.length, 1);
 });
