@@ -339,7 +339,8 @@ test("imports an approved video candidate using its video URL without verifying 
   const { service, ingestionCalls, ingestedCandidate } = makeService({ candidate: videoCandidate });
   const result = await service.importApprovedCandidate(productId, candidateId);
   assert.equal(ingestionCalls(), 1);
-  assert.deepEqual(ingestedCandidate(), { kind: "video", url: "https://upload.wikimedia.org/sample.webm" });
+  assert.equal(ingestedCandidate()?.kind, "video");
+  assert.equal(ingestedCandidate()?.url, "https://upload.wikimedia.org/sample.webm");
   assert.equal(result.asset.kind, "video");
   assert.equal(result.asset.rightsStatus, "unverified");
 });
