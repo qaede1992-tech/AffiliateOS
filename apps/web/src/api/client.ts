@@ -132,7 +132,7 @@ export type ProductMediaRightsReviewInput =
 
 export interface ProductMediaCandidateView {
   id: string; productId: string; provider: string; candidateHash: string; query: string; title: string;
-  imageUrl: string; landingPageUrl: string; creator: string | null; creatorUrl: string | null;
+  mediaKind: "image" | "video"; imageUrl: string | null; videoUrl: string | null; landingPageUrl: string; creator: string | null; creatorUrl: string | null;
   license: string | null; licenseVersion: string | null; licenseUrl: string | null; sourcePublisher: string | null;
   identityScore: number; identityStatus: "strong_match" | "review_required"; identityReasons: string[];
   reviewStatus: "pending" | "approved" | "rejected"; rightsStatus: "unverified" | "verified" | "revoked";
