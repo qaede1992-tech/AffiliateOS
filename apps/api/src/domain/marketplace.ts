@@ -205,9 +205,11 @@ export class MarketplaceService {
     if (this.products.upsertManyByMarketplaceProduct && this.offers.findByAccountOffers && this.offers.saveManyById && !hasDuplicateProductIds && !hasDuplicateOfferIds) {
       // A fresh CSV export may omit image columns even when a product already has
       // valid media. Preserve existing media unless the import supplies a replacement.
-      const existingProducts = await Promise.all(input.items.map((item) =>
-        this.products.findByMarketplaceProduct(connection.id, item.externalProductId.trim())
-      ));
+      const existingProducts = this.products.findManyByMarketplaceProducts
+        ? await this.products.findManyByMarketplaceProducts(connection.id, normalizedProductIds)
+        : await Promise.all(input.items.map((item) =>
+            this.products.findByMarketplaceProduct(connection.id, item.externalProductId.trim())
+          ));
       const existingProductsByExternalId = new Map(
         existingProducts.filter((product): product is Product => Boolean(product))
           .map((product) => [product.externalProductId, product])
