@@ -26,8 +26,8 @@ export interface ProductMediaCandidateImportDependencies {
   ingestion: ProductMediaIngestionService;
   audits: AutonomousDecisionAuditReader;
   preMediaEligibility?: Pick<PreMediaEligibilityRepository, "listLatestByProduct">;
-  listProducts(): Promise<Product[]>;
-  listAffiliateOffers(): Promise<AffiliateOffer[]>;
+  findProductById(productId: string): Promise<Product | undefined>;
+  findAffiliateOfferById(offerId: string): Promise<AffiliateOffer | undefined>;
   now?: () => Date;
   selectionMaxAgeMs?: number;
 }
@@ -48,7 +48,7 @@ const isUsableAffiliateOffer = (offer: AffiliateOffer, productId: string, now: D
 };
 
 /**
- * Imports only admin-approved image candidates for products with a recent
+ * Imports only admin-approved image or video candidates for products with a recent
  * successful autonomous selection and a currently executable affiliate offer.
  * Importing never verifies rights or makes the resulting asset publishable.
  */
@@ -81,8 +81,7 @@ export class ProductMediaCandidateImportService {
     }
 
     const now = this.now();
-    const products = await this.dependencies.listProducts();
-    const product = products.find((item) => item.id === productId);
+    const product = await this.dependencies.findProductById(productId);
     if (!product || product.status !== "active") {
       throw new ProductMediaCandidateImportError("PRODUCT_NOT_ELIGIBLE", "The product is no longer active.", 409);
     }
@@ -108,9 +107,16 @@ export class ProductMediaCandidateImportService {
       eligibleOfferId = successfulOutcome.offerId;
     }
 
-    const offers = await this.dependencies.listAffiliateOffers();
-    if (!eligibleOfferId || !offers.some((offer) => offer.id === eligibleOfferId && isUsableAffiliateOffer(offer, productId, now))) {
+    const eligibleOffer = eligibleOfferId
+      ? await this.dependencies.findAffiliateOfferById(eligibleOfferId)
+      : undefined;
+    if (!eligibleOffer || !isUsableAffiliateOffer(eligibleOffer, productId, now)) {
       throw new ProductMediaCandidateImportError("AFFILIATE_OFFER_UNAVAILABLE", "The affiliate offer recorded by the latest eligibility evidence no longer has an active, usable link.", 409);
+    }
+
+    const mediaUrl = candidate.mediaKind === "video" ? candidate.videoUrl : candidate.imageUrl;
+    if (!mediaUrl || (candidate.mediaKind === "video" ? candidate.imageUrl !== null : candidate.videoUrl !== null)) {
+      throw new ProductMediaCandidateImportError("CANDIDATE_NOT_APPROVED", "The candidate media kind and URL fields are inconsistent.", 409);
     }
 
     // Idempotency must not bypass current product/selection/offer eligibility.
@@ -126,8 +132,8 @@ export class ProductMediaCandidateImportService {
       productId,
       nonMediaEligibilityPassed: true,
       candidates: [{
-        kind: "image",
-        url: candidate.imageUrl,
+        kind: candidate.mediaKind,
+        url: mediaUrl,
         source: "catalog",
         provenance: {
           provider: candidate.provider,
