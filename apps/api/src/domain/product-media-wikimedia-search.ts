@@ -265,12 +265,20 @@ export async function searchWikimediaCommonsProductMedia(
         const info = page.imageinfo?.[0];
         if (!title || !info) continue;
 
-        const imageUrl = safeHttps(info.thumburl) ?? safeHttps(info.url);
         const landingPageUrl = safeHttps(info.descriptionurl);
         const mime = typeof info.mime === "string" ? info.mime.toLowerCase() : "";
-        if (!imageUrl || !landingPageUrl || !mime.startsWith("image/")) continue;
-        const imageHost = new URL(imageUrl).hostname;
-        if (imageHost !== "upload.wikimedia.org" && imageHost !== "thumb.wikimedia.org") continue;
+        const mediaKind = mime.startsWith("image/") ? "image" : mime === "video/webm" ? "video" : null;
+        if (!landingPageUrl || !mediaKind) continue;
+        // Commons videos are served as original WebM files. Never use the poster
+        // thumbnail as a video asset or accept arbitrary video MIME types.
+        const mediaUrl = mediaKind === "video"
+          ? safeHttps(info.url)
+          : safeHttps(info.thumburl) ?? safeHttps(info.url);
+        if (!mediaUrl) continue;
+        const mediaHost = new URL(mediaUrl).hostname;
+        if (mediaKind === "video"
+          ? mediaHost !== "upload.wikimedia.org"
+          : mediaHost !== "upload.wikimedia.org" && mediaHost !== "thumb.wikimedia.org") continue;
         if (new URL(landingPageUrl).hostname !== "commons.wikimedia.org") continue;
 
         const metadata = info.extmetadata;
@@ -297,7 +305,9 @@ export async function searchWikimediaCommonsProductMedia(
           provider: "wikimedia_commons",
           searchQuery: query,
           title,
-          imageUrl,
+          mediaKind,
+          imageUrl: mediaKind === "image" ? mediaUrl : null,
+          videoUrl: mediaKind === "video" ? mediaUrl : null,
           landingPageUrl,
           creator: metadataText(metadata, "Artist"),
           creatorUrl: safeHttps(normalizedCreatorHref),

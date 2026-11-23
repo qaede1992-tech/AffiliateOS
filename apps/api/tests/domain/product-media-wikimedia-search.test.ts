@@ -100,15 +100,41 @@ test("rejects invalid result limits and reports upstream HTTP failures", async (
 });
 
 
-test("rejects non-image files returned from the Commons file namespace", async () => {
+test("discovers Commons WebM videos using the original media URL, not its poster thumbnail", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     query: {
       pages: [{
-        title: "File:Sony WH-1000XM5 demonstration.webm",
+        title: "File:Sony WH-1000XM5 Wireless Headphones demonstration.webm",
         imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/demo.webm",
           thumburl: "https://thumb.wikimedia.org/video-poster.jpg",
           descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_demonstration.webm",
           mime: "video/webm",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY 4.0" },
+            LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200 });
+  const results = await searchWikimediaCommonsProductMedia(identity, { fetchImpl });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.mediaKind, "video");
+  assert.equal(results[0]?.imageUrl, null);
+  assert.equal(results[0]?.videoUrl, "https://upload.wikimedia.org/wikipedia/commons/demo.webm");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
+
+test("rejects unsupported Commons video MIME types", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Sony WH-1000XM5 demonstration.mp4",
+        imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/demo.mp4",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_demonstration.mp4",
+          mime: "video/mp4",
           extmetadata: {
             LicenseShortName: { value: "CC BY 4.0" },
             LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0" }
