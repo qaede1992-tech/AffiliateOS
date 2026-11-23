@@ -56,6 +56,49 @@ test("transcodes a bounded local WebM input and validates the MP4 output", async
   assert.equal(observedArgs.includes("https://"), false);
 });
 
+test("allows only one active WebM transcode per API worker", async () => {
+  let signalStarted!: () => void;
+  let releaseProcess!: () => void;
+  const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+  const processGate = new Promise<void>((resolve) => { releaseProcess = resolve; });
+  let calls = 0;
+  const first = transcodeWebmToMp4(webm, {
+    maxInputBytes: 1024,
+    maxOutputBytes: 1024,
+    timeoutMs: 5_000,
+    runProcess: async (_binary, args) => {
+      calls += 1;
+      if (calls === 1) {
+        signalStarted();
+        await processGate;
+        await writeFile(args.at(-1)!, mp4, { flag: "wx" });
+      }
+    }
+  });
+  try {
+    await started;
+    await assert.rejects(
+      () => transcodeWebmToMp4(webm, {
+        maxInputBytes: 1024,
+        runProcess: async () => { throw new Error("second transcode must not start"); }
+      }),
+      /already active in this process/
+    );
+  } finally {
+    releaseProcess();
+  }
+  assert.deepEqual(await first, mp4);
+  assert.equal(calls, 2, "only the first transcode should execute encoding and decode verification");
+  const subsequent = await transcodeWebmToMp4(webm, {
+    maxInputBytes: 1024,
+    maxOutputBytes: 1024,
+    runProcess: async (_binary, args) => {
+      if (!args.includes("null")) await writeFile(args.at(-1)!, mp4, { flag: "wx" });
+    }
+  });
+  assert.deepEqual(subsequent, mp4, "the process guard must release after completion");
+});
+
 test("rejects non-WebM input before starting FFmpeg", async () => {
   let invoked = false;
   await assert.rejects(() => transcodeWebmToMp4(new Uint8Array([1, 2, 3, 4]), {
