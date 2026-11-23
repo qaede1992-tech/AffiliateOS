@@ -138,7 +138,7 @@ export const evaluateProductMediaIdentity = (
   if (identifierMatches && brandMatches && variantMatches) {
     // Model, brand, and variant can also appear in accessory listings. Keep
     // those candidates reviewable without treating them as strong product matches.
-    if (productNameTokens.size > 0 && productNameScore < 0.5) {
+    if (productNameTokens.size > 0 && productNameScore < 0.7) {
       return {
         score,
         status: "review_required",
