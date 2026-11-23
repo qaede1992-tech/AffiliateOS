@@ -189,7 +189,13 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   };
   await service.importShopeeAffiliateFeed({
     affiliateId,
-    items: [{ ...baseItem, category: "Elektronik", metadata: { productIdentity: { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" } } }]
+    items: [{
+      ...baseItem,
+      category: "Elektronik",
+      imageUrl: "https://cdn.example.test/shopee-product-image.jpg",
+      videoUrl: "https://cdn.example.test/shopee-product-video.mp4",
+      metadata: { productIdentity: { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" } }
+    }]
   });
   await service.importShopeeAffiliateFeed({
     affiliateId,
@@ -200,6 +206,8 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     baseItem.externalProductId
   );
   assert.equal(saved?.category, "Elektronik");
+  assert.equal(saved?.imageUrl, "https://cdn.example.test/shopee-product-image.jpg");
+  assert.equal(saved?.videoUrl, "https://cdn.example.test/shopee-product-video.mp4");
   assert.deepEqual(saved?.discoverySignals?.productIdentity, { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" });
 });
 
