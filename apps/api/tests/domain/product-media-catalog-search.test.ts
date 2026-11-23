@@ -24,6 +24,31 @@ test("requires exact model/SKU evidence for a strong match", () => {
   assert.ok(match.score >= 90);
 });
 
+test("requires every supplied model and SKU identifier to match", () => {
+  const structuredIdentity = { ...identity, sku: "WH1000XM5-BLK-01" };
+  const exact = evaluateProductMediaIdentity(
+    structuredIdentity,
+    "Sony WH-1000XM5 WH1000XM5-BLK-01 Wireless Headphones Black"
+  );
+  assert.equal(exact.status, "strong_match");
+
+  const wrongSku = evaluateProductMediaIdentity(
+    structuredIdentity,
+    "Sony WH-1000XM5 WH1000XM5-WHT-02 Wireless Headphones Black"
+  );
+  assert.equal(wrongSku.status, "rejected");
+  assert.equal(wrongSku.score, 0);
+  assert.ok(wrongSku.reasons.some((reason) => reason.includes("SKU")));
+
+  const wrongModel = evaluateProductMediaIdentity(
+    structuredIdentity,
+    "Sony WH-1000XM4 WH1000XM5-BLK-01 Wireless Headphones Black"
+  );
+  assert.equal(wrongModel.status, "rejected");
+  assert.equal(wrongModel.score, 0);
+  assert.ok(wrongModel.reasons.some((reason) => reason.includes("Model")));
+});
+
 
 test("requires variant evidence before returning a strong model match", () => {
   const result = evaluateProductMediaIdentity(identity, "Sony WH-1000XM5 Wireless Headphones");
