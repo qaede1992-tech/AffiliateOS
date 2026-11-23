@@ -130,13 +130,13 @@ export const evaluateProductMediaIdentity = (
   if (titleScore > 0) reasons.push(`Kemiripan token identitas: ${Math.round(titleScore * 100)}%.`);
   const score = Math.round(Math.min(1, titleScore * 0.55 + (brandMatches && brand ? 0.15 : 0) + (identifierMatches ? 0.35 : 0) + (variantMatches && variant ? 0.1 : 0)) * 100);
 
-  if (primaryIdentifier && identifierMatches && brandMatches && variantMatches) {
+  if (identifierMatches && brandMatches && variantMatches) {
     return { score: Math.max(score, 90), status: "strong_match", reasons };
   }
-  if (primaryIdentifier && identifierMatches && brandMatches && variant && !variantMatches) {
+  if (identifierMatches && brandMatches && variant && !variantMatches) {
     return { score, status: "review_required", reasons: [...reasons, "Model cocok, tetapi varian belum terbukti cocok; perlu pemeriksaan manual."] };
   }
-  if (!primaryIdentifier && brandMatches && titleScore >= 0.65) {
+  if (!identifierMatches && brandMatches && titleScore >= 0.65) {
     return {
       score: Math.max(score, Math.round(titleScore * 100)),
       status: "review_required",
