@@ -61,7 +61,10 @@ export function ProductMediaRightsPanel() {
   const [loadedAuditIds, setLoadedAuditIds] = useState<Set<string>>(new Set());
   const [loadingAuditIds, setLoadingAuditIds] = useState<Set<string>>(new Set());
   const [auditErrors, setAuditErrors] = useState<Record<string, string>>({});
-  const [forms, setForms] = useState<Record<string, ReviewForm>>({});\n  const [identityReasons, setIdentityReasons] = useState<Record<string, string>>({});\n  const [identityAudits, setIdentityAudits] = useState<Record<string, Array<{ id: string; actorId: string; actorRole: string; status: string; reason: string; createdAt: string }>>>({});\n  const [loadedIdentityAuditIds, setLoadedIdentityAuditIds] = useState<Set<string>>(new Set());
+  const [forms, setForms] = useState<Record<string, ReviewForm>>({});
+  const [identityReasons, setIdentityReasons] = useState<Record<string, string>>({});
+  const [identityAudits, setIdentityAudits] = useState<Record<string, Array<{ id: string; actorId: string; actorRole: string; status: string; reason: string; createdAt: string }>>>({});
+  const [loadedIdentityAuditIds, setLoadedIdentityAuditIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
