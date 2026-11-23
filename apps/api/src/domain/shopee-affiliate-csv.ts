@@ -191,7 +191,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
       const commission = get("commission_amount_idr");
       const productUrl = get("product_url");
       const affiliateUrl = get("affiliate_url");
-      const imageUrl = (record[indexes.get("image_url") ?? -1] ?? "").trim();
+      const imageUrl = (record[indexes.get("image_url") ?? indexes.get("imageUrl") ?? -1] ?? "").trim();
       const videoUrl = (record[indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
       const categoryHeaders = ["category", "category_name", "kategori", "kategori_produk"].filter((header) => indexes.has(header));
       const category = categoryHeaders.length === 1 ? (record[indexes.get(categoryHeaders[0]!) ?? -1] ?? "").trim() : "";
@@ -300,7 +300,7 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
     const soldCount = parseSales(get("Penjualan"));
     const productUrl = get("Link Produk");
     const affiliateUrl = get("Link Komisi Ekstra");
-    const imageUrl = (record[indexes.get("Link Gambar") ?? indexes.get("image_url") ?? -1] ?? "").trim();
+    const imageUrl = (record[indexes.get("Link Gambar") ?? indexes.get("image_url") ?? indexes.get("imageUrl") ?? -1] ?? "").trim();
     const videoUrl = (record[indexes.get("Link Video") ?? indexes.get("video_url") ?? indexes.get("videoUrl") ?? -1] ?? "").trim();
     const category = categoryHeaders.length === 1 ? (record[indexes.get(categoryHeaders[0]!) ?? -1] ?? "").trim() : "";
     const identity = Object.fromEntries(Object.entries(identityHeaders).flatMap(([key, matches]) => { const header = matches[0]; const value = header ? (record[indexes.get(header)!] ?? "").trim() : ""; return value ? [[key, value]] : []; })) as { brand?: string; model?: string; sku?: string; variant?: string };
