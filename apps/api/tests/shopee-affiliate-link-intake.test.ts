@@ -481,3 +481,100 @@ test("legacy stale resolving recovery still wakes the scheduler when it claims a
   assert.equal(wakeSignals, 2);
   assert.equal(await service.nextStaleResolvingAt(), undefined);
 });
+
+test("reconciling an already imported verified offer is a read-only no-op", async () => {
+  const base = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const affiliateUrl = "https://s.shopee.co.id/reconcile-noop";
+  const timestamp = "2026-11-20T10:00:00.000Z";
+  const intake: ShopeeAffiliateLinkIntake = {
+    id: "reconcile-noop",
+    marketplaceSlug: "shopee-affiliate-feed",
+    affiliateUrl,
+    normalizedUrlHash: createHash("sha256").update(affiliateUrl).digest("hex"),
+    canonicalProductUrl: "https://shopee.co.id/product/123/456",
+    shopId: "123",
+    itemId: "456",
+    status: "imported",
+    sourceMetadata: {
+      verifiedOfferSource: "shopee-affiliate-feed",
+      offerDataVerifiedAt: timestamp
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  await base.saveIfAbsent(intake);
+  let writes = 0;
+  const repository: ShopeeAffiliateLinkIntakeRepository = {
+    findByUrlHash: (hash) => base.findByUrlHash(hash),
+    findByProductIdentity: (shopId, itemId) => base.findByProductIdentity(shopId, itemId),
+    findManyByProductIdentities: (identities) => base.findManyByProductIdentities(identities),
+    findById: (id) => base.findById(id),
+    saveIfAbsent: (entity) => base.saveIfAbsent(entity),
+    update: async (entity) => { writes += 1; return base.update(entity); },
+    listStaleResolving: (cutoff, limit) => base.listStaleResolving(cutoff, limit),
+    nextStaleResolvingAt: () => base.nextStaleResolvingAt(),
+    claimStaleResolving: (id, expected, claimedAt) => base.claimStaleResolving(id, expected, claimedAt),
+    updateIfResolving: (id, expected, entity) => base.updateIfResolving(id, expected, entity)
+  };
+  const service = new ShopeeAffiliateLinkIntakeService(repository);
+  const before = await base.findById(intake.id);
+  const result = await service.reconcileVerifiedOffer(intake.canonicalProductUrl!);
+  const after = await base.findById(intake.id);
+
+  assert.equal(result?.id, intake.id);
+  assert.equal(writes, 0, "already reconciled intake must not issue another update");
+  assert.deepEqual(after, before, "no-op reconciliation must preserve timestamps and metadata");
+});
+
+test("batch reconciliation deduplicates product URLs and performs one bulk identity lookup", async () => {
+  const base = new InMemoryShopeeAffiliateLinkIntakeRepository();
+  const makeIntake = async (shopId: string, itemId: string) => {
+    const affiliateUrl = `https://s.shopee.co.id/${itemId}`;
+    await base.saveIfAbsent({
+      id: `intake-${itemId}`,
+      marketplaceSlug: "shopee-affiliate-feed",
+      affiliateUrl,
+      normalizedUrlHash: createHash("sha256").update(affiliateUrl).digest("hex"),
+      canonicalProductUrl: `https://shopee.co.id/product/${shopId}/${itemId}`,
+      shopId,
+      itemId,
+      status: "awaiting_offer_data",
+      sourceMetadata: {},
+      createdAt: "2026-11-20T10:00:00.000Z",
+      updatedAt: "2026-11-20T10:00:00.000Z"
+    });
+  };
+  await makeIntake("123", "456");
+  await makeIntake("123", "789");
+  let bulkLookups = 0;
+  let singleLookups = 0;
+  const repository: ShopeeAffiliateLinkIntakeRepository = {
+    findByUrlHash: (hash) => base.findByUrlHash(hash),
+    findByProductIdentity: async (shopId, itemId) => { singleLookups += 1; return base.findByProductIdentity(shopId, itemId); },
+    findManyByProductIdentities: async (identities) => { bulkLookups += 1; return base.findManyByProductIdentities(identities); },
+    findById: (id) => base.findById(id),
+    saveIfAbsent: (entity) => base.saveIfAbsent(entity),
+    update: (entity) => base.update(entity),
+    listStaleResolving: (cutoff, limit) => base.listStaleResolving(cutoff, limit),
+    nextStaleResolvingAt: () => base.nextStaleResolvingAt(),
+    claimStaleResolving: (id, expected, claimedAt) => base.claimStaleResolving(id, expected, claimedAt),
+    updateIfResolving: (id, expected, entity) => base.updateIfResolving(id, expected, entity)
+  };
+  const service = new ShopeeAffiliateLinkIntakeService(repository);
+
+  const results = await service.reconcileVerifiedOffers([
+    "https://shopee.co.id/product/123/456",
+    "https://shopee.co.id/product/123/456?source=duplicate",
+    "https://shopee.co.id/product/123/789",
+    "https://example.com/product/123/456",
+    "http://shopee.co.id/product/123/456"
+  ]);
+
+  assert.equal(bulkLookups, 1);
+  assert.equal(singleLookups, 0);
+  assert.equal(results.length, 2);
+  assert.deepEqual(results.map((row) => row.status), ["imported", "imported"]);
+  assert.equal((await base.findByProductIdentity("123", "456"))?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
+  assert.equal((await base.findByProductIdentity("123", "789"))?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
+});
+
