@@ -385,7 +385,8 @@ export class ProductMediaDiscoveryRunner {
               productId: product.id,
               provider: candidate.provider,
               candidateHash: createHash("sha256").update(candidate.mediaKind + "|" + candidate.landingPageUrl + "|" + (candidate.imageUrl ?? candidate.videoUrl ?? "")).digest("hex"),
-              // Persist the canonical identity query used by the pending-candidate guard.\n              query,
+              // Persist the canonical identity query used by the pending-candidate guard.
+              query,
               title: candidate.title,
               mediaKind: candidate.mediaKind,
               imageUrl: candidate.imageUrl,
