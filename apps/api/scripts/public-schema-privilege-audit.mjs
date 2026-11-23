@@ -45,8 +45,9 @@ export const PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY = `
 `;
 
 export function migrationCreatesFunctionOrProcedure(sqlText) {
-  return /\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:FUNCTION|PROCEDURE)\\b/i.test(sqlText);
+  return /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b/i.test(sqlText);
 }
+
 export function findPublicSchemaDefaultAclGrants(rows) {
   return rows
     .map((row) => {
