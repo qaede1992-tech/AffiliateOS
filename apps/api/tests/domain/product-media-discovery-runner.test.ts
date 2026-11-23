@@ -102,6 +102,49 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   assert.equal(listCalls, 1, "discovery should reuse the initial asset snapshot instead of re-reading storage metadata");
 });
 
+test("skips external catalog discovery when a usable direct media URL is already supplied", async () => {
+  const assets: ProductMediaAsset[] = [];
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  let mediaFetches = 0;
+  let providerFetches = 0;
+  let pendingLookups = 0;
+  let candidateWrites = 0;
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash(id: string, hash: string) { return assets.find((asset) => asset.productId === id && asset.sha256 === hash); },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  const candidateRepository = {
+    async hasPendingByProductAndQuery() { pendingLookups++; return false; },
+    async listPendingByProduct() { throw new Error("direct media should bypass pending catalog lookup"); },
+    async saveMany() { candidateWrites++; return []; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async (url: string) => {
+      mediaFetches++;
+      return { url, status: 200, headers: { "content-type": "image/png" }, bytes: png };
+    }) as never,
+    candidateRepository as never,
+    { fetchImpl: (async () => { providerFetches++; return new Response("{}", { status: 200 }); }) as typeof fetch }
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cdn.example.test/catalog-image.png"
+  }, true);
+
+  assert.equal(mediaFetches, 1, "the explicitly supplied media file should be ingested");
+  assert.equal(providerFetches, 0, "catalog providers should not be called when direct media is available");
+  assert.equal(pendingLookups, 0, "direct media should not require a catalog pending-candidate lookup");
+  assert.equal(candidateWrites, 0, "direct media should not create redundant catalog candidates");
+  assert.equal(result.stored.length, 1);
+  assert.equal(result.stored[0]?.rightsStatus, "unverified", "direct media must not be treated as rights-verified");
+});
+
 test("never downloads Shopee-owned CDN image or video URLs supplied in a product catalog", async () => {
   const assets: ProductMediaAsset[] = [];
   const repository = {
