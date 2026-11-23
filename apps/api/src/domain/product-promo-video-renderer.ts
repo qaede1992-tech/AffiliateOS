@@ -36,7 +36,7 @@ export interface ProductPromoVideoRenderResult {
 const defaultRunProcess = async (binary: string, args: string[], timeoutMs: number): Promise<void> => {
   await execFile(binary, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, windowsHide: true });
 };
- 
+
 export function inheritProductMediaSourceProvenance(source: ProductMediaAsset): Pick<ProductMediaAsset,
   "sourcePublisher" | "sourceProvider" | "sourceLandingPageUrl" | "sourceTitle" | "sourceQuery" |
   "sourceCreator" | "sourceCreatorUrl" | "sourceLicense" | "sourceLicenseVersion" | "sourceLicenseUrl"
