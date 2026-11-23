@@ -288,6 +288,17 @@ export function ProductMediaRightsPanel() {
                   })}
                 </div>
                 <small className="analytics-note">Penilaian ini hanya preflight teknis berdasarkan metadata tersimpan. Ini bukan persetujuan hak media atau izin publikasi; codec, frame rate, dan batas akun tertentu mungkin masih perlu diperiksa.</small>
+                {(asset.sourceLandingPageUrl || asset.sourceTitle || asset.sourceCreator || asset.sourceLicense || asset.sourceLicenseUrl) && (
+                  <details className="product-media-rights-history">
+                    <summary>Asal-usul media dan lisensi sumber</summary>
+                    {asset.sourceTitle && <p>{asset.sourceTitle}</p>}
+                    {asset.sourceCreator && <p>Kreator: {asset.sourceCreator}{asset.sourceCreatorUrl && safeEvidenceUrl(asset.sourceCreatorUrl ?? null) ? <> · <a href={safeEvidenceUrl(asset.sourceCreatorUrl ?? null)!} target="_blank" rel="noreferrer">Profil kreator</a></> : ""}</p>}
+                    {asset.sourceLicense && <p>Lisensi sumber: {asset.sourceLicense}{asset.sourceLicenseVersion ? ` ${asset.sourceLicenseVersion}` : ""}</p>}
+                    {safeEvidenceUrl(asset.sourceLicenseUrl ?? null) && <p><a href={safeEvidenceUrl(asset.sourceLicenseUrl ?? null)!} target="_blank" rel="noreferrer">Buka ketentuan lisensi sumber</a></p>}
+                    {safeEvidenceUrl(asset.sourceLandingPageUrl ?? null) && <p><a href={safeEvidenceUrl(asset.sourceLandingPageUrl ?? null)!} target="_blank" rel="noreferrer">Buka halaman sumber asli</a></p>}
+                    <small className="analytics-note">Informasi ini adalah jejak sumber, bukan bukti bahwa aset turunan otomatis memiliki hak publikasi. Setiap aset tetap memerlukan pemeriksaan haknya sendiri.</small>
+                  </details>
+                )}
                 {asset.sourceProvider === "openai" && asset.sourceUrl.startsWith("generated:openai-image-edit:") && (
                   <section className="affiliate-form" aria-label="Pemeriksaan identitas gambar AI">
                     <h4>Pemeriksaan identitas produk AI</h4>

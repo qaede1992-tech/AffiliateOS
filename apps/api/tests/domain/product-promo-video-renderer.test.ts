@@ -26,6 +26,15 @@ const imageAsset: ProductMediaAsset = {
   sha256: "a".repeat(64),
   sourceUrl: "https://cdn.example.test/product.png",
   sourcePublisher: "Product owner",
+  sourceProvider: "openverse",
+  sourceLandingPageUrl: "https://publisher.example.test/product",
+  sourceTitle: "Official product image",
+  sourceQuery: "brand model",
+  sourceCreator: "Product photographer",
+  sourceCreatorUrl: "https://publisher.example.test/creator",
+  sourceLicense: "CC BY 4.0",
+  sourceLicenseVersion: "4.0",
+  sourceLicenseUrl: "https://creativecommons.org/licenses/by/4.0/",
   rightsStatus: "verified",
   rightsBasis: "user_owned",
   rightsEvidenceUrl: "https://publisher.example.test/rights",
@@ -74,7 +83,19 @@ test("passes the configured timeout while rendering and persisting a generated 9
   assert.equal(result.asset?.rightsStatus, "unverified");
   assert.equal(result.asset?.rightsBasis, null);
   assert.equal(result.asset?.rightsEvidenceUrl, null);
-  assert.equal(result.asset?.sourcePublisher, "AffiliateOS");
+  assert.equal(result.asset?.sourcePublisher, "Product owner");
+  assert.equal(result.asset?.sourceProvider, "openverse");
+  assert.equal(result.asset?.sourceLandingPageUrl, "https://publisher.example.test/product");
+  assert.equal(result.asset?.sourceTitle, "Official product image");
+  assert.equal(result.asset?.sourceQuery, "brand model");
+  assert.equal(result.asset?.sourceCreator, "Product photographer");
+  assert.equal(result.asset?.sourceCreatorUrl, "https://publisher.example.test/creator");
+  assert.equal(result.asset?.sourceLicense, "CC BY 4.0");
+  assert.equal(result.asset?.sourceLicenseVersion, "4.0");
+  assert.equal(result.asset?.sourceLicenseUrl, "https://creativecommons.org/licenses/by/4.0/");
+  assert.equal(result.asset?.rightsStatus, "unverified");
+  assert.equal(result.asset?.rightsBasis, null);
+  assert.equal(result.asset?.sourceCandidateId ?? null, null);
   assert.equal(assets.length, 2);
   assert.equal(uploaded.length, 1);
 });

@@ -36,6 +36,25 @@ export interface ProductPromoVideoRenderResult {
 const defaultRunProcess = async (binary: string, args: string[], timeoutMs: number): Promise<void> => {
   await execFile(binary, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, windowsHide: true });
 };
+ 
+export function inheritProductMediaSourceProvenance(source: ProductMediaAsset): Pick<ProductMediaAsset,
+  "sourcePublisher" | "sourceProvider" | "sourceLandingPageUrl" | "sourceTitle" | "sourceQuery" |
+  "sourceCreator" | "sourceCreatorUrl" | "sourceLicense" | "sourceLicenseVersion" | "sourceLicenseUrl"
+> {
+  return {
+    sourcePublisher: source.sourcePublisher,
+    sourceProvider: source.sourceProvider ?? null,
+    sourceLandingPageUrl: source.sourceLandingPageUrl ?? null,
+    sourceTitle: source.sourceTitle ?? null,
+    sourceQuery: source.sourceQuery ?? null,
+    sourceCreator: source.sourceCreator ?? null,
+    sourceCreatorUrl: source.sourceCreatorUrl ?? null,
+    sourceLicense: source.sourceLicense ?? null,
+    sourceLicenseVersion: source.sourceLicenseVersion ?? null,
+    sourceLicenseUrl: source.sourceLicenseUrl ?? null
+  };
+}
+
 
 const safeTitle = (name: string): string => {
   const normalized = name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
@@ -165,7 +184,8 @@ export class ProductPromoVideoRenderer {
         sha256,
         sourceUrl: "generated:ffmpeg",
         // A derivative is a new asset and must receive its own explicit review.
-        sourcePublisher: "AffiliateOS",
+        // Retain source provenance for audit; never inherit rights approval or candidate identity.
+        ...inheritProductMediaSourceProvenance(image),
         rightsStatus: "unverified",
         rightsBasis: null,
         rightsEvidenceUrl: null,
