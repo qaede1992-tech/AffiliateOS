@@ -93,15 +93,28 @@ export const evaluateProductMediaIdentity = (
   const expectedTokens = terms(expectedText);
   const reasons: string[] = [];
 
-  // Prefer the manufacturer's model identifier; use SKU only when no model exists.
-  const primaryIdentifier = identity.model?.trim() || identity.sku?.trim();
-  const identifierMatches = primaryIdentifier
-    ? hasExactIdentifier(candidateTitle, primaryIdentifier)
-    : false;
-  if (primaryIdentifier && !identifierMatches) {
-    return { score: 0, status: "rejected", reasons: ["Model/SKU tidak cocok dengan identitas produk."] };
+  // Every supplied structured identifier is a hard constraint. Checking only
+  // model while ignoring SKU can attach media for a different sellable item.
+  const identifiers = [
+    ...(identity.model?.trim() ? [{ label: "Model", value: identity.model.trim() }] : []),
+    ...(identity.sku?.trim() ? [{ label: "SKU", value: identity.sku.trim() }] : [])
+  ];
+  const identifierChecks = identifiers.map((identifier) => ({
+    ...identifier,
+    matches: hasExactIdentifier(candidateTitle, identifier.value)
+  }));
+  const identifierMismatch = identifierChecks.filter((identifier) => !identifier.matches);
+  if (identifierMismatch.length > 0) {
+    return {
+      score: 0,
+      status: "rejected",
+      reasons: identifierMismatch.map((identifier) => `${identifier.label} tidak cocok dengan identitas produk.`)
+    };
   }
-  if (identifierMatches) reasons.push("Model atau SKU cocok secara tekstual.");
+  const identifierMatches = identifierChecks.length > 0;
+  for (const identifier of identifierChecks) {
+    reasons.push(`${identifier.label} cocok secara tekstual.`);
+  }
 
   const brand = identity.brand?.trim();
   const brandMatches = !brand || hasExactIdentifier(candidateTitle, brand);
