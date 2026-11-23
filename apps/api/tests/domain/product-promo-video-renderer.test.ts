@@ -109,7 +109,11 @@ test("does not create duplicate video when one already exists", async () => {
     id: "33333333-3333-4333-8333-333333333333",
     kind: "video",
     mimeType: "video/mp4",
-    objectKey: `products/${product.id}/existing.mp4`
+    objectKey: `products/${product.id}/existing.mp4`,
+    rightsStatus: "unverified",
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null
   };
   let renders = 0;
   const storage = {
@@ -129,6 +133,8 @@ test("does not create duplicate video when one already exists", async () => {
   const result = await renderer.render(product);
   assert.equal(result.generated, false);
   assert.equal(result.asset?.id, existingVideo.id);
+  assert.match(result.reason ?? "", /publication still requires current rights verification/);
+  assert.equal(result.asset?.rightsStatus, "unverified");
   assert.equal(renders, 0);
 });
 
