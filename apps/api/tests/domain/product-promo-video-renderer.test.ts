@@ -3,7 +3,6 @@ import test from "node:test";
 import { writeFile } from "node:fs/promises";
 import type { Product } from "@affiliateos/shared";
 import { ProductPromoVideoRenderer } from "../../src/domain/product-promo-video-renderer.js";
-import { inheritProductMediaSourceProvenance } from "../../src/domain/product-promo-video-renderer.js";
 import type { ProductMediaAsset } from "../../src/domain/product-media-ingestion.js";
 
 const product: Pick<Product, "id" | "name"> = {
