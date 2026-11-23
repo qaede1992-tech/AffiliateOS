@@ -63,7 +63,7 @@ export function ProductMediaRightsPanel() {
   const [auditErrors, setAuditErrors] = useState<Record<string, string>>({});
   const [forms, setForms] = useState<Record<string, ReviewForm>>({});
   const [identityReasons, setIdentityReasons] = useState<Record<string, string>>({});
-  const [identityAudits, setIdentityAudits] = useState<Record<string, Array<{ id: string; actorId: string; actorRole: string; status: string; reason: string; createdAt: string }>>>({});
+  const [identityAudits, setIdentityAudits] = useState<Record<string, Array<{ id: string; assetId: string; productId: string; actorId: string; actorRole: string; action: "verify" | "reject"; reason: string; previousIdentityStatus: string; newIdentityStatus: string; createdAt: string }>>>({});
   const [loadedIdentityAuditIds, setLoadedIdentityAuditIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -302,7 +302,7 @@ export function ProductMediaRightsPanel() {
                     </div>
                     <details onToggle={(event) => { if (event.currentTarget.open) void loadIdentityAudits(asset.id); }}>
                       <summary>Riwayat pemeriksaan identitas</summary>
-                      {!loadedIdentityAuditIds.has(asset.id) ? <p className="analytics-note">Muat riwayat saat dibuka.</p> : (identityAudits[asset.id] ?? []).length === 0 ? <p className="analytics-note">Belum ada catatan pemeriksaan identitas.</p> : <ol>{(identityAudits[asset.id] ?? []).map((entry) => <li key={entry.id}><strong>{entry.status}</strong><small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId} ({entry.actorRole})</small><p>{entry.reason}</p></li>)}</ol>}
+                      {!loadedIdentityAuditIds.has(asset.id) ? <p className="analytics-note">Muat riwayat saat dibuka.</p> : (identityAudits[asset.id] ?? []).length === 0 ? <p className="analytics-note">Belum ada catatan pemeriksaan identitas.</p> : <ol>{(identityAudits[asset.id] ?? []).map((entry) => <li key={entry.id}><strong>{entry.action === "verify" ? "Verifikasi" : "Penolakan"} · {entry.previousIdentityStatus} → {entry.newIdentityStatus}</strong><small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId} ({entry.actorRole})</small><p>{entry.reason}</p></li>)}</ol>}
                     </details>
                   </section>
                 )}
