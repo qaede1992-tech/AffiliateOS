@@ -20,7 +20,9 @@ export interface ProductMediaCatalogCandidate {
   /** Exact provider query used to discover this candidate, when available. */
   searchQuery?: string;
   title: string;
-  imageUrl: string;
+  mediaKind: "image" | "video";
+  imageUrl: string | null;
+  videoUrl: string | null;
   landingPageUrl: string;
   creator: string | null;
   creatorUrl: string | null;
@@ -375,7 +377,9 @@ export async function searchOpenverseProductMedia(
         provider: "openverse" as const,
         searchQuery: query,
         title,
+        mediaKind: "image" as const,
         imageUrl,
+        videoUrl: null,
         landingPageUrl,
         creator: typeof item.creator === "string" ? item.creator.slice(0, 500) : null,
         creatorUrl: safeHttps(item.creator_url),
