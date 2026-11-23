@@ -331,14 +331,31 @@ export class ProductMediaDiscoveryRunner {
           let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
           let openverseFailure: string | undefined;
           let openverseFailureDetails: ReturnType<typeof getOpenverseHttpFailureDetails> = null;
+          let openverseFallbackReason: "provider_error" | "empty_structured_identity" | undefined;
           let discoveryFailed = false;
           try {
             try {
               assertOpenverseAvailable();
               discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
               recordOpenverseSuccess();
+              // Keep generic discovery to one provider request. Only spend a second
+              // catalog request when Openverse is empty and the CSV supplied a model
+              // or SKU that can make the Wikimedia query product-specific.
+              if (discovered.length === 0 && (identity.model?.trim() || identity.sku?.trim())) {
+                discoveryProvider = "wikimedia_commons";
+                openverseFallbackReason = "empty_structured_identity";
+                console.info(JSON.stringify({
+                  event: "product_media_catalog_provider_fallback",
+                  primaryProvider: "openverse",
+                  fallbackProvider: "wikimedia_commons",
+                  fallbackReason: openverseFallbackReason,
+                  productId: product.id
+                }));
+                discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+              }
             } catch (error) {
               openverseFailure = safeErrorType(error);
+              openverseFallbackReason = "provider_error";
               openverseFailureDetails = getOpenverseHttpFailureDetails(error);
               recordOpenverseFailure(openverseFailureDetails);
               discoveryProvider = "wikimedia_commons";
@@ -418,7 +435,7 @@ export class ProductMediaDiscoveryRunner {
               console.info(JSON.stringify({
                 event: "product_media_catalog_search_completed",
                 provider: discoveryProvider,
-                fallbackReason: openverseFailure,
+                fallbackReason: openverseFailure ?? openverseFallbackReason,
                 ...(openverseFailureDetails ? {
                   fallbackFailureDetails: {
                     endpoint: openverseFailureDetails.endpoint,
