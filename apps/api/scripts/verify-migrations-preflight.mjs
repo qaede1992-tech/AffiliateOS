@@ -6,8 +6,8 @@ import { Client } from "pg";
 import {
   findPublicSchemaDefaultAclGrants,
   migrationCreatesFunctionOrProcedure,
-  PUBLIC_SCHEMA_DEFAULT_ACL_QUERY,
-  PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY
+  MIGRATION_ROLE_DEFAULT_ACL_QUERY,
+  MIGRATION_ROLE_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY
 } from "./public-schema-privilege-audit.mjs";
 import {
   classifyMigrationLedger,
@@ -112,10 +112,10 @@ try {
     readFile(new URL(`${migration.tag}.sql`, new URL("../drizzle/", import.meta.url)), "utf8")
   ));
   const pendingCreatesCallable = pendingMigrationSql.some(migrationCreatesFunctionOrProcedure);
-  const { rows: explicitDefaultAclRows } = await client.query(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY);
+  const { rows: explicitDefaultAclRows } = await client.query(MIGRATION_ROLE_DEFAULT_ACL_QUERY);
   const defaultAclRows = [...explicitDefaultAclRows];
   if (pendingCreatesCallable) {
-    const { rows: implicitFunctionAclRows } = await client.query(PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY);
+    const { rows: implicitFunctionAclRows } = await client.query(MIGRATION_ROLE_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY);
     defaultAclRows.push(...implicitFunctionAclRows);
   }
   const unsafeDefaultAclGrants = findPublicSchemaDefaultAclGrants(defaultAclRows);
