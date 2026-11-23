@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildWikimediaCommonsQueries, searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
+import { buildWikimediaCommonsQueries, resetWikimediaProviderCircuitForTests, searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
 
 const identity = { name: "Sony WH-1000XM5 Wireless Headphones" };
 
@@ -527,4 +527,62 @@ test("rejects license URLs outside the canonical Creative Commons host", async (
     }))}
   }), { status: 200, headers: { "content-type": "application/json" } });
   assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
+});
+
+
+test("pauses all Wikimedia searches after a provider-wide HTTP 429", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("rate limited", { status: 429 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 429/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 429/
+  );
+  assert.equal(calls, 1, "provider cooldown must prevent another outbound request");
+  resetWikimediaProviderCircuitForTests(fetchImpl);
+});
+
+test("pauses all Wikimedia searches after a provider-wide HTTP 403", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("forbidden", { status: 403 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 403/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 403/
+  );
+  assert.equal(calls, 1);
+  resetWikimediaProviderCircuitForTests(fetchImpl);
+});
+
+test("pauses all Wikimedia searches briefly after a provider-wide HTTP 5xx", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("provider error", { status: 503 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 503/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 503/
+  );
+  assert.equal(calls, 1);
+  resetWikimediaProviderCircuitForTests(fetchImpl);
 });
