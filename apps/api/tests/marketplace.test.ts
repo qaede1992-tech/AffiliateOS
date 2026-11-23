@@ -161,6 +161,18 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   const connections = new InMemoryMarketplaceConnectionRepository();
   let batchProductLookups = 0;
   let individualProductLookups = 0;
+  let productWriteBatches = 0;
+  let offerWriteBatches = 0;
+  const originalProductWrite = products.upsertManyByMarketplaceProduct.bind(products);
+  const originalOfferWrite = affiliateOffers.saveManyById.bind(affiliateOffers);
+  products.upsertManyByMarketplaceProduct = async (entities) => {
+    productWriteBatches += 1;
+    return originalProductWrite(entities);
+  };
+  affiliateOffers.saveManyById = async (entities) => {
+    offerWriteBatches += 1;
+    return originalOfferWrite(entities);
+  };
   const originalBatchLookup = products.findManyByMarketplaceProducts.bind(products);
   const originalSingleLookup = products.findByMarketplaceProduct.bind(products);
   products.findManyByMarketplaceProducts = async (marketplaceId, externalProductIds) => {
@@ -221,6 +233,8 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
   assert.equal(reimportWithoutMediaColumns.changed, false);
   assert.equal(batchProductLookups, 2);
   assert.equal(individualProductLookups, 0);
+  assert.equal(productWriteBatches, 1, "unchanged product reimport skips upsert");
+  assert.equal(offerWriteBatches, 1, "unchanged offer reimport skips upsert");
   const saved = await products.findByMarketplaceProduct(
     (await connections.findBySlug("shopee-affiliate-feed"))!.id,
     baseItem.externalProductId

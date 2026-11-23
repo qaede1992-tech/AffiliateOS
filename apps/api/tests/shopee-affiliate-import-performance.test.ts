@@ -56,10 +56,31 @@ test("Shopee feed import batches 100 products and offers and keeps IDs stable on
   assert.equal(first.skippedItems, 0);
   assert.equal(second.importedProducts, 100);
   assert.equal(second.importedOffers, 100);
+  assert.equal(second.changed, false);
   assert.equal((await products.list()).length, 100);
   assert.equal((await affiliateOffers.list()).length, 100);
   assert.deepEqual(second.affiliateOfferIds, first.affiliateOfferIds);
-  assert.equal(productBulkCalls, 2);
+  assert.equal(productBulkCalls, 1, "identical re-import skips product writes");
   assert.equal(offerLookupBatchCalls, 2);
-  assert.equal(offerBulkCalls, 2);
+  assert.equal(offerBulkCalls, 1, "identical re-import skips offer writes");
+
+  const changedRequest = {
+    ...request,
+    items: items.map((item, index) => index === 0
+      ? { ...item, commissionRateBps: 600, commissionAmountCents: 600 }
+      : item)
+  };
+  const changed = await service.importShopeeAffiliateFeed(changedRequest);
+  assert.equal(changed.changed, true);
+  assert.equal(productBulkCalls, 1, "offer-only changes do not rewrite unchanged products");
+  assert.equal(offerBulkCalls, 2, "only changed offers are written");
+
+  const changedProductRequest = {
+    ...changedRequest,
+    items: changedRequest.items.map((item, index) => index === 1 ? { ...item, name: "Updated CSV performance product 002" } : item)
+  };
+  const changedProduct = await service.importShopeeAffiliateFeed(changedProductRequest);
+  assert.equal(changedProduct.changed, true);
+  assert.equal(productBulkCalls, 2, "only the changed product batch is written");
+  assert.equal(offerBulkCalls, 2, "unchanged offers are not rewritten");
 });
