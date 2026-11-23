@@ -253,7 +253,10 @@ export async function searchWikimediaCommonsProductMedia(
         },
         signal: controller.signal
       });
-      if (!response.ok) {\n        recordWikimediaFailure(fetchImpl, response.status);\n        throw new Error(`Wikimedia Commons search failed with HTTP ${response.status}.`);\n      }
+      if (!response.ok) {
+        recordWikimediaFailure(fetchImpl, response.status);
+        throw new Error(`Wikimedia Commons search failed with HTTP ${response.status}.`);
+      }
       const payload = await response.json() as WikimediaSearchResponse;
       const pages = Array.isArray(payload.query?.pages) ? payload.query.pages : [];
 
