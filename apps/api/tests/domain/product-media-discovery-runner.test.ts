@@ -102,6 +102,49 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
   assert.equal(listCalls, 1, "discovery should reuse the initial asset snapshot instead of re-reading storage metadata");
 });
 
+test("skips external catalog discovery when a usable direct media URL is already supplied", async () => {
+  const assets: ProductMediaAsset[] = [];
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l0sAAAAASUVORK5CYII=", "base64");
+  let mediaFetches = 0;
+  let providerFetches = 0;
+  let pendingLookups = 0;
+  let candidateWrites = 0;
+  const repository = {
+    async listByProduct(id: string) { return assets.filter((asset) => asset.productId === id); },
+    async findByProductAndHash(id: string, hash: string) { return assets.find((asset) => asset.productId === id && asset.sha256 === hash); },
+    async save(asset: ProductMediaAsset) { assets.push(asset); return asset; }
+  };
+  const candidateRepository = {
+    async hasPendingByProductAndQuery() { pendingLookups++; return false; },
+    async listPendingByProduct() { throw new Error("direct media should bypass pending catalog lookup"); },
+    async saveMany() { candidateWrites++; return []; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async (input: { key: string }) => ({ bucket: "affiliate-media", key: input.key }), remove: async () => {} } as never,
+    repository,
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async (url: string) => {
+      mediaFetches++;
+      return { url, status: 200, headers: { "content-type": "image/png" }, bytes: png };
+    }) as never,
+    candidateRepository as never,
+    { fetchImpl: (async () => { providerFetches++; return new Response("{}", { status: 200 }); }) as typeof fetch }
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cdn.example.test/catalog-image.png"
+  }, true);
+
+  assert.equal(mediaFetches, 1, "the explicitly supplied media file should be ingested");
+  assert.equal(providerFetches, 0, "catalog providers should not be called when direct media is available");
+  assert.equal(pendingLookups, 0, "direct media should not require a catalog pending-candidate lookup");
+  assert.equal(candidateWrites, 0, "direct media should not create redundant catalog candidates");
+  assert.equal(result.stored.length, 1);
+  assert.equal(result.stored[0]?.rightsStatus, "unverified", "direct media must not be treated as rights-verified");
+});
+
 test("never downloads Shopee-owned CDN image or video URLs supplied in a product catalog", async () => {
   const assets: ProductMediaAsset[] = [];
   const repository = {
@@ -606,6 +649,108 @@ test("persists catalog search cooldown and invalidates it when product identity 
 });
 
 
+
+
+
+test("stale pending media candidates do not suppress discovery for changed product identity", async () => {
+  let providerCalls = 0;
+  let checkedQuery = "";
+  const candidateRepository = {
+    async hasPendingByProductAndQuery(_productId: string, query: string) {
+      checkedQuery = query;
+      return false;
+    },
+    async listPendingByProduct() {
+      throw new Error("targeted lookup should not load pending rows");
+    },
+    async saveMany() { return []; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { return asset; }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    candidateRepository as never,
+    { fetchImpl: (async () => {
+      providerCalls++;
+      return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch }
+  );
+
+  const result = await runner.discover({
+    ...product,
+    name: "Updated demo product",
+    productUrl: "https://shopee.co.id/product/123/456"
+  }, true);
+
+  assert.equal(checkedQuery, "Updated demo product");
+  assert.equal(providerCalls, 1, "a changed identity query should start a fresh catalog search");
+  assert.equal(result.candidatesFound, 0);
+});
+
+test("uses Wikimedia fallback on empty Openverse results only when model or SKU is available", async () => {
+  resetOpenverseCircuitForTests();
+  const originalFetch = globalThis.fetch;
+  let openverseCalls = 0;
+  let wikimediaCalls = 0;
+  globalThis.fetch = async () => {
+    wikimediaCalls++;
+    return new Response(JSON.stringify({ query: { pages: [] } }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { return asset; }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    {
+      async hasPendingByProductAndQuery() { return false; },
+      async listPendingByProduct() { return []; },
+      async saveMany(records: unknown[]) { return records; }
+    } as never,
+    {
+      fetchImpl: (async () => {
+        openverseCalls++;
+        return new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }) as typeof fetch
+    }
+  );
+  try {
+    const identifiedProduct = {
+      ...product,
+      productUrl: "https://shopee.co.id/product/123/456",
+      discoverySignals: { productIdentity: { brand: "Demo", model: "X100", sku: "SKU-42" } }
+    } as Product;
+    await runner.discover(identifiedProduct, true);
+    assert.equal(openverseCalls, 1);
+    assert.equal(wikimediaCalls, 1, "structured model/SKU identity should permit one targeted fallback");
+
+    await runner.discover({
+      ...product,
+      id: "22222222-2222-4222-8222-222222222222",
+      productUrl: "https://shopee.co.id/product/123/457"
+    }, true);
+    assert.equal(openverseCalls, 2);
+    assert.equal(wikimediaCalls, 1, "generic products must remain single-provider to protect egress");
+  } finally {
+    globalThis.fetch = originalFetch;
+    resetOpenverseCircuitForTests();
+  }
+});
+
 test("stops repeating an Openverse 403 across products while retaining Wikimedia fallback", async () => {
   resetOpenverseCircuitForTests();
   const originalFetch = globalThis.fetch;
@@ -749,9 +894,13 @@ test("skips external catalog calls and discovery writes while a media candidate 
   let claimCalls = 0;
   let pendingLookups = 0;
   const candidateRepository = {
-    async listPendingByProduct() {
+    async hasPendingByProductAndQuery(_productId: string, query: string) {
       pendingLookups++;
-      return [{ id: "pending-candidate" }];
+      assert.equal(query, "Demo product");
+      return true;
+    },
+    async listPendingByProduct() {
+      throw new Error("targeted pending lookup should avoid loading candidate rows");
     },
     async saveMany() {
       saveCalls++;

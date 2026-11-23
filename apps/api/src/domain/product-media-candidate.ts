@@ -5,7 +5,9 @@ export interface ProductMediaCandidateRecord {
   candidateHash: string;
   query: string;
   title: string;
-  imageUrl: string;
+  mediaKind: "image" | "video";
+  imageUrl: string | null;
+  videoUrl: string | null;
   landingPageUrl: string;
   creator: string | null;
   creatorUrl: string | null;
@@ -29,6 +31,7 @@ export interface ProductMediaCandidateRepository {
   findById?(candidateId: string): Promise<ProductMediaCandidateRecord | undefined>;
   saveMany(candidates: ProductMediaCandidateRecord[]): Promise<ProductMediaCandidateRecord[]>;
   listPendingByProduct(productId: string, limit?: number): Promise<ProductMediaCandidateRecord[]>;
+  hasPendingByProductAndQuery?(productId: string, query: string): Promise<boolean>;
   listByProductAndReviewStatus?(productId: string, status: ProductMediaCandidateRecord["reviewStatus"], limit?: number): Promise<ProductMediaCandidateRecord[]>;
   review(candidateId: string, productId: string, command: ProductMediaCandidateReviewCommand): Promise<ProductMediaCandidateRecord | undefined>;
   listReviewAudits(productId: string, candidateId: string, limit?: number): Promise<ProductMediaCandidateReviewAudit[]>;
