@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findPublicSchemaDefaultAclGrants } from "../scripts/public-schema-privilege-audit.mjs";
+import {\n  findPublicSchemaDefaultAclGrants,\n  migrationCreatesFunctionOrProcedure,\n  PUBLIC_SCHEMA_DEFAULT_ACL_QUERY,\n  PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY\n} from "../scripts/public-schema-privilege-audit.mjs";
 
 test("detects anon and authenticated defaults from any creator role", () => {
   const findings = findPublicSchemaDefaultAclGrants([
@@ -61,4 +61,17 @@ test("ignores non-public namespaces and least-privilege runtime defaults", () =>
     { schema_name: "private", creator_role: "supabase_admin", object_type: "r", grantee: "authenticated", privilege_type: "SELECT" },
     { schema_name: "public", creator_role: "postgres", object_type: "r", grantee: "affiliateos_runtime", privilege_type: "INSERT" }
   ]), []);
+});
+
+test("scopes explicit default ACL query to the migration connection role", () => {
+  assert.match(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY, /owner\\.rolname = current_user/);
+  assert.doesNotMatch(PUBLIC_SCHEMA_DEFAULT_ACL_QUERY, /implicit_function_defaults/);
+});
+
+test("checks PostgreSQL implicit function defaults only for pending callable migrations", () => {
+  assert.match(PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY, /owner\\.rolname = current_user/);
+  assert.equal(migrationCreatesFunctionOrProcedure("CREATE FUNCTION public.example() RETURNS void AS $$ SELECT 1 $$ LANGUAGE sql;"), true);
+  assert.equal(migrationCreatesFunctionOrProcedure("CREATE OR REPLACE PROCEDURE public.example() LANGUAGE sql AS $$ SELECT 1 $$;"), true);
+  assert.equal(migrationCreatesFunctionOrProcedure("CREATE TABLE public.example (id uuid PRIMARY KEY);"), false);
+  assert.equal(migrationCreatesFunctionOrProcedure("ALTER TABLE public.example ADD COLUMN name text;"), false);
 });
