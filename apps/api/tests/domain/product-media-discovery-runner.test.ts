@@ -649,6 +649,65 @@ test("stale pending media candidates do not suppress discovery for changed produ
   assert.equal(result.candidatesFound, 0);
 });
 
+test("uses Wikimedia fallback on empty Openverse results only when model or SKU is available", async () => {
+  resetOpenverseCircuitForTests();
+  const originalFetch = globalThis.fetch;
+  let openverseCalls = 0;
+  let wikimediaCalls = 0;
+  globalThis.fetch = async () => {
+    wikimediaCalls++;
+    return new Response(JSON.stringify({ query: { pages: [] } }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { return asset; }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    {
+      async hasPendingByProductAndQuery() { return false; },
+      async listPendingByProduct() { return []; },
+      async saveMany(records: unknown[]) { return records; }
+    } as never,
+    {
+      fetchImpl: (async () => {
+        openverseCalls++;
+        return new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }) as typeof fetch
+    }
+  );
+  try {
+    const identifiedProduct = {
+      ...product,
+      productUrl: "https://shopee.co.id/product/123/456",
+      discoverySignals: { productIdentity: { brand: "Demo", model: "X100", sku: "SKU-42" } }
+    } as Product;
+    await runner.discover(identifiedProduct, true);
+    assert.equal(openverseCalls, 1);
+    assert.equal(wikimediaCalls, 1, "structured model/SKU identity should permit one targeted fallback");
+
+    await runner.discover({
+      ...product,
+      id: "22222222-2222-4222-8222-222222222222",
+      productUrl: "https://shopee.co.id/product/123/457"
+    }, true);
+    assert.equal(openverseCalls, 2);
+    assert.equal(wikimediaCalls, 1, "generic products must remain single-provider to protect egress");
+  } finally {
+    globalThis.fetch = originalFetch;
+    resetOpenverseCircuitForTests();
+  }
+});
+
 test("stops repeating an Openverse 403 across products while retaining Wikimedia fallback", async () => {
   resetOpenverseCircuitForTests();
   const originalFetch = globalThis.fetch;
