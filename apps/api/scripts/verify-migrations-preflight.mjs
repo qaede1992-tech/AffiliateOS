@@ -3,7 +3,12 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
-import {\n  findPublicSchemaDefaultAclGrants,\n  migrationCreatesFunctionOrProcedure,\n  PUBLIC_SCHEMA_DEFAULT_ACL_QUERY,\n  PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY\n} from "./public-schema-privilege-audit.mjs";
+import {
+  findPublicSchemaDefaultAclGrants,
+  migrationCreatesFunctionOrProcedure,
+  PUBLIC_SCHEMA_DEFAULT_ACL_QUERY,
+  PUBLIC_SCHEMA_IMPLICIT_FUNCTION_DEFAULT_ACL_QUERY
+} from "./public-schema-privilege-audit.mjs";
 import {
   classifyMigrationLedger,
   findCompensatedHistoricalMigrationGaps
