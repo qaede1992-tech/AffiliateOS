@@ -5,7 +5,9 @@ export interface ProductMediaCandidateRecord {
   candidateHash: string;
   query: string;
   title: string;
-  imageUrl: string;
+  mediaKind: "image" | "video";
+  imageUrl: string | null;
+  videoUrl: string | null;
   landingPageUrl: string;
   creator: string | null;
   creatorUrl: string | null;
