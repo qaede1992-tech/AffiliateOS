@@ -199,7 +199,7 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
     commissionRateBps: 850,
     commissionAmountCents: 4675
   };
-  await service.importShopeeAffiliateFeed({
+  const firstImport = await service.importShopeeAffiliateFeed({
     affiliateId,
     items: [{
       ...baseItem,
@@ -209,10 +209,16 @@ test("Shopee CSV reimport preserves an existing category when the later row omit
       metadata: { productIdentity: { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" } }
     }]
   });
-  await service.importShopeeAffiliateFeed({
+  const reimportWithoutMediaColumns = await service.importShopeeAffiliateFeed({
     affiliateId,
-    items: [baseItem]
+    items: [{
+      ...baseItem,
+      category: "Elektronik",
+      metadata: { productIdentity: { brand: "ContohBrand", model: "AB-123", sku: "SKU-7788", variant: "Hitam 1L" } }
+    }]
   });
+  assert.equal(firstImport.changed, true);
+  assert.equal(reimportWithoutMediaColumns.changed, false);
   assert.equal(batchProductLookups, 2);
   assert.equal(individualProductLookups, 0);
   const saved = await products.findByMarketplaceProduct(

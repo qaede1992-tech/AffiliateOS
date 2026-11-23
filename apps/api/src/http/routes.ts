@@ -380,7 +380,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     try {
       for (const item of input.items) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(item.productUrl);
     } finally {
-      if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
+      if (result.changed && result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     }
     return reply.status(201).send(result);
   }); app.post("/api/v1/marketplaces/shopee-affiliate-feed/import-csv", writeGuard, async (request, reply) => {
@@ -428,7 +428,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     try {
       for (const row of parsed.rows) await services.shopeeAffiliateLinkIntakes.reconcileVerifiedOffer(row.productUrl);
     } finally {
-      if (result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
+      if (result.changed && result.importedProducts > 0 && result.importedOffers > 0) void services.autonomousScheduler.trigger();
     }
     return reply.status(201).send({ ...result, csv: { rowsParsed: parsed.rows.length, errors: [] } });
   }); app.get("/api/v1/marketplaces", async () => list(await services.marketplace.listConnections())); app.get<{ Querystring: { query?: string; page?: string | number; pageSize?: string | number } }>("/api/v1/public/shop", async (request, reply) => {
