@@ -272,11 +272,11 @@ export class ShopeeAffiliateLinkIntakeService {
     for (const productUrl of productUrls) {
       let url: URL;
       try { url = new URL(productUrl); } catch { continue; }
-      const hostname = url.hostname.toLowerCase().replace(/\\.$/, "");
+      const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
       const isShopeeHost = hostname === "shopee.co.id" || hostname.endsWith(".shopee.co.id") ||
         hostname === "shopee.com" || hostname.endsWith(".shopee.com");
       if (url.protocol !== "https:" || url.username || url.password || !isShopeeHost) continue;
-      const match = /\\/product\\/(\\d+)\\/(\\d+)(?:[/?#]|$)/i.exec(url.pathname) ?? /-i\\.(\\d+)\\.(\\d+)(?:[/?#]|$)/i.exec(url.pathname);
+      const match = /\/product\/(\d+)\/(\d+)(?:[/?#]|$)/i.exec(url.pathname) ?? /-i\.(\d+)\.(\d+)(?:[/?#]|$)/i.exec(url.pathname);
       if (match?.[1] && match[2]) identities.set(`${match[1]}:${match[2]}`, { shopId: match[1], itemId: match[2] });
     }
     if (identities.size === 0) return [];
