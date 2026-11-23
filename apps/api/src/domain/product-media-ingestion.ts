@@ -93,6 +93,7 @@ export interface ProductMediaIdentityAudit {
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
+  findByProductAndSourceUrl?(productId: string, sourceUrl: string, kind: ProductMediaAsset["kind"]): Promise<ProductMediaAsset | undefined>;
   attachCandidateProvenance?(
     productId: string,
     sha256: string,
@@ -215,6 +216,18 @@ export class ProductMediaIngestionService {
               continue;
             }
             stored.push(existingCandidateAsset);
+            continue;
+          }
+        }
+        // Explicit catalog URLs do not carry provider candidate IDs. Reuse their
+        // product-scoped persisted asset before fetching bytes, otherwise every
+        // autonomous cycle downloads the same image/video again just to re-check hash.
+        if (!candidate.provenance && this.assets.findByProductAndSourceUrl) {
+          const existingSourceAsset = await this.assets.findByProductAndSourceUrl(
+            input.productId, candidate.url, candidate.kind
+          );
+          if (existingSourceAsset) {
+            stored.push(existingSourceAsset);
             continue;
           }
         }
