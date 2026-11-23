@@ -127,10 +127,24 @@ export const evaluateProductMediaIdentity = (
   if (variant && !variantMatches) reasons.push("Varian tidak ditemukan pada judul hasil.");
 
   const titleScore = overlap(expectedTokens, actualTokens);
+  const productNameTokens = terms(identity.name);
+  const productNameScore = overlap(productNameTokens, actualTokens);
   if (titleScore > 0) reasons.push(`Kemiripan token identitas: ${Math.round(titleScore * 100)}%.`);
+  if (productNameTokens.size > 0) {
+    reasons.push(`Kemiripan nama produk: ${Math.round(productNameScore * 100)}%.`);
+  }
   const score = Math.round(Math.min(1, titleScore * 0.55 + (brandMatches && brand ? 0.15 : 0) + (identifierMatches ? 0.35 : 0) + (variantMatches && variant ? 0.1 : 0)) * 100);
 
   if (identifierMatches && brandMatches && variantMatches) {
+    // Model, brand, and variant can also appear in accessory listings. Keep
+    // those candidates reviewable without treating them as strong product matches.
+    if (productNameTokens.size > 0 && productNameScore < 0.5) {
+      return {
+        score,
+        status: "review_required",
+        reasons: [...reasons, "Model, merek, dan varian cocok, tetapi nama produk belum cukup cocok; kandidat mungkin aksesori atau produk terkait."]
+      };
+    }
     return { score: Math.max(score, 90), status: "strong_match", reasons };
   }
   if (identifierMatches && brandMatches && variant && !variantMatches) {
