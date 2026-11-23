@@ -283,7 +283,14 @@ export class ProductMediaDiscoveryRunner {
         let candidateLookupFailed = false;
         try {
           if (this.catalogCandidates) {
-            hasPendingCandidate = (await this.catalogCandidates.listPendingByProduct(product.id, 1)).length > 0;
+            // Only a pending candidate for the same canonical product identity query
+            // suppresses discovery. Stale candidates must not block updated metadata.
+            if (this.catalogCandidates.hasPendingByProductAndQuery) {
+              hasPendingCandidate = await this.catalogCandidates.hasPendingByProductAndQuery(product.id, query);
+            } else {
+              const pendingCandidates = await this.catalogCandidates.listPendingByProduct(product.id, 100);
+              hasPendingCandidate = pendingCandidates.some((candidate) => candidate.query === query);
+            }
           }
         } catch (error) {
           candidateLookupFailed = true;
@@ -378,7 +385,7 @@ export class ProductMediaDiscoveryRunner {
               productId: product.id,
               provider: candidate.provider,
               candidateHash: createHash("sha256").update(candidate.mediaKind + "|" + candidate.landingPageUrl + "|" + (candidate.imageUrl ?? candidate.videoUrl ?? "")).digest("hex"),
-              query: candidate.searchQuery ?? query,
+              // Persist the canonical identity query used by the pending-candidate guard.\n              query,
               title: candidate.title,
               mediaKind: candidate.mediaKind,
               imageUrl: candidate.imageUrl,
