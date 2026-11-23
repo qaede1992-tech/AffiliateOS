@@ -62,6 +62,9 @@ export function ProductMediaRightsPanel() {
   const [loadingAuditIds, setLoadingAuditIds] = useState<Set<string>>(new Set());
   const [auditErrors, setAuditErrors] = useState<Record<string, string>>({});
   const [forms, setForms] = useState<Record<string, ReviewForm>>({});
+  const [identityReasons, setIdentityReasons] = useState<Record<string, string>>({});
+  const [identityAudits, setIdentityAudits] = useState<Record<string, Array<{ id: string; assetId: string; productId: string; actorId: string; actorRole: string; action: "verify" | "reject"; reason: string; previousIdentityStatus: string; newIdentityStatus: string; createdAt: string }>>>({});
+  const [loadedIdentityAuditIds, setLoadedIdentityAuditIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -186,6 +189,36 @@ export function ProductMediaRightsPanel() {
     } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
   };
 
+  const reviewIdentity = async (asset: ProductMediaAssetView, status: "verified" | "rejected") => {
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    const reason = (identityReasons[asset.id] ?? "").trim();
+    if (!reason) { setError("Isi alasan pemeriksaan identitas produk terlebih dahulu."); return; }
+    if (status === "verified" && !window.confirm("Konfirmasi bahwa gambar AI benar-benar menampilkan produk yang dipilih, tanpa perubahan bentuk atau detail penting?")) return;
+    setBusyAssetId(asset.id); setError(null); setNotice(null);
+    try {
+      await api.reviewProductMediaIdentity(selectedProductId, asset.id, { status, reason });
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      setNotice(status === "verified" ? "Identitas produk diverifikasi dan dicatat dalam audit." : "Identitas produk ditolak dan dicatat dalam audit.");
+      await loadAssets(selectedProductId);
+      setIdentityAudits((current) => { const next = { ...current }; delete next[asset.id]; return next; });
+      setLoadedIdentityAuditIds((current) => { const next = new Set(current); next.delete(asset.id); return next; });
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Review identitas produk gagal.");
+    } finally { if (selectionRequestId === productSelectionSequence.current) setBusyAssetId(null); }
+  };
+
+  const loadIdentityAudits = async (assetId: string) => {
+    if (loadedIdentityAuditIds.has(assetId)) return;
+    try {
+      const response = await api.productMediaIdentityAudits(productId, assetId);
+      setIdentityAudits((current) => ({ ...current, [assetId]: response.data }));
+      setLoadedIdentityAuditIds((current) => new Set(current).add(assetId));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Riwayat pemeriksaan identitas gagal dimuat.");
+    }
+  };
+
   const revoke = async (asset: ProductMediaAssetView) => {
     const selectedProductId = productId;
     const selectionRequestId = productSelectionSequence.current;
@@ -255,6 +288,24 @@ export function ProductMediaRightsPanel() {
                   })}
                 </div>
                 <small className="analytics-note">Penilaian ini hanya preflight teknis berdasarkan metadata tersimpan. Ini bukan persetujuan hak media atau izin publikasi; codec, frame rate, dan batas akun tertentu mungkin masih perlu diperiksa.</small>
+                {asset.sourceProvider === "openai" && asset.sourceUrl.startsWith("generated:openai-image-edit:") && (
+                  <section className="affiliate-form" aria-label="Pemeriksaan identitas gambar AI">
+                    <h4>Pemeriksaan identitas produk AI</h4>
+                    <p className="analytics-note">Verifikasi hak sumber tidak otomatis membuktikan bahwa gambar hasil AI masih menampilkan produk yang benar. Periksa bentuk, warna, logo, kemasan, dan detail produk terhadap sumber asli.</p>
+                    <p className="analytics-note">Status identitas: {asset.identityStatus ?? "belum diperiksa"}{asset.identityReviewedAt ? ` · ${new Date(asset.identityReviewedAt).toLocaleString("id-ID")}` : ""}</p>
+                    {asset.identityReviewReason && <p className="analytics-note">Alasan terakhir: {asset.identityReviewReason}</p>}
+                    <label htmlFor={`identity-reason-${asset.id}`}>Alasan pemeriksaan identitas</label>
+                    <textarea id={`identity-reason-${asset.id}`} rows={2} value={identityReasons[asset.id] ?? ""} onChange={(event) => setIdentityReasons((current) => ({ ...current, [asset.id]: event.target.value }))} disabled={busyAssetId === asset.id} />
+                    <div className="product-media-rights-actions">
+                      <button type="button" onClick={() => void reviewIdentity(asset, "verified")} disabled={Boolean(busyAssetId) || asset.identityStatus === "verified"}>Identitas sesuai</button>
+                      <button type="button" className="secondary-button" onClick={() => void reviewIdentity(asset, "rejected")} disabled={Boolean(busyAssetId)}>Tolak identitas</button>
+                    </div>
+                    <details onToggle={(event) => { if (event.currentTarget.open) void loadIdentityAudits(asset.id); }}>
+                      <summary>Riwayat pemeriksaan identitas</summary>
+                      {!loadedIdentityAuditIds.has(asset.id) ? <p className="analytics-note">Muat riwayat saat dibuka.</p> : (identityAudits[asset.id] ?? []).length === 0 ? <p className="analytics-note">Belum ada catatan pemeriksaan identitas.</p> : <ol>{(identityAudits[asset.id] ?? []).map((entry) => <li key={entry.id}><strong>{entry.action === "verify" ? "Verifikasi" : "Penolakan"} · {entry.previousIdentityStatus} → {entry.newIdentityStatus}</strong><small>{new Date(entry.createdAt).toLocaleString("id-ID")} · {entry.actorId} ({entry.actorRole})</small><p>{entry.reason}</p></li>)}</ol>}
+                    </details>
+                  </section>
+                )}
                 {asset.rightsStatus === "verified" && <p className="analytics-note">Dasar: {asset.rightsBasis} · Penerbit: {asset.sourcePublisher} · Diverifikasi: {asset.rightsVerifiedAt ? new Date(asset.rightsVerifiedAt).toLocaleString("id-ID") : "—"}</p>}
                 {safeEvidenceUrl(asset.rightsEvidenceUrl) && <p><a href={safeEvidenceUrl(asset.rightsEvidenceUrl)} target="_blank" rel="noreferrer">Buka bukti hak yang tercatat</a></p>}
                 <details className="product-media-rights-history">
