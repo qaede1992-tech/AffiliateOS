@@ -44,6 +44,17 @@ const isShopeeOwnedMediaHost = (hostname: string): boolean => {
     host === "shopeeusercontent.com" || host.endsWith(".shopeeusercontent.com");
 };
 
+const hasUsableExplicitMediaUrl = (product: Product): boolean =>
+  [product.imageUrl, product.videoUrl].some((value) => {
+    if (!value?.trim()) return false;
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && !url.username && !url.password && !isShopeeOwnedMediaHost(url.hostname);
+    } catch {
+      return false;
+    }
+  });
+
 /**
  * Discovers public product media only after the caller has selected a candidate
  * using non-media affiliate criteria. It does not bypass login, CAPTCHA, or bot
@@ -258,7 +269,10 @@ export class ProductMediaDiscoveryRunner {
     // materials. Never fetch or parse Shopee product HTML for media candidates.
     if (isShopeeHost(pageUrl.hostname)) {
       let candidatesFound = 0;
-      if (this.catalogCandidates) {
+      // An explicitly supplied, non-Shopee HTTPS media URL is already a more
+      // direct source than a catalog search. Avoid provider traffic and candidate
+      // writes when ingestion can proceed from the supplied URL below.
+      if (this.catalogCandidates && !hasUsableExplicitMediaUrl(product)) {
         const identity = {
           name: product.name,
           ...(product.category?.trim() ? { category: product.category } : {}),
@@ -283,7 +297,14 @@ export class ProductMediaDiscoveryRunner {
         let candidateLookupFailed = false;
         try {
           if (this.catalogCandidates) {
-            hasPendingCandidate = (await this.catalogCandidates.listPendingByProduct(product.id, 1)).length > 0;
+            // Only a pending candidate for the same canonical product identity query
+            // suppresses discovery. Stale candidates must not block updated metadata.
+            if (this.catalogCandidates.hasPendingByProductAndQuery) {
+              hasPendingCandidate = await this.catalogCandidates.hasPendingByProductAndQuery(product.id, query);
+            } else {
+              const pendingCandidates = await this.catalogCandidates.listPendingByProduct(product.id, 100);
+              hasPendingCandidate = pendingCandidates.some((candidate) => candidate.query === query);
+            }
           }
         } catch (error) {
           candidateLookupFailed = true;
@@ -324,14 +345,31 @@ export class ProductMediaDiscoveryRunner {
           let discoveryProvider: "openverse" | "wikimedia_commons" = "openverse";
           let openverseFailure: string | undefined;
           let openverseFailureDetails: ReturnType<typeof getOpenverseHttpFailureDetails> = null;
+          let openverseFallbackReason: "provider_error" | "empty_structured_identity" | undefined;
           let discoveryFailed = false;
           try {
             try {
               assertOpenverseAvailable();
               discovered = await searchOpenverseProductMedia(identity, { ...this.catalogSearchOptions, maxResults: 10 });
               recordOpenverseSuccess();
+              // Keep generic discovery to one provider request. Only spend a second
+              // catalog request when Openverse is empty and the CSV supplied a model
+              // or SKU that can make the Wikimedia query product-specific.
+              if (discovered.length === 0 && (identity.model?.trim() || identity.sku?.trim())) {
+                discoveryProvider = "wikimedia_commons";
+                openverseFallbackReason = "empty_structured_identity";
+                console.info(JSON.stringify({
+                  event: "product_media_catalog_provider_fallback",
+                  primaryProvider: "openverse",
+                  fallbackProvider: "wikimedia_commons",
+                  fallbackReason: openverseFallbackReason,
+                  productId: product.id
+                }));
+                discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+              }
             } catch (error) {
               openverseFailure = safeErrorType(error);
+              openverseFallbackReason = "provider_error";
               openverseFailureDetails = getOpenverseHttpFailureDetails(error);
               recordOpenverseFailure(openverseFailureDetails);
               discoveryProvider = "wikimedia_commons";
@@ -377,10 +415,13 @@ export class ProductMediaDiscoveryRunner {
               id: randomUUID(),
               productId: product.id,
               provider: candidate.provider,
-              candidateHash: createHash("sha256").update(candidate.landingPageUrl + "|" + candidate.imageUrl).digest("hex"),
-              query: candidate.searchQuery ?? query,
+              candidateHash: createHash("sha256").update(candidate.mediaKind + "|" + candidate.landingPageUrl + "|" + (candidate.imageUrl ?? candidate.videoUrl ?? "")).digest("hex"),
+              // Persist the canonical identity query used by the pending-candidate guard.
+              query,
               title: candidate.title,
+              mediaKind: candidate.mediaKind,
               imageUrl: candidate.imageUrl,
+              videoUrl: candidate.videoUrl,
               landingPageUrl: candidate.landingPageUrl,
               creator: candidate.creator,
               creatorUrl: candidate.creatorUrl,
@@ -408,7 +449,7 @@ export class ProductMediaDiscoveryRunner {
               console.info(JSON.stringify({
                 event: "product_media_catalog_search_completed",
                 provider: discoveryProvider,
-                fallbackReason: openverseFailure,
+                fallbackReason: openverseFailure ?? openverseFallbackReason,
                 ...(openverseFailureDetails ? {
                   fallbackFailureDetails: {
                     endpoint: openverseFailureDetails.endpoint,

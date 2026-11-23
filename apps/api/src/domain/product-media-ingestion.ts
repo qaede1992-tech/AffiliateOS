@@ -5,6 +5,7 @@ import type { SafePublicHttpsFetchOptions } from "./public-https-fetch.js";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 import { extractProductMediaTechnicalMetadata, type ProductMediaTechnicalMetadata } from "./product-media-technical-metadata.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
+import { hasWebmEbmlSignature, transcodeWebmToMp4 } from "./webm-to-mp4-transcoder.js";
 
 export interface ProductMediaAsset {
   id: string;
@@ -92,6 +93,7 @@ export interface ProductMediaIdentityAudit {
 export interface ProductMediaAssetRepository {
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
+  findByProductAndSourceUrl?(productId: string, sourceUrl: string, kind: ProductMediaAsset["kind"]): Promise<ProductMediaAsset | undefined>;
   attachCandidateProvenance?(
     productId: string,
     sha256: string,
@@ -121,6 +123,9 @@ export interface ProductMediaIngestionPolicy {
   maxVideoBytes: number;
   timeoutMs?: number;
   maxRedirects?: number;
+  maxTranscodedVideoBytes?: number;
+  maxTranscodeDurationSeconds?: number;
+  transcodeTimeoutMs?: number;
 }
 
 export interface ProductMediaIngestionResult {
@@ -162,7 +167,8 @@ export class ProductMediaIngestionService {
     private readonly storage: SupabaseStorageClient,
     private readonly assets: ProductMediaAssetRepository,
     private readonly policy: ProductMediaIngestionPolicy,
-    private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps
+    private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps,
+    private readonly transcoder: typeof transcodeWebmToMp4 = transcodeWebmToMp4
   ) {
     for (const [name, value] of Object.entries(policy)) {
       if (name.endsWith("Bytes") && (!Number.isSafeInteger(value) || value <= 0)) {
@@ -213,6 +219,18 @@ export class ProductMediaIngestionService {
             continue;
           }
         }
+        // Explicit catalog URLs do not carry provider candidate IDs. Reuse their
+        // product-scoped persisted asset before fetching bytes, otherwise every
+        // autonomous cycle downloads the same image/video again just to re-check hash.
+        if (!candidate.provenance && this.assets.findByProductAndSourceUrl) {
+          const existingSourceAsset = await this.assets.findByProductAndSourceUrl(
+            input.productId, candidate.url, candidate.kind
+          );
+          if (existingSourceAsset) {
+            stored.push(existingSourceAsset);
+            continue;
+          }
+        }
         const limit = candidate.kind === "video" ? this.policy.maxVideoBytes : this.policy.maxImageBytes;
         const response = await this.fetcher(candidate.url, {
           maxBytes: limit,
@@ -221,15 +239,26 @@ export class ProductMediaIngestionService {
           ...input.transport
         });
         if (response.status < 200 || response.status >= 300) throw new Error("Media source returned an unsuccessful status.");
-        const mimeType = detectMime(response.bytes);
-        if (!mimeType) throw new Error("Downloaded bytes are not a supported, structurally valid image or MP4.");
+        let mediaBytes = response.bytes;
+        let mimeType = detectMime(mediaBytes);
+        if (!mimeType && candidate.kind === "video" && hasWebmEbmlSignature(mediaBytes)) {
+          mediaBytes = await this.transcoder(mediaBytes, {
+            maxInputBytes: limit,
+            maxOutputBytes: this.policy.maxTranscodedVideoBytes ?? limit,
+            maxDurationSeconds: this.policy.maxTranscodeDurationSeconds ?? 30,
+            timeoutMs: this.policy.transcodeTimeoutMs ?? 30_000
+          });
+          mimeType = detectMime(mediaBytes);
+        }
+        if (!mimeType) throw new Error("Downloaded bytes are not a supported, structurally valid image, MP4, or convertible WebM.");
         if ((candidate.kind === "image") !== mimeType.startsWith("image/")) {
           throw new Error("Downloaded media kind does not match the extracted candidate.");
         }
-        if (response.bytes.byteLength > limit) throw new Error("Downloaded media exceeds configured size limit.");
+        const storedByteLimit = candidate.kind === "video" ? (this.policy.maxTranscodedVideoBytes ?? limit) : limit;
+        if (mediaBytes.byteLength > storedByteLimit) throw new Error("Downloaded or transcoded media exceeds configured size limit.");
 
-        const technicalMetadata: ProductMediaTechnicalMetadata = extractProductMediaTechnicalMetadata(mimeType, response.bytes);
-        const sha256 = createHash("sha256").update(response.bytes).digest("hex");
+        const technicalMetadata: ProductMediaTechnicalMetadata = extractProductMediaTechnicalMetadata(mimeType, mediaBytes);
+        const sha256 = createHash("sha256").update(mediaBytes).digest("hex");
         const prior = await this.assets.findByProductAndHash(input.productId, sha256);
         if (prior) {
           if (candidate.provenance && !prior.sourceCandidateId && prior.rightsStatus === "unverified" && this.assets.attachCandidateProvenance) {
@@ -251,10 +280,10 @@ export class ProductMediaIngestionService {
         const id = randomUUID();
         // Isolate concurrent uploads: a losing duplicate insert must never remove the winner's object.
         const objectKey = `products/${input.productId}/${sha256}-${randomUUID()}.${EXTENSION[mimeType]}`;
-        const savedObject = await this.storage.upload({ key: objectKey, bytes: response.bytes, contentType: mimeType, upsert: true });
+        const savedObject = await this.storage.upload({ key: objectKey, bytes: mediaBytes, contentType: mimeType, upsert: true });
         const asset: ProductMediaAsset = {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
-          objectKey: savedObject.key, mimeType, byteSize: response.bytes.byteLength,
+          objectKey: savedObject.key, mimeType, byteSize: mediaBytes.byteLength,
           ...technicalMetadata, sha256, sourceUrl: candidate.url,
           sourcePublisher: candidate.provenance?.sourcePublisher ?? null,
           sourceProvider: candidate.provenance?.provider ?? null,

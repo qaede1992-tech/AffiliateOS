@@ -588,3 +588,57 @@ test("redacts database errors from persisted media ingestion skip reasons", asyn
   assert.doesNotMatch(reasons, /Failed query|params:|private-media-ingestion-db-marker/i);
   assert.equal(removed.length, 1);
 });
+
+
+test("reuses a previously ingested direct catalog URL without downloading or uploading again", async () => {
+  const url = "https://cdn.example.com/direct-product-video.mp4";
+  const existing = {
+    id: "7f1c4c8d-7a2f-4e61-8b0d-1dcb3b48c001",
+    productId,
+    kind: "video" as const,
+    bucket: "affiliate-media",
+    objectKey: `products/${productId}/existing.mp4`,
+    mimeType: "video/mp4" as const,
+    byteSize: 256,
+    sha256: "b".repeat(64),
+    sourceUrl: url,
+    sourcePublisher: null,
+    rightsStatus: "unverified" as const,
+    rightsBasis: null,
+    rightsEvidenceUrl: null,
+    rightsVerifiedAt: null,
+    createdAt: "2026-11-23T00:00:00.000Z"
+  };
+  let sourceLookups = 0;
+  let downloads = 0;
+  let uploads = 0;
+  const repository = {
+    findByProductAndSourceUrl: async (id: string, sourceUrl: string, kind: string) => {
+      sourceLookups += 1;
+      assert.equal(id, productId);
+      assert.equal(sourceUrl, url);
+      assert.equal(kind, "video");
+      return existing;
+    },
+    findByProductAndHash: async () => undefined,
+    save: async (asset: unknown) => asset
+  } as never;
+  const storage = {
+    upload: async () => { uploads += 1; throw new Error("existing direct URL must not upload"); }
+  } as never;
+  const fetcher = (async () => { downloads += 1; throw new Error("existing direct URL must not download"); }) as never;
+  const service = new ProductMediaIngestionService(
+    storage, repository, { maxImageBytes: 1024, maxVideoBytes: 1024 }, fetcher
+  );
+
+  const result = await service.ingest({
+    productId,
+    nonMediaEligibilityPassed: true,
+    candidates: [{ kind: "video", url, source: "catalog" }]
+  });
+
+  assert.deepEqual(result, { stored: [existing], skipped: [] });
+  assert.equal(sourceLookups, 1);
+  assert.equal(downloads, 0);
+  assert.equal(uploads, 0);
+});

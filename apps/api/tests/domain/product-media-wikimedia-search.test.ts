@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildWikimediaCommonsQueries, searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
+import { buildWikimediaCommonsQueries, resetWikimediaProviderCircuitForTests, searchWikimediaCommonsProductMedia } from "../../src/domain/product-media-wikimedia-search.js";
 
 const identity = { name: "Sony WH-1000XM5 Wireless Headphones" };
 
@@ -100,15 +100,41 @@ test("rejects invalid result limits and reports upstream HTTP failures", async (
 });
 
 
-test("rejects non-image files returned from the Commons file namespace", async () => {
+test("discovers Commons WebM videos using the original media URL, not its poster thumbnail", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     query: {
       pages: [{
-        title: "File:Sony WH-1000XM5 demonstration.webm",
+        title: "File:Sony WH-1000XM5 Wireless Headphones demonstration.webm",
         imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/demo.webm",
           thumburl: "https://thumb.wikimedia.org/video-poster.jpg",
           descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_demonstration.webm",
           mime: "video/webm",
+          extmetadata: {
+            LicenseShortName: { value: "CC BY 4.0" },
+            LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0" }
+          }
+        }]
+      }]
+    }
+  }), { status: 200 });
+  const results = await searchWikimediaCommonsProductMedia(identity, { fetchImpl });
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.mediaKind, "video");
+  assert.equal(results[0]?.imageUrl, null);
+  assert.equal(results[0]?.videoUrl, "https://upload.wikimedia.org/wikipedia/commons/demo.webm");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
+
+test("rejects unsupported Commons video MIME types", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: {
+      pages: [{
+        title: "File:Sony WH-1000XM5 demonstration.mp4",
+        imageinfo: [{
+          url: "https://upload.wikimedia.org/wikipedia/commons/demo.mp4",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Sony_WH-1000XM5_demonstration.mp4",
+          mime: "video/mp4",
           extmetadata: {
             LicenseShortName: { value: "CC BY 4.0" },
             LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0" }
@@ -527,4 +553,62 @@ test("rejects license URLs outside the canonical Creative Commons host", async (
     }))}
   }), { status: 200, headers: { "content-type": "application/json" } });
   assert.deepEqual(await searchWikimediaCommonsProductMedia(identity, { fetchImpl }), []);
+});
+
+
+test("pauses all Wikimedia searches after a provider-wide HTTP 429", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("rate limited", { status: 429 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 429/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 429/
+  );
+  assert.equal(calls, 1, "provider cooldown must prevent another outbound request");
+  resetWikimediaProviderCircuitForTests(fetchImpl);
+});
+
+test("pauses all Wikimedia searches after a provider-wide HTTP 403", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("forbidden", { status: 403 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 403/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 403/
+  );
+  assert.equal(calls, 1);
+  resetWikimediaProviderCircuitForTests(fetchImpl);
+});
+
+test("pauses all Wikimedia searches briefly after a provider-wide HTTP 5xx", async () => {
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    calls += 1;
+    return new Response("provider error", { status: 503 });
+  };
+
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia(identity, { fetchImpl }),
+    /HTTP 503/
+  );
+  await assert.rejects(
+    () => searchWikimediaCommonsProductMedia({ name: "Another product" }, { fetchImpl }),
+    /temporarily paused after HTTP 503/
+  );
+  assert.equal(calls, 1);
+  resetWikimediaProviderCircuitForTests(fetchImpl);
 });

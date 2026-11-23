@@ -24,6 +24,47 @@ test("requires exact model/SKU evidence for a strong match", () => {
   assert.ok(match.score >= 90);
 });
 
+test("does not treat an accessory title as a strong match just because model, brand, and variant match", () => {
+  const accessory = evaluateProductMediaIdentity(
+    identity,
+    "Sony WH-1000XM5 Black protective carrying case"
+  );
+  assert.equal(accessory.status, "review_required");
+  assert.ok(accessory.reasons.some((reason) => reason.includes("nama produk belum cukup cocok")));
+
+  const actualProduct = evaluateProductMediaIdentity(
+    identity,
+    "Sony WH-1000XM5 Wireless Headphones Black"
+  );
+  assert.equal(actualProduct.status, "strong_match");
+  assert.ok(actualProduct.reasons.some((reason) => reason.includes("Kemiripan nama produk: 100%")));
+});
+
+test("requires every supplied model and SKU identifier to match", () => {
+  const structuredIdentity = { ...identity, sku: "WH1000XM5-BLK-01" };
+  const exact = evaluateProductMediaIdentity(
+    structuredIdentity,
+    "Sony WH-1000XM5 WH1000XM5-BLK-01 Wireless Headphones Black"
+  );
+  assert.equal(exact.status, "strong_match");
+
+  const wrongSku = evaluateProductMediaIdentity(
+    structuredIdentity,
+    "Sony WH-1000XM5 WH1000XM5-WHT-02 Wireless Headphones Black"
+  );
+  assert.equal(wrongSku.status, "rejected");
+  assert.equal(wrongSku.score, 0);
+  assert.ok(wrongSku.reasons.some((reason) => reason.includes("SKU")));
+
+  const wrongModel = evaluateProductMediaIdentity(
+    structuredIdentity,
+    "Sony WH-1000XM4 WH1000XM5-BLK-01 Wireless Headphones Black"
+  );
+  assert.equal(wrongModel.status, "rejected");
+  assert.equal(wrongModel.score, 0);
+  assert.ok(wrongModel.reasons.some((reason) => reason.includes("Model")));
+});
+
 
 test("requires variant evidence before returning a strong model match", () => {
   const result = evaluateProductMediaIdentity(identity, "Sony WH-1000XM5 Wireless Headphones");

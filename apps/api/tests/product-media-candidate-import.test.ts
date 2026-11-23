@@ -18,7 +18,7 @@ const product: Product = {
 
 const candidate: ProductMediaCandidateRecord = {
   id: candidateId, productId, provider: "wikimedia_commons", candidateHash: "a".repeat(64),
-  query: "sample product", title: "Sample image", imageUrl: "https://upload.wikimedia.org/sample.jpg",
+  query: "sample product", title: "Sample image", mediaKind: "image", imageUrl: "https://upload.wikimedia.org/sample.jpg", videoUrl: null,
   landingPageUrl: "https://commons.wikimedia.org/wiki/File:Sample.jpg", creator: "Creator",
   creatorUrl: "https://commons.wikimedia.org/wiki/User:Creator", license: "CC-BY-SA",
   licenseVersion: "4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
@@ -39,7 +39,7 @@ const asset: ProductMediaAsset = {
   id: "66666666-6666-4666-8666-666666666666", productId, kind: "image",
   bucket: "product-media", objectKey: `products/${productId}/sample.jpg`, mimeType: "image/jpeg",
   byteSize: 1024, width: 800, height: 600, sha256: "b".repeat(64),
-  sourceUrl: candidate.imageUrl, sourcePublisher: candidate.sourcePublisher,
+  sourceUrl: candidate.imageUrl ?? "https://upload.wikimedia.org/sample.jpg", sourcePublisher: candidate.sourcePublisher,
   sourceProvider: candidate.provider, sourceCandidateId: candidate.id,
   sourceLandingPageUrl: candidate.landingPageUrl, sourceTitle: candidate.title,
   sourceQuery: candidate.query, sourceCreator: candidate.creator, sourceCreatorUrl: candidate.creatorUrl,
@@ -57,6 +57,9 @@ function makeService(overrides: {
   preMediaEvidence?: { id: string; cycleId: string; productId: string; marketplaceId: string; offerId?: string; eligible: boolean; score: number; policy: Record<string, unknown>; reasons: string[]; createdAt: string };
 } = {}) {
   let ingestionCalls = 0;
+  let productLookups = 0;
+  let offerLookups = 0;
+  let ingestedCandidate: { kind: "image" | "video"; url: string } | undefined;
   let existing = overrides.existingAsset;
   const service = new ProductMediaCandidateImportService({
     candidates: { findById: async () => overrides.candidate ?? candidate } as never,
@@ -67,10 +70,12 @@ function makeService(overrides: {
       save: async (value: ProductMediaAsset) => value
     },
     ingestion: {
-      ingest: async () => {
+      ingest: async (input: { candidates: Array<{ kind: "image" | "video"; url: string }> }) => {
         ingestionCalls++;
-        existing = asset;
-        return { stored: [asset], skipped: [] };
+        ingestedCandidate = input.candidates[0];
+        const importedAsset = { ...asset, kind: ingestedCandidate.kind, sourceUrl: ingestedCandidate.url };
+        existing = importedAsset;
+        return { stored: [importedAsset], skipped: [] };
       }
     } as never,
     preMediaEligibility: overrides.preMediaEvidence ? {
@@ -88,16 +93,26 @@ function makeService(overrides: {
         }
       }]
     },
-    listProducts: async () => [overrides.product ?? product],
-    listAffiliateOffers: async () => [overrides.affiliateOffer ?? offer],
+    findProductById: async (requestedProductId: string) => {
+      productLookups++;
+      const currentProduct = overrides.product ?? product;
+      return currentProduct.id === requestedProductId ? currentProduct : undefined;
+    },
+    findAffiliateOfferById: async (requestedOfferId: string) => {
+      offerLookups++;
+      const currentOffer = overrides.affiliateOffer ?? offer;
+      return currentOffer.id === requestedOfferId ? currentOffer : undefined;
+    },
     now: () => now
   });
-  return { service, ingestionCalls: () => ingestionCalls };
+  return { service, ingestionCalls: () => ingestionCalls, ingestedCandidate: () => ingestedCandidate, productLookups: () => productLookups, offerLookups: () => offerLookups };
 }
 
 test("imports only an approved candidate for a recently selected active product", async () => {
-  const { service, ingestionCalls } = makeService();
+  const { service, ingestionCalls, productLookups, offerLookups } = makeService();
   const result = await service.importApprovedCandidate(productId, candidateId);
+  assert.equal(productLookups(), 1, "candidate import should fetch only its product by id");
+  assert.equal(offerLookups(), 1, "candidate import should fetch only the eligible offer by id");
   assert.equal(ingestionCalls(), 1);
   assert.equal(result.asset.sourceCandidateId, candidateId);
   assert.equal(result.asset.rightsStatus, "unverified");
@@ -310,4 +325,22 @@ test("rejects when the latest preliminary cycle rejected a product with older po
   await assert.rejects(() => service.importApprovedCandidate(productId, candidateId),
     (error: unknown) => error instanceof ProductMediaCandidateImportError && error.code === "PRODUCT_NOT_RECENTLY_SELECTED");
   assert.equal(ingestionCalls(), 0);
+});
+
+
+test("imports an approved video candidate using its video URL without verifying rights", async () => {
+  const videoCandidate: ProductMediaCandidateRecord = {
+    ...candidate,
+    mediaKind: "video",
+    imageUrl: null,
+    videoUrl: "https://upload.wikimedia.org/sample.webm",
+    title: "Sample video"
+  };
+  const { service, ingestionCalls, ingestedCandidate } = makeService({ candidate: videoCandidate });
+  const result = await service.importApprovedCandidate(productId, candidateId);
+  assert.equal(ingestionCalls(), 1);
+  assert.equal(ingestedCandidate()?.kind, "video");
+  assert.equal(ingestedCandidate()?.url, "https://upload.wikimedia.org/sample.webm");
+  assert.equal(result.asset.kind, "video");
+  assert.equal(result.asset.rightsStatus, "unverified");
 });
