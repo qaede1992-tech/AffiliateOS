@@ -30,7 +30,7 @@ export type ShopeeAffiliateCsvParseResult = {
   errors: Array<{ row: number; message: string }>;
 };
 
-const IDENTITY_HEADERS = { brand: ["Merek", "Brand", "brand"], model: ["Model", "model"], sku: ["SKU", "sku"], variant: ["Varian", "Variant", "variant"] } as const;
+const IDENTITY_HEADERS = { brand: ["merek", "merk", "merek produk", "brand", "brand produk"], model: ["model", "model produk"], sku: ["sku", "kode sku"], variant: ["varian", "variasi", "varian produk", "variant"] } as const;
 const PREVIEW_IDENTITY_HEADERS = ["brand", "model", "sku", "variant"] as const;
 const REQUIRED_HEADERS = ["ID Produk", "Nama Produk", "Harga", "Penjualan", "Nama Toko", "Komisi hingga", "Komisi", "Link Produk", "Link Komisi Ekstra"] as const;
 
@@ -275,7 +275,8 @@ export function parseShopeeAffiliateCsv(input: string): ShopeeAffiliateCsvParseR
   const indexes = new Map(headers.map((header, index) => [header, index]));
   const categoryHeaders = ["Kategori", "Kategori Produk", "category", "category_name"].filter((header) => indexes.has(header));
   if (categoryHeaders.length > 1) return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom kategori agar sumber data tidak ambigu." }] };
-  const identityHeaders = Object.fromEntries(Object.entries(IDENTITY_HEADERS).map(([key, aliases]) => [key, aliases.filter((header) => indexes.has(header))])) as Record<keyof typeof IDENTITY_HEADERS, string[]>;
+  const normalizedHeaderIndexes = new Map(headers.map((header) => [header.toLocaleLowerCase("id-ID").trim(), header]));
+  const identityHeaders = Object.fromEntries(Object.entries(IDENTITY_HEADERS).map(([key, aliases]) => [key, aliases.flatMap((alias) => { const actualHeader = normalizedHeaderIndexes.get(alias); return actualHeader ? [actualHeader] : []; })])) as Record<keyof typeof IDENTITY_HEADERS, string[]>;
   if (Object.values(identityHeaders).some((matches) => matches.length > 1)) return { rows: [], errors: [{ row: 1, message: "Gunakan hanya satu kolom untuk setiap identitas produk (merek/brand, model, SKU, varian)." }] };
   const ratingHeadersPresent = ["Rating", "Rating Produk", "Penilaian"].filter((header) => indexes.has(header));
   const reviewHeadersPresent = ["Jumlah Ulasan", "Ulasan", "Review Count"].filter((header) => indexes.has(header));
