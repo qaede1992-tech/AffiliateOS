@@ -1,4 +1,5 @@
-import { lookup as dnsLookup } from "node:dns/promises";
+import { lookup as dnsLookup, Resolver } from "node:dns/promises";
+import { performance } from "node:perf_hooks";
 import { isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
 
@@ -75,14 +76,79 @@ const validateUrl = (raw: string, blockedHostnames: string[] = [], allowedHostna
   return url;
 };
 
-const resolvePublicAddress = async (hostname: string, resolver: typeof dnsLookup): Promise<{ address: string; family: number }> => {
-  const addresses = await resolver(hostname, { all: true, verbatim: true });
-  if (addresses.length === 0 || addresses.some((entry) => !isPublicAddress(entry.address))) {
-    throw new Error("Hostname resolves to a private or special-use address.");
+const DEADLINE_ERROR = "Public HTTPS fetch exceeded its total time budget.";
+
+const remainingBudget = (deadlineAt: number): number => {
+  const remaining = Math.ceil(deadlineAt - performance.now());
+  if (remaining <= 0) throw new Error(DEADLINE_ERROR);
+  return remaining;
+};
+
+const resolvePublicAddress = async (
+  hostname: string,
+  resolver: typeof dnsLookup,
+  deadlineAt: number
+): Promise<{ address: string; family: number }> => {
+  if (resolver !== dnsLookup) {
+    // Injectable resolvers are a test seam. The production resolver below is
+    // cancellable; this race also keeps a faulty test/custom resolver from
+    // extending the caller's total budget.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const addresses = await Promise.race([
+        resolver(hostname, { all: true, verbatim: true }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(DEADLINE_ERROR)), remainingBudget(deadlineAt));
+        })
+      ]);
+      if (addresses.length === 0 || addresses.some((entry) => !isPublicAddress(entry.address))) {
+        throw new Error("Hostname resolves to a private or special-use address.");
+      }
+      const chosen = addresses[0];
+      if (!chosen) throw new Error("Hostname has no usable address.");
+      return chosen;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
-  const chosen = addresses[0];
-  if (!chosen) throw new Error("Hostname has no usable address.");
-  return chosen;
+
+  // dns.lookup() has no cancellation API. Use a dedicated Resolver instead so
+  // a deadline can cancel outstanding A/AAAA queries rather than leaving DNS
+  // work running after the fetch has already failed.
+  const resolverInstance = new Resolver({ timeout: remainingBudget(deadlineAt) + 1_000, tries: 1 });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const query = async (family: 4 | 6): Promise<Array<{ address: string; family: number }>> => {
+    try {
+      const values = family === 4
+        ? await resolverInstance.resolve4(hostname)
+        : await resolverInstance.resolve6(hostname);
+      return values.map((address) => ({ address, family }));
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENODATA" || code === "ENOTFOUND") return [];
+      throw error;
+    }
+  };
+  try {
+    const addresses = await Promise.race([
+      Promise.all([query(4), query(6)]).then((groups) => groups.flat()),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          resolverInstance.cancel();
+          reject(new Error(DEADLINE_ERROR));
+        }, remainingBudget(deadlineAt));
+      })
+    ]);
+    if (addresses.length === 0 || addresses.some((entry) => !isPublicAddress(entry.address))) {
+      throw new Error("Hostname resolves to a private or special-use address.");
+    }
+    const chosen = addresses[0];
+    if (!chosen) throw new Error("Hostname has no usable address.");
+    return chosen;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    resolverInstance.cancel();
+  }
 };
 
 const requestOnce = async (
@@ -93,7 +159,38 @@ const requestOnce = async (
   requestImpl: typeof httpsRequest
 ): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; bytes: Uint8Array }> =>
   new Promise((resolve, reject) => {
-    const request = requestImpl({
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let request: ReturnType<typeof httpsRequest> | undefined;
+    let settled = false;
+    const clearDeadline = (): void => {
+      if (deadlineTimer !== undefined) {
+        clearTimeout(deadlineTimer);
+        deadlineTimer = undefined;
+      }
+    };
+    const finishResolve = (value: { status: number; headers: Record<string, string | string[] | undefined>; bytes: Uint8Array }): void => {
+      if (settled) return;
+      settled = true;
+      clearDeadline();
+      resolve(value);
+    };
+    const finishReject = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearDeadline();
+      reject(error);
+    };
+
+    // setTimeout on a Node request is only an inactivity timeout. This separate
+    // absolute deadline remains active from connection setup through the complete
+    // response body, so a slow-drip origin cannot keep this transfer alive forever.
+    deadlineTimer = setTimeout(() => {
+      const error = new Error(DEADLINE_ERROR);
+      if (request && !request.destroyed) request.destroy(error);
+      else finishReject(error);
+    }, timeoutMs);
+
+    request = requestImpl({
       protocol: "https:",
       hostname: url.hostname,
       port: url.port || 443,
@@ -114,13 +211,14 @@ const requestOnce = async (
       const status = response.statusCode ?? 0;
       const headers = response.headers;
       if (status >= 300 && status < 400) {
+        response.once("error", finishReject);
+        response.once("end", () => finishResolve({ status, headers, bytes: new Uint8Array() }));
         response.resume();
-        resolve({ status, headers, bytes: new Uint8Array() });
         return;
       }
       if (status < 200 || status >= 300) {
-        response.resume();
-        reject(new Error(`Public HTTPS request failed (HTTP ${status}).`));
+        response.destroy();
+        finishReject(new Error(`Public HTTPS request failed (HTTP ${status}).`));
         return;
       }
       const chunks: Uint8Array[] = [];
@@ -128,21 +226,23 @@ const requestOnce = async (
       response.on("data", (chunk: Buffer | Uint8Array) => {
         total += chunk.byteLength;
         if (total > maxBytes) {
-          request.destroy(new Error("Public HTTPS response exceeds configured size limit."));
+          const error = new Error("Public HTTPS response exceeds configured size limit.");
+          request?.destroy(error);
+          finishReject(error);
           return;
         }
         chunks.push(new Uint8Array(chunk));
       });
-      response.on("end", () => {
+      response.once("end", () => {
         const bytes = new Uint8Array(total);
         let offset = 0;
         for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-        resolve({ status, headers, bytes });
+        finishResolve({ status, headers, bytes });
       });
-      response.on("error", reject);
+      response.once("error", finishReject);
     });
-    request.setTimeout(timeoutMs, () => request.destroy(new Error("Public HTTPS request timed out.")));
-    request.on("error", reject);
+    request.on("error", finishReject);
+    request.setTimeout(timeoutMs, () => request?.destroy(new Error("Public HTTPS request timed out.")));
     request.end();
   });
 
@@ -164,10 +264,11 @@ export const fetchPublicHttps = async (
   const resolver = options.resolveHost ?? dnsLookup;
   const blockedHostnames = options.blockedHostnames ?? [];
   const allowedHostnames = options.allowedHosts ?? [];
+  const deadlineAt = performance.now() + timeoutMs;
   let current = validateUrl(rawUrl, blockedHostnames, allowedHostnames);
   for (let redirects = 0; ; redirects++) {
-    const address = await resolvePublicAddress(current.hostname, resolver);
-    const result = await requestOnce(current, address, options.maxBytes, timeoutMs, requestImpl);
+    const address = await resolvePublicAddress(current.hostname, resolver, deadlineAt);
+    const result = await requestOnce(current, address, options.maxBytes, remainingBudget(deadlineAt), requestImpl);
     if (!REDIRECT_STATUSES.has(result.status)) {
       return { url: current.toString(), ...result };
     }
