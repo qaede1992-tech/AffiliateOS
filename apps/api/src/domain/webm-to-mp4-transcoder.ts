@@ -11,6 +11,11 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 25 * 1024 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
 
+// FFmpeg resource limits are per process. Keep at most one transcode active
+// in this Node.js process so concurrent product ingestions cannot multiply them.
+let activeTranscode = false;
+
+
 export interface WebmTranscodeOptions {
   maxInputBytes: number;
   maxOutputBytes?: number;
@@ -58,6 +63,11 @@ export const transcodeWebmToMp4 = async (
     throw new Error("Downloaded video does not have a WebM/EBML signature.");
   }
 
+  if (activeTranscode) {
+    throw new Error("A WebM transcode is already active in this process.");
+  }
+  activeTranscode = true;
+  try {
   const deadlineAt = Date.now() + timeoutMs;
   const runProcess = options.runProcess ?? defaultRunProcess;
   const runWithinDeadline = async (args: string[]): Promise<void> => {
@@ -110,5 +120,8 @@ export const transcodeWebmToMp4 = async (
     return output;
   } finally {
     await rm(workingDir, { recursive: true, force: true });
+  }
+  } finally {
+    activeTranscode = false;
   }
 };
