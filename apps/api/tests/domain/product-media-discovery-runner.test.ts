@@ -606,6 +606,49 @@ test("persists catalog search cooldown and invalidates it when product identity 
 });
 
 
+
+
+
+test("stale pending media candidates do not suppress discovery for changed product identity", async () => {
+  let providerCalls = 0;
+  let checkedQuery = "";
+  const candidateRepository = {
+    async hasPendingByProductAndQuery(_productId: string, query: string) {
+      checkedQuery = query;
+      return false;
+    },
+    async listPendingByProduct() {
+      throw new Error("targeted lookup should not load pending rows");
+    },
+    async saveMany() { return []; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => ({ bucket: "affiliate-media", key: "unused" }), remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save(asset: ProductMediaAsset) { return asset; }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    undefined,
+    candidateRepository as never,
+    { fetchImpl: (async () => {
+      providerCalls++;
+      return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch }
+  );
+
+  const result = await runner.discover({
+    ...product,
+    name: "Updated demo product",
+    productUrl: "https://shopee.co.id/product/123/456"
+  }, true);
+
+  assert.equal(checkedQuery, "Updated demo product");
+  assert.equal(providerCalls, 2, "a changed identity query should search both configured catalog providers");
+  assert.equal(result.candidatesFound, 0);
+});
+
 test("stops repeating an Openverse 403 across products while retaining Wikimedia fallback", async () => {
   resetOpenverseCircuitForTests();
   const originalFetch = globalThis.fetch;
@@ -749,9 +792,13 @@ test("skips external catalog calls and discovery writes while a media candidate 
   let claimCalls = 0;
   let pendingLookups = 0;
   const candidateRepository = {
-    async listPendingByProduct() {
+    async hasPendingByProductAndQuery(_productId: string, query: string) {
       pendingLookups++;
-      return [{ id: "pending-candidate" }];
+      assert.equal(query, "Demo product");
+      return true;
+    },
+    async listPendingByProduct() {
+      throw new Error("targeted pending lookup should avoid loading candidate rows");
     },
     async saveMany() {
       saveCalls++;
