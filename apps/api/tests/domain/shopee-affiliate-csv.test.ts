@@ -398,3 +398,28 @@ test("preserves category in normalized preview CSV and rejects ambiguous categor
   assert.equal(invalid.rows.length, 0);
   assert.match(invalid.errors[0]?.message ?? "", /hanya satu kolom kategori/);
 });
+
+
+test("accepts common case-insensitive Indonesian identity header aliases", () => {
+  const csv = [
+    headers + ",MERK,MODEL PRODUK,Kode SKU,VARIAN PRODUK",
+    '21,Headphone Sony,500000,100,Toko,5%,Rp25000,https://shopee.co.id/product/1/21,https://s.shopee.co.id/identity21,Sony,WH-1000XM5,SKU-21,Hitam'
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0]?.brand, "Sony");
+  assert.equal(result.rows[0]?.model, "WH-1000XM5");
+  assert.equal(result.rows[0]?.sku, "SKU-21");
+  assert.equal(result.rows[0]?.variant, "Hitam");
+});
+
+test("rejects multiple aliases for the same identity field even when casing differs", () => {
+  const csv = [
+    headers + ",Merek,BRAND",
+    '22,Produk,10000,10,Toko,5%,Rp500,https://shopee.co.id/product/1/22,https://s.shopee.co.id/identity22,Sony,Sony'
+  ].join("\\n");
+  const result = parseShopeeAffiliateCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.match(result.errors[0]?.message ?? "", /Gunakan hanya satu kolom untuk setiap identitas produk/);
+});
