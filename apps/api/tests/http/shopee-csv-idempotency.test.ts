@@ -205,7 +205,7 @@ test("Shopee CSV import carries brand, model, SKU, and variant into product disc
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Merek,Model,SKU,Varian",
       '987654321,"Botol Minum Stainless 1L","Rp89.000","250","Toko Identitas","8%","Rp7.120","https://shopee.co.id/product/1/987654321","https://s.shopee.co.id/identity","AquaPro","AP-1000","SKU-AP-1000-BLK","Hitam 1 Liter"',
-    ].join("\\n");
+    ].join("\n");
 
     const imported = await app.inject({
       method: "POST",
