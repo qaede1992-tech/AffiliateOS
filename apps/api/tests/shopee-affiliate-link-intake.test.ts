@@ -577,4 +577,3 @@ test("batch reconciliation deduplicates product URLs and performs one bulk ident
   assert.equal((await base.findByProductIdentity("123", "456"))?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
   assert.equal((await base.findByProductIdentity("123", "789"))?.sourceMetadata.verifiedOfferSource, "shopee-affiliate-feed");
 });
-
