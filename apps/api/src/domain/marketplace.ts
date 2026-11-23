@@ -258,6 +258,15 @@ export class MarketplaceService {
       const savedOffers = offersToWrite.length ? await this.offers.saveManyById(offersToWrite) : [];
       const savedByExternalId = new Map(existingByExternalId);
       for (const offer of savedOffers) savedByExternalId.set(offer.externalOfferId ?? "", offer);
+      // A legacy csv: row can satisfy a feed: lookup without requiring a
+      // duplicate write; expose it under the canonical key for result mapping.
+      for (const entity of offersToSave) {
+        const externalOfferId = entity.externalOfferId ?? "";
+        if (savedByExternalId.has(externalOfferId)) continue;
+        const legacyId = externalOfferId.startsWith("feed:") ? "csv:" + externalOfferId.slice(5) : "";
+        const legacy = legacyId ? existingByExternalId.get(legacyId) : undefined;
+        if (legacy) savedByExternalId.set(externalOfferId, legacy);
+      }
       for (const externalOfferId of externalOfferIds) {
         const offer = savedByExternalId.get(externalOfferId);
         if (!offer) throw new Error("Bulk Shopee import did not return every saved affiliate offer.");
