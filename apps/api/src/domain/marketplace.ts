@@ -273,7 +273,9 @@ export class MarketplaceService {
         affiliateOfferIds.push(offer.id);
       }
       importedProducts = productEntities.length;
-      importedOffers = offersToSave.length;
+      // Report matched feed rows, not only changed writes: a product-only change
+      // must still pass the route's non-empty import guard and trigger the scheduler.
+      importedOffers = externalOfferIds.length;
       return { connection: this.toView(connection), importedProducts, importedOffers, skippedItems, affiliateOfferIds, changed };
     }
     let changed = false;
