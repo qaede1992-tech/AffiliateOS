@@ -167,6 +167,18 @@ export class DrizzleShopeeAffiliateLinkIntakeRepository implements ShopeeAffilia
   }
   async findByUrlHash(hash: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(eq(shopeeAffiliateLinkIntakes.normalizedUrlHash, hash)).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
   async findByProductIdentity(shopId: string, itemId: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(and(eq(shopeeAffiliateLinkIntakes.shopId, shopId), eq(shopeeAffiliateLinkIntakes.itemId, itemId))).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
+  async findManyByProductIdentities(identities: Array<{ shopId: string; itemId: string }>) {
+    const rows: Array<typeof shopeeAffiliateLinkIntakes.$inferSelect> = [];
+    for (let offset = 0; offset < identities.length; offset += 200) {
+      const chunk = identities.slice(offset, offset + 200);
+      const predicate = or(...chunk.map(({ shopId, itemId }) =>
+        and(eq(shopeeAffiliateLinkIntakes.shopId, shopId), eq(shopeeAffiliateLinkIntakes.itemId, itemId))
+      ));
+      if (!predicate) continue;
+      rows.push(...await this.db.select().from(shopeeAffiliateLinkIntakes).where(predicate));
+    }
+    return rows.map((row) => this.map(row));
+  }
   async findById(id: string) { const rows = await this.db.select().from(shopeeAffiliateLinkIntakes).where(eq(shopeeAffiliateLinkIntakes.id, id)).limit(1); return rows[0] ? this.map(rows[0]) : undefined; }
   async saveIfAbsent(entity: ShopeeAffiliateLinkIntake) {
     const values = { ...entity, canonicalProductUrl: entity.canonicalProductUrl ?? null, shopId: entity.shopId ?? null, itemId: entity.itemId ?? null, reason: entity.reason ?? null };
