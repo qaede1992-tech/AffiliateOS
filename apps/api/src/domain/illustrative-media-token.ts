@@ -58,6 +58,9 @@ export class IllustrativeMediaTokenSigner {
       if (parts.length !== 2 || !parts.every((part) => TOKEN_SEGMENT.test(part))) throw new Error("invalid");
       const [payload, encodedSignature] = parts as [string, string];
       const actualSignature = Buffer.from(encodedSignature, "base64url");
+      if (actualSignature.toString("base64url") !== encodedSignature) throw new Error("invalid");
+      const decodedPayload = Buffer.from(payload, "base64url");
+      if (decodedPayload.toString("base64url") !== payload) throw new Error("invalid");
       const expectedSignature = this.signature(payload);
       if (actualSignature.byteLength !== expectedSignature.byteLength ||
           !timingSafeEqual(actualSignature, expectedSignature)) throw new Error("invalid");
