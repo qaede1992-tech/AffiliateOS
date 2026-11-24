@@ -6,7 +6,10 @@ import { join } from "node:path";
 import test from "node:test";
 import { IllustrativeCreativeFileStore } from "../../src/domain/illustrative-creative-file-store.js";
 
-const sample = new Uint8Array(Buffer.from("illustrative-mp4-test-payload"));
+const sample = new Uint8Array(Buffer.concat([
+  Buffer.from([0, 0, 0, 16]), Buffer.from("ftyp"), Buffer.from("isom"), Buffer.from([0, 0, 2, 0]),
+  Buffer.from([0, 0, 0, 9]), Buffer.from("mdat"), Buffer.from([0x01])
+]));
 
 test("stores and retrieves a file by opaque relative key with SHA-256 verification", async () => {
   const root = await mkdtemp(join(tmpdir(), "affiliateos-creative-store-"));
