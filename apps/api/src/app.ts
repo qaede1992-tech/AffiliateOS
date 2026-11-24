@@ -27,8 +27,17 @@ const isPublicIllustrativeMedia = (method: string, url: string, enabled: boolean
     return false;
   }
 };
-const redactMediaTokenFromUrl = (value: string): string =>
-  value.replace(/([?&]token=)[^&]*/gi, "$1[REDACTED]");
+const redactMediaTokenFromUrl = (value: string): string => {
+  try {
+    const parsed = new URL(value, "http://localhost");
+    if (!parsed.searchParams.has("token")) return value;
+    parsed.searchParams.delete("token");
+    parsed.searchParams.append("token", "[REDACTED]");
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return value.replace(/([?&]token=)[^&]*/gi, "$1[REDACTED]");
+  }
+};
 const isHealthEndpoint = (url: string) => { const pathname = url.split("?", 1)[0]; return pathname === "/" || pathname === "/api/v1/health" || pathname === "/api/v1/ready"; };
 const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
 const isStateChangingMethod = (method: string) => ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
