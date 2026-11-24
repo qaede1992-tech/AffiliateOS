@@ -275,16 +275,3 @@ export const illustrativeCreativePolicyAudits = pgTable("illustrative_creative_p
 ]);
 
 
-export const illustrativeCreativePolicyAudits = pgTable("illustrative_creative_policy_audits", {
-  id: uuid("id").primaryKey(),
-  platform: varchar("platform", { length: 30 }).notNull(),
-  actorId: varchar("actor_id", { length: 255 }).notNull(),
-  action: varchar("action", { length: 20 }).notNull(),
-  policyVersion: varchar("policy_version", { length: 40 }).notNull(),
-  reason: varchar("reason", { length: 1000 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
-}, (table) => [
-  index("illustrative_creative_policy_audits_platform_created_idx").on(table.platform, table.createdAt.desc()),
-  check("illustrative_creative_policy_audits_platform_check", sql`${table.platform} IN ('instagram')`),
-  check("illustrative_creative_policy_audits_action_check", sql`${table.action} IN ('enable', 'disable')`)
-]);
