@@ -169,12 +169,12 @@ const WIKIMEDIA_LISTING_NOISE = new Set([
 ]);
 
 const meaningfulWikimediaTitleTokens = (value: string): string[] => {
-  const tokens = value.normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "")
+  const tokens = value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().match(/[a-z0-9]+/g) ?? [];
   return [...new Set(tokens.filter((token) =>
     !WIKIMEDIA_LISTING_NOISE.has(token) &&
-    !/^\\d+(?:in\\d+)?$/i.test(token) &&
-    !/^\\d+(?:kg|g|mg|ml|l|cm|mm|inch|inches|w|v|mah)$/i.test(token)
+    !/^\d+(?:in\d+)?$/i.test(token) &&
+    !/^\d+(?:kg|g|mg|ml|l|cm|mm|inch|inches|w|v|mah)$/i.test(token)
   ))].slice(0, 5);
 };
 
