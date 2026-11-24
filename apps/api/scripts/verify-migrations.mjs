@@ -159,7 +159,7 @@ const expectedIndexes = [
   "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx",
   "campaigns_test_created_idx", "autonomous_runs_test_created_idx",
   "product_media_assets_product_hash_unique", "product_media_assets_bucket_key_unique", "product_media_assets_product_kind_idx",
-  "generated_product_creatives_media_asset_unique", "generated_product_creatives_product_status_idx",
+  "generated_product_creatives_media_asset_id_key", "generated_product_creatives_product_status_idx",
   "generated_product_creatives_content_idx", "generated_product_creative_review_audits_creative_created_idx",
   "illustrative_creative_policy_audits_platform_created_idx"
 ];
