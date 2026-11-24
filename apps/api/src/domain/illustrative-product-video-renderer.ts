@@ -50,7 +50,7 @@ export interface IllustrativeProductVideoRendererOptions {
 }
 
 interface ProbeResult {
-  streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string }>;
+  streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; avg_frame_rate?: string }>;
   format?: { duration?: string };
 }
 
@@ -104,7 +104,7 @@ const assertProbe = (raw: string): void => {
   const video = parsed.streams?.find((stream) => stream.codec_type === "video");
   const duration = Number(parsed.format?.duration);
   if (video?.codec_name !== "h264" || video.width !== WIDTH || video.height !== HEIGHT ||
-      video.pix_fmt !== "yuv420p" || !Number.isFinite(duration) ||
+      video.pix_fmt !== "yuv420p" || video.avg_frame_rate !== `${FPS}/1` || !Number.isFinite(duration) ||
       duration < DURATION_SECONDS - 0.15 || duration > DURATION_SECONDS + 0.15) {
     throw new Error("Rendered video failed codec, resolution, pixel-format, or duration verification.");
   }
@@ -172,7 +172,7 @@ export class IllustrativeProductVideoRenderer {
       }
 
       const probeOutput = await this.probeProcess(this.options.ffprobePath ?? process.env.FFPROBE_PATH ?? "ffprobe", [
-        "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,pix_fmt",
+        "-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,pix_fmt,avg_frame_rate",
         "-show_entries", "format=duration", "-of", "json", outputPath
       ], this.timeoutMs);
       assertProbe(probeOutput);
