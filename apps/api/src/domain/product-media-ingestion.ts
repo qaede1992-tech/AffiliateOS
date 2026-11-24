@@ -21,6 +21,9 @@ export interface ProductMediaAsset {
   hasAudio?: boolean | null;
   sha256: string;
   sourceUrl: string;
+  sourceImportProvider?: string | null;
+  sourceImportReference?: string | null;
+  sourceImportedAt?: string | null;
   sourcePublisher: string | null;
   sourceProvider?: string | null;
   sourceCandidateId?: string | null;
@@ -181,6 +184,7 @@ export class ProductMediaIngestionService {
     productId: string;
     nonMediaEligibilityPassed: boolean;
     candidates: Array<ProductMediaCandidate & {
+      importProvenance?: { provider: "shopee-affiliate-csv"; sourceReference?: string; importedAt: string };
       provenance?: {
         provider: string; candidateId: string; landingPageUrl: string; title: string; query: string;
         creator: string | null; creatorUrl: string | null; license: string | null;
@@ -285,6 +289,9 @@ export class ProductMediaIngestionService {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
           objectKey: savedObject.key, mimeType, byteSize: mediaBytes.byteLength,
           ...technicalMetadata, sha256, sourceUrl: candidate.url,
+          sourceImportProvider: candidate.importProvenance?.provider ?? null,
+          sourceImportReference: candidate.importProvenance?.sourceReference ?? null,
+          sourceImportedAt: candidate.importProvenance?.importedAt ?? null,
           sourcePublisher: candidate.provenance?.sourcePublisher ?? null,
           sourceProvider: candidate.provenance?.provider ?? null,
           sourceCandidateId: candidate.provenance?.candidateId ?? null,
