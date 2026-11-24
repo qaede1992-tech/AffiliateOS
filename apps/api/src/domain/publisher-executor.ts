@@ -58,16 +58,23 @@ export class PublisherExecutor {
     if (!publisher.provider?.trim()) throw new Error("Publishers must declare a stable provider identifier before execution.");
 
     try {
-      // Apply the new product-media rights gate only to Instagram. Keep TikTok and
-      // other existing publisher paths unchanged during this staged rollout.
-      const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram" && publisher.provider === "instagram-graph");
+      // Instagram must validate immutable source records before reservation, but must
+      // not resolve provider-facing URLs until the durable reservation is dispatching.
+      // Keep TikTok and every non-Instagram publisher on the existing path.
+      const isInstagramGraph = content.platform === "instagram" && publisher.provider === "instagram-graph";
+      const rawInstagramMediaAssets = isInstagramGraph ? await this.loadRawMediaAssets(content) : undefined;
+      if (rawInstagramMediaAssets) {
+        const linked = await this.loadLinkedProductIds(content);
+        await assertProductMediaRightsForPublication(rawInstagramMediaAssets, linked, this.productMediaAssets);
+      }
+      const mediaAssets = isInstagramGraph
+        ? rawInstagramMediaAssets!
+        : await this.resolveMediaAssets(content, false);
       const credential = await this.resolveCredential(account);
       let reservation: import("./publication-dispatch-reservation.js").PublicationDispatchReservation | undefined;
-      if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
+      if (isInstagramGraph) {
         if (!jobId || !this.dispatchReservations) throw new Error("Instagram publication requires a durable dispatch reservation repository and job ID.");
-        const configuredMediaAssets = await Promise.all((content.mediaAssetIds ?? []).map((id) => this.mediaAssets?.findById(id)));
-        if (configuredMediaAssets.some((asset) => !asset)) throw new Error("Instagram reservation requires all configured source media records.");
-        const rawMediaAssets = configuredMediaAssets as NonNullable<(typeof configuredMediaAssets)[number]>[];
+        const rawMediaAssets = rawInstagramMediaAssets!;
         const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
         const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
         const mediaIntegrity = await createPublicationMediaIntegritySnapshot(rawMediaAssets, linkedProductIds, this.productMediaAssets);
@@ -94,9 +101,14 @@ export class PublisherExecutor {
         if (!dispatching) throw new Error("Instagram dispatch reservation could not be claimed; provider request was not sent.");
         reservation = dispatching;
       }
+      // This is intentionally after reserved -> dispatching: any signed public
+      // media URL is now fenced by a durable active reservation.
+      const providerMediaAssets = isInstagramGraph
+        ? await this.resolveMediaAssets(content, false)
+        : mediaAssets;
       let result: Awaited<ReturnType<SocialPublisher["publish"]>>;
       try {
-        result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
+        result = await publisher.publish({ content, account, credential, mediaAssets: providerMediaAssets, idempotencyKey, tiktokApproval });
       } catch (error) {
         if (reservation && this.dispatchReservations) {
           const message = error instanceof Error ? error.message : String(error);
@@ -173,17 +185,24 @@ export class PublisherExecutor {
     return this.credentialResolver.resolve(account.credentialReference);
   }
 
-  private async resolveMediaAssets(content: Content, requireProductMediaRights = false) {
+  private async loadRawMediaAssets(content: Content) {
     if (!this.mediaAssets || !content.mediaAssetIds?.length) return [];
     const assets = await Promise.all(content.mediaAssetIds.map((id) => this.mediaAssets?.findById(id)));
     if (assets.some((asset) => !asset)) throw new Error("One or more configured media assets do not exist.");
     const resolved = assets as NonNullable<(typeof assets)[number]>[];
     if (resolved.some((asset) => asset.contentId !== content.id)) throw new Error("A configured media asset does not belong to the content.");
+    return resolved;
+  }
+
+  private async loadLinkedProductIds(content: Content): Promise<string[]> {
     const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
-    const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
+    return [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
+  }
+
+  private async resolveMediaAssets(content: Content, requireProductMediaRights = false) {
+    const resolved = await this.loadRawMediaAssets(content);
+    const linkedProductIds = await this.loadLinkedProductIds(content);
     if (requireProductMediaRights) {
-      // Apply the provenance gate to product-scoped assets while preserving
-      // legacy URL/content-scoped publisher paths during this rollout.
       await assertProductMediaRightsForPublication(resolved, linkedProductIds, this.productMediaAssets);
     }
     return resolvePublisherMediaAssets(content, resolved, this.mediaStorage, linkedProductIds);
