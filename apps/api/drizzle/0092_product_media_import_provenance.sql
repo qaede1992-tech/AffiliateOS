@@ -1,6 +1,6 @@
 ALTER TABLE public.product_media_assets
   ADD COLUMN IF NOT EXISTS source_import_provider varchar(40),
-  ADD COLUMN IF NOT EXISTS source_import_reference varchar(240),
+  ADD COLUMN IF NOT EXISTS source_import_reference varchar(255),
   ADD COLUMN IF NOT EXISTS source_imported_at timestamptz;
 
 DO $$
