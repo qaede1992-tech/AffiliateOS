@@ -31,7 +31,7 @@ export type IllustrativePublicationGuardDependencies = {
 const MAX_EVIDENCE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const SHA256 = /^[a-f0-9]{64}$/;
 const STORAGE_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[a-f0-9]{64}\.mp4$/i;
-const fail = (reason: string): never => { throw new Error(`ILLUSTRATIVE_CREATIVE_PUBLICATION_BLOCKED: ${reason}`); };
+function fail(reason: string): never { throw new Error(`ILLUSTRATIVE_CREATIVE_PUBLICATION_BLOCKED: ${reason}`); }
 
 const allowedVersions = (terms: Record<string, unknown>, key: string): string[] => {
   const value = terms[key];
@@ -109,13 +109,20 @@ export class IllustrativeCreativePublicationGuard {
     }
 
     const policy = await this.dependencies.creatives.getPolicy("instagram");
-    if (!policy?.enabled || policy.platform !== "instagram") fail("Instagram illustrative creative policy is disabled");
-    if (!allowedVersions(policy.terms, "allowedRendererVersions").includes(creative.rendererVersion) ||
-        !allowedVersions(policy.terms, "allowedTemplateVersions").includes(creative.templateVersion)) {
+    if (!policy || policy.enabled !== true || policy.platform !== "instagram") {
+      fail("Instagram illustrative creative policy is disabled");
+    }
+    const rendererVersion = creative.rendererVersion;
+    const templateVersion = creative.templateVersion;
+    if (typeof rendererVersion !== "string" || typeof templateVersion !== "string" ||
+        !allowedVersions(policy.terms, "allowedRendererVersions").includes(rendererVersion) ||
+        !allowedVersions(policy.terms, "allowedTemplateVersions").includes(templateVersion)) {
       fail("renderer or template version is not allow-listed by the active policy");
     }
 
-    const product = await this.dependencies.products.findById(creative.productId);
+    const productId = creative.productId;
+    if (typeof productId !== "string" || !productId) fail("the creative has no linked product");
+    const product = await this.dependencies.products.findById(productId);
     if (!product || product.status !== "active") fail("the linked product is missing or inactive");
     const snapshot = creative.productSnapshot as Partial<ProductSnapshot>;
     const capturedAt = typeof snapshot.capturedAt === "string" ? Date.parse(snapshot.capturedAt) : Number.NaN;
@@ -126,7 +133,9 @@ export class IllustrativeCreativePublicationGuard {
       fail("rendered product facts are stale or no longer match the current product");
     }
 
-    const offer = await this.dependencies.offers.findById(creative.affiliateOfferId);
+    const affiliateOfferId = creative.affiliateOfferId;
+    if (typeof affiliateOfferId !== "string" || !affiliateOfferId) fail("the creative has no exact affiliate offer");
+    const offer = await this.dependencies.offers.findById(affiliateOfferId);
     if (!offer || offer.productId !== product.id || offer.status !== "active" ||
         offer.availability === "out_of_stock" || offer.affiliateLinkStatus !== "active" ||
         !offer.affiliateUrl || !isExplicitlyAffiliateEligible(offer)) {
@@ -136,11 +145,13 @@ export class IllustrativeCreativePublicationGuard {
       const expiresAt = Date.parse(offer.affiliateLinkExpiresAt);
       if (!Number.isFinite(expiresAt) || expiresAt <= now.getTime()) fail("the affiliate link has expired");
     }
-    const campaignOffers = await this.dependencies.campaignOffers.listByCampaign(content.campaignId);
+    const campaignId = content.campaignId;
+    if (!campaignId) fail("affiliate promotion content has no campaign");
+    const campaignOffers = await this.dependencies.campaignOffers.listByCampaign(campaignId);
     if (!campaignOffers.some((attachment: CampaignOffer) => attachment.affiliateOfferId === offer.id)) {
       fail("the creative affiliate offer is not attached to the publishing campaign");
     }
-    const trackingLinks = await this.dependencies.trackingLinks.listByCampaign(content.campaignId);
+    const trackingLinks = await this.dependencies.trackingLinks.listByCampaign(campaignId);
     if (!trackingLinks.some((link: TrackingLink) =>
       link.status === "active" && link.affiliateOfferId === offer.id && link.destinationUrl === offer.affiliateUrl
     )) fail("the exact affiliate offer has no matching active tracking link");
@@ -154,9 +165,11 @@ export class IllustrativeCreativePublicationGuard {
       fail("the latest pre-media eligibility evidence is missing, negative, stale, or for another offer");
     }
 
+    const storageKey = creative.storageKey;
+    if (typeof storageKey !== "string" || !storageKey) fail("creative has no local storage key");
     try {
       await this.dependencies.files.get({
-        key: creative.storageKey, expectedSha256: creative.sha256, expectedByteSize: creative.byteSize
+        key: storageKey, expectedSha256: creative.sha256, expectedByteSize: creative.byteSize
       });
     } catch {
       fail("local creative file is missing or failed integrity verification");
