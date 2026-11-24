@@ -1,4 +1,4 @@
-import type { AffiliateOffer, CampaignOffer, Content, Product, TrackingLink } from "@affiliateos/shared";
+import type { Content, CampaignOffer, TrackingLink } from "@affiliateos/shared";
 import { isExplicitlyAffiliateEligible } from "./opportunity-scoring.js";
 import type { MediaAsset } from "./media-asset.js";
 import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
