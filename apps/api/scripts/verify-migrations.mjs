@@ -22,8 +22,11 @@ let pendingSuffixTags = [];
 const pendingMigrationTags = allowPendingSuffix
   ? new Set((process.env.MIGRATION_PREFLIGHT_PENDING_TAGS ?? "").split(",").map((tag) => tag.trim()).filter(Boolean))
   : new Set();
-const { columns: pendingSchemaColumns, indexes: pendingSchemaIndexes } =
-  getPendingMigrationSchemaExemptions(pendingMigrationTags);
+const {
+  tables: pendingSchemaTables,
+  columns: pendingSchemaColumns,
+  indexes: pendingSchemaIndexes
+} = getPendingMigrationSchemaExemptions(pendingMigrationTags);
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
@@ -205,7 +208,9 @@ try {
     [expectedTables]
   );
   const actualTables = new Set(tableRows.map((row) => row.table_name));
-  const missingTables = expectedTables.filter((table) => !actualTables.has(table));
+  const missingTables = expectedTables.filter((table) =>
+    !pendingSchemaTables.has(table) && !actualTables.has(table)
+  );
   if (missingTables.length > 0) {
     errors.push(`Missing expected tables: ${missingTables.join(", ")}.`);
   }
