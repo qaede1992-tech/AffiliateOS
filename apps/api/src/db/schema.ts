@@ -273,9 +273,6 @@ export const illustrativeCreativePolicyAudits = pgTable("illustrative_creative_p
   check("illustrative_creative_policy_audits_platform_check", sql`${table.platform} IN ('instagram')`),
   check("illustrative_creative_policy_audits_action_check", sql`${table.action} IN ('enable', 'disable')`)
 ]);
-)`),
-  check("generated_product_creatives_review_check", sql`(${table.reviewStatus} = 'pending' AND ${table.reviewedBy} IS NULL AND ${table.reviewedAt} IS NULL) OR (${table.reviewStatus} IN ('approved', 'rejected') AND ${table.reviewedBy} IS NOT NULL AND ${table.reviewedAt} IS NOT NULL AND ${table.reviewReason} IS NOT NULL)`)
-]);
 
 export const generatedProductCreativeReviewAudits = pgTable("generated_product_creative_review_audits", {
   id: uuid("id").primaryKey(),
