@@ -160,6 +160,25 @@ const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp;
  * Commons is a general media library, not a product catalog. Search using a
  * normalized category phrase rather than the full marketplace listing title.
  */
+const WIKIMEDIA_LISTING_NOISE = new Set([
+  "original", "official", "latest", "terbaru", "untuk", "dengan", "dan", "the", "with",
+  "for", "from", "anak", "wanita", "pria", "premium", "pcs", "piece", "pieces", "box",
+  "set", "bundle", "bundling", "promo", "sale", "diskon", "gratis", "free", "triplepack",
+  "pack", "paket", "ready", "stock", "stok", "murah", "termurah", "best", "seller",
+  "inch", "inches", "cm", "mm", "meter", "liter", "ml", "gram", "grams", "kg", "watt"
+]);
+
+const meaningfulWikimediaTitleTokens = (value: string): string[] => {
+  const tokens = value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return [...new Set(tokens.filter((token) =>
+    !WIKIMEDIA_LISTING_NOISE.has(token) &&
+    !/^\d+(?:in\d+)?$/i.test(token) &&
+    !/^\d+(?:kg|g|mg|ml|l|cm|mm|inch|inches|w|v|mah)$/i.test(token)
+  ))].slice(0, 5);
+};
+
+/** Build a small number of identity-bearing Commons queries without marketplace listing noise. */
 export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentity): string[] => {
   const source = [identity.brand, identity.name, identity.model, identity.sku, identity.variant]
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
@@ -176,18 +195,18 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
       .filter((part): part is string => typeof part === "string" && part.length > 0);
     return [terms.join(" ").slice(0, 200)];
   }
-  // Keep a supplement brand/name in the query: category-only Commons results are too generic for product identity.
-  if (matchedCategory && (matchedCategory.query !== "dietary supplement product" || /\bmeal replacement\b/i.test(source))) return [matchedCategory.query];
 
-  const stopWords = new Set([
-    "original", "official", "latest", "terbaru", "untuk", "dengan", "dan",
-    "the", "with", "for", "from", "anak", "wanita", "pria", "premium", "pcs"
-  ]);
-  const tokens = source.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().match(/[a-z]{4,}/g) ?? [];
-  const listingNoise = new Set(["rak", "tempat", "meja", "slot", "top", "type", "fast", "charging", "original", "official", "latest", "terbaru", "premium", "pcs", "box", "set"]);
-  const useful = [...new Set(tokens.filter((token) => !stopWords.has(token) && !listingNoise.has(token) && !/^[a-z]{2,}\d+[a-z0-9]*$/i.test(token)))].slice(0, 3);
-  return [useful.join(" ") || matchedCategory?.query || source.trim().slice(0, 100)];
+  const titleTerms = meaningfulWikimediaTitleTokens(source);
+  // Category-only searches are too broad for supplements; retain product and brand tokens.
+  if (matchedCategory?.query === "dietary supplement product") {
+    if (/\bmeal replacement\b/i.test(source)) return [matchedCategory.query];
+    if (/\b(?:vitamin|vit d3|vitamin d)\b/i.test(source)) {
+      return [[...titleTerms, matchedCategory.query].join(" ").slice(0, 200)];
+    }
+    return [titleTerms.slice(0, 3).join(" ") || matchedCategory.query];
+  }
+  if (matchedCategory) return [matchedCategory.query];
+  return [titleTerms.join(" ") || source.trim().slice(0, 100)];
 };
 
 const normalizedLicense = (licenseUrl: string | null, licenseName: string | null): {
