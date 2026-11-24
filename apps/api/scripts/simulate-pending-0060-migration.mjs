@@ -56,6 +56,14 @@ try {
 
   await client.query("BEGIN");
   try {
+    // Migration 0093 is newer than 0060 and is replayed in this scenario.
+    // Remove its complete additive footprint before deleting its ledger suffix.
+    await client.query("DROP TABLE IF EXISTS public.generated_product_creative_review_audits");
+    await client.query("DROP TABLE IF EXISTS public.illustrative_creative_policy_audits");
+    await client.query("DROP TABLE IF EXISTS public.generated_product_creatives");
+    await client.query("DROP TABLE IF EXISTS public.illustrative_creative_policies");
+    await client.query("DROP FUNCTION IF EXISTS public.reject_illustrative_audit_mutation()");
+
     // Migration 0090 is newer than 0060 and is replayed in this scenario.
     // Remove its additive table as well as its ledger row before Drizzle re-applies it.
     await client.query("DROP TABLE IF EXISTS public.publication_dispatch_reservations");
