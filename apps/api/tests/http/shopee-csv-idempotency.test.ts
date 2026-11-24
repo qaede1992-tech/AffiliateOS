@@ -229,3 +229,41 @@ test("Shopee CSV import carries brand, model, SKU, and variant into product disc
     await app.close();
   }
 });
+
+
+test("Shopee CSV media import records source provenance without asserting usage rights", async () => {
+  const app = createApp();
+  try {
+    const affiliateResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/affiliates",
+      payload: { name: "Media Provenance Partner", email: "media-provenance@example.com" },
+    });
+    assert.equal(affiliateResponse.statusCode, 201);
+    const affiliate = affiliateResponse.json();
+    const imageUrl = "https://cf.shopee.co.id/file/provenance-image.jpg";
+    const videoUrl = "https://cf.shopee.co.id/file/provenance-video.mp4";
+    const csv = [
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Link Gambar,Link Video",
+      `123456,"Produk Provenance","Rp55.000","100","Toko Provenance","8%","Rp4.400","https://shopee.co.id/product/1/123456","https://s.shopee.co.id/provenance","${imageUrl}","${videoUrl}"`,
+    ].join("\\n");
+    const imported = await app.inject({
+      method: "POST",
+      url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
+      payload: { affiliateId: affiliate.id, csv, sourceReference: "media-provenance-export.csv" },
+    });
+    assert.equal(imported.statusCode, 201);
+    const products = await app.inject({ method: "GET", url: "/api/v1/products" });
+    assert.equal(products.statusCode, 200);
+    const product = products.json().data[0];
+    assert.equal(product.imageUrl, imageUrl);
+    assert.equal(product.videoUrl, videoUrl);
+    assert.equal(product.discoverySignals.mediaImport.source, "shopee-affiliate-csv");
+    assert.equal(product.discoverySignals.mediaImport.sourceReference, "media-provenance-export.csv");
+    assert.ok(Number.isFinite(Date.parse(product.discoverySignals.mediaImport.importedAt)));
+    assert.deepEqual(product.discoverySignals.mediaImport.suppliedFields.sort(), ["imageUrl", "videoUrl"]);
+    assert.equal(product.discoverySignals.mediaImport.rightsStatus, undefined);
+  } finally {
+    await app.close();
+  }
+});
