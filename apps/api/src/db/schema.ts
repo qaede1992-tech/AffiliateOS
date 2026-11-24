@@ -241,7 +241,8 @@ export const generatedProductCreatives = pgTable("generated_product_creatives", 
   check("generated_product_creatives_dimensions_check", sql`${table.widthPx} > 0 AND ${table.heightPx} > 0 AND ${table.durationMs} > 0 AND ${table.byteSize} > 0`),
   check("generated_product_creatives_disclosure_check", sql`${table.disclosureEmbedded} = true`),
   uniqueIndex("generated_product_creatives_storage_key_unique").on(table.storageKey).where(sql`${table.storageKey} IS NOT NULL`),
-  check("generated_product_creatives_storage_pair_check", sql`(${table.storageBackend} IS NULL AND ${table.storageKey} IS NULL) OR (${table.storageBackend} = 'local_volume' AND ${table.storageKey} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[0-9a-f]{64}\\.mp4 sql`(${table.reviewStatus} = 'pending' AND ${table.reviewedBy} IS NULL AND ${table.reviewedAt} IS NULL) OR (${table.reviewStatus} IN ('approved', 'rejected') AND ${table.reviewedBy} IS NOT NULL AND ${table.reviewedAt} IS NOT NULL AND ${table.reviewReason} IS NOT NULL)`)
+  check("generated_product_creatives_storage_pair_check", sql`(${table.storageBackend} IS NULL AND ${table.storageKey} IS NULL) OR (${table.storageBackend} IS NOT NULL AND ${table.storageBackend} = 'local_volume' AND ${table.storageKey} IS NOT NULL AND ${table.storageKey} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[0-9a-f]{64}\\.mp4$')`),
+  check("generated_product_creatives_review_check", sql`(${table.reviewStatus} = 'pending' AND ${table.reviewedBy} IS NULL AND ${table.reviewedAt} IS NULL) OR (${table.reviewStatus} IN ('approved', 'rejected') AND ${table.reviewedBy} IS NOT NULL AND ${table.reviewedAt} IS NOT NULL AND ${table.reviewReason} IS NOT NULL)`)
 ]);
 
 export const generatedProductCreativeReviewAudits = pgTable("generated_product_creative_review_audits", {
