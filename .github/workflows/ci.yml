@@ -128,6 +128,7 @@ jobs:
             assert.equal(result.metadata.height, 1280);
             assert.equal(result.metadata.durationMs, 12000);
             assert.equal(result.metadata.codec, "h264");
+            assert.equal(result.metadata.fps, 25);
             assert.ok(result.metadata.byteSize > 0);
             assert.equal(result.metadata.sha256.length, 64);
             console.log("Illustrative video FFmpeg/FFprobe smoke test passed.");
