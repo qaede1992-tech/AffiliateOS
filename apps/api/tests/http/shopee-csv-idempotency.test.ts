@@ -246,7 +246,7 @@ test("Shopee CSV media import records source provenance without asserting usage 
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Link Gambar,Link Video",
       `123456,"Produk Provenance","Rp55.000","100","Toko Provenance","8%","Rp4.400","https://shopee.co.id/product/1/123456","https://s.shopee.co.id/provenance","${imageUrl}","${videoUrl}"`,
-    ].join("\\n");
+    ].join("\n");
     const imported = await app.inject({
       method: "POST",
       url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
