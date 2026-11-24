@@ -7,7 +7,7 @@ export type IllustrativeCreativeRecord = {
   storageBackend: string | null; storageKey: string | null;
 };
 export type IllustrativeDispatchReservation = { state: string; provider: string; contentId: string };
-export interface IllustrativeCreativeReader { findById(id: string): Promise<IllustrativeCreativeRecord | undefined>; }
+export interface IllustrativeCreativeReader { findById(id: string): Promise<IllustrativeCreativeRecord | undefined>; findByMediaAssetId?(id: string): Promise<IllustrativeCreativeRecord | undefined>; }
 export interface IllustrativePolicyReader { isEnabled(platform: "instagram"): Promise<boolean>; }
 export interface IllustrativeDispatchReader { findActiveByContentProvider(contentId: string, provider: "instagram-graph"): Promise<IllustrativeDispatchReservation | undefined>; }
 export interface IllustrativeFileReader {
@@ -30,12 +30,26 @@ export class IllustrativeMediaDeliveryService {
     signer: IllustrativeMediaTokenSigner;
   }) {}
 
+  /** Resolve a generated creative from the exact media asset selected by the publisher. */
+  async issueTokenForMediaAsset(mediaAssetId: string, contentId: string): Promise<string> {
+    const creative = await this.dependencies.creatives.findByMediaAssetId?.(mediaAssetId);
+    if (!creative || creative.mediaAssetId !== mediaAssetId || creative.contentId !== contentId ||
+        !this.isDeliverableCreative(creative)) throw unavailable();
+    if (!await this.dependencies.policies.isEnabled("instagram")) throw unavailable();
+    await this.requireActiveDispatch(creative.contentId);
+    return this.signCreative(creative);
+  }
+
   /** Called by the trusted publisher resolver before it sends the URL to Meta. */
   async issueToken(creativeId: string): Promise<string> {
     const creative = await this.dependencies.creatives.findById(creativeId);
     if (!creative || creative.id !== creativeId || !this.isDeliverableCreative(creative)) throw unavailable();
     if (!await this.dependencies.policies.isEnabled("instagram")) throw unavailable();
     await this.requireActiveDispatch(creative.contentId);
+    return this.signCreative(creative);
+  }
+
+  private signCreative(creative: IllustrativeCreativeRecord): string {
     return this.dependencies.signer.sign({
       creativeId: creative.id, mediaAssetId: creative.mediaAssetId, contentId: creative.contentId,
       sha256: creative.sha256, expiresAtSeconds: null
