@@ -27,7 +27,8 @@ test("rejects tampering and a token signed by another secret", () => {
   const signer = new IllustrativeMediaTokenSigner(secret);
   const token = signer.sign(claims, 1_900_000_000);
   const [payload, signature] = token.split(".");
-  const altered = `${payload}.${signature!.slice(0, -1)}${signature!.endsWith("A") ? "B" : "A"}`;
+  const first = payload![0] === "A" ? "B" : "A";
+  const altered = `${first}${payload!.slice(1)}.${signature}`;
   assert.throws(() => signer.verify(altered, context, 1_900_000_001), /Invalid or expired/);
   assert.throws(() => new IllustrativeMediaTokenSigner("another-secret-with-at-least-32-bytes")
     .verify(token, context, 1_900_000_001), /Invalid or expired/);
