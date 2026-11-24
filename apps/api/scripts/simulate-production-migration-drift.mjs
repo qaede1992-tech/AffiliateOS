@@ -35,6 +35,15 @@ try {
     // order before reapplying 0068. Also roll back schema effects of later migrations
     // whose ledger rows are removed, so their DDL can be exercised again safely.
     // Never run this simulation against production.
+    // Migration 0093 adds isolated illustrative-creative provenance tables.
+    // Its ledger row is removed below, so roll back every owned schema object
+    // before Drizzle replays the migration. Drop dependents before their parent.
+    await client.query("DROP TABLE IF EXISTS public.generated_product_creative_review_audits");
+    await client.query("DROP TABLE IF EXISTS public.illustrative_creative_policy_audits");
+    await client.query("DROP TABLE IF EXISTS public.generated_product_creatives");
+    await client.query("DROP TABLE IF EXISTS public.illustrative_creative_policies");
+    await client.query("DROP FUNCTION IF EXISTS public.reject_illustrative_audit_mutation()");
+
     // Migration 0090 adds the durable publication dispatch reservation table.
     // Its ledger row is removed below, so roll back this additive schema effect too.
     await client.query("DROP TABLE IF EXISTS public.publication_dispatch_reservations");
