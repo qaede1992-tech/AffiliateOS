@@ -17,7 +17,8 @@ test("Shopee CSV import is idempotent when the same export is submitted twice", 
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
       '51510405637,"Keranjang Laundry","Rp13.000","718","U-Living","6,5%","Rp779","https://shopee.co.id/product/1431148808/51510405637","https://s.shopee.co.id/1BNAo1lYo8"',
       '43551822948,"Mini Powerbank","Rp109.000","10RB+","Gojodoq","8,5%","Rp8.720","https://shopee.co.id/product/1412347694/43551822948","https://s.shopee.co.id/113kbimC97"',
-    ].join("\n");
+    ].join("
+");
 
     const importCsv = () => app.inject({
       method: "POST",
@@ -67,11 +68,13 @@ test("Shopee CSV reimport without an image column preserves previously imported 
     const csvWithImage = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Link Gambar",
       `456,"Produk Media","Rp55.000","100","Toko Media","8,5%","Rp4.675","${productUrl}","${affiliateUrl}","${imageUrl}"`,
-    ].join("\n");
+    ].join("
+");
     const csvWithoutImage = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
       `456,"Produk Media","Rp55.000","100","Toko Media","8,5%","Rp4.675","${productUrl}","${affiliateUrl}"`,
-    ].join("\n");
+    ].join("
+");
 
     const importCsv = (csv: string) => app.inject({
       method: "POST",
@@ -119,7 +122,8 @@ test("Shopee CSV import keeps affiliate accounts separate for the same marketpla
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra",
       '"51510405637","Keranjang Laundry","Rp13.000","718","U-Living","6,5%","Rp779","https://shopee.co.id/product/1431148808/51510405637","https://s.shopee.co.id/1BNAo1lYo8"',
-    ].join("\n");
+    ].join("
+");
 
     const importFor = (affiliateId: string) => app.inject({
       method: "POST",
@@ -166,7 +170,8 @@ test("Shopee CSV import persists available rating and review evidence with sourc
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Rating Produk,Jumlah Ulasan",
       '789,Produk Dengan Bukti,Rp55.000,8.500,Toko Bukti,8%,Rp4.400,https://shopee.co.id/product/1/789,https://s.shopee.co.id/evidence,4.9,1.2RB+',
-    ].join("\n");
+    ].join("
+");
     const imported = await app.inject({
       method: "POST",
       url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
@@ -205,7 +210,8 @@ test("Shopee CSV import carries brand, model, SKU, and variant into product disc
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Merek,Model,SKU,Varian",
       '987654321,"Botol Minum Stainless 1L","Rp89.000","250","Toko Identitas","8%","Rp7.120","https://shopee.co.id/product/1/987654321","https://s.shopee.co.id/identity","AquaPro","AP-1000","SKU-AP-1000-BLK","Hitam 1 Liter"',
-    ].join("\n");
+    ].join("
+");
 
     const imported = await app.inject({
       method: "POST",
@@ -246,7 +252,8 @@ test("Shopee CSV media import records source provenance without asserting usage 
     const csv = [
       "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Link Gambar,Link Video",
       `123456,"Produk Provenance","Rp55.000","100","Toko Provenance","8%","Rp4.400","https://shopee.co.id/product/1/123456","https://s.shopee.co.id/provenance","${imageUrl}","${videoUrl}"`,
-    ].join("\n");
+    ].join("
+");
     const imported = await app.inject({
       method: "POST",
       url: "/api/v1/marketplaces/shopee-affiliate-feed/import-csv",
@@ -261,7 +268,9 @@ test("Shopee CSV media import records source provenance without asserting usage 
     assert.equal(product.discoverySignals.mediaImport.image.source, "shopee-affiliate-csv");
     assert.equal(product.discoverySignals.mediaImport.image.sourceReference, "media-provenance-export.csv");
     assert.ok(Number.isFinite(Date.parse(product.discoverySignals.mediaImport.image.importedAt)));
-    assert.equal(product.discoverySignals.mediaImport.video.source, "shopee-affiliate-csv");\n    assert.equal(product.discoverySignals.mediaImport.video.sourceReference, "media-provenance-export.csv");\n    assert.ok(Number.isFinite(Date.parse(product.discoverySignals.mediaImport.video.importedAt)));
+    assert.equal(product.discoverySignals.mediaImport.video.source, "shopee-affiliate-csv");
+    assert.equal(product.discoverySignals.mediaImport.video.sourceReference, "media-provenance-export.csv");
+    assert.ok(Number.isFinite(Date.parse(product.discoverySignals.mediaImport.video.importedAt)));
     assert.equal(product.discoverySignals.mediaImport.rightsStatus, undefined);
   } finally {
     await app.close();
