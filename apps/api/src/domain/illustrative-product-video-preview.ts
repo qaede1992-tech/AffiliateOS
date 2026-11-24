@@ -71,7 +71,10 @@ export class IllustrativeProductVideoPreviewService {
     let activeOffer: AffiliateOffer | undefined;
     for (const offerId of eligibleOfferIds) {
       const offer = await this.affiliateOffers.findById(offerId);
-      if (offer && offer.productId === productId && offer.status === "active" && offer.affiliateLinkStatus === "active") {
+      const expiresAt = offer?.affiliateLinkExpiresAt ? Date.parse(offer.affiliateLinkExpiresAt) : undefined;
+      const linkHasValidExpiry = expiresAt === undefined || (Number.isFinite(expiresAt) && expiresAt > nowTimestamp);
+      if (offer && offer.productId === productId && offer.status === "active" &&
+          offer.affiliateLinkStatus === "active" && offer.availability !== "out_of_stock" && linkHasValidExpiry) {
         activeOffer = offer;
         break;
       }
