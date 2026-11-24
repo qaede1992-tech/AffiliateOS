@@ -20,7 +20,6 @@ import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
 import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
-import type { IllustrativeMediaDeliveryService } from "../domain/illustrative-media-delivery.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
   if (!value) return undefined;
