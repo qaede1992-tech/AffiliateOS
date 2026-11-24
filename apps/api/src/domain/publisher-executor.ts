@@ -102,10 +102,24 @@ export class PublisherExecutor {
         reservation = dispatching;
       }
       // This is intentionally after reserved -> dispatching: any signed public
-      // media URL is now fenced by a durable active reservation.
-      const providerMediaAssets = isInstagramGraph
-        ? await this.resolveMediaAssets(content, false)
-        : mediaAssets;
+      // media URL is now fenced by a durable active reservation. If URL resolution
+      // fails, no provider request was made, so close the reservation as failed
+      // instead of leaving a permanent dispatching fence.
+      let providerMediaAssets: typeof mediaAssets;
+      try {
+        providerMediaAssets = isInstagramGraph
+          ? await this.resolveMediaAssets(content, false)
+          : mediaAssets;
+      } catch (error) {
+        if (reservation && this.dispatchReservations) {
+          const message = error instanceof Error ? error.message : String(error);
+          await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+            ...reservation, state: "failed", lastError: message.slice(0, 1000),
+            resolvedAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+          });
+        }
+        throw error;
+      }
       let result: Awaited<ReturnType<SocialPublisher["publish"]>>;
       try {
         result = await publisher.publish({ content, account, credential, mediaAssets: providerMediaAssets, idempotencyKey, tiktokApproval });
