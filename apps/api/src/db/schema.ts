@@ -59,7 +59,7 @@ export const productMediaAssets = pgTable("product_media_assets", {
   sha256: varchar("sha256", { length: 64 }).notNull(),
   sourceUrl: varchar("source_url", { length: 2048 }).notNull(),
   sourceImportProvider: varchar("source_import_provider", { length: 40 }),
-  sourceImportReference: varchar("source_import_reference", { length: 240 }),
+  sourceImportReference: varchar("source_import_reference", { length: 255 }),
   sourceImportedAt: timestamp("source_imported_at", { withTimezone: true, mode: "string" }),
   sourcePublisher: varchar("source_publisher", { length: 255 }),
   sourceProvider: varchar("source_provider", { length: 40 }),
