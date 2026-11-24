@@ -83,7 +83,7 @@ const cleanText = (value: string, maxLength: number): string => {
     }
   }
   if (line) lines.push(line);
-  return lines.slice(0, 3).join("\\n");
+  return lines.slice(0, 3).join("\n");
 };
 
 const escapeFilterPath = (value: string): string =>
