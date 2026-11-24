@@ -28,7 +28,8 @@ test("illustrative creative provenance is isolated from third-party product-medi
   assert.match(sql, /enabled boolean NOT NULL DEFAULT false/);
   assert.match(sql, /approved_by varchar\(255\)/);
   assert.match(sql, /CREATE TABLE public\.generated_product_creatives/);
-  assert.match(sql, /media_asset_id uuid NOT NULL REFERENCES public\\.media_assets/);\n  assert.match(sql, /CREATE UNIQUE INDEX generated_product_creatives_media_asset_unique ON public\\.generated_product_creatives\\(media_asset_id\\)/);
+  assert.match(sql, /media_asset_id uuid NOT NULL REFERENCES public\.media_assets/);
+  assert.match(sql, /CREATE UNIQUE INDEX generated_product_creatives_media_asset_unique ON public\.generated_product_creatives\(media_asset_id\)/);
   assert.match(sql, /product_snapshot jsonb NOT NULL/);
   assert.match(sql, /disclosure_embedded boolean NOT NULL DEFAULT false/);
   assert.match(sql, /CHECK \(disclosure_embedded = true\)/);
