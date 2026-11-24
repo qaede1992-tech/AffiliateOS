@@ -70,6 +70,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
   };
   let providerCalls = 0;
   let providerCheckCalls = 0;
+  const dispatchReservations = platform === "instagram" ? new InMemoryPublicationDispatchReservationRepository() : undefined;
   const publisher: SocialPublisher = {
     provider: platform === "instagram" ? "instagram-graph" : "test-publisher",
     supports: () => true,
@@ -86,9 +87,14 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
   };
   const storage = {
     bucketName: "affiliate-media",
-    async createSignedUrl() { return "https://project.supabase.co/storage/v1/object/sign/affiliate-media/video.mp4?token=temporary"; }
+    async createSignedUrl() {
+      if (platform === "instagram") {
+        const reservation = await dispatchReservations?.findByJobProvider("job-1", "instagram-graph");
+        assert.equal(reservation?.state, "dispatching", "provider media URLs must resolve only after durable dispatch claim");
+      }
+      return "https://project.supabase.co/storage/v1/object/sign/affiliate-media/video.mp4?token=temporary";
+    }
   };
-  const dispatchReservations = platform === "instagram" ? new InMemoryPublicationDispatchReservationRepository() : undefined;
   const executor = new PublisherExecutor(
     contentService, socialAccounts, [publisher], credentialResolver, mediaAssets, undefined, storage,
     contentProducts, productMediaAssets, dispatchReservations

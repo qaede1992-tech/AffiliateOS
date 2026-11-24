@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicApiBaseUrlSchema } from "./domain/public-api-base-url.js";
 
 const booleanEnvironment = z.preprocess((value) => {
   if (value === undefined) return false;
@@ -71,6 +72,7 @@ const environmentSchema = z.object({
   SUPABASE_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
   SUPABASE_STORAGE_SERVICE_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   SUPABASE_MEDIA_BUCKET: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("affiliate-media")),
+  PUBLIC_API_BASE_URL: z.preprocess((value) => value === "" ? undefined : value, publicApiBaseUrlSchema.optional()),
   ILLUSTRATIVE_MEDIA_DIR: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
   ILLUSTRATIVE_MEDIA_SIGNING_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional())
 }).superRefine((value, context) => {
@@ -79,6 +81,13 @@ const environmentSchema = z.object({
   }
   if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["SUPABASE_STORAGE_SERVICE_KEY"], message: "Supabase private Storage must be configured when AI product image generation is enabled." });
+  }
+  if (value.ILLUSTRATIVE_MEDIA_DIR && !value.PUBLIC_API_BASE_URL) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["PUBLIC_API_BASE_URL"],
+      message: "PUBLIC_API_BASE_URL is required when local illustrative media delivery is configured."
+    });
   }
   if (Boolean(value.ILLUSTRATIVE_MEDIA_DIR) !== Boolean(value.ILLUSTRATIVE_MEDIA_SIGNING_SECRET)) {
     context.addIssue({
