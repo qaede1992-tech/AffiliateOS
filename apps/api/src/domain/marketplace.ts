@@ -387,7 +387,7 @@ function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined
   };
   const hasProductIdentity = Object.keys(productIdentity).length > 0;
   if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined && Object.keys(dataQuality).length === 0 && !hasProductIdentity) return undefined;
-    const rawMediaImport = source.mediaImport && typeof source.mediaImport === "object" && !Array.isArray(source.mediaImport) ? source.mediaImport as Record<string, unknown> : undefined;
+  const rawMediaImport = source.mediaImport && typeof source.mediaImport === "object" && !Array.isArray(source.mediaImport) ? source.mediaImport as Record<string, unknown> : undefined;
   const suppliedFields = Array.isArray(rawMediaImport?.suppliedFields)
     ? rawMediaImport.suppliedFields.filter((field): field is "imageUrl" | "videoUrl" => field === "imageUrl" || field === "videoUrl")
     : [];
