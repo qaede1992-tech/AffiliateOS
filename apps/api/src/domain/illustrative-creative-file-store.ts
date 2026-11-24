@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import { open, lstat, mkdir, unlink } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
@@ -88,12 +89,14 @@ export class IllustrativeCreativeFileStore {
     if (!match || match[2] !== input.expectedSha256) throw new Error("Invalid illustrative media key.");
     await this.ensureRoot();
     const path = join(this.root, input.key);
-    const info = await lstat(path);
-    if (!info.isFile() || info.isSymbolicLink() || info.size !== input.expectedByteSize || info.size > this.maxBytes) {
-      throw new Error("Stored illustrative media does not match its expected file metadata.");
-    }
-    const handle = await open(path, "r");
+    // Open without following symlinks, then validate the opened descriptor.
+    // This avoids a lstat/open race where the path is swapped after lstat.
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
+      const info = await handle.stat();
+      if (!info.isFile() || info.size !== input.expectedByteSize || info.size > this.maxBytes) {
+        throw new Error("Stored illustrative media does not match its expected file metadata.");
+      }
       const bytes = await handle.readFile();
       if (!isStructurallyValidMedia("video/mp4", bytes)) {
         throw new Error("Stored illustrative media is not a structurally valid MP4 file.");
