@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -55,5 +55,26 @@ test("does not overwrite an existing creative file", async () => {
     assert.deepEqual(new Uint8Array(await readFile(join(root, stored.key))), sample);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("refuses symlink substitution when retrieving a creative file", async () => {
+  const root = await mkdtemp(join(tmpdir(), "affiliateos-creative-store-"));
+  const outside = await mkdtemp(join(tmpdir(), "affiliateos-creative-outside-"));
+  try {
+    const store = new IllustrativeCreativeFileStore({ rootDirectory: root });
+    const creativeId = randomUUID();
+    const sha256 = createHash("sha256").update(sample).digest("hex");
+    const key = `${creativeId}-${sha256}.mp4`;
+    const outsideFile = join(outside, "payload.mp4");
+    await writeFile(outsideFile, sample);
+    await symlink(outsideFile, join(root, key));
+    await assert.rejects(
+      () => store.get({ key, expectedSha256: sha256, expectedByteSize: sample.byteLength }),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });
