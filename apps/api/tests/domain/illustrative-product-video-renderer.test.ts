@@ -8,7 +8,7 @@ const validMp4 = new Uint8Array([
   0, 0, 0, 9, 109, 100, 97, 116, 1
 ]);
 const validProbe = JSON.stringify({
-  streams: [{ codec_type: "video", codec_name: "h264", width: 720, height: 1280, pix_fmt: "yuv420p" }],
+  streams: [{ codec_type: "video", codec_name: "h264", width: 720, height: 1280, pix_fmt: "yuv420p", avg_frame_rate: "25/1" }],
   format: { duration: "12.000000" }
 });
 
@@ -42,6 +42,7 @@ test("renders a text-and-graphics MP4 without product images, network, or storag
   assert.equal(result.metadata.height, 1280);
   assert.equal(result.metadata.durationMs, 12_000);
   assert.equal(result.metadata.codec, "h264");
+  assert.equal(result.metadata.fps, 25);
   assert.equal(result.metadata.mimeType, "video/mp4");
   assert.equal(result.bytes.byteLength, validMp4.byteLength);
   assert.equal(result.metadata.byteSize, validMp4.byteLength);
@@ -75,7 +76,7 @@ test("rejects FFprobe output that does not prove the expected playable video pro
   const renderer = new IllustrativeProductVideoRenderer({
     runProcess: async (_binary, args) => { await writeFile(args[args.length - 1]!, validMp4); },
     probeProcess: async () => JSON.stringify({
-      streams: [{ codec_type: "video", codec_name: "mpeg4", width: 720, height: 1280, pix_fmt: "yuv420p" }],
+      streams: [{ codec_type: "video", codec_name: "mpeg4", width: 720, height: 1280, pix_fmt: "yuv420p", avg_frame_rate: "25/1" }],
       format: { duration: "12" }
     })
   });
