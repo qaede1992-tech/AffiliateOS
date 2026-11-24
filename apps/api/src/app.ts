@@ -61,8 +61,8 @@ export function createApp(services: Services = createInMemoryServices(), options
         method: request.method,
         url: typeof request.url === "string" ? redactMediaTokenFromUrl(request.url) : request.url,
         host: request.host,
-        remoteAddress: request.remoteAddress,
-        remotePort: request.remotePort
+        remoteAddress: request.raw?.socket?.remoteAddress,
+        remotePort: request.raw?.socket?.remotePort
       })
     }
   }, bodyLimit: 1_048_576 });
