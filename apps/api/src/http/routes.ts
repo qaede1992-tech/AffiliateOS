@@ -411,6 +411,17 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         ...(row.commissionAmountRupiah !== null ? { commissionAmountCents: row.commissionAmountRupiah * 100 } : {}),
         metadata: {
           source: "shopee-affiliate-csv",
+          ...(row.imageUrl || row.videoUrl ? {
+            mediaImport: {
+              source: "shopee-affiliate-csv",
+              ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
+              importedAt: new Date().toISOString(),
+              suppliedFields: [
+                ...(row.imageUrl ? ["imageUrl"] : []),
+                ...(row.videoUrl ? ["videoUrl"] : [])
+              ]
+            }
+          } : {}),
           moneyUnit: "IDR",
           shopName: row.shopName,
           salesSourceText: row.soldCount.sourceText,
