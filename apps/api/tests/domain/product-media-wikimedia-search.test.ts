@@ -484,6 +484,7 @@ test("maps additional Indonesian marketplace categories to focused Wikimedia que
     ["Lepet Filter Gantung Aquascape XP06 Free Batu", "aquarium equipment"],
     ["Ternak Syams Goata Base Susu Kambing Etawa Bubuk", "milk powder"],
     ["GOODBABY Keranjang Tirisan Multifungsi 6 In1 Baskom Saringan Sayuran", "colander"],
+    ["U-Living Keranjang Laundry Dengan Roda dan Gagang Keranjang Pakaian Kotor Laundry Basket Kapasitas Besar", "laundry basket"],
     ["Tifale Food Kontainer Kotak Penyimpanan Makanan", "food container"],
     ["Omron Wrist Blood Pressure Monitor HEM 6161", "blood pressure monitor"],
     ["NIIMBOT B1 Printer Label Bluetooth", "label printer"],
