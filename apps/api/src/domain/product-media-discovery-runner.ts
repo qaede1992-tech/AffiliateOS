@@ -531,7 +531,19 @@ export class ProductMediaDiscoveryRunner {
             skipped.push({ url: mediaUrl.toString(), reason: "Shopee-hosted media is not fetched automatically; upload a seller-authorized or self-created file instead." });
             continue;
           }
-          catalogCandidates.push({ kind: candidate.kind, url: mediaUrl.toString(), source: "catalog" });
+          const importedMedia = candidate.kind === "image"
+            ? product.discoverySignals?.mediaImport?.image
+            : product.discoverySignals?.mediaImport?.video;
+          catalogCandidates.push({
+            kind: candidate.kind,
+            url: mediaUrl.toString(),
+            source: "catalog",
+            ...(importedMedia ? { importProvenance: {
+              provider: importedMedia.source,
+              ...(importedMedia.sourceReference ? { sourceReference: importedMedia.sourceReference } : {}),
+              importedAt: importedMedia.importedAt
+            } } : {})
+          });
         } catch (error) {
           skipped.push({ url: candidate.url, reason: "Explicit catalog media URL could not be validated." });
         }
