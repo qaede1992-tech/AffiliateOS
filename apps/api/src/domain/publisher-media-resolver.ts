@@ -4,27 +4,49 @@ import type { SupabaseStorageClient } from "./supabase-storage.js";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
+export type PublisherMediaResolutionOptions = {
+  /** Exact media IDs already approved by the generated-creative publication guard. */
+  generatedMediaAssetIds?: ReadonlySet<string>;
+  /** Returns the narrow HMAC-backed local-volume URL for an approved generated asset. */
+  resolveGeneratedMediaUrl?: (asset: MediaAsset, contentId: string) => Promise<string>;
+};
+
 /**
- * Converts private Supabase object references into short-lived HTTPS URLs at the
- * last responsible moment before a publisher call. Persisted metadata is never
- * rewritten, and existing HTTPS URL assets remain unchanged.
+ * Resolves ordinary private objects through Supabase and approved generated
+ * illustrative assets through their dedicated local-volume delivery route.
+ * Generated media never falls through to Supabase Storage.
  */
 export async function resolvePublisherMediaAssets(
   content: Pick<Content, "id">,
   assets: MediaAsset[],
   storage?: Pick<SupabaseStorageClient, "bucketName" | "createSignedUrl">,
-  allowedProductIds: string[] = []
+  allowedProductIds: string[] = [],
+  options: PublisherMediaResolutionOptions = {}
 ): Promise<MediaAsset[]> {
   return Promise.all(assets.map(async (asset) => {
     validateMediaAsset(asset);
     if (asset.source !== "object-storage") return asset;
-    if (!storage) {
-      throw new Error("Private media publishing requires configured Supabase Storage.");
-    }
     if (asset.contentId !== content.id) {
       throw new Error("Private media asset does not belong to the publishing content.");
     }
 
+    if (options.generatedMediaAssetIds?.has(asset.id)) {
+      if (asset.kind !== "video" || asset.mimeType !== "video/mp4" ||
+          !asset.reference.startsWith(`affiliate-media/content/${content.id}/`)) {
+        throw new Error("Approved generated media does not match its content-scoped MP4 identity.");
+      }
+      if (!options.resolveGeneratedMediaUrl) {
+        throw new Error("Approved generated media requires the dedicated local-volume delivery resolver.");
+      }
+      const reference = await options.resolveGeneratedMediaUrl(asset, content.id);
+      const resolvedAsset = { ...asset, source: "url" as const, reference };
+      validateMediaAsset(resolvedAsset);
+      return resolvedAsset;
+    }
+
+    if (!storage) {
+      throw new Error("Private media publishing requires configured Supabase Storage.");
+    }
     const separator = asset.reference.indexOf("/");
     if (separator <= 0 || separator === asset.reference.length - 1) {
       throw new Error("Private media reference must contain a bucket and object key.");
@@ -45,17 +67,7 @@ export async function resolvePublisherMediaAssets(
     }
 
     const signedUrl = await storage.createSignedUrl(key, SIGNED_URL_TTL_SECONDS);
-    let parsed: URL;
-    try {
-      parsed = new URL(signedUrl);
-    } catch {
-      throw new Error("Storage returned an invalid signed media URL.");
-    }
-    if (parsed.protocol !== "https:" || !parsed.hostname) {
-      throw new Error("Storage returned a signed media URL that is not public HTTPS.");
-    }
-
-    const resolvedAsset = { ...asset, source: "url" as const, reference: parsed.toString() };
+    const resolvedAsset = { ...asset, source: "url" as const, reference: signedUrl };
     validateMediaAsset(resolvedAsset);
     return resolvedAsset;
   }));
