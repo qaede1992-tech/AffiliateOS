@@ -69,7 +69,21 @@ const cleanText = (value: string, maxLength: number): string => {
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return Array.from(normalized).slice(0, maxLength).join("") || "Produk pilihan";
+  const bounded = Array.from(normalized).slice(0, maxLength).join("") || "Produk pilihan";
+  const words = bounded.split(" ");
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > 20 && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, 3).join("\\n");
 };
 
 const escapeFilterPath = (value: string): string =>
@@ -88,8 +102,8 @@ const buildFilter = (titlePath: string, pricePath: string, fontPath: string): st
   "drawbox=x=42:y=300:w=636:h=680:color=0x17243acc:t=fill",
   "drawbox=x=42:y=300:w=12:h=680:color=0x38bdf8:t=fill",
   `drawtext=fontfile=${escapeFilterPath(fontPath)}:text='PROMO PRODUK':fontcolor=0x7dd3fc:fontsize=26:x=82:y=370`,
-  `drawtext=fontfile=${escapeFilterPath(fontPath)}:textfile=${escapeFilterPath(titlePath)}:fontcolor=white:fontsize=42:line_spacing=18:fix_bounds=true:x=82:y=455`,
-  `drawtext=fontfile=${escapeFilterPath(fontPath)}:textfile=${escapeFilterPath(pricePath)}:fontcolor=0xfde68a:fontsize=48:fix_bounds=true:x=82:y=690`,
+  `drawtext=fontfile=${escapeFilterPath(fontPath)}:textfile=${escapeFilterPath(titlePath)}:fontcolor=white:fontsize=42:line_spacing=18:expansion=none:fix_bounds=true:x=82:y=455`,
+  `drawtext=fontfile=${escapeFilterPath(fontPath)}:textfile=${escapeFilterPath(pricePath)}:fontcolor=0xfde68a:fontsize=48:expansion=none:fix_bounds=true:x=82:y=690`,
   "drawbox=x=82:y=810:w=556:h=3:color=white@0.35:t=fill",
   `drawtext=fontfile=${escapeFilterPath(fontPath)}:text='Lihat detail di halaman produk':fontcolor=white:fontsize=25:x=82:y=860`,
   `drawtext=fontfile=${escapeFilterPath(fontPath)}:text='ILUSTRASI PROMOSI - BUKAN FOTO PRODUK':fontcolor=0xcbd5e1:fontsize=18:x=(w-text_w)/2:y=1165`,
