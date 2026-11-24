@@ -54,9 +54,11 @@ import { ProductMediaCandidateImportService } from "./product-media-candidate-im
 import type { ProductImageGenerationService } from "./product-image-generation.js";
 import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
 import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
+import type { IllustrativeMediaDeliveryService } from "./illustrative-media-delivery.js";
 
 export interface Services {
   publicShopCatalog?: RepositorySet["publicShopCatalog"];
+  illustrativeMediaDelivery?: IllustrativeMediaDeliveryService;
   publicShopCatalogFallbackAllowed?: boolean;
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
   campaigns: CampaignService; tracking: TrackingService; content: ContentService; contentStory: ContentStoryService; autonomousDecisionAudits?: AutonomousDecisionAuditReader; campaignOrchestrator: CampaignOrchestrator; autonomousExecution: AutonomousExecutionService; autonomousRuns: AutonomousRunService; autonomousCycle: AutonomousCycleService; autonomousScheduler: AutonomousScheduler; autonomousOptimization: AutonomousOptimizationRunner; distribution: DistributionEngine; socialAccounts: SocialAccountService; socialOAuth: SocialOAuthService; analytics: AnalyticsService; attribution: ConversionAttributionService;
