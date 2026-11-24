@@ -22,7 +22,9 @@ export type MarketplaceStatus = "active" | "inactive" | "pending";
 export type ProductMetricQuality = "exact" | "lower_bound" | "missing";
 export interface ProductDataQuality { soldCount?: ProductMetricQuality; reviewCount?: ProductMetricQuality; ratingMilli?: ProductMetricQuality; source?: string; capturedAt?: IsoTimestamp; }
 export interface ProductIdentityMetadata { brand?: string; model?: string; sku?: string; variant?: string; }
-export interface ProductDiscoverySignals { audienceReachScore?: number; viewCount?: number; impressionCount?: number; engagementCount?: number; capturedAt?: IsoTimestamp; dataQuality?: ProductDataQuality; productIdentity?: ProductIdentityMetadata; }
+export interface ProductMediaSourceProvenance { source: "shopee-affiliate-csv"; sourceReference?: string; importedAt: IsoTimestamp; }
+export interface ProductMediaImportProvenance { image?: ProductMediaSourceProvenance; video?: ProductMediaSourceProvenance; }
+export interface ProductDiscoverySignals { audienceReachScore?: number; viewCount?: number; impressionCount?: number; engagementCount?: number; capturedAt?: IsoTimestamp; dataQuality?: ProductDataQuality; productIdentity?: ProductIdentityMetadata; mediaImport?: ProductMediaImportProvenance; }
 export interface Product { id: EntityId; referenceNumber?: number; marketplaceId: EntityId; externalProductId: string; name: string; description?: string; category?: string; priceCents: number; originalPriceCents?: number; currency: string; ratingMilli?: number; reviewCount: number; soldCount: number; discoverySignals?: ProductDiscoverySignals; imageUrl?: string; videoUrl?: string; productUrl: string; status: "active" | "inactive" | "archived"; createdAt: IsoTimestamp; updatedAt: IsoTimestamp; }
 export interface ProductOpportunity { product: Product; score: number; reasons: string[]; disclaimer: string; }
 export type MarketplaceConnectionStatus = "active" | "inactive" | "pending" | "error";
