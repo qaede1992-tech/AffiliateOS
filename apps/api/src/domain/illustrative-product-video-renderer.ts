@@ -197,7 +197,7 @@ export class IllustrativeProductVideoRenderer {
           mimeType: "video/mp4",
           width: WIDTH,
           height: HEIGHT,
-          durationMs: DURATION_SECONDS * 1000,
+          durationMs: 12_000,
           fps: FPS,
           codec: "h264",
           sha256: createHash("sha256").update(bytes).digest("hex"),
