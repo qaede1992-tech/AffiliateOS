@@ -28,12 +28,13 @@ test("stores and retrieves a file by opaque relative key with SHA-256 verificati
 test("rejects mismatched digest, invalid identifiers, oversized data, and path traversal", async () => {
   const root = await mkdtemp(join(tmpdir(), "affiliateos-creative-store-"));
   try {
-    const store = new IllustrativeCreativeFileStore({ rootDirectory: root, maxBytes: 8 });
+    const store = new IllustrativeCreativeFileStore({ rootDirectory: root, maxBytes: 64 });
     const creativeId = randomUUID();
     const sha256 = createHash("sha256").update(sample).digest("hex");
     await assert.rejects(() => store.put({ creativeId, bytes: sample, expectedSha256: "a".repeat(64) }), /SHA-256/);
     await assert.rejects(() => store.put({ creativeId: "../escape", bytes: sample, expectedSha256: sha256 }), /UUID/);
-    await assert.rejects(() => store.put({ creativeId, bytes: sample, expectedSha256: sha256 }), /size limit/);
+    const limitedStore = new IllustrativeCreativeFileStore({ rootDirectory: root, maxBytes: 8 });
+    await assert.rejects(() => limitedStore.put({ creativeId, bytes: sample, expectedSha256: sha256 }), /size limit/);
     await assert.rejects(() => store.get({ key: "../escape", expectedSha256: sha256, expectedByteSize: sample.byteLength }), /key/);
   } finally {
     await rm(root, { recursive: true, force: true });
