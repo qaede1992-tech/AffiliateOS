@@ -31,8 +31,11 @@ export async function resolvePublisherMediaAssets(
     }
 
     if (options.generatedMediaAssetIds?.has(asset.id)) {
+      const generatedSeparator = asset.reference.indexOf("/");
+      const generatedKey = generatedSeparator > 0 ? asset.reference.slice(generatedSeparator + 1) : "";
       if (asset.kind !== "video" || asset.mimeType !== "video/mp4" ||
-          !asset.reference.startsWith(`affiliate-media/content/${content.id}/`)) {
+          !generatedKey.startsWith(`content/${content.id}/`) ||
+          generatedKey.split("/").some((part) => !part || part === "." || part === ".." || part.includes("\\\\"))) {
         throw new Error("Approved generated media does not match its content-scoped MP4 identity.");
       }
       if (!options.resolveGeneratedMediaUrl) {
