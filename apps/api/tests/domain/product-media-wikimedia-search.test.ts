@@ -470,6 +470,13 @@ test("keeps brand/model identity and category context in one Wikimedia query", (
 });
 
 
+test("preserves short brand words and alphanumeric model identifiers from marketplace titles", () => {
+  assert.deepEqual(buildWikimediaCommonsQueries({ name: "Hot Wheels Nissan Skyline BNR34" }), ["hot wheels nissan skyline bnr34"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({ name: "Nutrimax Vitamin D3" }), ["nutrimax vitamin d3 dietary supplement product"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({ name: "Huawei MatePad 11 inch" }), ["huawei matepad"]);
+  assert.deepEqual(buildWikimediaCommonsQueries({ name: "Greenfields Fresh Milk Triplepack Promo" }), ["milk powder"]);
+});
+
 test("maps additional Indonesian marketplace categories to focused Wikimedia queries", () => {
   const cases: Array<[string, string]> = [
     ["Unisex Premium Sweater Half Zipper Fleece", "clothing and fashion accessories"],
