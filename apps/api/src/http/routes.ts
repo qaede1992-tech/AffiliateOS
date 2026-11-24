@@ -20,6 +20,7 @@ import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
 import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
+import { IllustrativeProductVideoPreviewError } from "../domain/illustrative-product-video-preview.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -597,6 +598,45 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const requestedLimit = Number((request.query as { limit?: string }).limit ?? 50);
     const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(50, Math.trunc(requestedLimit))) : 50;
     return list(await repository.listReviewAudits(productId, candidateId, limit));
+  });
+  app.post("/api/v1/products/:productId/illustrative-video-preview", adminGuard, async (request, reply) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    const previewService = services.illustrativeVideoPreview;
+    if (!previewService) {
+      return reply.status(503).send({
+        error: "ILLUSTRATIVE_VIDEO_PREVIEW_UNAVAILABLE",
+        message: "Preview hanya tersedia ketika bukti seleksi non-media tersimpan."
+      });
+    }
+    try {
+      const result = await previewService.render(productId);
+      auditSecurityEvent(request.log, request, "illustrative_product_video_preview_rendered", {
+        productId,
+        byteSize: result.metadata.byteSize,
+        sha256: result.metadata.sha256,
+        rightsStatus: "unverified",
+        publicationEligible: false
+      });
+      return reply
+        .type("video/mp4")
+        .header("Content-Disposition", `inline; filename="affiliateos-illustrative-${productId}.mp4"`)
+        .header("X-AffiliateOS-Preview-Only", "true")
+        .header("X-AffiliateOS-Rights-Status", "unverified")
+        .send(Buffer.from(result.bytes));
+    } catch (error) {
+      if (error instanceof IllustrativeProductVideoPreviewError) {
+        const statusCode = error.code === "PRODUCT_NOT_FOUND" ? 404 : 409;
+        return reply.status(statusCode).send({ error: error.code, message: error.message });
+      }
+      request.log.error({
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        productId
+      }, "Illustrative product video preview failed");
+      return reply.status(502).send({
+        error: "ILLUSTRATIVE_VIDEO_PREVIEW_FAILED",
+        message: "Video ilustratif gagal dibuat."
+      });
+    }
   });
   app.get("/api/v1/products/:productId/media-assets", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
