@@ -44,12 +44,15 @@ const isShopeeOwnedMediaHost = (hostname: string): boolean => {
     host === "shopeeusercontent.com" || host.endsWith(".shopeeusercontent.com");
 };
 
-const hasUsableExplicitMediaUrl = (product: Product): boolean =>
+const hasValidExplicitMediaUrl = (product: Product): boolean =>
   [product.imageUrl, product.videoUrl].some((value) => {
     if (!value?.trim()) return false;
     try {
       const url = new URL(value);
-      return url.protocol === "https:" && !url.username && !url.password && !isShopeeOwnedMediaHost(url.hostname);
+      // A valid but policy-blocked Shopee CDN URL still counts as an explicit
+      // source: do not waste catalog-provider requests searching for alternatives.
+      // The ingestion gate below independently refuses Shopee-owned hosts.
+      return url.protocol === "https:" && !url.username && !url.password;
     } catch {
       return false;
     }
@@ -272,7 +275,7 @@ export class ProductMediaDiscoveryRunner {
       // An explicitly supplied, non-Shopee HTTPS media URL is already a more
       // direct source than a catalog search. Avoid provider traffic and candidate
       // writes when ingestion can proceed from the supplied URL below.
-      if (this.catalogCandidates && !hasUsableExplicitMediaUrl(product)) {
+      if (this.catalogCandidates && !hasValidExplicitMediaUrl(product)) {
         const identity = {
           name: product.name,
           ...(product.category?.trim() ? { category: product.category } : {}),
