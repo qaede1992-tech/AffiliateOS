@@ -20,7 +20,7 @@ const isPublicIllustrativeMedia = (method: string, url: string, enabled: boolean
   if (!enabled || (method !== "GET" && method !== "HEAD")) return false;
   try {
     const parsed = new URL(url, "http://localhost");
-    if (!/^\\/api\\/v1\\/public\\/illustrative-media\\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.pathname)) return false;
+    if (!/^\/api\/v1\/public\/illustrative-media\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.pathname)) return false;
     const tokens = parsed.searchParams.getAll("token");
     return tokens.length === 1 && tokens[0]!.length > 0 && tokens[0]!.length <= 2048;
   } catch {
