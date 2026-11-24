@@ -28,6 +28,10 @@ import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
+import { IllustrativeCreativeFileStore } from "./domain/illustrative-creative-file-store.js";
+import { IllustrativeMediaTokenSigner } from "./domain/illustrative-media-token.js";
+import { IllustrativeMediaDeliveryService } from "./domain/illustrative-media-delivery.js";
+import { DrizzleIllustrativeCreativeRepository } from "./db/illustrative-creative-repository.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
@@ -149,6 +153,18 @@ if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KE
     mediaStorage,
     { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
   );
+}
+if (environment.ILLUSTRATIVE_MEDIA_DIR && environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET) {
+  const dispatches = persistence.repositories.publicationDispatchReservations;
+  if (!dispatches) throw new Error("Illustrative media delivery requires the publication dispatch reservation repository.");
+  const creativeRepository = new DrizzleIllustrativeCreativeRepository(persistence.db);
+  services.illustrativeMediaDelivery = new IllustrativeMediaDeliveryService({
+    creatives: creativeRepository,
+    policies: creativeRepository,
+    dispatches,
+    files: new IllustrativeCreativeFileStore({ rootDirectory: environment.ILLUSTRATIVE_MEDIA_DIR }),
+    signer: new IllustrativeMediaTokenSigner(environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET)
+  });
 }
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
