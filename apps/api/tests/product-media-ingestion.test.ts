@@ -65,7 +65,16 @@ test("ingests a valid product video without requiring a product image", async ()
   const result = await service.ingest({
     productId,
     nonMediaEligibilityPassed: true,
-    candidates: [{ kind: "video", url: "https://cdn.example.com/product.mp4", source: "og" }]
+    candidates: [{
+      kind: "video",
+      url: "https://cdn.example.com/product.mp4",
+      source: "og",
+      importProvenance: {
+        provider: "shopee-affiliate-csv",
+        sourceReference: "export-2026-11-24.csv",
+        importedAt: "2026-11-24T02:00:00.000Z"
+      }
+    }]
   });
 
   assert.equal(result.stored.length, 1);
@@ -78,6 +87,9 @@ test("ingests a valid product video without requiring a product image", async ()
   assert.equal(saved[0]?.rightsStatus, "unverified");
   assert.equal(saved[0]?.rightsBasis, null);
   assert.equal(saved[0]?.rightsEvidenceUrl, null);
+  assert.equal(saved[0]?.sourceImportProvider, "shopee-affiliate-csv");
+  assert.equal(saved[0]?.sourceImportReference, "export-2026-11-24.csv");
+  assert.equal(saved[0]?.sourceImportedAt, "2026-11-24T02:00:00.000Z");
 });
 
 
