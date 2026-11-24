@@ -274,20 +274,6 @@ export const illustrativeCreativePolicyAudits = pgTable("illustrative_creative_p
   check("illustrative_creative_policy_audits_action_check", sql`${table.action} IN ('enable', 'disable')`)
 ]);
 
-export const generatedProductCreativeReviewAudits = pgTable("generated_product_creative_review_audits", {
-  id: uuid("id").primaryKey(),
-  creativeId: uuid("creative_id").notNull().references(() => generatedProductCreatives.id, { onDelete: "restrict" }),
-  actorId: varchar("actor_id", { length: 255 }).notNull(),
-  actorRole: varchar("actor_role", { length: 20 }).notNull(),
-  action: varchar("action", { length: 20 }).notNull(),
-  reason: varchar("reason", { length: 1000 }).notNull(),
-  previousStatus: varchar("previous_status", { length: 20 }).notNull(),
-  newStatus: varchar("new_status", { length: 20 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
-}, (table) => [
-  index("generated_product_creative_review_audits_creative_created_idx").on(table.creativeId, table.createdAt.desc()),
-  check("generated_product_creative_review_audits_action_check", sql`${table.action} IN ('approve', 'reject')`)
-]);
 
 export const illustrativeCreativePolicyAudits = pgTable("illustrative_creative_policy_audits", {
   id: uuid("id").primaryKey(),
