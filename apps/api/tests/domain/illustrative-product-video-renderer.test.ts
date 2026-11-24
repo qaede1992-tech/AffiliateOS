@@ -25,8 +25,7 @@ test("renders a text-and-graphics MP4 without product images, network, or storag
       assert.ok(args.includes("-f"));
       assert.ok(args.includes("lavfi"));
       assert.ok(!args.some((arg) => /^https?:\/\//i.test(arg)));
-      const outputPath = args[args.length - 1]!;
-      await writeFile(outputPath, validMp4);
+      await writeFile(args[args.length - 1]!, validMp4);
     },
     probeProcess: async (_binary, args) => {
       probedPath = args[args.length - 1]!;
@@ -52,24 +51,22 @@ test("renders a text-and-graphics MP4 without product images, network, or storag
   assert.ok(probedPath.endsWith("illustrative-promo.mp4"));
 });
 
-test("sanitizes product text and never passes it as an FFmpeg filter expression", async () => {
+test("keeps untrusted product names in a text file rather than FFmpeg filter syntax", async () => {
   let title = "";
+  let filter = "";
   const renderer = new IllustrativeProductVideoRenderer({
     runProcess: async (_binary, args) => {
-      const filter = args[args.indexOf("-vf") + 1]!;
+      filter = args[args.indexOf("-vf") + 1]!;
       const titlePath = filter.match(/textfile=([^:,]+)/)?.[1];
       assert.ok(titlePath);
-      title = await readFile(titlePath.replace(/\\:/g, ":"), "utf8");
+      title = await readFile(titlePath, "utf8");
       await writeFile(args[args.length - 1]!, validMp4);
     },
     probeProcess: async () => validProbe
   });
-  await renderer.render({
-    productName: "Produk';drawtext=text='INJECTED'\nNama\u0000 Aman",
-    priceCents: 9900,
-    currency: "IDR"
-  });
-  assert.ok(!title.includes("INJECTED"));
+  const untrustedName = "Produk';drawtext=text='INJECTED'\nNama\u0000 Aman";
+  await renderer.render({ productName: untrustedName, priceCents: 9900, currency: "IDR" });
+  assert.ok(!filter.includes("INJECTED"));
   assert.ok(!title.includes("\u0000"));
   assert.ok(title.includes("Produk';drawtext=text='INJECTED'"));
 });
