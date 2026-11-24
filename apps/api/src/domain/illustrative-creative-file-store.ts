@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, lstat, mkdir, unlink } from "node:fs/promises";
 import { resolve, join } from "node:path";
+import { isStructurallyValidMedia } from "./media-file-validation.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -56,6 +57,9 @@ export class IllustrativeCreativeFileStore {
     if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0 || input.bytes.byteLength > this.maxBytes) {
       throw new Error("Illustrative media must be non-empty and within the configured size limit.");
     }
+    if (!isStructurallyValidMedia("video/mp4", input.bytes)) {
+      throw new Error("Illustrative media must be a structurally valid MP4 file.");
+    }
     const actualSha256 = createHash("sha256").update(input.bytes).digest("hex");
     if (actualSha256 !== input.expectedSha256) throw new Error("Illustrative media SHA-256 does not match its metadata.");
 
@@ -91,6 +95,9 @@ export class IllustrativeCreativeFileStore {
     const handle = await open(path, "r");
     try {
       const bytes = await handle.readFile();
+      if (!isStructurallyValidMedia("video/mp4", bytes)) {
+        throw new Error("Stored illustrative media is not a structurally valid MP4 file.");
+      }
       if (createHash("sha256").update(bytes).digest("hex") !== input.expectedSha256) {
         throw new Error("Stored illustrative media failed SHA-256 verification.");
       }
