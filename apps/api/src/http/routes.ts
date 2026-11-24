@@ -20,6 +20,7 @@ import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
 import { hasCurrentVerifiedRights } from "../domain/product-media-publication-rights.js";
+import type { IllustrativeMediaDeliveryService } from "../domain/illustrative-media-delivery.js";
 const list = <T>(data: T[]): ListResponse<T> => ({ data });
 const toPublicHttpsMediaUrl = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -66,6 +67,40 @@ const isMissingProductMediaCandidatesTable = (error: unknown): boolean => {
   return false;
 };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
+  if (services.illustrativeMediaDelivery) {
+    const delivery = services.illustrativeMediaDelivery;
+    app.route<{ Params: { creativeId: string }; Querystring: { token?: string } }>({
+      method: ["GET", "HEAD"],
+      url: "/api/v1/public/illustrative-media/:creativeId",
+      handler: async (request, reply) => {
+        const token = request.query.token;
+        if (typeof token !== "string" || token.length === 0 || token.length > 2048) {
+          return reply.status(404).send({ error: "MEDIA_NOT_AVAILABLE", message: "The requested media is not available." });
+        }
+        try {
+          const result = await delivery.read({
+            creativeId: request.params.creativeId,
+            token,
+            range: typeof request.headers.range === "string" ? request.headers.range : undefined,
+            head: request.method === "HEAD"
+          });
+          reply.header("Content-Type", result.mimeType);
+          reply.header("Content-Length", String(result.status === 416 ? 0 : result.byteSize));
+          reply.header("Accept-Ranges", result.acceptRanges);
+          reply.header("Cache-Control", "private, no-store, max-age=0");
+          reply.header("Content-Disposition", 'inline; filename="affiliateos-illustrative.mp4"');
+          reply.header("X-Content-Type-Options", "nosniff");
+          reply.header("Referrer-Policy", "no-referrer");
+          if (result.contentRange) reply.header("Content-Range", result.contentRange);
+          return reply.status(result.status).send(request.method === "HEAD" ? undefined : result.bytes);
+        } catch {
+          // Avoid exposing whether a creative exists, whether a token was valid,
+          // or whether a dispatch reservation has reached a terminal state.
+          return reply.status(404).send({ error: "MEDIA_NOT_AVAILABLE", message: "The requested media is not available." });
+        }
+      }
+    });
+  }
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
   app.register(async (mediaApp) => {
     mediaApp.addContentTypeParser("application/octet-stream", (_request, payload, done) => {
