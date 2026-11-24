@@ -33,7 +33,7 @@ export class IllustrativeMediaDeliveryService {
   /** Called by the trusted publisher resolver before it sends the URL to Meta. */
   async issueToken(creativeId: string): Promise<string> {
     const creative = await this.dependencies.creatives.findById(creativeId);
-    if (!creative || !this.isDeliverableCreative(creative)) throw unavailable();
+    if (!creative || creative.id !== creativeId || !this.isDeliverableCreative(creative)) throw unavailable();
     if (!await this.dependencies.policies.isEnabled("instagram")) throw unavailable();
     await this.requireActiveDispatch(creative.contentId);
     return this.dependencies.signer.sign({
@@ -45,7 +45,7 @@ export class IllustrativeMediaDeliveryService {
   /** Each GET/HEAD rechecks durable lifecycle state; terminal reservations revoke old URLs. */
   async read(input: { creativeId: string; token: string; range?: string; head?: boolean }): Promise<IllustrativeMediaResponse> {
     const creative = await this.dependencies.creatives.findById(input.creativeId);
-    if (!creative || !this.isDeliverableCreative(creative)) throw unavailable();
+    if (!creative || creative.id !== input.creativeId || !this.isDeliverableCreative(creative)) throw unavailable();
     this.dependencies.signer.verify(input.token, {
       creativeId: creative.id, mediaAssetId: creative.mediaAssetId,
       contentId: creative.contentId, sha256: creative.sha256
