@@ -5,10 +5,15 @@ export type IllustrativeCreativeRecord = {
   id: string; mediaAssetId: string; contentId: string; platform: string; sha256: string;
   mimeType: string; byteSize: number; disclosureEmbedded: boolean; reviewStatus: string;
   storageBackend: string | null; storageKey: string | null;
+  productId?: string; affiliateOfferId?: string | null; rendererVersion?: string; templateVersion?: string;
+  productSnapshot?: Record<string, unknown>; widthPx?: number; heightPx?: number; durationMs?: number;
 };
 export type IllustrativeDispatchReservation = { state: string; provider: string; contentId: string };
 export interface IllustrativeCreativeReader { findById(id: string): Promise<IllustrativeCreativeRecord | undefined>; findByMediaAssetId?(id: string): Promise<IllustrativeCreativeRecord | undefined>; }
-export interface IllustrativePolicyReader { isEnabled(platform: "instagram"): Promise<boolean>; }
+export interface IllustrativePolicyReader {
+  isEnabled(platform: "instagram"): Promise<boolean>;
+  getPolicy?(platform: "instagram"): Promise<{ platform: "instagram"; enabled: boolean; terms: Record<string, unknown> } | undefined>;
+}
 export interface IllustrativeDispatchReader { findActiveByContentProvider(contentId: string, provider: "instagram-graph"): Promise<IllustrativeDispatchReservation | undefined>; }
 export interface IllustrativeFileReader {
   get(input: { key: string; expectedSha256: string; expectedByteSize: number }): Promise<Uint8Array>;
