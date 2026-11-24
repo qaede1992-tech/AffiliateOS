@@ -413,13 +413,16 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
           source: "shopee-affiliate-csv",
           ...(row.imageUrl || row.videoUrl ? {
             mediaImport: {
-              source: "shopee-affiliate-csv",
-              ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
-              importedAt: new Date().toISOString(),
-              suppliedFields: [
-                ...(row.imageUrl ? ["imageUrl"] : []),
-                ...(row.videoUrl ? ["videoUrl"] : [])
-              ]
+              ...(row.imageUrl ? { image: {
+                source: "shopee-affiliate-csv",
+                ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
+                importedAt: new Date().toISOString()
+              } } : {}),
+              ...(row.videoUrl ? { video: {
+                source: "shopee-affiliate-csv",
+                ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
+                importedAt: new Date().toISOString()
+              } } : {})
             }
           } : {}),
           moneyUnit: "IDR",
