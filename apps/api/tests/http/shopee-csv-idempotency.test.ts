@@ -258,10 +258,10 @@ test("Shopee CSV media import records source provenance without asserting usage 
     const product = products.json().data[0];
     assert.equal(product.imageUrl, imageUrl);
     assert.equal(product.videoUrl, videoUrl);
-    assert.equal(product.discoverySignals.mediaImport.source, "shopee-affiliate-csv");
-    assert.equal(product.discoverySignals.mediaImport.sourceReference, "media-provenance-export.csv");
-    assert.ok(Number.isFinite(Date.parse(product.discoverySignals.mediaImport.importedAt)));
-    assert.deepEqual(product.discoverySignals.mediaImport.suppliedFields.sort(), ["imageUrl", "videoUrl"]);
+    assert.equal(product.discoverySignals.mediaImport.image.source, "shopee-affiliate-csv");
+    assert.equal(product.discoverySignals.mediaImport.image.sourceReference, "media-provenance-export.csv");
+    assert.ok(Number.isFinite(Date.parse(product.discoverySignals.mediaImport.image.importedAt)));
+    assert.equal(product.discoverySignals.mediaImport.video.source, "shopee-affiliate-csv");\n    assert.equal(product.discoverySignals.mediaImport.video.sourceReference, "media-provenance-export.csv");\n    assert.ok(Number.isFinite(Date.parse(product.discoverySignals.mediaImport.video.importedAt)));
     assert.equal(product.discoverySignals.mediaImport.rightsStatus, undefined);
   } finally {
     await app.close();
