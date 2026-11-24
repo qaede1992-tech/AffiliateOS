@@ -11,6 +11,11 @@ export interface ProductMediaCandidate {
   kind: ProductMediaKind;
   url: string;
   source: "og" | "twitter" | "json-ld" | "html" | "catalog";
+  importProvenance?: {
+    provider: "shopee-affiliate-csv";
+    sourceReference?: string;
+    importedAt: string;
+  };
 }
 
 export interface ProductMediaExtractionOptions {
