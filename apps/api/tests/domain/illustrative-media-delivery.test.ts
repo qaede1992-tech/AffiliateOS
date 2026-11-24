@@ -27,7 +27,7 @@ function setup(overrides: {
   let fileReads = 0;
   const signer = new IllustrativeMediaTokenSigner(secret);
   const service = new IllustrativeMediaDeliveryService({
-    creatives: { findById: async () => currentCreative },
+    creatives: { findById: async () => currentCreative, findByMediaAssetId: async (id) => currentCreative?.mediaAssetId === id ? currentCreative : undefined },
     policies: { isEnabled: async () => policyEnabled },
     dispatches: { findActiveByContentProvider: async (id, provider) =>
       dispatchState ? { contentId: id, provider, state: dispatchState } : undefined },
@@ -48,6 +48,14 @@ test("issues a lifecycle-revoked token only for approved Instagram creative and 
   const token = await state.service.issueToken(creativeId);
   const claims = state.signer.verify(token, { creativeId, mediaAssetId, contentId, sha256: digest });
   assert.equal(claims.expiresAtSeconds, null);
+});
+
+test("publisher resolver can issue a token only for the matching media asset and content", async () => {
+  const state = setup();
+  const token = await state.service.issueTokenForMediaAsset(mediaAssetId, contentId);
+  assert.equal(state.signer.verify(token, { creativeId, mediaAssetId, contentId, sha256: digest }).expiresAtSeconds, null);
+  await assert.rejects(state.service.issueTokenForMediaAsset(mediaAssetId, "44444444-4444-4444-8444-444444444444"));
+  await assert.rejects(state.service.issueTokenForMediaAsset("55555555-5555-4555-8555-555555555555", contentId));
 });
 
 test("does not issue a token when policy, review, storage, or dispatch gates fail", async () => {
