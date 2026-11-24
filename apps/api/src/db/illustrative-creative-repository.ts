@@ -27,6 +27,19 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
     };
   }
 
+  async findByMediaAssetId(mediaAssetId: string): Promise<IllustrativeCreativeRecord | undefined> {
+    const rows = await this.db.select().from(generatedProductCreatives)
+      .where(eq(generatedProductCreatives.mediaAssetId, mediaAssetId)).limit(1);
+    const row = rows[0];
+    if (!row) return undefined;
+    return {
+      id: row.id, mediaAssetId: row.mediaAssetId, contentId: row.contentId, platform: row.platform,
+      sha256: row.sha256, mimeType: row.mimeType, byteSize: row.byteSize,
+      disclosureEmbedded: row.disclosureEmbedded, reviewStatus: row.reviewStatus,
+      storageBackend: row.storageBackend, storageKey: row.storageKey
+    };
+  }
+
   async isEnabled(platform: "instagram"): Promise<boolean> {
     const rows = await this.db.select({ enabled: illustrativeCreativePolicies.enabled })
       .from(illustrativeCreativePolicies)
