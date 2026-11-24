@@ -16,7 +16,7 @@ CREATE TABLE public.illustrative_creative_policies (
 
 CREATE TABLE public.generated_product_creatives (
   id uuid PRIMARY KEY,
-  media_asset_id uuid NOT NULL UNIQUE REFERENCES public.media_assets(id) ON DELETE RESTRICT,
+  media_asset_id uuid NOT NULL REFERENCES public.media_assets(id) ON DELETE RESTRICT,
   content_id uuid NOT NULL REFERENCES public.content(id) ON DELETE RESTRICT,
   product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
   affiliate_offer_id uuid REFERENCES public.affiliate_offers(id) ON DELETE RESTRICT,
@@ -46,6 +46,7 @@ CREATE TABLE public.generated_product_creatives (
     OR (review_status IN ('approved', 'rejected') AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL AND review_reason IS NOT NULL)
   )
 );
+CREATE UNIQUE INDEX generated_product_creatives_media_asset_unique ON public.generated_product_creatives(media_asset_id);
 CREATE INDEX generated_product_creatives_product_status_idx ON public.generated_product_creatives(product_id, review_status, created_at DESC);
 CREATE INDEX generated_product_creatives_content_idx ON public.generated_product_creatives(content_id);
 
