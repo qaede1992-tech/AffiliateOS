@@ -92,13 +92,29 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
       return { url, status: 200, headers: { "content-type": "image/png" }, bytes: png };
     }) as never
   );
-  const result = await runner.discover({ ...product, productUrl: "https://shopee.co.id/product/123/456", imageUrl: "https://cdn.example.test/catalog-image.png" }, true);
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cdn.example.test/catalog-image.png",
+    discoverySignals: {
+      mediaImport: {
+        image: {
+          source: "shopee-affiliate-csv",
+          sourceReference: "source-export.csv",
+          importedAt: "2026-11-24T02:00:00.000Z"
+        }
+      }
+    }
+  }, true);
   assert.deepEqual(fetched, ["https://cdn.example.test/catalog-image.png"]);
   assert.equal(result.pageFetched, false);
   assert.equal(result.hasVideo, false);
   assert.equal(result.stored.length, 1);
   assert.equal(result.stored[0]?.kind, "image");
   assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
+  assert.equal(result.stored[0]?.sourceImportProvider, "shopee-affiliate-csv");
+  assert.equal(result.stored[0]?.sourceImportReference, "source-export.csv");
+  assert.equal(result.stored[0]?.sourceImportedAt, "2026-11-24T02:00:00.000Z");
   assert.equal(listCalls, 1, "discovery should reuse the initial asset snapshot instead of re-reading storage metadata");
 });
 
