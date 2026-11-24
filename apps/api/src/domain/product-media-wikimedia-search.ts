@@ -198,7 +198,7 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
 
   const titleTerms = meaningfulWikimediaTitleTokens(source);
   // Category-only searches are too broad for supplements; retain product and brand tokens.
-  if (matchedCategory?.query === "dietary supplement product" && !/\\bmeal replacement\\b/i.test(source)) {
+  if (matchedCategory?.query === "dietary supplement product" && /\b(?:vitamin|vit d3|vitamin d)\b/i.test(source)) {
     return [[...titleTerms, matchedCategory.query].join(" ").slice(0, 200)];
   }
   if (matchedCategory) return [matchedCategory.query];
