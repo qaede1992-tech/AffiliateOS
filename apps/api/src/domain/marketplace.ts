@@ -387,7 +387,22 @@ function normalizeDiscoverySignals(metadata: Record<string, unknown> | undefined
   };
   const hasProductIdentity = Object.keys(productIdentity).length > 0;
   if (audienceReachScore === undefined && viewCount === undefined && impressionCount === undefined && engagementCount === undefined && capturedAt === undefined && Object.keys(dataQuality).length === 0 && !hasProductIdentity) return undefined;
-  return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt, ...(Object.keys(dataQuality).length ? { dataQuality } : {}), ...(hasProductIdentity ? { productIdentity } : {}) };
+  const rawMediaImport = source.mediaImport && typeof source.mediaImport === "object" && !Array.isArray(source.mediaImport) ? source.mediaImport as Record<string, unknown> : undefined;
+  const parseMediaSource = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const candidate = value as Record<string, unknown>;
+    if (candidate.source !== "shopee-affiliate-csv" || typeof candidate.importedAt !== "string" || !Number.isFinite(Date.parse(candidate.importedAt))) return undefined;
+    return {
+      source: "shopee-affiliate-csv" as const,
+      importedAt: candidate.importedAt,
+      ...(typeof candidate.sourceReference === "string" && candidate.sourceReference.trim().length > 0 && candidate.sourceReference.length <= 240 ? { sourceReference: candidate.sourceReference.trim() } : {})
+    };
+  };
+  const mediaImport = {
+    ...(parseMediaSource(rawMediaImport?.image) ?? existing?.mediaImport?.image ? { image: parseMediaSource(rawMediaImport?.image) ?? existing?.mediaImport?.image } : {}),
+    ...(parseMediaSource(rawMediaImport?.video) ?? existing?.mediaImport?.video ? { video: parseMediaSource(rawMediaImport?.video) ?? existing?.mediaImport?.video } : {})
+  };
+  return { audienceReachScore, viewCount, impressionCount, engagementCount, capturedAt, ...(Object.keys(dataQuality).length ? { dataQuality } : {}), ...(hasProductIdentity ? { productIdentity } : {}), ...(Object.keys(mediaImport).length ? { mediaImport } : {}) };
 }
 function numberInRange(value: unknown, min: number, max: number): number | undefined { return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : undefined; }
 function nonNegativeInteger(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined; }

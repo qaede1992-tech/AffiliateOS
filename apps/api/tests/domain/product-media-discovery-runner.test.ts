@@ -92,13 +92,29 @@ test("ingests explicitly supplied Shopee catalog images without fetching product
       return { url, status: 200, headers: { "content-type": "image/png" }, bytes: png };
     }) as never
   );
-  const result = await runner.discover({ ...product, productUrl: "https://shopee.co.id/product/123/456", imageUrl: "https://cdn.example.test/catalog-image.png" }, true);
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cdn.example.test/catalog-image.png",
+    discoverySignals: {
+      mediaImport: {
+        image: {
+          source: "shopee-affiliate-csv",
+          sourceReference: "source-export.csv",
+          importedAt: "2026-11-24T02:00:00.000Z"
+        }
+      }
+    }
+  }, true);
   assert.deepEqual(fetched, ["https://cdn.example.test/catalog-image.png"]);
   assert.equal(result.pageFetched, false);
   assert.equal(result.hasVideo, false);
   assert.equal(result.stored.length, 1);
   assert.equal(result.stored[0]?.kind, "image");
   assert.equal(result.stored[0]?.sourceUrl, "https://cdn.example.test/catalog-image.png");
+  assert.equal(result.stored[0]?.sourceImportProvider, "shopee-affiliate-csv");
+  assert.equal(result.stored[0]?.sourceImportReference, "source-export.csv");
+  assert.equal(result.stored[0]?.sourceImportedAt, "2026-11-24T02:00:00.000Z");
   assert.equal(listCalls, 1, "discovery should reuse the initial asset snapshot instead of re-reading storage metadata");
 });
 
@@ -941,4 +957,45 @@ test("skips external catalog calls and discovery writes while a media candidate 
   assert.equal(claimCalls, 0, "pending review must not create a discovery lease");
   assert.equal(saveCalls, 0, "pending review must not write duplicate candidates");
   assert.ok(result.skipped.some((item) => item.reason === "catalog_discovery_skipped_pending_review"));
+});
+
+
+test("does not spend catalog-provider egress when explicit Shopee CDN media is blocked", async () => {
+  let providerCalls = 0;
+  let mediaFetches = 0;
+  let candidateWrites = 0;
+  const candidateRepository = {
+    async hasPendingByProductAndQuery() { throw new Error("explicit source should bypass catalog lookup"); },
+    async listPendingByProduct() { throw new Error("explicit source should bypass catalog lookup"); },
+    async saveMany() { candidateWrites++; return []; }
+  };
+  const runner = new ProductMediaDiscoveryRunner(
+    { bucketName: "affiliate-media", upload: async () => { throw new Error("blocked media must not upload"); }, remove: async () => {} } as never,
+    {
+      async listByProduct() { return []; },
+      async findByProductAndHash() { return undefined; },
+      async save() { throw new Error("blocked media must not persist"); }
+    },
+    { maxImageBytes: 1024, maxVideoBytes: 1024 },
+    (async () => { mediaFetches++; throw new Error("Shopee CDN fetch must remain blocked"); }) as never,
+    candidateRepository as never,
+    { fetchImpl: (async () => {
+      providerCalls++;
+      return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch }
+  );
+
+  const result = await runner.discover({
+    ...product,
+    productUrl: "https://shopee.co.id/product/123/456",
+    imageUrl: "https://cf.shopee.co.id/file/product-image.jpg",
+    videoUrl: "https://down-id.img.susercontent.com/file/product-video.mp4"
+  }, true);
+
+  assert.equal(providerCalls, 0, "blocked explicit media must not trigger Openverse/Wikimedia searches");
+  assert.equal(mediaFetches, 0, "Shopee-owned media downloads must remain blocked");
+  assert.equal(candidateWrites, 0, "no catalog candidate writes are needed");
+  assert.equal(result.stored.length, 0);
+  assert.equal(result.pageFetched, false);
+  assert.equal(result.skipped.filter((item) => /Shopee-hosted media is not fetched automatically/.test(item.reason)).length, 2);
 });
