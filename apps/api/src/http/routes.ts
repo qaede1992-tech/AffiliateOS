@@ -612,7 +612,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
       const result = await previewService.render(productId);
       auditSecurityEvent(request.log, request, "illustrative_product_video_preview_rendered", {
         productId,
-        byteSize: result.metadata.byteSize,
+        byteSize: String(result.metadata.byteSize),
         sha256: result.metadata.sha256,
         rightsStatus: "unverified",
         publicationEligible: false
