@@ -619,3 +619,46 @@ test("pauses all Wikimedia searches briefly after a provider-wide HTTP 5xx", asy
   assert.equal(calls, 1);
   resetWikimediaProviderCircuitForTests(fetchImpl);
 });
+
+
+test("rejects animal and pest imagery returned by generic food-container searches", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: [
+      {
+        title: "File:Brown Rat with food container.jpg",
+        imageinfo: [{
+          thumburl: "https://upload.wikimedia.org/thumb-rat.jpg",
+          url: "https://upload.wikimedia.org/rat.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Brown_Rat_with_food_container.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC0" },
+            LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+          }
+        }]
+      },
+      {
+        title: "File:Food container.jpg",
+        imageinfo: [{
+          thumburl: "https://upload.wikimedia.org/thumb-container.jpg",
+          url: "https://upload.wikimedia.org/container.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Food_container.jpg",
+          mime: "image/jpeg",
+          extmetadata: {
+            LicenseShortName: { value: "CC0" },
+            LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+          }
+        }]
+      }
+    ] }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "Hongzhuo Food Kontainer Kotak Penyimpanan Makanan Buah Sayuran Saringan Serbaguna"
+  }, { fetchImpl });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0]?.title, "Food container.jpg");
+  assert.equal(results[0]?.identityStatus, "review_required");
+  assert.equal(results[0]?.rightsStatus, "unverified");
+});
