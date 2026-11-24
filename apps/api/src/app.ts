@@ -16,6 +16,19 @@ const isPublicCallback = (url: string) => url === "/api/v1/social-accounts/oauth
 const isPublicProviderEvent = (url: string) => /^\/api\/v1\/marketplaces\/[^/]+\/events(?:\?|$)/.test(url);
 const isPublicTrackingRedirect = (url: string) => /^\/r\/[^/]+(?:\?|$)/.test(url);
 const isPublicShopCatalog = (url: string) => url.split("?", 1)[0] === "/api/v1/public/shop";
+const isPublicIllustrativeMedia = (method: string, url: string, enabled: boolean): boolean => {
+  if (!enabled || (method !== "GET" && method !== "HEAD")) return false;
+  try {
+    const parsed = new URL(url, "http://localhost");
+    if (!/^\\/api\\/v1\\/public\\/illustrative-media\\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.pathname)) return false;
+    const tokens = parsed.searchParams.getAll("token");
+    return tokens.length === 1 && tokens[0]!.length > 0 && tokens[0]!.length <= 2048;
+  } catch {
+    return false;
+  }
+};
+const redactMediaTokenFromUrl = (value: string): string =>
+  value.replace(/([?&]token=)[^&]*/gi, "$1[REDACTED]");
 const isHealthEndpoint = (url: string) => { const pathname = url.split("?", 1)[0]; return pathname === "/" || pathname === "/api/v1/health" || pathname === "/api/v1/ready"; };
 const isPublicAuthEndpoint = (url: string) => url === "/api/v1/auth/login" || url === "/api/v1/auth/logout";
 const isStateChangingMethod = (method: string) => ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
@@ -32,7 +45,18 @@ type AppOptions = { readinessCheck?: () => Promise<void>; auth?: AuthConfig; rat
 
 export function createApp(services: Services = createInMemoryServices(), options: AppOptions = {}) {
   const auth = options.auth ?? configuredAuth(); const rateLimitConfig = options.rateLimit ?? configuredRateLimit(); const rateLimiter = rateLimitConfig.enabled ? new InMemoryRateLimiter(rateLimitConfig.limit, rateLimitConfig.windowMs) : null; const sessionSecret = auth.token; const production = process.env.NODE_ENV === "production"; const corsOrigin = configuredCorsOrigin();
-  const app = Fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.token", "req.body.credentialReference", "req.body.configuration.*", "req.query.code", "req.query.state"] }, bodyLimit: 1_048_576 });
+  const app = Fastify({ logger: {
+    redact: ["req.headers.authorization", "req.headers.cookie", "req.body.token", "req.body.credentialReference", "req.body.configuration.*", "req.query.code", "req.query.state"],
+    serializers: {
+      req: (request) => ({
+        method: request.method,
+        url: typeof request.url === "string" ? redactMediaTokenFromUrl(request.url) : request.url,
+        host: request.host,
+        remoteAddress: request.remoteAddress,
+        remotePort: request.remotePort
+      })
+    }
+  }, bodyLimit: 1_048_576 });
   app.register(cors, {
     origin: corsOrigin,
     credentials: true,
@@ -41,7 +65,7 @@ export function createApp(services: Services = createInMemoryServices(), options
     optionsSuccessStatus: 204
   });
   app.addHook("onSend", async (request, reply) => { reply.header("X-Content-Type-Options", "nosniff"); reply.header("X-Frame-Options", "DENY"); reply.header("Referrer-Policy", "no-referrer"); reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()"); if (!isHealthEndpoint(request.url)) reply.header("Cache-Control", "no-store"); if (production) reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains"); });
-  app.addHook("onRequest", async (request, reply) => { reply.header("X-Request-Id", request.id); if (isHealthEndpoint(request.url)) return; if (rateLimiter) { const result = rateLimiter.consume(request.ip); reply.header("X-RateLimit-Limit", result.limit); reply.header("X-RateLimit-Remaining", result.remaining); if (!result.allowed) { reply.header("Retry-After", result.retryAfterSeconds); return reply.status(429).send({ error: "RATE_LIMITED", message: "Too many requests. Please retry later." }); } } if (isPublicCallback(request.url) || isPublicAuthEndpoint(request.url) || isPublicProviderEvent(request.url) || isPublicTrackingRedirect(request.url) || (request.method === "GET" && isPublicShopCatalog(request.url))) return; const bearerContext = authenticateRequest(request, auth); const sessionContext = sessionSecret ? readSessionCookie(request, sessionSecret) : null; const context = bearerContext ?? sessionContext; if (!context) { auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_authentication" }); return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." }); } if (sessionContext && !bearerContext && isStateChangingMethod(request.method)) { const origin = request.headers.origin; if (!origin || origin !== corsOrigin) { auditSecurityEvent(request.log, request, "authorization_denied", { reason: "invalid_session_request_origin" }); return reply.status(403).send({ error: "CSRF_ORIGIN_REJECTED", message: "The request origin is not allowed." }); } } request.auth = context; });
+  app.addHook("onRequest", async (request, reply) => { reply.header("X-Request-Id", request.id); if (isHealthEndpoint(request.url)) return; if (rateLimiter) { const result = rateLimiter.consume(request.ip); reply.header("X-RateLimit-Limit", result.limit); reply.header("X-RateLimit-Remaining", result.remaining); if (!result.allowed) { reply.header("Retry-After", result.retryAfterSeconds); return reply.status(429).send({ error: "RATE_LIMITED", message: "Too many requests. Please retry later." }); } } if (isPublicCallback(request.url) || isPublicAuthEndpoint(request.url) || isPublicProviderEvent(request.url) || isPublicTrackingRedirect(request.url) || (request.method === "GET" && isPublicShopCatalog(request.url)) || isPublicIllustrativeMedia(request.method, request.url, Boolean(services.illustrativeMediaDelivery))) return; const bearerContext = authenticateRequest(request, auth); const sessionContext = sessionSecret ? readSessionCookie(request, sessionSecret) : null; const context = bearerContext ?? sessionContext; if (!context) { auditSecurityEvent(request.log, request, "authentication_failed", { reason: "invalid_or_missing_authentication" }); return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication is required." }); } if (sessionContext && !bearerContext && isStateChangingMethod(request.method)) { const origin = request.headers.origin; if (!origin || origin !== corsOrigin) { auditSecurityEvent(request.log, request, "authorization_denied", { reason: "invalid_session_request_origin" }); return reply.status(403).send({ error: "CSRF_ORIGIN_REJECTED", message: "The request origin is not allowed." }); } } request.auth = context; });
   app.get("/", async () => ({ status: "ok", service: "affiliateos-api" }));
   app.get<{ Reply: HealthResponse }>("/api/v1/health", async () => ({ status: "ok", service: "affiliateos-api", timestamp: new Date().toISOString() }));
   app.get("/api/v1/ready", async (_request, reply) => { if (!options.readinessCheck) return reply.send({ status: "ready", service: "affiliateos-api" }); try { await options.readinessCheck(); return reply.send({ status: "ready", service: "affiliateos-api" }); } catch (error) { app.log.warn(safeHttpErrorLogFields(error), "database readiness check failed"); return reply.status(503).send({ status: "not_ready", service: "affiliateos-api" }); } });
