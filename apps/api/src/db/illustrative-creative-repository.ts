@@ -96,6 +96,11 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
           targetContent.status !== "draft") {
         throw new Error("Generated creative requires a draft Instagram affiliate-promotion for the same product.");
       }
+      const existingCreatives = await tx.select({ id: generatedProductCreatives.id })
+        .from(generatedProductCreatives).where(eq(generatedProductCreatives.contentId, input.contentId)).limit(1);
+      if (existingCreatives.length > 0) {
+        throw new Error("This content already has a generated illustrative creative; create a new draft to avoid duplicate storage.");
+      }
       const productRows = await tx.select({ id: products.id, name: products.name, priceCents: products.priceCents, currency: products.currency, status: products.status })
         .from(products).where(eq(products.id, input.productId)).limit(1);
       const product = productRows[0];
