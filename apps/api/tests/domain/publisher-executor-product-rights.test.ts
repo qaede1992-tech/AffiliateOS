@@ -70,6 +70,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
   };
   let providerCalls = 0;
   let providerCheckCalls = 0;
+  let expectDispatchClaimBeforeMediaResolution = false;
   const dispatchReservations = platform === "instagram" ? new InMemoryPublicationDispatchReservationRepository() : undefined;
   const publisher: SocialPublisher = {
     provider: platform === "instagram" ? "instagram-graph" : "test-publisher",
@@ -88,7 +89,7 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
   const storage = {
     bucketName: "affiliate-media",
     async createSignedUrl() {
-      if (platform === "instagram") {
+      if (expectDispatchClaimBeforeMediaResolution) {
         const reservation = await dispatchReservations?.findByJobProvider("job-1", "instagram-graph");
         assert.equal(reservation?.state, "dispatching", "provider media URLs must resolve only after durable dispatch claim");
       }
@@ -99,7 +100,10 @@ async function setup(rightsStatus: ProductMediaAsset["rightsStatus"], configured
     contentService, socialAccounts, [publisher], credentialResolver, mediaAssets, undefined, storage,
     contentProducts, productMediaAssets, dispatchReservations
   );
-  const execute = (now: Date) => executor.execute(contentId, now, "test-idempotency-key", undefined, platform === "instagram" ? "job-1" : undefined);
+  const execute = (now: Date) => {
+    expectDispatchClaimBeforeMediaResolution = platform === "instagram";
+    return executor.execute(contentId, now, "test-idempotency-key", undefined, platform === "instagram" ? "job-1" : undefined);
+  };
   return { executor, execute, contentService, getProviderCalls: () => providerCalls, getProviderCheckCalls: () => providerCheckCalls };
 }
 
