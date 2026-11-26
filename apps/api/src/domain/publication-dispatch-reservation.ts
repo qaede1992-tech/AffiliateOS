@@ -22,6 +22,7 @@ export interface PublicationDispatchReservation {
 
 export interface PublicationDispatchReservationRepository {
   findByJobProvider(jobId: EntityId, provider: string): Promise<PublicationDispatchReservation | undefined>;
+  findActiveByContentProvider(contentId: EntityId, provider: string): Promise<PublicationDispatchReservation | undefined>;
   reserve(reservation: PublicationDispatchReservation): Promise<PublicationDispatchReservation>;
   transition(id: EntityId, expected: PublicationDispatchState[], next: PublicationDispatchReservation): Promise<PublicationDispatchReservation | undefined>;
 }
@@ -45,6 +46,10 @@ export class InMemoryPublicationDispatchReservationRepository implements Publica
   private readonly rows = new Map<string, PublicationDispatchReservation>();
   async findByJobProvider(jobId: string, provider: string) {
     return [...this.rows.values()].find((row) => row.jobId === jobId && row.provider === provider);
+  }
+  async findActiveByContentProvider(contentId: string, provider: string) {
+    const active = new Set(["dispatching", "accepted", "uncertain", "needs_reconciliation"]);
+    return [...this.rows.values()].find((row) => row.contentId === contentId && row.provider === provider && active.has(row.state));
   }
   async reserve(reservation: PublicationDispatchReservation) {
     // Keep lookup + insert in one synchronous critical section. Awaiting the
