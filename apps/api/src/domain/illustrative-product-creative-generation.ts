@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AffiliateOffer, Product, Content } from "@affiliateos/shared";
 import type { Repository } from "./repository.js";
 import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
@@ -66,7 +67,7 @@ export class IllustrativeProductCreativeGenerationService {
     const rendered = await renderer.render({
       productName: product.name, priceCents: product.priceCents, currency: product.currency
     });
-    const creativeId = crypto.randomUUID();
+    const creativeId = randomUUID();
     const stored = await this.dependencies.files.put({
       creativeId, bytes: rendered.bytes, expectedSha256: rendered.metadata.sha256
     });
