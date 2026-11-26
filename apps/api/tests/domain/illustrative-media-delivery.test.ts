@@ -52,8 +52,9 @@ test("issues a lifecycle-revoked token only for approved Instagram creative and 
 
 test("publisher resolver can issue a token only for the matching media asset and content", async () => {
   const state = setup();
-  const token = await state.service.issueTokenForMediaAsset(mediaAssetId, contentId);
-  assert.equal(state.signer.verify(token, { creativeId, mediaAssetId, contentId, sha256: digest }).expiresAtSeconds, null);
+  const issued = await state.service.issueTokenForMediaAsset(mediaAssetId, contentId);
+  assert.equal(issued.creativeId, creativeId);
+  assert.equal(state.signer.verify(issued.token, { creativeId, mediaAssetId, contentId, sha256: digest }).expiresAtSeconds, null);
   await assert.rejects(state.service.issueTokenForMediaAsset(mediaAssetId, "44444444-4444-4444-8444-444444444444"));
   await assert.rejects(state.service.issueTokenForMediaAsset("55555555-5555-4555-8555-555555555555", contentId));
 });
@@ -87,6 +88,14 @@ test("revokes an issued token as soon as the durable dispatch becomes terminal",
   await assert.rejects(state.service.read({ creativeId, token }));
   state.setDispatch("failed");
   await assert.rejects(state.service.read({ creativeId, token }));
+});
+
+test("revokes an issued token when the illustrative policy is disabled", async () => {
+  const state = setup();
+  const token = await state.service.issueToken(creativeId);
+  state.setPolicy(false);
+  await assert.rejects(state.service.read({ creativeId, token }));
+  assert.equal(state.fileReads, 0);
 });
 
 test("HEAD does not read file bytes and unsatisfiable ranges return 416 metadata", async () => {

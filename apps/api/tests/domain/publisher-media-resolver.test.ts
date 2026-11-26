@@ -117,3 +117,101 @@ test("rejects a signed URL containing embedded credentials", async () => {
     /credential-free public HTTPS hostname/
   );
 });
+
+
+test("routes an explicitly approved generated MP4 through local delivery and never Supabase", async () => {
+  let storageCalls = 0;
+  let generatedCalls = 0;
+  const storage = {
+    bucketName: "affiliate-media",
+    async createSignedUrl() { storageCalls += 1; throw new Error("generated media must not use Supabase"); }
+  };
+  const generated = {
+    ...asset,
+    kind: "video" as const,
+    mimeType: "video/mp4",
+    reference: `affiliate-media/content/${contentId}/generated.mp4`
+  };
+  const [resolved] = await resolvePublisherMediaAssets(
+    { id: contentId },
+    [generated],
+    storage,
+    [],
+    {
+      generatedMediaAssetIds: new Set([generated.id]),
+      async resolveGeneratedMediaUrl(received, receivedContentId) {
+        generatedCalls += 1;
+        assert.equal(received.id, generated.id);
+        assert.equal(receivedContentId, contentId);
+        return "https://api.example.com/api/v1/public/illustrative-media/33333333-3333-4333-8333-333333333333?token=opaque";
+      }
+    }
+  );
+  assert.equal(resolved?.source, "url");
+  assert.match(resolved?.reference ?? "", /public\/illustrative-media/);
+  assert.equal(storageCalls, 0);
+  assert.equal(generatedCalls, 1);
+  assert.equal(generated.source, "object-storage");
+});
+
+test("fails closed when a generated asset is marked approved but has no local delivery resolver", async () => {
+  const generated = {
+    ...asset,
+    kind: "video" as const,
+    mimeType: "video/mp4",
+    reference: `affiliate-media/content/${contentId}/generated.mp4`
+  };
+  let storageCalls = 0;
+  const storage = {
+    bucketName: "affiliate-media",
+    async createSignedUrl() { storageCalls += 1; return "https://project.supabase.co/signed"; }
+  };
+  await assert.rejects(
+    resolvePublisherMediaAssets(
+      { id: contentId }, [generated], storage, [],
+      { generatedMediaAssetIds: new Set([generated.id]) }
+    ),
+    /dedicated local-volume delivery resolver/
+  );
+  assert.equal(storageCalls, 0);
+});
+
+test("rejects non-HTTPS or credentialed generated delivery URLs", async () => {
+  const generated = {
+    ...asset,
+    kind: "video" as const,
+    mimeType: "video/mp4",
+    reference: `affiliate-media/content/${contentId}/generated.mp4`
+  };
+  for (const reference of ["http://api.example.com/media?token=x", "https://user:pass@api.example.com/media?token=x"]) {
+    await assert.rejects(
+      resolvePublisherMediaAssets(
+        { id: contentId }, [generated], undefined, [],
+        {
+          generatedMediaAssetIds: new Set([generated.id]),
+          async resolveGeneratedMediaUrl() { return reference; }
+        }
+      ),
+      /credential-free public HTTPS hostname/
+    );
+  }
+});
+
+test("keeps ordinary private media on the existing Supabase signed-URL path", async () => {
+  let requested = 0;
+  const storage = {
+    bucketName: "affiliate-media",
+    async createSignedUrl(key: string, ttl: number) {
+      requested += 1;
+      assert.equal(key, `content/${contentId}/image.jpg`);
+      assert.equal(ttl, 3600);
+      return "https://project.supabase.co/storage/v1/object/sign/affiliate-media/image.jpg?token=ordinary";
+    }
+  };
+  const [resolved] = await resolvePublisherMediaAssets(
+    { id: contentId }, [asset], storage, [],
+    { generatedMediaAssetIds: new Set() }
+  );
+  assert.equal(resolved?.source, "url");
+  assert.equal(requested, 1);
+});

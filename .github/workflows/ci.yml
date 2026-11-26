@@ -112,6 +112,27 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build API image
         run: docker build --file apps/api/Dockerfile --tag affiliateos-api:ci .
+      - name: Smoke test text-only illustrative video renderer
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint node affiliateos-api:ci --input-type=module -e '
+            import assert from "node:assert/strict";
+            import { IllustrativeProductVideoRenderer } from "./dist/domain/illustrative-product-video-renderer.js";
+            const result = await new IllustrativeProductVideoRenderer().render({
+              productName: "Produk ilustratif CI",
+              priceCents: 125000,
+              currency: "IDR"
+            });
+            assert.equal(result.metadata.mimeType, "video/mp4");
+            assert.equal(result.metadata.width, 720);
+            assert.equal(result.metadata.height, 1280);
+            assert.equal(result.metadata.durationMs, 12000);
+            assert.equal(result.metadata.codec, "h264");
+            assert.equal(result.metadata.fps, 25);
+            assert.ok(result.metadata.byteSize > 0);
+            assert.equal(result.metadata.sha256.length, 64);
+            console.log("Illustrative video FFmpeg/FFprobe smoke test passed.");
+          '
       - name: Build web image
         run: docker build --file apps/web/Dockerfile --tag affiliateos-web:ci .
       - name: Verify Production web API origin default
