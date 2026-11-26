@@ -370,4 +370,67 @@ describe("PublisherExecutor", () => {
     assert.deepEqual(order, ["guard", "token", "publish"]);
   });
 
+  it("fails the active reservation when local media resolution fails before the provider request", async () => {
+    const mediaRepository = new InMemoryMediaAssetRepository();
+    const contents = new InMemoryRepository<Content>();
+    const campaigns = new InMemoryRepository<any>();
+    const products = new InMemoryProductCatalogRepository();
+    const contentService = new ContentService(contents, campaigns, products, mediaRepository);
+    const created = await contentService.create({
+      platform: "instagram",
+      contentType: "video",
+      status: "scheduled",
+      scheduledAt: "2026-09-20T10:00:00.000Z"
+    });
+    const mediaId = "media-illustrative-failure";
+    await mediaRepository.save({
+      id: mediaId,
+      contentId: created.id,
+      kind: "video",
+      source: "object-storage",
+      reference: `affiliate-media/content/${created.id}/generated.mp4`,
+      mimeType: "video/mp4",
+      byteSize: 128,
+      durationSeconds: 12,
+      widthPx: 720,
+      heightPx: 1280,
+      createdAt: "2026-09-20T00:00:00.000Z",
+      updatedAt: "2026-09-20T00:00:00.000Z"
+    });
+    await contentService.update(created.id, { mediaAssetIds: [mediaId] });
+    const socialAccounts = new InMemorySocialAccountRepository();
+    await socialAccounts.save({ ...account, id: "instagram-account-failure", platform: "instagram" });
+    const reservations = new InMemoryPublicationDispatchReservationRepository();
+    let providerCalls = 0;
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async () => { providerCalls += 1; return { status: "accepted", providerOperationId: "unexpected" }; }
+    };
+    const executor = new PublisherExecutor(
+      contentService,
+      socialAccounts,
+      [publisher],
+      undefined,
+      mediaRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reservations,
+      {
+        guard: { validate: async () => new Set([mediaId]) },
+        delivery: { issueTokenForMediaAsset: async () => { throw new Error("local media unavailable"); } },
+        publicBaseUrl: "https://api.example.com"
+      } as never
+    );
+    await assert.rejects(
+      executor.execute(created.id, new Date("2026-09-20T11:00:00.000Z"), "job-media-failure", undefined, "job-media-failure"),
+      /local media unavailable/
+    );
+    const reservation = await reservations.findByJobProvider("job-media-failure", "instagram-graph");
+    assert.equal(reservation?.state, "failed");
+    assert.equal(providerCalls, 0);
+  });
+
 });
