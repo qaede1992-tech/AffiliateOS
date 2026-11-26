@@ -155,7 +155,7 @@ export class ProductIllustrativeImageGenerationService {
           n: 1,
           size: "1024x1024",
           quality: "medium",
-          output_format: "webp",
+          output_format: "png",
           moderation: "auto"
         }),
         redirect: "error",
@@ -184,8 +184,8 @@ export class ProductIllustrativeImageGenerationService {
     }
     const bytes = new Uint8Array(Buffer.from(encoded, "base64"));
     if (bytes.byteLength === 0 || bytes.byteLength > this.maxOutputBytes ||
-        !isStructurallyValidMedia("image/webp", bytes)) {
-      throw new ProductIllustrativeImageGenerationError("The generated image is not a valid WebP within the configured size limit.", "GENERATED_IMAGE_INVALID");
+        !isStructurallyValidMedia("image/png", bytes)) {
+      throw new ProductIllustrativeImageGenerationError("The generated image is not a valid PNG within the configured size limit.", "GENERATED_IMAGE_INVALID");
     }
 
     const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -193,12 +193,12 @@ export class ProductIllustrativeImageGenerationService {
     if (duplicate) return { generated: false, asset: duplicate, reason: "An identical image asset already exists for this product." };
 
     const id = randomUUID();
-    const objectKey = `products/${productId}/ai-abstract-${sha256}-${id}.webp`;
-    const stored = await this.storage.upload({ key: objectKey, bytes, contentType: "image/webp", upsert: false });
-    const metadata = extractProductMediaTechnicalMetadata("image/webp", bytes);
+    const objectKey = `products/${productId}/ai-abstract-${sha256}-${id}.png`;
+    const stored = await this.storage.upload({ key: objectKey, bytes, contentType: "image/png", upsert: false });
+    const metadata = extractProductMediaTechnicalMetadata("image/png", bytes);
     const asset: ProductMediaAsset = {
       id, productId, kind: "image", bucket: stored.bucket, objectKey: stored.key,
-      mimeType: "image/webp", byteSize: bytes.byteLength, ...metadata, sha256,
+      mimeType: "image/png", byteSize: bytes.byteLength, ...metadata, sha256,
       sourceUrl, sourcePublisher: "OpenAI", sourceProvider: "openai",
       sourceCandidateId: null, sourceLandingPageUrl: null,
       sourceTitle: "AI-generated abstract decorative illustration; not a depiction of the physical product",
