@@ -31,7 +31,10 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
       productSnapshot: row.productSnapshot,
       widthPx: row.widthPx,
       heightPx: row.heightPx,
-      durationMs: row.durationMs
+      durationMs: row.durationMs,
+      reviewedBy: row.reviewedBy,
+      reviewedAt: row.reviewedAt,
+      reviewReason: row.reviewReason
     };
   }
 
@@ -47,19 +50,23 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
       storageBackend: row.storageBackend, storageKey: row.storageKey,
       productId: row.productId, affiliateOfferId: row.affiliateOfferId,
       rendererVersion: row.rendererVersion, templateVersion: row.templateVersion,
-      productSnapshot: row.productSnapshot, widthPx: row.widthPx, heightPx: row.heightPx, durationMs: row.durationMs
+      productSnapshot: row.productSnapshot, widthPx: row.widthPx, heightPx: row.heightPx, durationMs: row.durationMs,
+      reviewedBy: row.reviewedBy, reviewedAt: row.reviewedAt, reviewReason: row.reviewReason
     };
   }
 
-  async getPolicy(platform: "instagram"): Promise<{ platform: "instagram"; enabled: boolean; terms: Record<string, unknown> } | undefined> {
+  async getPolicy(platform: "instagram"): Promise<{ platform: "instagram"; enabled: boolean; policyVersion: string; approvedBy: string | null; approvedAt: string | null; terms: Record<string, unknown> } | undefined> {
     const rows = await this.db.select({
       platform: illustrativeCreativePolicies.platform,
       enabled: illustrativeCreativePolicies.enabled,
+      policyVersion: illustrativeCreativePolicies.policyVersion,
+      approvedBy: illustrativeCreativePolicies.approvedBy,
+      approvedAt: illustrativeCreativePolicies.approvedAt,
       terms: illustrativeCreativePolicies.terms
     }).from(illustrativeCreativePolicies)
       .where(eq(illustrativeCreativePolicies.platform, platform)).limit(1);
     const row = rows[0];
-    return row ? { platform: "instagram", enabled: row.enabled, terms: row.terms as Record<string, unknown> } : undefined;
+    return row ? { platform: "instagram", enabled: row.enabled, policyVersion: row.policyVersion, approvedBy: row.approvedBy, approvedAt: row.approvedAt, terms: row.terms as Record<string, unknown> } : undefined;
   }
 
   async isEnabled(platform: "instagram"): Promise<boolean> {
