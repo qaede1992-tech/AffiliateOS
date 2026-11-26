@@ -160,7 +160,7 @@ export function ProductMediaRightsPanel() {
     } catch (requestError) {
       if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Video ilustratif gagal dibuat.");
     } finally {
-      if (selectionRequestId === productSelectionSequence.current) setGeneratingIllustration(false);
+      setGeneratingIllustration(false);
     }
   };
 
@@ -287,7 +287,7 @@ export function ProductMediaRightsPanel() {
       <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
       <div className="affiliate-form">
         <label htmlFor="product-media-rights-product">Produk</label>
-        <select id="product-media-rights-product" value={productId} onChange={(event) => selectProduct(event.target.value)}>
+        <select id="product-media-rights-product" value={productId} disabled={generatingIllustration} onChange={(event) => selectProduct(event.target.value)}>
           <option value="">Pilih produk</option>
           {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
         </select>
