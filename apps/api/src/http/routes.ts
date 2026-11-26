@@ -599,6 +599,41 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(50, Math.trunc(requestedLimit))) : 50;
     return list(await repository.listReviewAudits(productId, candidateId, limit));
   });
+  app.post("/api/v1/products/:productId/illustrative-video-generate", adminGuard, async (request, reply) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    const generator = services.illustrativeVideoAssetGeneration;
+    if (!generator) {
+      return reply.status(503).send({
+        error: "ILLUSTRATIVE_VIDEO_GENERATION_UNAVAILABLE",
+        message: "Penyimpanan video ilustratif atau bukti seleksi produk belum tersedia."
+      });
+    }
+    try {
+      const result = await generator.generate(productId);
+      auditSecurityEvent(request.log, request, "illustrative_product_video_asset_generated", {
+        productId,
+        assetId: result.asset.id,
+        byteSize: String(result.asset.byteSize),
+        sha256: result.asset.sha256,
+        rightsStatus: result.asset.rightsStatus,
+        publicationEligible: false
+      });
+      return reply.status(result.generated ? 201 : 200).send(result);
+    } catch (error) {
+      if (error instanceof IllustrativeProductVideoPreviewError) {
+        const statusCode = error.code === "PRODUCT_NOT_FOUND" ? 404 : 409;
+        return reply.status(statusCode).send({ error: error.code, message: error.message });
+      }
+      request.log.error({
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        productId
+      }, "Illustrative product video asset generation failed");
+      return reply.status(502).send({
+        error: "ILLUSTRATIVE_VIDEO_GENERATION_FAILED",
+        message: "Video ilustratif gagal dibuat atau disimpan."
+      });
+    }
+  });
   app.post("/api/v1/products/:productId/illustrative-video-preview", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     const previewService = services.illustrativeVideoPreview;
