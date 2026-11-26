@@ -183,3 +183,89 @@ export const productMediaCandidateReviewAudits = pgTable("product_media_candidat
   index("product_media_candidate_review_audits_candidate_created_idx").on(table.candidateId, table.createdAt.desc()),
   index("product_media_candidate_review_audits_product_created_idx").on(table.productId, table.createdAt.desc())
 ]);
+
+
+/**
+ * Platform-level opt-in for AffiliateOS-generated illustrative creatives.
+ * Disabled by default; this is separate from product-media rights evidence.
+ */
+export const illustrativeCreativePolicies = pgTable("illustrative_creative_policies", {
+  platform: varchar("platform", { length: 30 }).primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  policyVersion: varchar("policy_version", { length: 40 }).notNull(),
+  approvedBy: varchar("approved_by", { length: 255 }),
+  approvedAt: timestamp("approved_at", { withTimezone: true, mode: "string" }),
+  terms: jsonb("terms").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  check("illustrative_creative_policies_platform_check", sql`${table.platform} IN ('instagram')`),
+  check("illustrative_creative_policies_activation_check", sql`NOT ${table.enabled} OR (${table.approvedBy} IS NOT NULL AND ${table.approvedAt} IS NOT NULL)`)
+]);
+
+/**
+ * Provenance of an AffiliateOS-generated illustrative creative. It does not
+ * confer or modify rights over external product media.
+ */
+export const generatedProductCreatives = pgTable("generated_product_creatives", {
+  id: uuid("id").primaryKey(),
+  mediaAssetId: uuid("media_asset_id").notNull().references(() => mediaAssets.id, { onDelete: "restrict" }),
+  contentId: uuid("content_id").notNull().references(() => content.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
+  affiliateOfferId: uuid("affiliate_offer_id").references(() => affiliateOffers.id, { onDelete: "restrict" }),
+  platform: varchar("platform", { length: 30 }).notNull(),
+  rendererVersion: varchar("renderer_version", { length: 40 }).notNull(),
+  templateVersion: varchar("template_version", { length: 40 }).notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  productSnapshot: jsonb("product_snapshot").$type<Record<string, unknown>>().notNull(),
+  disclosureEmbedded: boolean("disclosure_embedded").notNull().default(false),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  byteSize: bigint("byte_size", { mode: "number" }).notNull(),
+  widthPx: integer("width_px").notNull(),
+  heightPx: integer("height_px").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  reviewStatus: varchar("review_status", { length: 20 }).notNull().default("pending"),
+  reviewedBy: varchar("reviewed_by", { length: 255 }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
+  reviewReason: varchar("review_reason", { length: 1000 }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  uniqueIndex("generated_product_creatives_media_asset_unique").on(table.mediaAssetId),
+  index("generated_product_creatives_product_status_idx").on(table.productId, table.reviewStatus, table.createdAt.desc()),
+  index("generated_product_creatives_content_idx").on(table.contentId),
+  check("generated_product_creatives_platform_check", sql`${table.platform} IN ('instagram')`),
+  check("generated_product_creatives_sha256_check", sql`${table.sha256} ~ '^[0-9a-f]{64}$'`),
+  check("generated_product_creatives_dimensions_check", sql`${table.widthPx} > 0 AND ${table.heightPx} > 0 AND ${table.durationMs} > 0 AND ${table.byteSize} > 0`),
+  check("generated_product_creatives_disclosure_check", sql`${table.disclosureEmbedded} = true`),
+  check("generated_product_creatives_review_check", sql`(${table.reviewStatus} = 'pending' AND ${table.reviewedBy} IS NULL AND ${table.reviewedAt} IS NULL) OR (${table.reviewStatus} IN ('approved', 'rejected') AND ${table.reviewedBy} IS NOT NULL AND ${table.reviewedAt} IS NOT NULL AND ${table.reviewReason} IS NOT NULL)`)
+]);
+
+export const generatedProductCreativeReviewAudits = pgTable("generated_product_creative_review_audits", {
+  id: uuid("id").primaryKey(),
+  creativeId: uuid("creative_id").notNull().references(() => generatedProductCreatives.id, { onDelete: "restrict" }),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  previousStatus: varchar("previous_status", { length: 20 }).notNull(),
+  newStatus: varchar("new_status", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("generated_product_creative_review_audits_creative_created_idx").on(table.creativeId, table.createdAt.desc()),
+  check("generated_product_creative_review_audits_action_check", sql`${table.action} IN ('approve', 'reject')`)
+]);
+
+export const illustrativeCreativePolicyAudits = pgTable("illustrative_creative_policy_audits", {
+  id: uuid("id").primaryKey(),
+  platform: varchar("platform", { length: 30 }).notNull(),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  action: varchar("action", { length: 20 }).notNull(),
+  policyVersion: varchar("policy_version", { length: 40 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("illustrative_creative_policy_audits_platform_created_idx").on(table.platform, table.createdAt.desc()),
+  check("illustrative_creative_policy_audits_platform_check", sql`${table.platform} IN ('instagram')`),
+  check("illustrative_creative_policy_audits_action_check", sql`${table.action} IN ('enable', 'disable')`)
+]);

@@ -20,3 +20,25 @@ test("provider event retry migration persists bounded backoff state without cred
   assert.match(sql, /CREATE INDEX IF NOT EXISTS "provider_events_retry_idx" ON "provider_events" \("status", "next_attempt_at", "received_at"\)/);
   assert.doesNotMatch(sql, /api_key|access_token|client_secret|password/i);
 });
+
+
+test("illustrative creative provenance is isolated from third-party product-media rights and disabled by default", async () => {
+  const sql = await readFile(resolve(migrationsDirectory, "0093_illustrative_creative_provenance.sql"), "utf8");
+  assert.match(sql, /CREATE TABLE public\.illustrative_creative_policies/);
+  assert.match(sql, /enabled boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /approved_by varchar\(255\)/);
+  assert.match(sql, /CREATE TABLE public\.generated_product_creatives/);
+  assert.match(sql, /media_asset_id uuid NOT NULL REFERENCES public\.media_assets/);
+  assert.match(sql, /CREATE UNIQUE INDEX generated_product_creatives_media_asset_unique ON public\.generated_product_creatives\(media_asset_id\)/);
+  assert.match(sql, /product_snapshot jsonb NOT NULL/);
+  assert.match(sql, /disclosure_embedded boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /CHECK \(disclosure_embedded = true\)/);
+  assert.match(sql, /review_status varchar\(20\) NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /CREATE TABLE public\.generated_product_creative_review_audits/);
+  assert.match(sql, /CREATE TABLE public\.illustrative_creative_policy_audits/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql, /TO affiliateos_runtime USING \(true\) WITH CHECK \(true\)/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE/);
+  assert.doesNotMatch(sql, /INSERT INTO public\.illustrative_creative_policies/i);
+  assert.doesNotMatch(sql, /UPDATE public\.product_media_assets|rights_status|rights_basis/i);
+});
