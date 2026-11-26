@@ -17,7 +17,9 @@ export type AuditEvent =
   | "product_media_uploaded"
   | "product_media_identity_reviewed"
   | "product_ai_image_generated"
-  | "illustrative_product_video_preview_rendered";
+  | "illustrative_product_video_preview_rendered"
+  | "product_ai_abstract_illustration_generated"
+  | "illustrative_product_video_asset_generated";
 
 export function auditSecurityEvent(
   log: FastifyBaseLogger,
