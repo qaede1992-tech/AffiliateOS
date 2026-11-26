@@ -33,6 +33,17 @@ export class DrizzlePublicationDispatchReservationRepository implements Publicat
     return rows[0] ? toDomain(rows[0]) : undefined;
   }
 
+  async findActiveByContentProvider(contentId: string, provider: string): Promise<PublicationDispatchReservation | undefined> {
+    const rows = await this.db.select().from(publicationDispatchReservations)
+      .where(and(
+        eq(publicationDispatchReservations.contentId, contentId),
+        eq(publicationDispatchReservations.provider, provider),
+        inArray(publicationDispatchReservations.state, ["dispatching", "accepted", "uncertain", "needs_reconciliation"])
+      ))
+      .limit(1);
+    return rows[0] ? toDomain(rows[0]) : undefined;
+  }
+
   async reserve(reservation: PublicationDispatchReservation): Promise<PublicationDispatchReservation> {
     const rows = await this.db.insert(publicationDispatchReservations).values(toRow(reservation))
       .onConflictDoNothing({ target: [publicationDispatchReservations.jobId, publicationDispatchReservations.provider] })
