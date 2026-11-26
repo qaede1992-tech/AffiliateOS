@@ -5,7 +5,8 @@ import { ContentService } from "../../src/domain/content.js";
 import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
 import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
 import { InMemorySocialCredentialResolver } from "../../src/domain/social-credentials.js";
-import { InMemoryMediaAssetRepository, InMemoryProductCatalogRepository, InMemoryPublicationDispatchReservationRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
+import { InMemoryMediaAssetRepository, InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
+import { InMemoryPublicationDispatchReservationRepository } from "../../src/domain/publication-dispatch-reservation.js";
 
 const product: Product = {
   id: "product-1", marketplaceId: "marketplace-1", externalProductId: "external-1", name: "Demo Product",
