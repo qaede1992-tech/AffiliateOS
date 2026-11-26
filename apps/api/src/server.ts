@@ -70,11 +70,12 @@ const mediaStorage = createSupabaseStorageClientFromEnv({
   SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
 });
 const mediaBucket = environment.SUPABASE_MEDIA_BUCKET || "affiliate-media";
+const illustrativeCreativeRepository = new DrizzleIllustrativeCreativeRepository(persistence.db);
 const illustrativePublication = environment.ILLUSTRATIVE_MEDIA_DIR &&
   environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET &&
   environment.ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL
   ? (() => {
-      const creativeRepository = new DrizzleIllustrativeCreativeRepository(persistence.db);
+      const creativeRepository = illustrativeCreativeRepository;
       const files = new IllustrativeCreativeFileStore({ rootDirectory: environment.ILLUSTRATIVE_MEDIA_DIR! });
       const guard = new IllustrativeCreativePublicationGuard({
         creatives: creativeRepository,
@@ -192,7 +193,8 @@ const services = createServices(
     clientSecret: environment.OPENVERSE_CLIENT_SECRET
   },
   persistence.preMediaEligibility,
-  illustrativePublication
+  illustrativePublication,
+  illustrativeCreativeRepository
 );
 if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
