@@ -324,6 +324,14 @@ describe("PublisherExecutor", () => {
         assert.equal(await reservations.findByJobProvider("job-illustrative", "instagram-graph"), undefined);
         order.push("guard");
         return new Set([mediaId]);
+      },
+      async createProvenanceSnapshot(mediaAssets: Array<{ id: string }>, generatedIds: ReadonlySet<string>) {
+        assert.equal(mediaAssets[0]?.id, mediaId);
+        assert.deepEqual([...generatedIds], [mediaId]);
+        return {
+          policy: { platform: "instagram", enabled: true, policyVersion: "policy-v1", approvedBy: "admin", approvedAt: "2026-11-26T00:00:00.000Z", terms: { allowedRendererVersions: ["renderer-1"] } },
+          creatives: [{ id: creativeId, mediaAssetId: mediaId, sha256: "a".repeat(64), reviewedBy: "admin", reviewedAt: "2026-11-26T00:00:00.000Z" }]
+        };
       }
     };
     const delivery = {
@@ -367,6 +375,9 @@ describe("PublisherExecutor", () => {
       "job-illustrative"
     );
     assert.equal(result.status, "accepted");
+    const reservation = await reservations.findByJobProvider("job-illustrative", "instagram-graph");
+    assert.equal(typeof (reservation?.snapshot as { generatedCreativeProvenanceHash?: unknown }).generatedCreativeProvenanceHash, "string");
+    assert.deepEqual((reservation?.snapshot as { generatedCreativeProvenance?: { creatives: unknown[] } }).generatedCreativeProvenance?.creatives.length, 1);
     assert.deepEqual(order, ["guard", "token", "publish"]);
   });
 
@@ -419,7 +430,13 @@ describe("PublisherExecutor", () => {
       undefined,
       reservations,
       {
-        guard: { validate: async () => new Set([mediaId]) },
+        guard: {
+          validate: async () => new Set([mediaId]),
+          createProvenanceSnapshot: async () => ({
+            policy: { platform: "instagram", enabled: true, policyVersion: "policy-v1", approvedBy: "admin", approvedAt: "2026-11-26T00:00:00.000Z", terms: {} },
+            creatives: [{ id: "creative-failure", mediaAssetId: mediaId }]
+          })
+        },
         delivery: { issueTokenForMediaAsset: async () => { throw new Error("local media unavailable"); } },
         publicBaseUrl: "https://api.example.com"
       } as never
