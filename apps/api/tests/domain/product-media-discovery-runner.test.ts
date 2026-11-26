@@ -960,14 +960,15 @@ test("skips external catalog calls and discovery writes while a media candidate 
 });
 
 
-test("does not spend catalog-provider egress when explicit Shopee CDN media is blocked", async () => {
+test("uses Path 2 catalog discovery when explicit Shopee CDN media cannot be ingested", async () => {
+  resetOpenverseCircuitForTests();
   let providerCalls = 0;
   let mediaFetches = 0;
   let candidateWrites = 0;
   const candidateRepository = {
-    async hasPendingByProductAndQuery() { throw new Error("explicit source should bypass catalog lookup"); },
-    async listPendingByProduct() { throw new Error("explicit source should bypass catalog lookup"); },
-    async saveMany() { candidateWrites++; return []; }
+    async hasPendingByProductAndQuery() { return false; },
+    async listPendingByProduct() { return []; },
+    async saveMany(records: unknown[]) { candidateWrites += records.length; return []; }
   };
   const runner = new ProductMediaDiscoveryRunner(
     { bucketName: "affiliate-media", upload: async () => { throw new Error("blocked media must not upload"); }, remove: async () => {} } as never,
@@ -992,9 +993,9 @@ test("does not spend catalog-provider egress when explicit Shopee CDN media is b
     videoUrl: "https://down-id.img.susercontent.com/file/product-video.mp4"
   }, true);
 
-  assert.equal(providerCalls, 0, "blocked explicit media must not trigger Openverse/Wikimedia searches");
+  assert.equal(providerCalls, 1, "an unusable Shopee CDN URL must not suppress the alternative catalog search");
   assert.equal(mediaFetches, 0, "Shopee-owned media downloads must remain blocked");
-  assert.equal(candidateWrites, 0, "no catalog candidate writes are needed");
+  assert.equal(candidateWrites, 0, "empty catalog results must not create candidate rows");
   assert.equal(result.stored.length, 0);
   assert.equal(result.pageFetched, false);
   assert.equal(result.skipped.filter((item) => /Shopee-hosted media is not fetched automatically/.test(item.reason)).length, 2);
