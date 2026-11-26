@@ -94,7 +94,7 @@ test("admin review records a reason and exposes the immutable audit history", as
       method: "GET", url: `/api/v1/illustrative-creatives/${creativeId}/review-audits`
     });
     assert.equal(audits.statusCode, 200);
-    assert.equal(audits.json()[0].action, "approve");
+    assert.equal(audits.json().data[0].action, "approve");
     assert.equal(h.reviewCalls, 1);
   } finally {
     await h.app.close();
