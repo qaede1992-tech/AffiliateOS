@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Content, CampaignOffer, TrackingLink } from "@affiliateos/shared";
 import { isExplicitlyAffiliateEligible } from "./opportunity-scoring.js";
 import type { MediaAsset } from "./media-asset.js";
@@ -8,6 +9,9 @@ import type { IllustrativeCreativeRecord } from "./illustrative-media-delivery.j
 export type IllustrativeCreativePolicy = {
   platform: "instagram";
   enabled: boolean;
+  policyVersion: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
   terms: Record<string, unknown>;
 };
 export interface IllustrativeCreativePublicationRepository {
@@ -40,6 +44,32 @@ const allowedVersions = (terms: Record<string, unknown>, key: string): string[] 
 
 type ProductSnapshot = { productId: string; name: string; priceCents: number; currency: string; capturedAt: string };
 
+
+export type IllustrativeCreativeProvenanceSnapshot = {
+  policy: {
+    platform: "instagram";
+    enabled: boolean;
+    policyVersion: string;
+    approvedBy: string | null;
+    approvedAt: string | null;
+    terms: Record<string, unknown>;
+  };
+  creatives: Array<Record<string, unknown>>;
+};
+
+const canonicalize = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, canonicalize(nested)]));
+  }
+  return value;
+};
+
+export const hashIllustrativeCreativeProvenanceSnapshot = (snapshot: IllustrativeCreativeProvenanceSnapshot | null): string =>
+  createHash("sha256").update(JSON.stringify(canonicalize(snapshot))).digest("hex");
+
 export class IllustrativeCreativePublicationGuard {
   constructor(private readonly dependencies: IllustrativePublicationGuardDependencies) {}
 
@@ -63,6 +93,59 @@ export class IllustrativeCreativePublicationGuard {
       generatedIds.add(media.id);
     }
     return generatedIds;
+  }
+
+
+  /**
+   * Captures every publication-relevant generated-creative field after validation.
+   * This snapshot is persisted in the dispatch reservation and compared again
+   * immediately before Instagram's final media_publish call.
+   */
+  async createProvenanceSnapshot(mediaAssets: MediaAsset[], generatedIds: ReadonlySet<string>): Promise<IllustrativeCreativeProvenanceSnapshot | null> {
+    if (generatedIds.size === 0) return null;
+    const policy = await this.dependencies.creatives.getPolicy("instagram");
+    if (!policy) fail("Instagram illustrative creative policy record is missing");
+    const creatives: Array<Record<string, unknown>> = [];
+    for (const media of mediaAssets.filter((asset) => generatedIds.has(asset.id)).sort((a, b) => a.id.localeCompare(b.id))) {
+      const creative = await this.dependencies.creatives.findByMediaAssetId(media.id);
+      if (!creative || creative.mediaAssetId !== media.id) fail("generated creative provenance changed while snapshotting");
+      creatives.push({
+        id: creative.id,
+        mediaAssetId: creative.mediaAssetId,
+        contentId: creative.contentId,
+        productId: creative.productId ?? null,
+        affiliateOfferId: creative.affiliateOfferId ?? null,
+        platform: creative.platform,
+        rendererVersion: creative.rendererVersion ?? null,
+        templateVersion: creative.templateVersion ?? null,
+        sha256: creative.sha256,
+        mimeType: creative.mimeType,
+        byteSize: creative.byteSize,
+        widthPx: creative.widthPx ?? null,
+        heightPx: creative.heightPx ?? null,
+        durationMs: creative.durationMs ?? null,
+        disclosureEmbedded: creative.disclosureEmbedded,
+        storageBackend: creative.storageBackend,
+        storageKey: creative.storageKey,
+        reviewStatus: creative.reviewStatus,
+        reviewedBy: creative.reviewedBy ?? null,
+        reviewedAt: creative.reviewedAt ?? null,
+        reviewReason: creative.reviewReason ?? null,
+        productSnapshot: creative.productSnapshot ?? null
+      });
+    }
+    if (creatives.length !== generatedIds.size) fail("not every generated media ID has a persisted creative provenance record");
+    return {
+      policy: {
+        platform: policy.platform,
+        enabled: policy.enabled,
+        policyVersion: policy.policyVersion,
+        approvedBy: policy.approvedBy,
+        approvedAt: policy.approvedAt,
+        terms: policy.terms
+      },
+      creatives
+    };
   }
 
   private async validateOne(input: {
