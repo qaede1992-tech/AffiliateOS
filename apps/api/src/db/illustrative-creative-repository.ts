@@ -96,6 +96,24 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
           targetContent.status !== "draft") {
         throw new Error("Generated creative requires a draft Instagram affiliate-promotion for the same product.");
       }
+      const productRows = await tx.select({ id: products.id, name: products.name, priceCents: products.priceCents, currency: products.currency, status: products.status })
+        .from(products).where(eq(products.id, input.productId)).limit(1);
+      const product = productRows[0];
+      if (!product || product.status !== "active" || input.productSnapshot.name !== product.name ||
+          input.productSnapshot.priceCents !== product.priceCents || input.productSnapshot.currency !== product.currency) {
+        throw new Error("Generated creative snapshot must match the current active product record.");
+      }
+      const evidenceRows = await tx.select().from(preMediaEligibilityEvidence)
+        .where(eq(preMediaEligibilityEvidence.productId, input.productId))
+        .orderBy(desc(preMediaEligibilityEvidence.createdAt)).limit(50);
+      const newestEvidenceAt = evidenceRows[0]?.createdAt;
+      const evidenceTimestamp = newestEvidenceAt ? Date.parse(newestEvidenceAt) : Number.NaN;
+      const nowTimestamp = Date.now();
+      const eligibleForOffer = evidenceRows.some((row) => row.createdAt === newestEvidenceAt && row.eligible && row.offerId === input.affiliateOfferId);
+      if (!Number.isFinite(evidenceTimestamp) || evidenceTimestamp > nowTimestamp ||
+          nowTimestamp - evidenceTimestamp > 7 * 24 * 60 * 60_000 || !eligibleForOffer) {
+        throw new Error("Generated creative requires fresh non-media eligibility evidence for this exact offer.");
+      }
       const offerRows = await tx.select({
         id: affiliateOffers.id, productId: affiliateOffers.productId, status: affiliateOffers.status,
         affiliateLinkStatus: affiliateOffers.affiliateLinkStatus
