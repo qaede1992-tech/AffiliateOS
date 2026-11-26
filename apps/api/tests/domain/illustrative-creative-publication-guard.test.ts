@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Content } from "@affiliateos/shared";
 import type { MediaAsset } from "../../src/domain/media-asset.js";
-import { IllustrativeCreativePublicationGuard } from "../../src/domain/illustrative-creative-publication-guard.js";
+import { hashIllustrativeCreativeProvenanceSnapshot, IllustrativeCreativePublicationGuard } from "../../src/domain/illustrative-creative-publication-guard.js";
 import type { IllustrativeCreativeRecord } from "../../src/domain/illustrative-media-delivery.js";
 
 const productId = "33333333-3333-4333-8333-333333333333";
@@ -37,6 +37,7 @@ function fixture(overrides: {
     rendererVersion: "renderer-1", templateVersion: "template-1",
     productSnapshot: { productId, name: "Demo Product", priceCents: 10000, currency: "IDR", capturedAt: now.toISOString() },
     widthPx: 720, heightPx: 1280, durationMs: 12000,
+    reviewedBy: "admin-1", reviewedAt: now.toISOString(), reviewReason: "Original AI creative checked.",
     ...overrides.creative
   };
   const media: MediaAsset = {
@@ -49,8 +50,9 @@ function fixture(overrides: {
   const deps = {
     creatives: {
       findByMediaAssetId: async (id: string) => id === mediaId ? creative : undefined,
-      getPolicy: async () => overrides.policyEnabled === false ? { platform: "instagram" as const, enabled: false, terms: {} } :
-        { platform: "instagram" as const, enabled: true, terms: { allowedRendererVersions: ["renderer-1"], allowedTemplateVersions: ["template-1"] } }
+      getPolicy: async () => overrides.policyEnabled === false
+        ? { platform: "instagram" as const, enabled: false, policyVersion: "policy-v1", approvedBy: "admin-1", approvedAt: now.toISOString(), terms: {} }
+        : { platform: "instagram" as const, enabled: true, policyVersion: "policy-v1", approvedBy: "admin-1", approvedAt: now.toISOString(), terms: { allowedRendererVersions: ["renderer-1"], allowedTemplateVersions: ["template-1"] } }
     },
     files: { get: async () => {
       fileReads += 1;
@@ -79,6 +81,29 @@ function fixture(overrides: {
   const guard = new IllustrativeCreativePublicationGuard(deps as never);
   return { guard, content, media, get fileReads() { return fileReads; } };
 }
+
+
+test("captures reviewer, product, file, renderer, and policy provenance in a stable snapshot", async () => {
+  const state = fixture();
+  const snapshot = await state.guard.createProvenanceSnapshot([state.media], new Set([mediaId]));
+  assert.ok(snapshot);
+  assert.equal(snapshot.policy.policyVersion, "policy-v1");
+  assert.equal(snapshot.policy.approvedBy, "admin-1");
+  assert.equal(snapshot.creatives[0]?.reviewedBy, "admin-1");
+  assert.equal(snapshot.creatives[0]?.reviewedAt, now.toISOString());
+  assert.equal(snapshot.creatives[0]?.reviewReason, "Original AI creative checked.");
+  assert.equal(snapshot.creatives[0]?.sha256, digest);
+  assert.equal(hashIllustrativeCreativeProvenanceSnapshot(snapshot), hashIllustrativeCreativeProvenanceSnapshot(snapshot));
+  assert.equal(await state.guard.createProvenanceSnapshot([state.media], new Set()), null);
+});
+
+test("refuses a provenance snapshot when any generated media ID has no creative record", async () => {
+  const state = fixture();
+  await assert.rejects(
+    state.guard.createProvenanceSnapshot([state.media], new Set([mediaId, "99999999-9999-4999-8999-999999999999"])),
+    /not every generated media ID has a persisted creative provenance record/
+  );
+});
 
 test("allows only a fully approved, current, eligible Instagram illustrative creative", async () => {
   const state = fixture();
