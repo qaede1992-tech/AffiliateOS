@@ -114,7 +114,7 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
       const newestEvidenceAt = evidenceRows[0]?.createdAt;
       const evidenceTimestamp = newestEvidenceAt ? Date.parse(newestEvidenceAt) : Number.NaN;
       const nowTimestamp = Date.now();
-      const eligibleForOffer = evidenceRows.some((row) => row.createdAt === newestEvidenceAt && row.eligible && row.offerId === input.affiliateOfferId);
+      const eligibleForOffer = evidenceRows.some((row: typeof preMediaEligibilityEvidence.$inferSelect) => row.createdAt === newestEvidenceAt && row.eligible && row.offerId === input.affiliateOfferId);
       if (!Number.isFinite(evidenceTimestamp) || evidenceTimestamp > nowTimestamp ||
           nowTimestamp - evidenceTimestamp > 7 * 24 * 60 * 60_000 || !eligibleForOffer) {
         throw new Error("Generated creative requires fresh non-media eligibility evidence for this exact offer.");
