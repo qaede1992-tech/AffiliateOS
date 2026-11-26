@@ -141,7 +141,7 @@ export function ProductMediaRightsPanel() {
     } catch (requestError) {
       if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Ilustrasi AI gagal dibuat.");
     } finally {
-      if (selectionRequestId === productSelectionSequence.current) setGeneratingIllustration(false);
+      setGeneratingIllustration(false);
     }
   };
 
