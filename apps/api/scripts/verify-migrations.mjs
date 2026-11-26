@@ -22,8 +22,11 @@ let pendingSuffixTags = [];
 const pendingMigrationTags = allowPendingSuffix
   ? new Set((process.env.MIGRATION_PREFLIGHT_PENDING_TAGS ?? "").split(",").map((tag) => tag.trim()).filter(Boolean))
   : new Set();
-const { columns: pendingSchemaColumns, indexes: pendingSchemaIndexes } =
-  getPendingMigrationSchemaExemptions(pendingMigrationTags);
+const {
+  tables: pendingSchemaTables,
+  columns: pendingSchemaColumns,
+  indexes: pendingSchemaIndexes
+} = getPendingMigrationSchemaExemptions(pendingMigrationTags);
 const migrationByTimestamp = new Map();
 const trackedMigrationHashes = new Map();
 
@@ -147,7 +150,9 @@ const expectedTables = [
   "affiliates", "offers", "conversions", "commissions", "marketplaces", "affiliate_accounts",
   "products", "affiliate_offers", "campaigns", "campaign_offers", "tracking_links", "clicks",
   "social_accounts", "content", "oauth_states", "conversion_attributions", "provider_events",
-  "publication_jobs", "media_assets", "publication_operations", "content_products", "product_media_assets"
+  "publication_jobs", "media_assets", "publication_operations", "content_products", "product_media_assets",
+  "illustrative_creative_policies", "generated_product_creatives",
+  "generated_product_creative_review_audits", "illustrative_creative_policy_audits"
 ];
 const expectedIndexes = [
   "tracking_links_campaign_idx", "products_marketplace_external_unique", "commissions_conversion_unique",
@@ -156,7 +161,10 @@ const expectedIndexes = [
   "publication_operations_provider_operation_unique", "media_assets_content_idx",
   "content_products_product_idx", "content_products_offer_idx", "content_products_content_position_idx",
   "campaigns_test_created_idx", "autonomous_runs_test_created_idx",
-  "product_media_assets_product_hash_unique", "product_media_assets_bucket_key_unique", "product_media_assets_product_kind_idx"
+  "product_media_assets_product_hash_unique", "product_media_assets_bucket_key_unique", "product_media_assets_product_kind_idx",
+  "generated_product_creatives_media_asset_unique", "generated_product_creatives_product_status_idx",
+  "generated_product_creatives_content_idx", "generated_product_creative_review_audits_creative_created_idx",
+  "illustrative_creative_policy_audits_platform_created_idx"
 ];
 const expectedColumns = [
   ["publication_jobs", "confirmed_at"],
@@ -174,7 +182,20 @@ const expectedColumns = [
   ["product_media_assets", "byte_size"],
   ["product_media_assets", "sha256"],
   ["product_media_assets", "source_url"],
-  ["product_media_assets", "created_at"]
+  ["product_media_assets", "created_at"],
+  ["illustrative_creative_policies", "platform"],
+  ["illustrative_creative_policies", "enabled"],
+  ["illustrative_creative_policies", "policy_version"],
+  ["generated_product_creatives", "id"],
+  ["generated_product_creatives", "media_asset_id"],
+  ["generated_product_creatives", "content_id"],
+  ["generated_product_creatives", "product_id"],
+  ["generated_product_creatives", "affiliate_offer_id"],
+  ["generated_product_creatives", "sha256"],
+  ["generated_product_creatives", "disclosure_embedded"],
+  ["generated_product_creatives", "review_status"],
+  ["generated_product_creative_review_audits", "creative_id"],
+  ["illustrative_creative_policy_audits", "platform"]
 ];
 
 await client.connect();
@@ -187,7 +208,9 @@ try {
     [expectedTables]
   );
   const actualTables = new Set(tableRows.map((row) => row.table_name));
-  const missingTables = expectedTables.filter((table) => !actualTables.has(table));
+  const missingTables = expectedTables.filter((table) =>
+    !pendingSchemaTables.has(table) && !actualTables.has(table)
+  );
   if (missingTables.length > 0) {
     errors.push(`Missing expected tables: ${missingTables.join(", ")}.`);
   }
@@ -204,7 +227,7 @@ try {
   }
 
   const { rows: columnRows } = await client.query(
-    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'), ('product_media_assets', 'id'), ('product_media_assets', 'product_id'), ('product_media_assets', 'kind'), ('product_media_assets', 'bucket'), ('product_media_assets', 'object_key'), ('product_media_assets', 'mime_type'), ('product_media_assets', 'byte_size'), ('product_media_assets', 'sha256'), ('product_media_assets', 'source_url'), ('product_media_assets', 'created_at'))"
+    "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN (('publication_jobs', 'confirmed_at'), ('publication_jobs', 'tiktok_approval'), ('media_assets', 'duration_seconds'), ('campaigns', 'is_test'), ('autonomous_runs', 'is_test'), ('autonomous_action_outcomes', 'recovery_quality_score'), ('product_media_assets', 'id'), ('product_media_assets', 'product_id'), ('product_media_assets', 'kind'), ('product_media_assets', 'bucket'), ('product_media_assets', 'object_key'), ('product_media_assets', 'mime_type'), ('product_media_assets', 'byte_size'), ('product_media_assets', 'sha256'), ('product_media_assets', 'source_url'), ('product_media_assets', 'created_at'), ('illustrative_creative_policies', 'platform'), ('illustrative_creative_policies', 'enabled'), ('illustrative_creative_policies', 'policy_version'), ('generated_product_creatives', 'id'), ('generated_product_creatives', 'media_asset_id'), ('generated_product_creatives', 'content_id'), ('generated_product_creatives', 'product_id'), ('generated_product_creatives', 'affiliate_offer_id'), ('generated_product_creatives', 'sha256'), ('generated_product_creatives', 'disclosure_embedded'), ('generated_product_creatives', 'review_status'), ('generated_product_creative_review_audits', 'creative_id'), ('illustrative_creative_policy_audits', 'platform'))"
   );
   const actualColumns = new Set(columnRows.map((row) => `${row.table_name}.${row.column_name}`));
   const missingColumns = expectedColumns

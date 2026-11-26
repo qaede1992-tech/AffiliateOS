@@ -87,6 +87,7 @@ export function findCompensatedHistoricalMigrationGaps({
 
 
 export function getPendingMigrationSchemaExemptions(pendingMigrationTags) {
+  const tables = new Set();
   const columns = new Set();
   const indexes = new Set();
   const exemptions = {
@@ -100,15 +101,48 @@ export function getPendingMigrationSchemaExemptions(pendingMigrationTags) {
     "0088_affiliate_offers_verification_cursor_index": {
       columns: [],
       indexes: ["affiliate_offers_verification_cursor_idx"]
+    },
+    // 0093 is a pending additive migration in the audited 0059 production-like
+    // state. Its tables, columns, and indexes must not be required until applied.
+    "0093_illustrative_creative_provenance": {
+      tables: [
+        "illustrative_creative_policies",
+        "generated_product_creatives",
+        "generated_product_creative_review_audits",
+        "illustrative_creative_policy_audits"
+      ],
+      columns: [
+        "illustrative_creative_policies.platform",
+        "illustrative_creative_policies.enabled",
+        "illustrative_creative_policies.policy_version",
+        "generated_product_creatives.id",
+        "generated_product_creatives.media_asset_id",
+        "generated_product_creatives.content_id",
+        "generated_product_creatives.product_id",
+        "generated_product_creatives.affiliate_offer_id",
+        "generated_product_creatives.sha256",
+        "generated_product_creatives.disclosure_embedded",
+        "generated_product_creatives.review_status",
+        "generated_product_creative_review_audits.creative_id",
+        "illustrative_creative_policy_audits.platform"
+      ],
+      indexes: [
+        "generated_product_creatives_media_asset_unique",
+        "generated_product_creatives_product_status_idx",
+        "generated_product_creatives_content_idx",
+        "generated_product_creative_review_audits_creative_created_idx",
+        "illustrative_creative_policy_audits_platform_created_idx"
+      ]
     }
   };
 
   for (const tag of pendingMigrationTags ?? []) {
     const exemption = exemptions[tag];
     if (!exemption) continue;
+    for (const table of exemption.tables ?? []) tables.add(table);
     for (const column of exemption.columns) columns.add(column);
     for (const index of exemption.indexes) indexes.add(index);
   }
 
-  return { columns, indexes };
+  return { tables, columns, indexes };
 }
