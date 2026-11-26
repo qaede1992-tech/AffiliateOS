@@ -107,6 +107,10 @@ export class IllustrativeCreativePublicationGuard {
         objectKey.split("/").some((part) => !part || part === "." || part === ".." || part.includes("\\"))) {
       fail("media asset reference is outside the content-scoped identity namespace");
     }
+    const referenceFilename = objectKey.slice(objectKey.lastIndexOf("/") + 1);
+    if (referenceFilename !== creative.storageKey) {
+      fail("media asset reference filename does not match the creative storage key");
+    }
 
     const policy = await this.dependencies.creatives.getPolicy("instagram");
     if (!policy || policy.enabled !== true || policy.platform !== "instagram") {
