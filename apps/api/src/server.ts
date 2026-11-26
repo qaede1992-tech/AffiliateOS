@@ -28,6 +28,7 @@ import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
+import { ProductIllustrativeImageGenerationService } from "./domain/product-illustrative-image-generation.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
@@ -144,6 +145,14 @@ const services = createServices(
 );
 if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
+    persistence.repositories.products,
+    persistence.repositories.productMediaAssets,
+    mediaStorage,
+    { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
+  );
+}
+if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
+  services.productIllustrativeImageGeneration = new ProductIllustrativeImageGenerationService(
     persistence.repositories.products,
     persistence.repositories.productMediaAssets,
     mediaStorage,
