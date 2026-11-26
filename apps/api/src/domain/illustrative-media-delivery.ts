@@ -69,6 +69,8 @@ export class IllustrativeMediaDeliveryService {
       creativeId: creative.id, mediaAssetId: creative.mediaAssetId,
       contentId: creative.contentId, sha256: creative.sha256
     });
+    // Policy revocation must invalidate already-issued provider URLs as well.
+    if (!await this.dependencies.policies.isEnabled("instagram")) throw unavailable();
     await this.requireActiveDispatch(creative.contentId);
     const parsed = parseSingleByteRange(input.range, creative.byteSize);
     if (parsed.kind === "unsatisfiable") {
