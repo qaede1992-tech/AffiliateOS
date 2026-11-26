@@ -81,7 +81,7 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
   }): Promise<IllustrativeCreativeRecord> {
     if (input.mimeType !== "video/mp4" || input.disclosureEmbedded !== true ||
         !/^[a-f0-9]{64}$/.test(input.sha256) ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[a-f0-9]{64}\\.mp4$/i.test(input.storageKey) ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[a-f0-9]{64}\.mp4$/i.test(input.storageKey) ||
         ![input.byteSize, input.widthPx, input.heightPx, input.durationMs].every((n) => Number.isSafeInteger(n) && n > 0)) {
       throw new Error("Generated creative metadata failed validation.");
     }
