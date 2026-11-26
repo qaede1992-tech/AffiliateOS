@@ -34,6 +34,7 @@ import { IllustrativeMediaTokenSigner } from "./domain/illustrative-media-token.
 import { IllustrativeMediaDeliveryService } from "./domain/illustrative-media-delivery.js";
 import { hashIllustrativeCreativeProvenanceSnapshot, IllustrativeCreativePublicationGuard } from "./domain/illustrative-creative-publication-guard.js";
 import { DrizzleIllustrativeCreativeRepository } from "./db/illustrative-creative-repository.js";
+import { IllustrativeProductCreativeGenerationService } from "./domain/illustrative-product-creative-generation.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
@@ -70,12 +71,16 @@ const mediaStorage = createSupabaseStorageClientFromEnv({
   SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
 });
 const mediaBucket = environment.SUPABASE_MEDIA_BUCKET || "affiliate-media";
+const illustrativeCreativeRepository = new DrizzleIllustrativeCreativeRepository(persistence.db);
+const illustrativeCreativeFiles = environment.ILLUSTRATIVE_MEDIA_DIR
+  ? new IllustrativeCreativeFileStore({ rootDirectory: environment.ILLUSTRATIVE_MEDIA_DIR })
+  : undefined;
 const illustrativePublication = environment.ILLUSTRATIVE_MEDIA_DIR &&
   environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET &&
   environment.ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL
   ? (() => {
-      const creativeRepository = new DrizzleIllustrativeCreativeRepository(persistence.db);
-      const files = new IllustrativeCreativeFileStore({ rootDirectory: environment.ILLUSTRATIVE_MEDIA_DIR! });
+      const creativeRepository = illustrativeCreativeRepository;
+      const files = illustrativeCreativeFiles!;
       const guard = new IllustrativeCreativePublicationGuard({
         creatives: creativeRepository,
         files,
@@ -192,7 +197,8 @@ const services = createServices(
     clientSecret: environment.OPENVERSE_CLIENT_SECRET
   },
   persistence.preMediaEligibility,
-  illustrativePublication
+  illustrativePublication,
+  illustrativeCreativeRepository
 );
 if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
@@ -203,6 +209,16 @@ if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KE
   );
 }
 services.illustrativeMediaDelivery = illustrativePublication?.delivery;
+if (illustrativeCreativeFiles) {
+  services.illustrativeCreativeGeneration = new IllustrativeProductCreativeGenerationService({
+    products: persistence.repositories.products,
+    contents: persistence.repositories.contents,
+    offers: persistence.repositories.affiliateOffers,
+    eligibility: persistence.preMediaEligibility,
+    creatives: illustrativeCreativeRepository,
+    files: illustrativeCreativeFiles
+  });
+}
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
   readinessCheck: async () => {
