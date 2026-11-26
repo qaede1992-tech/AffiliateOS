@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import type { Content, SocialAccount, TikTokPublicationApproval } from "@affiliateos/shared";
 import type { MediaAsset } from "./media-asset.js";
-import type { IllustrativeCreativePublicationGuard } from "./illustrative-creative-publication-guard.js";
+import { hashIllustrativeCreativeProvenanceSnapshot, type IllustrativeCreativePublicationGuard } from "./illustrative-creative-publication-guard.js";
 import type { IllustrativeMediaDeliveryService } from "./illustrative-media-delivery.js";
 import type { PublicationDispatchReservationRepository } from "./publication-dispatch-reservation.js";
 import type { AffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
@@ -73,6 +73,10 @@ export class PublisherExecutor {
       const generatedMediaAssetIds = isInstagramGraph && sourceMediaAssets
         ? await this.validateInstagramMedia(content, sourceMediaAssets, now)
         : new Set<string>();
+      const generatedCreativeProvenance = isInstagramGraph && sourceMediaAssets && this.illustrativePublication && generatedMediaAssetIds.size > 0
+        ? await this.illustrativePublication.guard.createProvenanceSnapshot(sourceMediaAssets, generatedMediaAssetIds)
+        : null;
+      const generatedCreativeProvenanceHash = hashIllustrativeCreativeProvenanceSnapshot(generatedCreativeProvenance);
       const credential = await this.resolveCredential(account);
       let reservation: import("./publication-dispatch-reservation.js").PublicationDispatchReservation | undefined;
       if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
@@ -85,7 +89,9 @@ export class PublisherExecutor {
           content: { id: content.id, platform: content.platform, contentType: content.contentType, title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null, cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [], productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null },
           account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
           mediaAssetIds: rawMediaAssets.map((asset) => asset.id).sort(),
-          ...(rawMediaAssets.length > 0 ? { mediaIntegrity } : {})
+          ...(rawMediaAssets.length > 0 ? { mediaIntegrity } : {}),
+          generatedCreativeProvenance,
+          generatedCreativeProvenanceHash
         };
         const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
         const timestamp = now.toISOString();
@@ -191,6 +197,17 @@ export class PublisherExecutor {
     const generatedMediaAssetIds = isInstagramGraph && sourceMediaAssets
       ? await this.validateInstagramMedia(content, sourceMediaAssets, new Date())
       : new Set<string>();
+    if (isInstagramGraph && generatedMediaAssetIds.size > 0) {
+      const reservation = await this.dispatchReservations?.findByJobProvider(operation.jobId, operation.provider);
+      const currentProvenance = this.illustrativePublication && sourceMediaAssets
+        ? await this.illustrativePublication.guard.createProvenanceSnapshot(sourceMediaAssets, generatedMediaAssetIds)
+        : null;
+      const currentHash = hashIllustrativeCreativeProvenanceSnapshot(currentProvenance);
+      const expectedHash = (reservation?.snapshot as { generatedCreativeProvenanceHash?: unknown } | undefined)?.generatedCreativeProvenanceHash;
+      if (!reservation || typeof expectedHash !== "string" || expectedHash !== currentHash) {
+        throw new Error("Generated Instagram creative provenance changed after dispatch reservation; reconciliation is blocked.");
+      }
+    }
     const mediaAssets = isInstagramGraph && sourceMediaAssets
       ? await this.resolveInstagramMediaAssets(content, sourceMediaAssets, generatedMediaAssetIds)
       : await this.resolveMediaAssets(content);
