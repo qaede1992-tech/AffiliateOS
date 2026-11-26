@@ -90,8 +90,7 @@ export class PublisherExecutor {
           account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
           mediaAssetIds: rawMediaAssets.map((asset) => asset.id).sort(),
           ...(rawMediaAssets.length > 0 ? { mediaIntegrity } : {}),
-          generatedCreativeProvenance,
-          generatedCreativeProvenanceHash
+          ...(generatedCreativeProvenance ? { generatedCreativeProvenance, generatedCreativeProvenanceHash } : {})
         };
         const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
         const timestamp = now.toISOString();
