@@ -36,13 +36,13 @@ export class IllustrativeMediaDeliveryService {
   }) {}
 
   /** Resolve a generated creative from the exact media asset selected by the publisher. */
-  async issueTokenForMediaAsset(mediaAssetId: string, contentId: string): Promise<string> {
+  async issueTokenForMediaAsset(mediaAssetId: string, contentId: string): Promise<{ creativeId: string; token: string }> {
     const creative = await this.dependencies.creatives.findByMediaAssetId?.(mediaAssetId);
     if (!creative || creative.mediaAssetId !== mediaAssetId || creative.contentId !== contentId ||
         !this.isDeliverableCreative(creative)) throw unavailable();
     if (!await this.dependencies.policies.isEnabled("instagram")) throw unavailable();
     await this.requireActiveDispatch(creative.contentId);
-    return this.signCreative(creative);
+    return { creativeId: creative.id, token: this.signCreative(creative) };
   }
 
   /** Called by the trusted publisher resolver before it sends the URL to Meta. */
