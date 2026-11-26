@@ -1580,3 +1580,64 @@ test("POST /api/v1/products/:productId/media-upload requires operator authorizat
     await app.close();
   }
 });
+
+test("signed illustrative media GET is narrowly public and returns no-store MP4 bytes", async () => {
+  const services = createInMemoryServices();
+  let observedToken = "";
+  services.illustrativeMediaDelivery = {
+    read: async (input: { creativeId: string; token: string; range?: string; head?: boolean }) => {
+      observedToken = input.token;
+      assert.equal(input.creativeId, "11111111-1111-4111-8111-111111111111");
+      assert.equal(input.range, "bytes=1-2");
+      assert.equal(input.head, false);
+      return {
+        status: 206 as const, mimeType: "video/mp4" as const, byteSize: 2,
+        contentRange: "bytes 1-2/4", bytes: new Uint8Array([2, 3]), acceptRanges: "bytes" as const
+      };
+    }
+  } as unknown as NonNullable<typeof services.illustrativeMediaDelivery>;
+  const app = createApp(services, {
+    auth: { enabled: true, token: "test-api-token-that-is-long-enough-32", operatorId: "test", role: "admin" }
+  });
+  const response = await app.inject({
+    method: "GET",
+    url: "/api/v1/public/illustrative-media/11111111-1111-4111-8111-111111111111?token=signed-value",
+    headers: { range: "bytes=1-2" }
+  });
+  assert.equal(response.statusCode, 206);
+  assert.equal(response.headers["content-type"], "video/mp4");
+  assert.equal(response.headers["content-length"], "2");
+  assert.equal(response.headers["content-range"], "bytes 1-2/4");
+  assert.equal(response.headers["accept-ranges"], "bytes");
+  assert.match(response.headers["cache-control"] ?? "", /no-store/);
+  assert.deepEqual([...response.rawPayload], [2, 3]);
+  assert.equal(observedToken, "signed-value");
+  await app.close();
+});
+
+test("signed illustrative media HEAD is public but missing, duplicate, and non-GET/HEAD tokens do not bypass auth", async () => {
+  const services = createInMemoryServices();
+  let headFlag: boolean | undefined;
+  services.illustrativeMediaDelivery = {
+    read: async (input: { head?: boolean }) => {
+      headFlag = input.head;
+      return { status: 200 as const, mimeType: "video/mp4" as const, byteSize: 4, acceptRanges: "bytes" as const };
+    }
+  } as unknown as NonNullable<typeof services.illustrativeMediaDelivery>;
+  const app = createApp(services, {
+    auth: { enabled: true, token: "test-api-token-that-is-long-enough-32", operatorId: "test", role: "admin" }
+  });
+  const path = "/api/v1/public/illustrative-media/11111111-1111-4111-8111-111111111111";
+  const head = await app.inject({ method: "HEAD", url: `${path}?token=signed-value` });
+  assert.equal(head.statusCode, 200);
+  assert.equal(head.payload, "");
+  assert.equal(head.headers["content-length"], "4");
+  assert.equal(headFlag, true);
+  const missing = await app.inject({ method: "GET", url: path });
+  assert.equal(missing.statusCode, 401);
+  const duplicate = await app.inject({ method: "GET", url: `${path}?token=one&token=two` });
+  assert.equal(duplicate.statusCode, 401);
+  const post = await app.inject({ method: "POST", url: `${path}?token=signed-value` });
+  assert.equal(post.statusCode, 401);
+  await app.close();
+});
