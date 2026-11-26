@@ -23,7 +23,15 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
       disclosureEmbedded: row.disclosureEmbedded,
       reviewStatus: row.reviewStatus,
       storageBackend: row.storageBackend,
-      storageKey: row.storageKey
+      storageKey: row.storageKey,
+      productId: row.productId,
+      affiliateOfferId: row.affiliateOfferId,
+      rendererVersion: row.rendererVersion,
+      templateVersion: row.templateVersion,
+      productSnapshot: row.productSnapshot,
+      widthPx: row.widthPx,
+      heightPx: row.heightPx,
+      durationMs: row.durationMs
     };
   }
 
@@ -36,8 +44,22 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
       id: row.id, mediaAssetId: row.mediaAssetId, contentId: row.contentId, platform: row.platform,
       sha256: row.sha256, mimeType: row.mimeType, byteSize: row.byteSize,
       disclosureEmbedded: row.disclosureEmbedded, reviewStatus: row.reviewStatus,
-      storageBackend: row.storageBackend, storageKey: row.storageKey
+      storageBackend: row.storageBackend, storageKey: row.storageKey,
+      productId: row.productId, affiliateOfferId: row.affiliateOfferId,
+      rendererVersion: row.rendererVersion, templateVersion: row.templateVersion,
+      productSnapshot: row.productSnapshot, widthPx: row.widthPx, heightPx: row.heightPx, durationMs: row.durationMs
     };
+  }
+
+  async getPolicy(platform: "instagram"): Promise<{ platform: "instagram"; enabled: boolean; terms: Record<string, unknown> } | undefined> {
+    const rows = await this.db.select({
+      platform: illustrativeCreativePolicies.platform,
+      enabled: illustrativeCreativePolicies.enabled,
+      terms: illustrativeCreativePolicies.terms
+    }).from(illustrativeCreativePolicies)
+      .where(eq(illustrativeCreativePolicies.platform, platform)).limit(1);
+    const row = rows[0];
+    return row ? { platform: "instagram", enabled: row.enabled, terms: row.terms as Record<string, unknown> } : undefined;
   }
 
   async isEnabled(platform: "instagram"): Promise<boolean> {
