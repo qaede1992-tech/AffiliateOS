@@ -57,10 +57,12 @@ import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
 import { IllustrativeProductVideoPreviewService } from "./illustrative-product-video-preview.js";
 import type { IllustrativeCreativePublicationGuard } from "./illustrative-creative-publication-guard.js";
 import type { IllustrativeMediaDeliveryService } from "./illustrative-media-delivery.js";
+import type { IllustrativeProductCreativeGenerationService } from "./illustrative-product-creative-generation.js";
 
 export interface Services {
   publicShopCatalog?: RepositorySet["publicShopCatalog"];
   illustrativeMediaDelivery?: IllustrativeMediaDeliveryService;
+  illustrativeCreativeGeneration?: IllustrativeProductCreativeGenerationService;
   illustrativeCreativeReview?: { review(input: { creativeId: string; status: "approved" | "rejected"; actorId: string; reason: string }): Promise<import("./illustrative-media-delivery.js").IllustrativeCreativeRecord | undefined>; listReviewAudits(creativeId: string): Promise<Array<Record<string, unknown>>> };
   publicShopCatalogFallbackAllowed?: boolean;
   affiliates: AffiliateService; offers: OfferService; conversions: ConversionService; commissions: CommissionService; marketplace: MarketplaceService; shopeeConversionSync: ShopeeConversionSyncService; shopeeConversionSyncScheduler: ShopeeConversionSyncScheduler;
