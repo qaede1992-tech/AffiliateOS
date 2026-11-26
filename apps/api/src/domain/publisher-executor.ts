@@ -104,9 +104,22 @@ export class PublisherExecutor {
         if (!dispatching) throw new Error("Instagram dispatch reservation could not be claimed; provider request was not sent.");
         reservation = dispatching;
       }
-      const mediaAssets = isInstagramGraph && sourceMediaAssets
-        ? await this.resolveInstagramMediaAssets(content, sourceMediaAssets, generatedMediaAssetIds)
-        : await this.resolveMediaAssets(content);
+      let mediaAssets: MediaAsset[];
+      try {
+        mediaAssets = isInstagramGraph && sourceMediaAssets
+          ? await this.resolveInstagramMediaAssets(content, sourceMediaAssets, generatedMediaAssetIds)
+          : await this.resolveMediaAssets(content);
+      } catch (error) {
+        // No provider request has been sent yet, so a media-resolution failure is
+        // safely terminal and must revoke any URL token issued during resolution.
+        if (reservation && this.dispatchReservations) {
+          const message = error instanceof Error ? error.message : String(error);
+          await this.dispatchReservations.transition(reservation.id, ["dispatching"], {
+            ...reservation, state: "failed", lastError: message.slice(0, 1000), updatedAt: new Date().toISOString()
+          });
+        }
+        throw error;
+      }
       let result: Awaited<ReturnType<SocialPublisher["publish"]>>;
       try {
         result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
