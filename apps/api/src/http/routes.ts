@@ -16,6 +16,7 @@ import { determineAutonomousHealthStatus } from "../domain/autonomous-health-sta
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { ProductMediaUploadError } from "../domain/product-media-upload-service.js";
 import { ProductImageGenerationError } from "../domain/product-image-generation.js";
+import { ProductIllustrativeImageGenerationError } from "../domain/product-illustrative-image-generation.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
@@ -212,6 +213,41 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         }
       }
     );
+    mediaApp.post("/api/v1/products/:productId/media-illustration-generate", { preHandler: requireOperator }, async (request, reply) => {
+      const { productId } = productMediaParamsSchema.parse(request.params);
+      const generator = services.productIllustrativeImageGeneration;
+      if (!generator) {
+        return reply.status(503).send({ error: "PRODUCT_ILLUSTRATION_GENERATION_UNAVAILABLE", message: "AI abstract illustration generation is not enabled or configured." });
+      }
+      try {
+        const result = await generator.generate(productId);
+        auditSecurityEvent(request.log, request, "product_ai_abstract_illustration_generated", {
+          productId,
+          generatedAssetId: result.asset.id,
+          rightsStatus: result.asset.rightsStatus,
+          identityStatus: result.asset.identityStatus ?? "pending",
+          publicationEligible: false
+        });
+        return reply.status(result.generated ? 201 : 200).send(result);
+      } catch (error) {
+        if (error instanceof ProductIllustrativeImageGenerationError) {
+          request.log.warn({ code: error.code }, "AI abstract product illustration rejected");
+          if (error.code === "PRODUCT_NOT_FOUND") {
+            return reply.status(404).send({ error: error.code, message: "The target product was not found." });
+          }
+          if (error.code === "PRODUCT_NOT_ACTIVE") {
+            return reply.status(409).send({ error: error.code, message: "Only active products can receive promotional illustrations." });
+          }
+          if (error.code === "AI_PROVIDER_UNAVAILABLE") {
+            return reply.status(503).send({ error: error.code, message: "The AI image provider is temporarily unavailable." });
+          }
+          return reply.status(error.code.startsWith("AI_PROVIDER") || error.code === "GENERATED_IMAGE_INVALID" ? 502 : 400)
+            .send({ error: error.code, message: "AI abstract illustration generation could not be completed." });
+        }
+        request.log.error({ errorName: error instanceof Error ? error.name : "UnknownError" }, "AI abstract product illustration failed");
+        return reply.status(502).send({ error: "PRODUCT_ILLUSTRATION_GENERATION_FAILED", message: "AI abstract illustration generation could not be completed." });
+      }
+    });
     mediaApp.post<{ Params: { productId: string }; Body: unknown }>("/api/v1/products/:productId/media-generate", { preHandler: requireOperator }, async (request, reply) => {
       if (!services.productImageGeneration) {
         return reply.status(503).send({ error: "PRODUCT_IMAGE_GENERATION_UNAVAILABLE", message: "AI product image generation is not enabled or configured." });
