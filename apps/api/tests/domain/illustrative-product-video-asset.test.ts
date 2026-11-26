@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { IllustrativeProductVideoAssetService } from "../src/domain/illustrative-product-video-asset.js";
+import { IllustrativeProductVideoAssetService } from "../../src/domain/illustrative-product-video-asset.js";
 
 const PRODUCT_ID = "a7f34e18-2a77-4c9e-a1f7-0f8a0f8d6a10";
 const bytes = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109]);
