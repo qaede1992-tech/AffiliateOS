@@ -633,6 +633,34 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(50, Math.trunc(requestedLimit))) : 50;
     return list(await repository.listReviewAudits(productId, candidateId, limit));
   });
+  app.patch("/api/v1/illustrative-creatives/:creativeId/review", adminGuard, async (request, reply) => {
+    const creativeId = (request.params as { creativeId?: string }).creativeId;
+    if (!creativeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(creativeId)) {
+      return reply.status(400).send({ error: "INVALID_CREATIVE_ID", message: "A valid creative ID is required." });
+    }
+    const body = request.body as { status?: unknown; reason?: unknown };
+    if ((body?.status !== "approved" && body?.status !== "rejected") ||
+        typeof body.reason !== "string" || !body.reason.trim() || body.reason.length > 1000) {
+      return reply.status(400).send({ error: "INVALID_CREATIVE_REVIEW", message: "Review status and a reason of at most 1000 characters are required." });
+    }
+    const repository = services.illustrativeCreativeReview;
+    if (!repository) return reply.status(503).send({ error: "ILLUSTRATIVE_CREATIVE_REVIEW_UNAVAILABLE", message: "Generated creative review storage is not configured." });
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    const updated = await repository.review({ creativeId, status: body.status, reason: body.reason, actorId });
+    if (!updated) return reply.status(409).send({ error: "ILLUSTRATIVE_CREATIVE_NOT_PENDING", message: "The creative does not exist or has already been reviewed." });
+    auditSecurityEvent(request.log, request, "illustrative_creative_reviewed", { creativeId, status: updated.reviewStatus });
+    return updated;
+  });
+  app.get("/api/v1/illustrative-creatives/:creativeId/review-audits", adminGuard, async (request, reply) => {
+    const creativeId = (request.params as { creativeId?: string }).creativeId;
+    if (!creativeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(creativeId)) {
+      return reply.status(400).send({ error: "INVALID_CREATIVE_ID", message: "A valid creative ID is required." });
+    }
+    const repository = services.illustrativeCreativeReview;
+    if (!repository) return reply.status(503).send({ error: "ILLUSTRATIVE_CREATIVE_REVIEW_UNAVAILABLE", message: "Generated creative review storage is not configured." });
+    return list(await repository.listReviewAudits(creativeId));
+  });
   app.post("/api/v1/products/:productId/illustrative-video-preview", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     const previewService = services.illustrativeVideoPreview;
