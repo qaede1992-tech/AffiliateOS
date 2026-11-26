@@ -633,6 +633,34 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(50, Math.trunc(requestedLimit))) : 50;
     return list(await repository.listReviewAudits(productId, candidateId, limit));
   });
+  app.post("/api/v1/products/:productId/illustrative-creatives", adminGuard, async (request, reply) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    const body = request.body as { contentId?: unknown };
+    if (typeof body?.contentId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.contentId)) {
+      return reply.status(400).send({ error: "INVALID_CONTENT_ID", message: "A valid draft content ID is required." });
+    }
+    const generator = services.illustrativeCreativeGeneration;
+    if (!generator) return reply.status(503).send({ error: "ILLUSTRATIVE_CREATIVE_GENERATION_UNAVAILABLE", message: "Persistent local-volume media generation is not configured." });
+    try {
+      const creative = await generator.generate({ productId, contentId: body.contentId });
+      auditSecurityEvent(request.log, request, "illustrative_product_creative_generated", {
+        productId, contentId: body.contentId, creativeId: creative.id,
+        byteSize: String(creative.byteSize), sha256: creative.sha256,
+        reviewStatus: creative.reviewStatus, publicationEligible: false
+      });
+      return reply.status(201).send(creative);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Creative generation failed.";
+      const conflict = /already has a generated illustrative creative/i.test(message);
+      const invalid = /required|active|eligible|eligibility|selection|selected product|offer|draft Instagram/i.test(message);
+      request.log.warn({ errorType: error instanceof Error ? error.name : "UnknownError" }, "Illustrative creative generation was not completed.");
+      return reply.status(conflict ? 409 : invalid ? 422 : 500).send({
+        error: conflict ? "ILLUSTRATIVE_CREATIVE_ALREADY_EXISTS" : invalid ? "ILLUSTRATIVE_CREATIVE_NOT_ELIGIBLE" : "ILLUSTRATIVE_CREATIVE_GENERATION_FAILED",
+        message: conflict || invalid ? message : "The illustrative creative could not be generated."
+      });
+    }
+  });
   app.patch("/api/v1/illustrative-creatives/:creativeId/review", adminGuard, async (request, reply) => {
     const creativeId = (request.params as { creativeId?: string }).creativeId;
     if (!creativeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(creativeId)) {
