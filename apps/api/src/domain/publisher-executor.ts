@@ -222,9 +222,9 @@ export class PublisherExecutor {
       generatedMediaAssetIds: generatedIds,
       resolveGeneratedMediaUrl: this.illustrativePublication ? async (asset, contentId) => {
         if (contentId !== content.id) throw new Error("Generated media content identity changed during dispatch.");
-        const token = await this.illustrativePublication!.delivery.issueTokenForMediaAsset(asset.id, contentId);
-        const url = new URL(`/api/v1/public/illustrative-media/${encodeURIComponent(asset.id)}`, this.illustrativePublication!.publicBaseUrl);
-        url.searchParams.set("token", token);
+        const issued = await this.illustrativePublication!.delivery.issueTokenForMediaAsset(asset.id, contentId);
+        const url = new URL(`/api/v1/public/illustrative-media/${encodeURIComponent(issued.creativeId)}`, this.illustrativePublication!.publicBaseUrl);
+        url.searchParams.set("token", issued.token);
         return url.toString();
       } : undefined
     });
