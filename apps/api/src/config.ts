@@ -72,13 +72,21 @@ const environmentSchema = z.object({
   SUPABASE_STORAGE_SERVICE_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   SUPABASE_MEDIA_BUCKET: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("affiliate-media")),
   ILLUSTRATIVE_MEDIA_DIR: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
-  ILLUSTRATIVE_MEDIA_SIGNING_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional())
+  ILLUSTRATIVE_MEDIA_SIGNING_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional()),
+  ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().refine((value) => value.startsWith("https://"), { message: "ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL must use HTTPS." }).optional())
 }).superRefine((value, context) => {
   if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && !value.OPENAI_API_KEY) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["OPENAI_API_KEY"], message: "OPENAI_API_KEY is required when AI product image generation is enabled." });
   }
   if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["SUPABASE_STORAGE_SERVICE_KEY"], message: "Supabase private Storage must be configured when AI product image generation is enabled." });
+  }
+  if (value.ILLUSTRATIVE_MEDIA_DIR && !value.ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL"],
+      message: "ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL is required when illustrative media delivery is configured."
+    });
   }
   if (Boolean(value.ILLUSTRATIVE_MEDIA_DIR) !== Boolean(value.ILLUSTRATIVE_MEDIA_SIGNING_SECRET)) {
     context.addIssue({

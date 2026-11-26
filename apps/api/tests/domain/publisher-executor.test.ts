@@ -5,7 +5,8 @@ import { ContentService } from "../../src/domain/content.js";
 import { PublisherExecutor } from "../../src/domain/publisher-executor.js";
 import type { SocialPublisher } from "../../src/domain/distribution-engine.js";
 import { InMemorySocialCredentialResolver } from "../../src/domain/social-credentials.js";
-import { InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
+import { InMemoryMediaAssetRepository, InMemoryProductCatalogRepository, InMemoryRepository, InMemorySocialAccountRepository } from "../../src/domain/repository.js";
+import { InMemoryPublicationDispatchReservationRepository } from "../../src/domain/publication-dispatch-reservation.js";
 
 const product: Product = {
   id: "product-1", marketplaceId: "marketplace-1", externalProductId: "external-1", name: "Demo Product",
@@ -276,4 +277,160 @@ describe("PublisherExecutor", () => {
     await assert.rejects(() => executor.execute(created.id, new Date("2026-09-20T11:00:00.000Z")), /provider rejected request/);
     assert.equal((await contentService.get(created.id)).status, "failed");
   });
+  it("issues an illustrative delivery URL only after the Instagram dispatch reservation is active", async () => {
+    const mediaRepository = new InMemoryMediaAssetRepository();
+    const contents = new InMemoryRepository<Content>();
+    const campaigns = new InMemoryRepository<any>();
+    const products = new InMemoryProductCatalogRepository();
+    const contentService = new ContentService(contents, campaigns, products, mediaRepository);
+    const created = await contentService.create({
+      platform: "instagram",
+      contentType: "video",
+      status: "scheduled",
+      scheduledAt: "2026-09-20T10:00:00.000Z"
+    });
+    const mediaId = "media-illustrative-1";
+    const creativeId = "33333333-3333-4333-8333-333333333333";
+    await mediaRepository.save({
+      id: mediaId,
+      contentId: created.id,
+      kind: "video",
+      source: "object-storage",
+      reference: `affiliate-media/content/${created.id}/${creativeId}-${"a".repeat(64)}.mp4`,
+      mimeType: "video/mp4",
+      byteSize: 128,
+      durationSeconds: 12,
+      widthPx: 720,
+      heightPx: 1280,
+      createdAt: "2026-09-20T00:00:00.000Z",
+      updatedAt: "2026-09-20T00:00:00.000Z"
+    });
+    await contentService.update(created.id, { mediaAssetIds: [mediaId] });
+
+    const instagramAccount: SocialAccount = {
+      ...account,
+      id: "instagram-account",
+      platform: "instagram",
+      accountReference: "instagram-ref"
+    };
+    const socialAccounts = new InMemorySocialAccountRepository();
+    await socialAccounts.save(instagramAccount);
+    const reservations = new InMemoryPublicationDispatchReservationRepository();
+    const order: string[] = [];
+    const guard = {
+      async validate(input: { content: Content; mediaAssets: Array<{ id: string }> }) {
+        assert.equal(input.content.id, created.id);
+        assert.equal(input.mediaAssets[0]?.id, mediaId);
+        assert.equal(await reservations.findByJobProvider("job-illustrative", "instagram-graph"), undefined);
+        order.push("guard");
+        return new Set([mediaId]);
+      }
+    };
+    const delivery = {
+      async issueTokenForMediaAsset(receivedMediaId: string, contentId: string) {
+        assert.equal(receivedMediaId, mediaId);
+        assert.equal(contentId, created.id);
+        const reservation = await reservations.findByJobProvider("job-illustrative", "instagram-graph");
+        assert.equal(reservation?.state, "dispatching");
+        order.push("token");
+        return { creativeId, token: "opaque-token" };
+      }
+    };
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async ({ mediaAssets }) => {
+        assert.equal(mediaAssets[0]?.source, "url");
+        assert.equal(mediaAssets[0]?.reference, `https://api.example.com/api/v1/public/illustrative-media/${creativeId}?token=opaque-token`);
+        order.push("publish");
+        return { status: "accepted", providerOperationId: "instagram-container-1" };
+      }
+    };
+    const executor = new PublisherExecutor(
+      contentService,
+      socialAccounts,
+      [publisher],
+      undefined,
+      mediaRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reservations,
+      { guard, delivery, publicBaseUrl: "https://api.example.com" } as never
+    );
+    const result = await executor.execute(
+      created.id,
+      new Date("2026-09-20T11:00:00.000Z"),
+      "job-illustrative",
+      undefined,
+      "job-illustrative"
+    );
+    assert.equal(result.status, "accepted");
+    assert.deepEqual(order, ["guard", "token", "publish"]);
+  });
+
+  it("fails the active reservation when local media resolution fails before the provider request", async () => {
+    const mediaRepository = new InMemoryMediaAssetRepository();
+    const contents = new InMemoryRepository<Content>();
+    const campaigns = new InMemoryRepository<any>();
+    const products = new InMemoryProductCatalogRepository();
+    const contentService = new ContentService(contents, campaigns, products, mediaRepository);
+    const created = await contentService.create({
+      platform: "instagram",
+      contentType: "video",
+      status: "scheduled",
+      scheduledAt: "2026-09-20T10:00:00.000Z"
+    });
+    const mediaId = "media-illustrative-failure";
+    await mediaRepository.save({
+      id: mediaId,
+      contentId: created.id,
+      kind: "video",
+      source: "object-storage",
+      reference: `affiliate-media/content/${created.id}/generated.mp4`,
+      mimeType: "video/mp4",
+      byteSize: 128,
+      durationSeconds: 12,
+      widthPx: 720,
+      heightPx: 1280,
+      createdAt: "2026-09-20T00:00:00.000Z",
+      updatedAt: "2026-09-20T00:00:00.000Z"
+    });
+    await contentService.update(created.id, { mediaAssetIds: [mediaId] });
+    const socialAccounts = new InMemorySocialAccountRepository();
+    await socialAccounts.save({ ...account, id: "instagram-account-failure", platform: "instagram" });
+    const reservations = new InMemoryPublicationDispatchReservationRepository();
+    let providerCalls = 0;
+    const publisher: SocialPublisher = {
+      provider: "instagram-graph",
+      supports: (platform) => platform === "instagram",
+      publish: async () => { providerCalls += 1; return { status: "accepted", providerOperationId: "unexpected" }; }
+    };
+    const executor = new PublisherExecutor(
+      contentService,
+      socialAccounts,
+      [publisher],
+      undefined,
+      mediaRepository,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reservations,
+      {
+        guard: { validate: async () => new Set([mediaId]) },
+        delivery: { issueTokenForMediaAsset: async () => { throw new Error("local media unavailable"); } },
+        publicBaseUrl: "https://api.example.com"
+      } as never
+    );
+    await assert.rejects(
+      executor.execute(created.id, new Date("2026-09-20T11:00:00.000Z"), "job-media-failure", undefined, "job-media-failure"),
+      /local media unavailable/
+    );
+    const reservation = await reservations.findByJobProvider("job-media-failure", "instagram-graph");
+    assert.equal(reservation?.state, "failed");
+    assert.equal(providerCalls, 0);
+  });
+
 });

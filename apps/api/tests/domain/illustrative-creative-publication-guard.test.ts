@@ -45,6 +45,7 @@ function fixture(overrides: {
     mimeType: "video/mp4", byteSize: 128, widthPx: 720, heightPx: 1280, durationSeconds: 12,
     createdAt: now.toISOString(), updatedAt: now.toISOString()
   };
+  let fileReads = 0;
   const deps = {
     creatives: {
       findByMediaAssetId: async (id: string) => id === mediaId ? creative : undefined,
@@ -52,6 +53,7 @@ function fixture(overrides: {
         { platform: "instagram" as const, enabled: true, terms: { allowedRendererVersions: ["renderer-1"], allowedTemplateVersions: ["template-1"] } }
     },
     files: { get: async () => {
+      fileReads += 1;
       if (overrides.fileValid === false) throw new Error("integrity mismatch");
       return new Uint8Array([1, 2, 3]);
     } },
@@ -75,7 +77,7 @@ function fixture(overrides: {
     }] }
   };
   const guard = new IllustrativeCreativePublicationGuard(deps as never);
-  return { guard, content, media };
+  return { guard, content, media, get fileReads() { return fileReads; } };
 }
 
 test("allows only a fully approved, current, eligible Instagram illustrative creative", async () => {
@@ -84,6 +86,16 @@ test("allows only a fully approved, current, eligible Instagram illustrative cre
     content: state.content, mediaAssets: [state.media], linkedProductIds: [productId], now
   });
   assert.deepEqual([...generated], [mediaId]);
+});
+
+
+test("rejects a generated media reference whose filename differs from the creative storage key before reading the file", async () => {
+  const state = fixture();
+  state.media.reference = `affiliate-media/content/${contentId}/${"66666666-6666-4666-8666-666666666666"}-${digest}.mp4`;
+  await assert.rejects(state.guard.validate({
+    content: state.content, mediaAssets: [state.media], linkedProductIds: [productId], now
+  }), /reference filename does not match the creative storage key/);
+  assert.equal(state.fileReads, 0);
 });
 
 test("does not classify media without a registered generated-creative provenance record as generated", async () => {
