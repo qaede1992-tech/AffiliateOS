@@ -1,0 +1,80 @@
+import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { IllustrativeCreativeFileStore } from "../../src/domain/illustrative-creative-file-store.js";
+
+const sample = new Uint8Array(Buffer.concat([
+  Buffer.from([0, 0, 0, 16]), Buffer.from("ftyp"), Buffer.from("isom"), Buffer.from([0, 0, 2, 0]),
+  Buffer.from([0, 0, 0, 9]), Buffer.from("mdat"), Buffer.from([0x01])
+]));
+
+test("stores and retrieves a file by opaque relative key with SHA-256 verification", async () => {
+  const root = await mkdtemp(join(tmpdir(), "affiliateos-creative-store-"));
+  try {
+    const store = new IllustrativeCreativeFileStore({ rootDirectory: root });
+    const creativeId = randomUUID();
+    const sha256 = createHash("sha256").update(sample).digest("hex");
+    const stored = await store.put({ creativeId, bytes: sample, expectedSha256: sha256 });
+    assert.equal(stored.key, `${creativeId}-${sha256}.mp4`);
+    assert.equal(stored.byteSize, sample.byteLength);
+    assert.deepEqual(await store.get({ key: stored.key, expectedSha256: sha256, expectedByteSize: sample.byteLength }), sample);
+    await store.remove(stored.key);
+    await assert.rejects(() => store.get({ key: stored.key, expectedSha256: sha256, expectedByteSize: sample.byteLength }));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects mismatched digest, invalid identifiers, oversized data, and path traversal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "affiliateos-creative-store-"));
+  try {
+    const store = new IllustrativeCreativeFileStore({ rootDirectory: root, maxBytes: 64 });
+    const creativeId = randomUUID();
+    const sha256 = createHash("sha256").update(sample).digest("hex");
+    await assert.rejects(() => store.put({ creativeId, bytes: sample, expectedSha256: "a".repeat(64) }), /SHA-256/);
+    await assert.rejects(() => store.put({ creativeId: "../escape", bytes: sample, expectedSha256: sha256 }), /UUID/);
+    const limitedStore = new IllustrativeCreativeFileStore({ rootDirectory: root, maxBytes: 8 });
+    await assert.rejects(() => limitedStore.put({ creativeId, bytes: sample, expectedSha256: sha256 }), /size limit/);
+    await assert.rejects(() => store.get({ key: "../escape", expectedSha256: sha256, expectedByteSize: sample.byteLength }), /key/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("does not overwrite an existing creative file", async () => {
+  const root = await mkdtemp(join(tmpdir(), "affiliateos-creative-store-"));
+  try {
+    const store = new IllustrativeCreativeFileStore({ rootDirectory: root });
+    const creativeId = randomUUID();
+    const sha256 = createHash("sha256").update(sample).digest("hex");
+    const stored = await store.put({ creativeId, bytes: sample, expectedSha256: sha256 });
+    await assert.rejects(() => store.put({ creativeId, bytes: sample, expectedSha256: sha256 }));
+    assert.deepEqual(new Uint8Array(await readFile(join(root, stored.key))), sample);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("refuses symlink substitution when retrieving a creative file", async () => {
+  const root = await mkdtemp(join(tmpdir(), "affiliateos-creative-store-"));
+  const outside = await mkdtemp(join(tmpdir(), "affiliateos-creative-outside-"));
+  try {
+    const store = new IllustrativeCreativeFileStore({ rootDirectory: root });
+    const creativeId = randomUUID();
+    const sha256 = createHash("sha256").update(sample).digest("hex");
+    const key = `${creativeId}-${sha256}.mp4`;
+    const outsideFile = join(outside, "payload.mp4");
+    await writeFile(outsideFile, sample);
+    await symlink(outsideFile, join(root, key));
+    await assert.rejects(
+      () => store.get({ key, expectedSha256: sha256, expectedByteSize: sample.byteLength }),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
