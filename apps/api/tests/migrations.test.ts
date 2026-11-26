@@ -42,3 +42,17 @@ test("illustrative creative provenance is isolated from third-party product-medi
   assert.doesNotMatch(sql, /INSERT INTO public\.illustrative_creative_policies/i);
   assert.doesNotMatch(sql, /UPDATE public\.product_media_assets|rights_status|rights_basis/i);
 });
+
+test("illustrative creative storage metadata permits only opaque local-volume keys", async () => {
+  const sql = await readFile(resolve(migrationsDirectory, "0094_illustrative_creative_storage_metadata.sql"), "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS storage_backend varchar\(30\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS storage_key varchar\(255\)/);
+  assert.match(sql, /storage_backend = 'local_volume'/);
+  assert.match(sql, /storage_key IS NOT NULL/);
+  assert.match(sql, /storage_key ~ '\^\[0-9a-f\]/);
+
+  assert.match(sql, /storage_backend IS NULL AND storage_key IS NULL/);
+  assert.match(sql, /storage_backend IS NOT NULL\s+AND storage_backend = 'local_volume'/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS generated_product_creatives_storage_key_unique/);
+  assert.doesNotMatch(sql, /absolute_path|filesystem_path|https?:\/\//i);
+});

@@ -224,6 +224,8 @@ export const generatedProductCreatives = pgTable("generated_product_creatives", 
   widthPx: integer("width_px").notNull(),
   heightPx: integer("height_px").notNull(),
   durationMs: integer("duration_ms").notNull(),
+  storageBackend: varchar("storage_backend", { length: 30 }),
+  storageKey: varchar("storage_key", { length: 255 }),
   reviewStatus: varchar("review_status", { length: 20 }).notNull().default("pending"),
   reviewedBy: varchar("reviewed_by", { length: 255 }),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
@@ -238,6 +240,8 @@ export const generatedProductCreatives = pgTable("generated_product_creatives", 
   check("generated_product_creatives_sha256_check", sql`${table.sha256} ~ '^[0-9a-f]{64}$'`),
   check("generated_product_creatives_dimensions_check", sql`${table.widthPx} > 0 AND ${table.heightPx} > 0 AND ${table.durationMs} > 0 AND ${table.byteSize} > 0`),
   check("generated_product_creatives_disclosure_check", sql`${table.disclosureEmbedded} = true`),
+  uniqueIndex("generated_product_creatives_storage_key_unique").on(table.storageKey).where(sql`${table.storageKey} IS NOT NULL`),
+  check("generated_product_creatives_storage_pair_check", sql`(${table.storageBackend} IS NULL AND ${table.storageKey} IS NULL) OR (${table.storageBackend} IS NOT NULL AND ${table.storageBackend} = 'local_volume' AND ${table.storageKey} IS NOT NULL AND ${table.storageKey} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[0-9a-f]{64}\\.mp4$')`),
   check("generated_product_creatives_review_check", sql`(${table.reviewStatus} = 'pending' AND ${table.reviewedBy} IS NULL AND ${table.reviewedAt} IS NULL) OR (${table.reviewStatus} IN ('approved', 'rejected') AND ${table.reviewedBy} IS NOT NULL AND ${table.reviewedAt} IS NOT NULL AND ${table.reviewReason} IS NOT NULL)`)
 ]);
 
@@ -269,3 +273,5 @@ export const illustrativeCreativePolicyAudits = pgTable("illustrative_creative_p
   check("illustrative_creative_policy_audits_platform_check", sql`${table.platform} IN ('instagram')`),
   check("illustrative_creative_policy_audits_action_check", sql`${table.action} IN ('enable', 'disable')`)
 ]);
+
+
