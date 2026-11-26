@@ -7,12 +7,13 @@ export type IllustrativeCreativeRecord = {
   storageBackend: string | null; storageKey: string | null;
   productId?: string; affiliateOfferId?: string | null; rendererVersion?: string; templateVersion?: string;
   productSnapshot?: Record<string, unknown>; widthPx?: number; heightPx?: number; durationMs?: number;
+  reviewedBy?: string | null; reviewedAt?: string | null; reviewReason?: string | null;
 };
 export type IllustrativeDispatchReservation = { state: string; provider: string; contentId: string };
 export interface IllustrativeCreativeReader { findById(id: string): Promise<IllustrativeCreativeRecord | undefined>; findByMediaAssetId?(id: string): Promise<IllustrativeCreativeRecord | undefined>; }
 export interface IllustrativePolicyReader {
   isEnabled(platform: "instagram"): Promise<boolean>;
-  getPolicy?(platform: "instagram"): Promise<{ platform: "instagram"; enabled: boolean; terms: Record<string, unknown> } | undefined>;
+  getPolicy?(platform: "instagram"): Promise<{ platform: "instagram"; enabled: boolean; policyVersion: string; approvedBy: string | null; approvedAt: string | null; terms: Record<string, unknown> } | undefined>;
 }
 export interface IllustrativeDispatchReader { findActiveByContentProvider(contentId: string, provider: "instagram-graph"): Promise<IllustrativeDispatchReservation | undefined>; }
 export interface IllustrativeFileReader {

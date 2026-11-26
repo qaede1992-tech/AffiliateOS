@@ -32,7 +32,7 @@ import { ProductImageGenerationService } from "./domain/product-image-generation
 import { IllustrativeCreativeFileStore } from "./domain/illustrative-creative-file-store.js";
 import { IllustrativeMediaTokenSigner } from "./domain/illustrative-media-token.js";
 import { IllustrativeMediaDeliveryService } from "./domain/illustrative-media-delivery.js";
-import { IllustrativeCreativePublicationGuard } from "./domain/illustrative-creative-publication-guard.js";
+import { hashIllustrativeCreativeProvenanceSnapshot, IllustrativeCreativePublicationGuard } from "./domain/illustrative-creative-publication-guard.js";
 import { DrizzleIllustrativeCreativeRepository } from "./db/illustrative-creative-repository.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
@@ -138,6 +138,16 @@ const services = createServices(
         const generatedIds = illustrativePublication
           ? await illustrativePublication.guard.validate({ content, mediaAssets, linkedProductIds, now: new Date() })
           : new Set<string>();
+        if (generatedIds.size > 0) {
+          const currentProvenance = illustrativePublication
+            ? await illustrativePublication.guard.createProvenanceSnapshot(mediaAssets, generatedIds)
+            : null;
+          const currentProvenanceHash = hashIllustrativeCreativeProvenanceSnapshot(currentProvenance);
+          const expectedProvenanceHash = (reservation.snapshot as { generatedCreativeProvenanceHash?: unknown }).generatedCreativeProvenanceHash;
+          if (typeof expectedProvenanceHash !== "string" || expectedProvenanceHash !== currentProvenanceHash) {
+            throw new Error("Generated Instagram creative provenance changed after dispatch reservation; final publication is blocked.");
+          }
+        }
         const currentIntegrity = await createPublicationMediaIntegritySnapshot(mediaAssets, linkedProductIds, persistence.repositories.productMediaAssets);
         assertPublicationMediaIntegritySnapshot((reservation.snapshot as {mediaIntegrity?:unknown}).mediaIntegrity, currentIntegrity);
         await assertProductMediaRightsForPublication(
