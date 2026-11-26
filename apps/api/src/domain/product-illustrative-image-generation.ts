@@ -156,7 +156,8 @@ export class ProductIllustrativeImageGenerationService {
           size: "1024x1024",
           quality: "medium",
           output_format: "png",
-          moderation: "auto"
+          moderation: "auto",
+          safety_identifier: createHash("sha256").update(productId).digest("hex").slice(0, 64)
         }),
         redirect: "error",
         signal: AbortSignal.timeout(this.timeoutMs)
