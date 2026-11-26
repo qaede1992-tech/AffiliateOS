@@ -11,6 +11,7 @@ import { DrizzleOAuthStateRepository } from "./db/oauth-state.js";
 import { DrizzlePublicationOperationRepository } from "./db/publication-operation-repository.js";
 import { DrizzleAutonomousRunRepository } from "./db/autonomous-run-repository.js";
 import { DrizzleAutonomousFeedbackMemoryRepository } from "./db/autonomous-feedback-memory-repository.js";
+import { DrizzlePublicationDispatchReservationRepository } from "./db/publication-dispatch-reservation-repository.js";
 import { ProviderEventWorker } from "./domain/provider-event-worker.js";
 import { ProviderEventScheduler } from "./domain/provider-event-scheduler.js";
 import { ProviderEventProcessor } from "./domain/provider-event-processor.js";
@@ -31,6 +32,7 @@ import { ProductImageGenerationService } from "./domain/product-image-generation
 import { IllustrativeCreativeFileStore } from "./domain/illustrative-creative-file-store.js";
 import { IllustrativeMediaTokenSigner } from "./domain/illustrative-media-token.js";
 import { IllustrativeMediaDeliveryService } from "./domain/illustrative-media-delivery.js";
+import { IllustrativeCreativePublicationGuard } from "./domain/illustrative-creative-publication-guard.js";
 import { DrizzleIllustrativeCreativeRepository } from "./db/illustrative-creative-repository.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
@@ -68,6 +70,31 @@ const mediaStorage = createSupabaseStorageClientFromEnv({
   SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
 });
 const mediaBucket = environment.SUPABASE_MEDIA_BUCKET || "affiliate-media";
+const illustrativePublication = environment.ILLUSTRATIVE_MEDIA_DIR &&
+  environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET &&
+  environment.ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL
+  ? (() => {
+      const creativeRepository = new DrizzleIllustrativeCreativeRepository(persistence.db);
+      const files = new IllustrativeCreativeFileStore({ rootDirectory: environment.ILLUSTRATIVE_MEDIA_DIR! });
+      const guard = new IllustrativeCreativePublicationGuard({
+        creatives: creativeRepository,
+        files,
+        products: persistence.repositories.products,
+        offers: persistence.repositories.affiliateOffers,
+        campaignOffers: persistence.repositories.campaignOffers,
+        trackingLinks: persistence.repositories.trackingLinks,
+        preMediaEligibility: persistence.preMediaEligibility
+      });
+      const delivery = new IllustrativeMediaDeliveryService({
+        creatives: creativeRepository,
+        policies: creativeRepository,
+        dispatches: new DrizzlePublicationDispatchReservationRepository(persistence.db),
+        files,
+        signer: new IllustrativeMediaTokenSigner(environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET!)
+      });
+      return { guard, delivery, publicBaseUrl: environment.ILLUSTRATIVE_MEDIA_PUBLIC_BASE_URL! };
+    })()
+  : undefined;
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
@@ -104,10 +131,20 @@ const services = createServices(
         const linkedProducts = await persistence.repositories.contentProducts.listByContent(content.id);
         const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
         const reservation = await persistence.repositories.publicationDispatchReservations?.findByJobProvider(operation.jobId, operation.provider);
-        if (!reservation || reservation.contentId !== content.id || reservation.state === "failed") throw new Error("Instagram publication reservation is missing or invalid; final publication is blocked.");
+        if (!reservation || reservation.contentId !== content.id ||
+            !["dispatching", "accepted", "uncertain", "needs_reconciliation"].includes(reservation.state)) {
+          throw new Error("Instagram publication reservation is missing or inactive; final publication is blocked.");
+        }
+        const generatedIds = illustrativePublication
+          ? await illustrativePublication.guard.validate({ content, mediaAssets, linkedProductIds, now: new Date() })
+          : new Set<string>();
         const currentIntegrity = await createPublicationMediaIntegritySnapshot(mediaAssets, linkedProductIds, persistence.repositories.productMediaAssets);
         assertPublicationMediaIntegritySnapshot((reservation.snapshot as {mediaIntegrity?:unknown}).mediaIntegrity, currentIntegrity);
-        await assertProductMediaRightsForPublication(mediaAssets, linkedProductIds, persistence.repositories.productMediaAssets);
+        await assertProductMediaRightsForPublication(
+          mediaAssets.filter((asset) => !generatedIds.has(asset.id)),
+          linkedProductIds,
+          persistence.repositories.productMediaAssets
+        );
       }
     }
   }),
@@ -144,7 +181,8 @@ const services = createServices(
     clientId: environment.OPENVERSE_CLIENT_ID,
     clientSecret: environment.OPENVERSE_CLIENT_SECRET
   },
-  persistence.preMediaEligibility
+  persistence.preMediaEligibility,
+  illustrativePublication
 );
 if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
@@ -154,18 +192,7 @@ if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KE
     { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
   );
 }
-if (environment.ILLUSTRATIVE_MEDIA_DIR && environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET) {
-  const dispatches = persistence.repositories.publicationDispatchReservations;
-  if (!dispatches) throw new Error("Illustrative media delivery requires the publication dispatch reservation repository.");
-  const creativeRepository = new DrizzleIllustrativeCreativeRepository(persistence.db);
-  services.illustrativeMediaDelivery = new IllustrativeMediaDeliveryService({
-    creatives: creativeRepository,
-    policies: creativeRepository,
-    dispatches,
-    files: new IllustrativeCreativeFileStore({ rootDirectory: environment.ILLUSTRATIVE_MEDIA_DIR }),
-    signer: new IllustrativeMediaTokenSigner(environment.ILLUSTRATIVE_MEDIA_SIGNING_SECRET)
-  });
-}
+services.illustrativeMediaDelivery = illustrativePublication?.delivery;
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
   readinessCheck: async () => {
