@@ -94,6 +94,20 @@ test("captures reviewer, product, file, renderer, and policy provenance in a sta
   assert.equal(snapshot.creatives[0]?.reviewReason, "Original AI creative checked.");
   assert.equal(snapshot.creatives[0]?.sha256, digest);
   assert.equal(hashIllustrativeCreativeProvenanceSnapshot(snapshot), hashIllustrativeCreativeProvenanceSnapshot(snapshot));
+  assert.notEqual(
+    hashIllustrativeCreativeProvenanceSnapshot(snapshot),
+    hashIllustrativeCreativeProvenanceSnapshot({
+      ...snapshot,
+      policy: { ...snapshot.policy, policyVersion: "policy-v2" }
+    })
+  );
+  assert.notEqual(
+    hashIllustrativeCreativeProvenanceSnapshot(snapshot),
+    hashIllustrativeCreativeProvenanceSnapshot({
+      ...snapshot,
+      creatives: [{ ...snapshot.creatives[0], reviewedBy: "different-reviewer" }]
+    })
+  );
   assert.equal(await state.guard.createProvenanceSnapshot([state.media], new Set()), null);
 });
 
