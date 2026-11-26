@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { lstat, mkdir, open, realpath, rm, stat } from "node:fs/promises";
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export interface ProductMediaLocalStorageConfig {
   rootDirectory: string;
