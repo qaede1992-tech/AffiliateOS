@@ -89,6 +89,14 @@ test("revokes an issued token as soon as the durable dispatch becomes terminal",
   await assert.rejects(state.service.read({ creativeId, token }));
 });
 
+test("revokes an issued token when the illustrative policy is disabled", async () => {
+  const state = setup();
+  const token = await state.service.issueToken(creativeId);
+  state.setPolicy(false);
+  await assert.rejects(state.service.read({ creativeId, token }));
+  assert.equal(state.fileReads, 0);
+});
+
 test("HEAD does not read file bytes and unsatisfiable ranges return 416 metadata", async () => {
   const state = setup();
   const token = await state.service.issueToken(creativeId);
