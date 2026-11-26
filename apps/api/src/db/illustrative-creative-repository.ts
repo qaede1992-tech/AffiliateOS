@@ -121,10 +121,14 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
       }
       const offerRows = await tx.select({
         id: affiliateOffers.id, productId: affiliateOffers.productId, status: affiliateOffers.status,
-        affiliateLinkStatus: affiliateOffers.affiliateLinkStatus
+        affiliateLinkStatus: affiliateOffers.affiliateLinkStatus, availability: affiliateOffers.availability,
+        affiliateLinkExpiresAt: affiliateOffers.affiliateLinkExpiresAt
       }).from(affiliateOffers).where(eq(affiliateOffers.id, input.affiliateOfferId)).limit(1);
       const offer = offerRows[0];
-      if (!offer || offer.productId !== input.productId || offer.status !== "active" || offer.affiliateLinkStatus !== "active") {
+      const offerExpiry = offer?.affiliateLinkExpiresAt ? Date.parse(offer.affiliateLinkExpiresAt) : undefined;
+      if (!offer || offer.productId !== input.productId || offer.status !== "active" ||
+          offer.affiliateLinkStatus !== "active" || offer.availability === "out_of_stock" ||
+          (offerExpiry !== undefined && (!Number.isFinite(offerExpiry) || offerExpiry <= nowTimestamp))) {
         throw new Error("Generated creative requires an active affiliate offer for the same product.");
       }
       const mediaAssetId = randomUUID();
