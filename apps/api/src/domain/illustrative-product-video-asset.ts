@@ -61,7 +61,7 @@ export class IllustrativeProductVideoAssetService {
       sourceProvider: "affiliateos-illustrative-renderer",
       sourceCandidateId: null,
       sourceLandingPageUrl: null,
-      sourceTitle: "AI-assisted text-led promotional illustration; not a product photograph or depiction",
+      sourceTitle: "Template-rendered text-led promotional illustration; not a product photograph or depiction",
       sourceQuery: "illustrative-product-promo-v1",
       sourceCreator: "AffiliateOS",
       sourceCreatorUrl: null,
