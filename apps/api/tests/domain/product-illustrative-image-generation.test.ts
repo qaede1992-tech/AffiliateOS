@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ProductIllustrativeImageGenerationError, ProductIllustrativeImageGenerationService } from "../src/domain/product-illustrative-image-generation.js";
-import type { ProductMediaAsset } from "../src/domain/product-media-ingestion.js";
+import { ProductIllustrativeImageGenerationError, ProductIllustrativeImageGenerationService } from "../../src/domain/product-illustrative-image-generation.js";
+import type { ProductMediaAsset } from "../../src/domain/product-media-ingestion.js";
 
 const productId = "11111111-1111-4111-8111-111111111111";
 const png = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/XioAAAAASUVORK5CYII=", "base64"));
