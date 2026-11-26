@@ -68,7 +68,7 @@ const canonicalize = (value: unknown): unknown => {
 };
 
 export const hashIllustrativeCreativeProvenanceSnapshot = (snapshot: IllustrativeCreativeProvenanceSnapshot | null): string =>
-  createHash("sha256").update(JSON.stringify(canonicalize(snapshot))).digest("hex");
+  createHash("sha256").update(JSON.stringify(canonicalize(snapshot)) ?? "null").digest("hex");
 
 export class IllustrativeCreativePublicationGuard {
   constructor(private readonly dependencies: IllustrativePublicationGuardDependencies) {}
