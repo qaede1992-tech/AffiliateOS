@@ -56,7 +56,6 @@ import type { ProductMediaCandidateRepository } from "./product-media-candidate.
 import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
 import type { IllustrativeCreativePublicationGuard } from "./illustrative-creative-publication-guard.js";
 import type { IllustrativeMediaDeliveryService } from "./illustrative-media-delivery.js";
-import type { IllustrativeMediaDeliveryService } from "./illustrative-media-delivery.js";
 
 export interface Services {
   publicShopCatalog?: RepositorySet["publicShopCatalog"];
