@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { content, affiliateOffers, mediaAssets, generatedProductCreatives, generatedProductCreativeReviewAudits, illustrativeCreativePolicies } from "./schema.js";
+import { content, products, affiliateOffers, preMediaEligibilityEvidence, mediaAssets, generatedProductCreatives, generatedProductCreativeReviewAudits, illustrativeCreativePolicies } from "./schema.js";
 import type { IllustrativeCreativeReader, IllustrativeCreativeRecord, IllustrativePolicyReader } from "../domain/illustrative-media-delivery.js";
 
 type DatabaseExecutor = any;
