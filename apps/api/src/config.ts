@@ -71,7 +71,8 @@ const environmentSchema = z.object({
   SUPABASE_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
   SUPABASE_STORAGE_SERVICE_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
   SUPABASE_MEDIA_BUCKET: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("affiliate-media")),
-  PRODUCT_MEDIA_DELIVERY_SIGNING_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(32).optional())
+  PRODUCT_MEDIA_DELIVERY_SIGNING_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(32).optional()),
+  PRODUCT_MEDIA_STORAGE_PATH: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional())
 }).superRefine((value, context) => {
   if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && !value.OPENAI_API_KEY) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["OPENAI_API_KEY"], message: "OPENAI_API_KEY is required when AI product image generation is enabled." });
