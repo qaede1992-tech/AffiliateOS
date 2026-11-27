@@ -4,7 +4,7 @@ import { fetchPublicHttps } from "./public-https-fetch.js";
 import type { ProductMediaAsset, ProductMediaIngestionPolicy, ProductMediaIngestionResult } from "./product-media-ingestion.js";
 import { ProductMediaIngestionService } from "./product-media-ingestion.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
-import type { SupabaseStorageClient } from "./supabase-storage.js";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from "./product-promo-video-renderer.js";
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
@@ -71,7 +71,7 @@ export class ProductMediaDiscoveryRunner {
   private readonly promoVideoRenderer: ProductPromoVideoRenderer;
 
   constructor(
-    storage: SupabaseStorageClient,
+    storage: ProductMediaStorageClient,
     private readonly assets: ProductMediaAssetRepository,
     private readonly policy: ProductMediaDiscoveryPolicy,
     private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps,
