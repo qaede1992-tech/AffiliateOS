@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DrizzlePreMediaEligibilityRepository } from "../src/db/pre-media-eligibility-repository.js";
 
-test("pre-media evidence writes are idempotent for unchanged decisions", async () => {
+test("pre-media evidence is idempotent within a cycle and refreshes across cycles", async () => {
   let inserted: Array<Record<string, unknown>> = [];
   let conflictHandlingEnabled = false;
   const db = {
@@ -36,13 +36,19 @@ test("pre-media evidence writes are idempotent for unchanged decisions", async (
   await repository.saveMany([base, {
     ...base,
     id: "00000000-0000-4000-8000-000000000005",
+    createdAt: "2026-11-09T00:05:00.000Z",
+    policy: { mediaRequired: false, minimumScore: 60 }
+  }, {
+    ...base,
+    id: "00000000-0000-4000-8000-000000000006",
     cycleId: "cycle-two",
     createdAt: "2026-11-09T00:15:00.000Z",
     policy: { mediaRequired: false, minimumScore: 60 }
   }]);
 
-  assert.equal(inserted.length, 2);
+  assert.equal(inserted.length, 3);
   assert.equal(inserted[0]?.fingerprint, inserted[1]?.fingerprint);
+  assert.notEqual(inserted[1]?.fingerprint, inserted[2]?.fingerprint);
   assert.equal(conflictHandlingEnabled, true);
 });
 
