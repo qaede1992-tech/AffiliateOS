@@ -105,7 +105,7 @@ export class PublisherExecutor {
       // resolve provider-facing media URLs. This is the insertion point for
       // reservation-bound local-volume delivery tokens.
       const mediaAssets = instagramDispatch
-        ? await this.resolvePublisherAssets(content, sourceMediaAssets ?? [])
+        ? await this.resolvePublisherAssets(content, sourceMediaAssets ?? [], reservation?.id)
         : await this.resolveMediaAssets(content, false);
       let result: Awaited<ReturnType<SocialPublisher["publish"]>>;
       try {
@@ -202,10 +202,30 @@ export class PublisherExecutor {
     return resolved;
   }
 
-  private async resolvePublisherAssets(content: Content, sourceAssets: NonNullable<Awaited<ReturnType<PublisherExecutor["loadMediaAssets"]>>>): Promise<MediaAsset[]> {
+  private async resolvePublisherAssets(content: Content, sourceAssets: NonNullable<Awaited<ReturnType<PublisherExecutor["loadMediaAssets"]>>>, reservationId?: string): Promise<MediaAsset[]> {
     const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
     const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
-    return resolvePublisherMediaAssets(content, sourceAssets, this.mediaStorage, linkedProductIds);
+    if (!this.productMediaAssets) return resolvePublisherMediaAssets(content, sourceAssets, this.mediaStorage, linkedProductIds);
+    const productAssets = (await Promise.all(linkedProductIds.map((id) => this.productMediaAssets!.listByProduct(id)))).flat();
+    const localByReference = new Map<string, ProductMediaAsset>();
+    for (const productAsset of productAssets) {
+      if (productAsset.storageBackend !== "local_volume") continue;
+      const reference = productAsset.bucket + "/" + productAsset.objectKey;
+      if (localByReference.has(reference)) throw new Error("Local product media reference is ambiguous.");
+      localByReference.set(reference, productAsset);
+    }
+    const resolved: MediaAsset[] = [];
+    const legacy: MediaAsset[] = [];
+    for (const asset of sourceAssets) {
+      const productAsset = asset.source === "object-storage" ? localByReference.get(asset.reference) : undefined;
+      if (!productAsset) { legacy.push(asset); continue; }
+      if (!reservationId || !this.productMediaDeliveryUrl) throw new Error("Reservation-bound local product media delivery is not configured.");
+      const url = await this.productMediaDeliveryUrl(productAsset, { contentId: content.id, reservationId });
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error("Local product media delivery URL must be credential-free HTTPS.");
+      resolved.push({ ...asset, source: "url", reference: url });
+    }
+    return [...resolved, ...await resolvePublisherMediaAssets(content, legacy, this.mediaStorage, linkedProductIds)];
   }
 
   private async resolveMediaAssets(content: Content, requireProductMediaRights = false) {
