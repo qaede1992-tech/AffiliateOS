@@ -8,6 +8,7 @@ export interface SupabaseStorageConfig {
 }
 
 export interface StoredObject {
+  backend?: "supabase" | "local_volume";
   bucket: string;
   key: string;
 }
@@ -107,7 +108,7 @@ export class SupabaseStorageClient implements ProductMediaStorageClient {
       body
     });
     await this.assertSuccess(response, "upload");
-    return { bucket: this.bucket, key };
+    return { backend: "supabase", bucket: this.bucket, key };
   }
 
   async uploadStream(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<StoredObject> {
