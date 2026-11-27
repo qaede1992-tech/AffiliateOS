@@ -17,6 +17,7 @@ const stableValue = (value: unknown): unknown => {
 
 const evidenceFingerprint = (record: PreMediaEligibilityEvidence): string => createHash("sha256")
   .update(JSON.stringify(stableValue({
+    cycleId: record.cycleId,
     productId: record.productId,
     marketplaceId: record.marketplaceId,
     offerId: record.offerId ?? null,
@@ -38,8 +39,8 @@ export class DrizzlePreMediaEligibilityRepository implements PreMediaEligibility
       reasons: record.reasons,
       fingerprint: evidenceFingerprint(record)
     }));
-    // A unique fingerprint makes repeated cycles idempotent while retaining a
-    // new append-only evidence row whenever eligibility, score, policy or reasons change.
+    // Retries within one cycle remain idempotent, while a new cycle writes fresh
+    // append-only evidence even when the eligibility decision itself is unchanged.
     await this.db.insert(preMediaEligibilityEvidence).values(rows).onConflictDoNothing();
   }
 
