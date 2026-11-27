@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import type { PublicationDispatchReservationRepository } from "./publication-dispatch-reservation.js";
-import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
+import { hasCurrentVerifiedRights, hasVerifiedProductIdentity } from "./product-media-publication-rights.js";
 import { verifyProductMediaDeliveryToken, type ProductMediaDeliveryTokenConfig } from "./product-media-delivery-token.js";
 
 export interface AuthorizedProductMediaDelivery {
@@ -31,7 +31,8 @@ export async function authorizeProductMediaDelivery(input: {
     asset.productId !== claims.productId ||
     asset.storageBackend !== "local_volume" ||
     asset.sha256.toLowerCase() !== claims.sha256.toLowerCase() ||
-    !hasCurrentVerifiedRights(asset)
+    !hasCurrentVerifiedRights(asset) ||
+    !hasVerifiedProductIdentity(asset)
   ) throw new Error("Product media delivery is not authorized.");
 
   const reservation = await input.reservations.findById(claims.reservationId);
