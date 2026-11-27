@@ -27,6 +27,8 @@ import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClien
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
+import { LocalProductMediaStorage } from "./domain/local-product-media-storage.js";
+import { authorizeProductMediaDelivery } from "./domain/product-media-delivery-authorization.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
 import { ProductIllustrativeImageGenerationService } from "./domain/product-illustrative-image-generation.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
@@ -159,6 +161,22 @@ if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KE
     { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
   );
 }
+if (environment.PRODUCT_MEDIA_STORAGE_PATH && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && persistence.repositories.productMediaAssets && persistence.repositories.publicationDispatchReservations) {
+  const localProductMediaStorage = new LocalProductMediaStorage({
+    rootDirectory: environment.PRODUCT_MEDIA_STORAGE_PATH,
+    maxImageBytes: 10 * 1024 * 1024,
+    maxVideoBytes: 45 * 1024 * 1024
+  });
+  services.productMediaDelivery = (token) => authorizeProductMediaDelivery({
+    token,
+    tokenConfig: { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 900 },
+    assets: persistence.repositories.productMediaAssets!,
+    reservations: persistence.repositories.publicationDispatchReservations!,
+    readLocal: (key, maxBytes) => localProductMediaStorage.download(key, maxBytes),
+    maximumBytes: 45 * 1024 * 1024
+  });
+}
+
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
   readinessCheck: async () => {
