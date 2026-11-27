@@ -174,7 +174,7 @@ export class PublisherExecutor {
     // Validate configured media references before reading social credentials.
     // Revalidate product-media provenance on every Instagram reconciliation pass,
     // immediately before the adapter can call media_publish for a FINISHED container.
-    const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram" && operation.provider === "instagram-graph");
+    const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram" && operation.provider === "instagram-graph", content.platform === "instagram" && operation.provider === "instagram-graph");
     const credential = await this.resolveCredential(account);
     const result = await publisher.checkPublication({ content, account, credential, mediaAssets, operation });
     return { content, account, result };
@@ -202,7 +202,7 @@ export class PublisherExecutor {
     return resolved;
   }
 
-  private async resolvePublisherAssets(content: Content, sourceAssets: NonNullable<Awaited<ReturnType<PublisherExecutor["loadMediaAssets"]>>>, reservationId?: string): Promise<MediaAsset[]> {
+  private async resolvePublisherAssets(content: Content, sourceAssets: NonNullable<Awaited<ReturnType<PublisherExecutor["loadMediaAssets"]>>>, reservationId?: string, preserveLocalReferencesForStatusCheck = false): Promise<MediaAsset[]> {
     const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
     const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
     if (!this.productMediaAssets) return resolvePublisherMediaAssets(content, sourceAssets, this.mediaStorage, linkedProductIds);
@@ -219,6 +219,10 @@ export class PublisherExecutor {
     for (const asset of sourceAssets) {
       const productAsset = asset.source === "object-storage" ? localByReference.get(asset.reference) : undefined;
       if (!productAsset) { legacy.push(asset); continue; }
+      // Status reconciliation only needs the immutable media kind/reference metadata;
+      // the Instagram adapter never dereferences local object-storage references.
+      // Do not mint a reservation-bound public URL during a status check.
+      if (preserveLocalReferencesForStatusCheck) { resolved.push(asset); continue; }
       if (!reservationId || !this.productMediaDeliveryUrl) throw new Error("Reservation-bound local product media delivery is not configured.");
       const url = await this.productMediaDeliveryUrl(productAsset, { contentId: content.id, reservationId });
       const parsed = new URL(url);
@@ -228,9 +232,9 @@ export class PublisherExecutor {
     return [...resolved, ...await resolvePublisherMediaAssets(content, legacy, this.mediaStorage, linkedProductIds)];
   }
 
-  private async resolveMediaAssets(content: Content, requireProductMediaRights = false) {
+  private async resolveMediaAssets(content: Content, requireProductMediaRights = false, preserveLocalReferencesForStatusCheck = false) {
     const sourceAssets = await this.loadMediaAssets(content, requireProductMediaRights);
-    return this.resolvePublisherAssets(content, sourceAssets);
+    return this.resolvePublisherAssets(content, sourceAssets, undefined, preserveLocalReferencesForStatusCheck);
   }
 
   private async findAccount(content: Content): Promise<SocialAccount> {
