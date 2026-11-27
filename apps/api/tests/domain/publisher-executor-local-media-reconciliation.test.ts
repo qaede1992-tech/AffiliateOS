@@ -72,7 +72,7 @@ describe("PublisherExecutor local media reconciliation", () => {
     };
     const executor = new PublisherExecutor(
       contentService, socialAccounts, [publisher], undefined, mediaAssets,
-      undefined, undefined, undefined, contentProducts, productMediaAssets
+      undefined, undefined, contentProducts, productMediaAssets
     );
     const operation: PublicationOperation = {
       id: "66666666-6666-4666-8666-666666666666", contentId,
