@@ -203,8 +203,8 @@ test("Shopee CSV import carries brand, model, SKU, and variant into product disc
     const affiliate = affiliateResponse.json();
 
     const csv = [
-      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Merek,Model,SKU,Varian",
-      '987654321,"Botol Minum Stainless 1L","Rp89.000","250","Toko Identitas","8%","Rp7.120","https://shopee.co.id/product/1/987654321","https://s.shopee.co.id/identity","AquaPro","AP-1000","SKU-AP-1000-BLK","Hitam 1 Liter"',
+      "ID Produk,Nama Produk,Harga,Penjualan,Nama Toko,Komisi hingga,Komisi,Link Produk,Link Komisi Ekstra,Merek,Model,SKU,Varian,Kategori",
+      '987654321,"Botol Minum Stainless 1L","Rp89.000","250","Toko Identitas","8%","Rp7.120","https://shopee.co.id/product/1/987654321","https://s.shopee.co.id/identity","AquaPro","AP-1000","SKU-AP-1000-BLK","Hitam 1 Liter","Peralatan Dapur"',
     ].join("\n");
 
     const imported = await app.inject({
@@ -219,6 +219,7 @@ test("Shopee CSV import carries brand, model, SKU, and variant into product disc
     const product = productsResponse.json().data.find((item: { externalProductId?: string }) => item.externalProductId === "987654321")
       ?? productsResponse.json().data[0];
     assert.ok(product);
+    assert.equal(product.category, "Peralatan Dapur");
     assert.deepEqual(product.discoverySignals.productIdentity, {
       brand: "AquaPro",
       model: "AP-1000",
