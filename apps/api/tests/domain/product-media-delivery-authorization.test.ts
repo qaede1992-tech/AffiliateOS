@@ -7,6 +7,7 @@ import type { ProductMediaAsset, ProductMediaAssetRepository } from "../../src/d
 import type { PublicationDispatchReservation, PublicationDispatchReservationRepository } from "../../src/domain/publication-dispatch-reservation.js";
 
 const assetId = "11111111-1111-4111-8111-111111111111";
+const contentMediaId = "66666666-6666-4666-8666-666666666666";
 const productId = "22222222-2222-4222-8222-222222222222";
 const contentId = "33333333-3333-4333-8333-333333333333";
 const reservationId = "44444444-4444-4444-8444-444444444444";
@@ -29,7 +30,7 @@ const asset = (): ProductMediaAsset => ({
 const reservation = (state: PublicationDispatchReservation["state"] = "dispatching"): PublicationDispatchReservation => ({
   id: reservationId, jobId: "55555555-5555-4555-8555-555555555555", contentId,
   provider: "instagram-graph", state, idempotencyKey: "test-idempotency",
-  snapshot: { mediaAssetIds: [assetId] }, snapshotHash: "a".repeat(64),
+  snapshot: { mediaAssetIds: [contentMediaId], mediaIntegrity: { productMediaAssets: [{ id: assetId }] } }, snapshotHash: "a".repeat(64),
   createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
 });
 
@@ -101,7 +102,7 @@ describe("reservation-bound product media delivery authorization", () => {
   });
 
   it("rejects assets not present in the immutable reservation snapshot", async () => {
-    const row = { ...reservation(), snapshot: { mediaAssetIds: [] } };
+    const row = { ...reservation(), snapshot: { mediaAssetIds: [contentMediaId], mediaIntegrity: { productMediaAssets: [] } } };
     const deps = dependencies(asset(), row);
     await assert.rejects(() => authorizeProductMediaDelivery({
       token: token(), tokenConfig: config, ...deps, maximumBytes: 1024,
