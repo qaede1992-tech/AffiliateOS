@@ -34,7 +34,7 @@ type AppOptions = { readinessCheck?: () => Promise<void>; auth?: AuthConfig; rat
 
 export function createApp(services: Services = createInMemoryServices(), options: AppOptions = {}) {
   const auth = options.auth ?? configuredAuth(); const rateLimitConfig = options.rateLimit ?? configuredRateLimit(); const rateLimiter = rateLimitConfig.enabled ? new InMemoryRateLimiter(rateLimitConfig.limit, rateLimitConfig.windowMs) : null; const sessionSecret = auth.token; const production = process.env.NODE_ENV === "production"; const corsOrigin = configuredCorsOrigin();
-  const app = Fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.token", "req.body.credentialReference", "req.body.configuration.*", "req.query.code", "req.query.state"] }, bodyLimit: 1_048_576 });
+  const app = Fastify({ logger: { redact: ["req.headers.authorization", "req.headers.cookie", "req.body.token", "req.body.credentialReference", "req.body.configuration.*", "req.query.code", "req.query.state"] }, bodyLimit: 1_048_576, maxParamLength: 2048 });
   app.register(cors, {
     origin: corsOrigin,
     credentials: true,
