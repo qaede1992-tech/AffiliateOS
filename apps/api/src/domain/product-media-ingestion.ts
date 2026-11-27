@@ -12,6 +12,7 @@ export interface ProductMediaAsset {
   productId: string;
   kind: "image" | "video";
   bucket: string;
+  storageBackend?: "supabase" | "local_volume";
   objectKey: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4";
   byteSize: number;
