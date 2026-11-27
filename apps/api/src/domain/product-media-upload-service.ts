@@ -5,7 +5,7 @@ import { extractProductMediaTechnicalMetadata } from "./product-media-technical-
 
 export interface ProductMediaUploadStorage {
   upload(input: { key: string; bytes: Uint8Array; contentType: string }): Promise<{ backend?: "supabase" | "local_volume"; bucket: string; key: string }>;
-  uploadStream?(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<{ bucket: string; key: string }>;
+  uploadStream?(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<{ backend?: "supabase" | "local_volume"; bucket: string; key: string }>;
   remove(key: string): Promise<void>;
 }
 
@@ -168,7 +168,7 @@ export class ProductMediaUploadService {
     const metadata = extractProductMediaTechnicalMetadata(input.mimeType, bytes);
     const id = randomUUID();
     const objectKey = `products/${input.productId}/${sha256}-${id}.${EXTENSION[input.mimeType]}`;
-    let stored: { bucket: string; key: string };
+    let stored: { backend?: "supabase" | "local_volume"; bucket: string; key: string };
     try {
       if (this.storage.uploadStream) {
         const body = new ReadableStream<Uint8Array>({
