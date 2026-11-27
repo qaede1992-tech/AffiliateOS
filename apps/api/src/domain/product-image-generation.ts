@@ -269,6 +269,7 @@ export class ProductImageGenerationService {
       productId: input.productId,
       kind: "image",
       bucket: stored.bucket,
+      storageBackend: stored.backend ?? "supabase",
       objectKey: stored.key,
       mimeType: "image/png",
       byteSize: outputBytes.byteLength,
