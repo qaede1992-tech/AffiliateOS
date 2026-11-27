@@ -78,3 +78,33 @@ test("preview route maps stale or ineligible products to a conflict without retu
     await app.close();
   }
 });
+
+test("public media preview route accepts bounded signed tokens longer than Fastify's default parameter limit", async () => {
+  const services = createInMemoryServices();
+  let receivedToken = "";
+  services.productMediaPreviewDelivery = async (token: string) => {
+    receivedToken = token;
+    return {
+      asset: { mimeType: "video/mp4" } as never,
+      bytes: result.bytes
+    };
+  };
+  const app = createApp(services, {
+    auth: { enabled: false, operatorId: "preview-test", role: "admin" },
+    rateLimit: { enabled: false, limit: 10, windowMs: 60_000 }
+  });
+  const token = "a".repeat(320);
+  try {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/product-media/preview/${token}`
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(receivedToken, token);
+    assert.equal(response.headers["content-type"], "video/mp4");
+    assert.equal(response.headers["cache-control"], "private, no-store, max-age=0");
+    assert.deepEqual(new Uint8Array(response.rawPayload), result.bytes);
+  } finally {
+    await app.close();
+  }
+});
