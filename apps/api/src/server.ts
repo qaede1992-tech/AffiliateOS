@@ -163,7 +163,7 @@ const services = createServices(
           sha256: asset.sha256,
           expiresAt: Math.floor(Date.now() / 1000) + 300
         }, { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 });
-        const base = environment.PRODUCT_MEDIA_PUBLIC_BASE_URL!.replace(/\\/$/, "");
+        const base = environment.PRODUCT_MEDIA_PUBLIC_BASE_URL!.replace(/\\/+$/, "");
         return `${base}/api/v1/product-media/delivery/${token}`;
       }
     : undefined
