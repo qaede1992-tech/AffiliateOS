@@ -11,12 +11,14 @@ test("local product media storage persists opaque objects and reads the exact by
   const root = await mkdtemp(join(tmpdir(), "affiliateos-product-media-"));
   try {
     const storage = new LocalProductMediaStorage({ rootDirectory: root, maxImageBytes: 1024, maxVideoBytes: 2048 });
-    const saved = await storage.upload({ bytes: imageBytes, contentType: "image/jpeg", kind: "image" });
+    const saved = await storage.upload({ bytes: imageBytes, contentType: "image/jpeg" });
     assert.equal(saved.backend, "local_volume");
     assert.equal(saved.bucket, "local-volume");
+    assert.equal(storage.bucketName, "local-volume");
     assert.equal(saved.byteSize, imageBytes.byteLength);
     assert.match(saved.sha256, /^[a-f0-9]{64}$/);
     assert.deepEqual(await storage.read(saved.key, 1024), imageBytes);
+    assert.deepEqual(await storage.download(saved.key, 1024), imageBytes);
     assert.equal((await storage.inspect(saved.key)).byteSize, imageBytes.byteLength);
     await storage.remove(saved.key);
     await assert.rejects(() => storage.read(saved.key, 1024));
@@ -56,7 +58,7 @@ test("local product media storage enforces kind, MIME, and byte limits", async (
   try {
     const storage = new LocalProductMediaStorage({ rootDirectory: root, maxImageBytes: 3, maxVideoBytes: 8 });
     await assert.rejects(() => storage.upload({ bytes: imageBytes, contentType: "image/jpeg", kind: "image" }), /exceed/);
-    await assert.rejects(() => storage.upload({ bytes: imageBytes, contentType: "video/mp4", kind: "image" }), /MIME/);
+    await assert.rejects(() => storage.upload({ bytes: imageBytes, contentType: "video/mp4" }), /MIME/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
