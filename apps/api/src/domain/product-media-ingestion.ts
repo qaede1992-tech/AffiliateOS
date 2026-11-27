@@ -95,6 +95,7 @@ export interface ProductMediaIdentityAudit {
 }
 
 export interface ProductMediaAssetRepository {
+  findById(id: string): Promise<ProductMediaAsset | undefined>;
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
   findByProductAndSourceUrl?(productId: string, sourceUrl: string, kind: ProductMediaAsset["kind"]): Promise<ProductMediaAsset | undefined>;
