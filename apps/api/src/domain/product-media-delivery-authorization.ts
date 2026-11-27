@@ -40,7 +40,7 @@ export async function authorizeProductMediaDelivery(input: {
     !reservation ||
     reservation.provider !== "instagram-graph" ||
     reservation.contentId !== claims.contentId ||
-    reservation.state !== "dispatching" ||
+    (reservation.state !== "dispatching" && reservation.state !== "accepted") ||
     !Array.isArray(reservation.snapshot.mediaAssetIds) ||
     !reservation.snapshot.mediaAssetIds.includes(asset.id)
   ) throw new Error("Product media delivery reservation is not active.");
