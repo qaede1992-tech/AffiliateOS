@@ -82,7 +82,7 @@ test("removes the uploaded object if the database asset write fails", async () =
   const removed: string[] = [];
   const storage = {
     bucketName: "affiliate-media",
-    async upload(input: any) { return { backend: "local_volume", bucket: "local-volume", key: "generated-test.mp4" }; },
+    async upload(input: any) { return { backend: "local_volume", bucket: "local-volume", key: input.key }; },
     async remove(key: string) { removed.push(key); }
   };
   const assets = {
