@@ -41,8 +41,10 @@ export async function authorizeProductMediaDelivery(input: {
     reservation.provider !== "instagram-graph" ||
     reservation.contentId !== claims.contentId ||
     (reservation.state !== "dispatching" && reservation.state !== "accepted") ||
-    !Array.isArray(reservation.snapshot.mediaAssetIds) ||
-    !reservation.snapshot.mediaAssetIds.includes(asset.id)
+    !Array.isArray((reservation.snapshot.mediaIntegrity as { productMediaAssets?: unknown[] } | undefined)?.productMediaAssets) ||
+    !((reservation.snapshot.mediaIntegrity as { productMediaAssets: unknown[] }).productMediaAssets).some((entry) =>
+      Boolean(entry && typeof entry === "object" && "id" in entry && entry.id === asset.id)
+    )
   ) throw new Error("Product media delivery reservation is not active.");
 
   if (!Number.isSafeInteger(input.maximumBytes) || input.maximumBytes <= 0 || asset.byteSize > input.maximumBytes) {
