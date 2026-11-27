@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 
 export interface ProductMediaLocalStorageConfig {
   rootDirectory: string;
@@ -37,7 +38,7 @@ const isInside = (root: string, candidate: string): boolean => {
  * must be mediated by an authenticated API route that revalidates publication
  * rights and dispatch reservations before streaming bytes to a social provider.
  */
-export class LocalProductMediaStorage {
+export class LocalProductMediaStorage implements ProductMediaStorageClient {
   private readonly rootDirectory: string;
 
   get bucketName(): string {
