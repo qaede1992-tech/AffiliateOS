@@ -30,6 +30,8 @@ import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js
 import { LocalProductMediaStorage } from "./domain/local-product-media-storage.js";
 import { authorizeProductMediaDelivery } from "./domain/product-media-delivery-authorization.js";
 import { createProductMediaDeliveryToken } from "./domain/product-media-delivery-token.js";
+import { createProductMediaPreviewToken } from "./domain/product-media-preview-token.js";
+import { authorizeProductMediaPreview } from "./domain/product-media-preview-authorization.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
 import { ProductIllustrativeImageGenerationService } from "./domain/product-illustrative-image-generation.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
@@ -168,6 +170,34 @@ const services = createServices(
       }
     : undefined
 );
+// Local-volume preview URLs are issued only after the existing adminGuard has
+// authorized the preview request. The public token endpoint serves no-store
+// bytes and rechecks the current asset identity and on-disk SHA-256.
+if (localProductMediaStorage && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY &&
+    environment.PRODUCT_MEDIA_PUBLIC_BASE_URL && persistence.repositories.productMediaAssets) {
+  const existingPreviewUrl = services.productMediaPreviewUrl;
+  services.productMediaPreviewUrl = async (productId, assetId) => {
+    const asset = (await persistence.repositories.productMediaAssets!.listByProduct(productId))
+      .find((candidate) => candidate.id === assetId);
+    if (!asset) return undefined;
+    if (asset.storageBackend !== "local_volume") return existingPreviewUrl?.(productId, assetId);
+    const token = createProductMediaPreviewToken({
+      assetId: asset.id,
+      productId: asset.productId,
+      sha256: asset.sha256,
+      expiresAt: Math.floor(Date.now() / 1000) + 300
+    }, { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 });
+    const base = environment.PRODUCT_MEDIA_PUBLIC_BASE_URL!.replace(/\\/+$/, "");
+    return `${base}/api/v1/product-media/preview/${token}`;
+  };
+  services.productMediaPreviewDelivery = (token) => authorizeProductMediaPreview({
+    token,
+    tokenConfig: { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 },
+    assets: persistence.repositories.productMediaAssets!,
+    readLocal: (key, maxBytes) => localProductMediaStorage.download(key, maxBytes),
+    maximumBytes: 45 * 1024 * 1024
+  });
+}
 if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
     persistence.repositories.products,
