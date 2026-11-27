@@ -40,6 +40,10 @@ const isInside = (root: string, candidate: string): boolean => {
 export class LocalProductMediaStorage {
   private readonly rootDirectory: string;
 
+  get bucketName(): string {
+    return "local-volume";
+  }
+
   constructor(private readonly config: ProductMediaLocalStorageConfig) {
     this.rootDirectory = resolve(config.rootDirectory);
     if (!isAbsolute(this.rootDirectory)) throw new Error("Product media storage root must be an absolute path.");
@@ -78,15 +82,18 @@ export class LocalProductMediaStorage {
   }
 
   async upload(input: {
+    /** Requested provider key is intentionally ignored; local keys are opaque UUIDs. */
+    key?: string;
     bytes: Uint8Array;
     contentType: string;
-    kind: "image" | "video";
+    upsert?: boolean;
   }): Promise<ProductMediaStoredObject> {
+    const kind = input.contentType.startsWith("image/") ? "image" : "video";
     const extension = MIME_EXTENSION[input.contentType];
-    if (!extension || (input.kind === "image") !== input.contentType.startsWith("image/")) {
+    if (!extension) {
       throw new Error("Product media MIME type does not match its declared kind.");
     }
-    const limit = input.kind === "video" ? this.config.maxVideoBytes : this.config.maxImageBytes;
+    const limit = kind === "video" ? this.config.maxVideoBytes : this.config.maxImageBytes;
     if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0 || input.bytes.byteLength > limit) {
       throw new Error("Product media bytes are empty or exceed the configured storage limit.");
     }
@@ -151,6 +158,10 @@ export class LocalProductMediaStorage {
       if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
       throw error;
     }
+  }
+
+  async download(key: string, maxBytes: number): Promise<Uint8Array> {
+    return this.read(key, maxBytes);
   }
 
   async inspect(key: string): Promise<{ byteSize: number; modifiedAt: Date }> {
