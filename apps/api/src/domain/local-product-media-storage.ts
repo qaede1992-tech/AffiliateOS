@@ -45,8 +45,8 @@ export class LocalProductMediaStorage {
   }
 
   constructor(private readonly config: ProductMediaLocalStorageConfig) {
+    if (!isAbsolute(config.rootDirectory)) throw new Error("Product media storage root must be an absolute path.");
     this.rootDirectory = resolve(config.rootDirectory);
-    if (!isAbsolute(this.rootDirectory)) throw new Error("Product media storage root must be an absolute path.");
     for (const [name, value] of Object.entries({
       maxImageBytes: config.maxImageBytes,
       maxVideoBytes: config.maxVideoBytes
