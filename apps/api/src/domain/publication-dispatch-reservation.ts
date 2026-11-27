@@ -21,6 +21,7 @@ export interface PublicationDispatchReservation {
 }
 
 export interface PublicationDispatchReservationRepository {
+  findById(id: EntityId): Promise<PublicationDispatchReservation | undefined>;
   findByJobProvider(jobId: EntityId, provider: string): Promise<PublicationDispatchReservation | undefined>;
   reserve(reservation: PublicationDispatchReservation): Promise<PublicationDispatchReservation>;
   transition(id: EntityId, expected: PublicationDispatchState[], next: PublicationDispatchReservation): Promise<PublicationDispatchReservation | undefined>;
@@ -43,6 +44,9 @@ export const canTransitionPublicationDispatch = (from: PublicationDispatchState,
 
 export class InMemoryPublicationDispatchReservationRepository implements PublicationDispatchReservationRepository {
   private readonly rows = new Map<string, PublicationDispatchReservation>();
+  async findById(id: string) {
+    return this.rows.get(id);
+  }
   async findByJobProvider(jobId: string, provider: string) {
     return [...this.rows.values()].find((row) => row.jobId === jobId && row.provider === provider);
   }
