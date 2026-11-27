@@ -36,15 +36,29 @@ export async function authorizeProductMediaDelivery(input: {
   ) throw new Error("Product media delivery is not authorized.");
 
   const reservation = await input.reservations.findById(claims.reservationId);
+  const productMediaSnapshot = (reservation?.snapshot.mediaIntegrity as { productMediaAssets?: unknown[] } | undefined)?.productMediaAssets;
+  const snapshottedAsset = Array.isArray(productMediaSnapshot)
+    ? productMediaSnapshot.find((entry) => Boolean(entry && typeof entry === "object" && "id" in entry && entry.id === asset.id)) as Record<string, unknown> | undefined
+    : undefined;
+  const assetMatchesSnapshot = Boolean(
+    snapshottedAsset &&
+    snapshottedAsset.productId === asset.productId &&
+    snapshottedAsset.bucket === asset.bucket &&
+    snapshottedAsset.objectKey === asset.objectKey &&
+    snapshottedAsset.mimeType === asset.mimeType &&
+    snapshottedAsset.byteSize === asset.byteSize &&
+    snapshottedAsset.sha256 === asset.sha256 &&
+    snapshottedAsset.sourceUrl === asset.sourceUrl &&
+    snapshottedAsset.sourcePublisher === (asset.sourcePublisher ?? null) &&
+    snapshottedAsset.sourceProvider === (asset.sourceProvider ?? null) &&
+    snapshottedAsset.sourceCandidateId === (asset.sourceCandidateId ?? null)
+  );
   if (
     !reservation ||
     reservation.provider !== "instagram-graph" ||
     reservation.contentId !== claims.contentId ||
     (reservation.state !== "dispatching" && reservation.state !== "accepted") ||
-    !Array.isArray((reservation.snapshot.mediaIntegrity as { productMediaAssets?: unknown[] } | undefined)?.productMediaAssets) ||
-    !((reservation.snapshot.mediaIntegrity as { productMediaAssets: unknown[] }).productMediaAssets).some((entry) =>
-      Boolean(entry && typeof entry === "object" && "id" in entry && entry.id === asset.id)
-    )
+    !assetMatchesSnapshot
   ) throw new Error("Product media delivery reservation is not active.");
 
   if (!Number.isSafeInteger(input.maximumBytes) || input.maximumBytes <= 0 || asset.byteSize > input.maximumBytes) {
