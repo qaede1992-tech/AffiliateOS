@@ -4,7 +4,7 @@ import { isStructurallyValidMedia } from "./media-file-validation.js";
 import { extractProductMediaTechnicalMetadata } from "./product-media-technical-metadata.js";
 
 export interface ProductMediaUploadStorage {
-  upload(input: { key: string; bytes: Uint8Array; contentType: string }): Promise<{ bucket: string; key: string }>;
+  upload(input: { key: string; bytes: Uint8Array; contentType: string }): Promise<{ backend?: "supabase" | "local_volume"; bucket: string; key: string }>;
   uploadStream?(input: { key: string; body: ReadableStream<Uint8Array>; contentType: string; contentLength: number; signal?: AbortSignal }): Promise<{ bucket: string; key: string }>;
   remove(key: string): Promise<void>;
 }
@@ -197,6 +197,7 @@ export class ProductMediaUploadService {
       productId: input.productId,
       kind: input.kind,
       bucket: stored.bucket,
+      storageBackend: stored.backend ?? "supabase",
       objectKey: stored.key,
       mimeType: input.mimeType as ProductMediaAsset["mimeType"],
       byteSize: bytes.byteLength,
