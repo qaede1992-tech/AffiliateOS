@@ -4,7 +4,7 @@ import { fetchPublicHttps } from "./public-https-fetch.js";
 import type { SafePublicHttpsFetchOptions } from "./public-https-fetch.js";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 import { extractProductMediaTechnicalMetadata, type ProductMediaTechnicalMetadata } from "./product-media-technical-metadata.js";
-import type { SupabaseStorageClient } from "./supabase-storage.js";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 import { hasWebmEbmlSignature, transcodeWebmToMp4 } from "./webm-to-mp4-transcoder.js";
 
 export interface ProductMediaAsset {
@@ -167,7 +167,7 @@ const validateProductId = (productId: string): void => {
  */
 export class ProductMediaIngestionService {
   constructor(
-    private readonly storage: SupabaseStorageClient,
+    private readonly storage: ProductMediaStorageClient,
     private readonly assets: ProductMediaAssetRepository,
     private readonly policy: ProductMediaIngestionPolicy,
     private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps,
