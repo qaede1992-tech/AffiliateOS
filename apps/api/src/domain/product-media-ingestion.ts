@@ -288,7 +288,7 @@ export class ProductMediaIngestionService {
         const savedObject = await this.storage.upload({ key: objectKey, bytes: mediaBytes, contentType: mimeType, upsert: true });
         const asset: ProductMediaAsset = {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
-          objectKey: savedObject.key, mimeType, byteSize: mediaBytes.byteLength,
+          storageBackend: savedObject.backend ?? "supabase", objectKey: savedObject.key, mimeType, byteSize: mediaBytes.byteLength,
           ...technicalMetadata, sha256, sourceUrl: candidate.url,
           sourceImportProvider: candidate.importProvenance?.provider ?? null,
           sourceImportReference: candidate.importProvenance?.sourceReference ?? null,
