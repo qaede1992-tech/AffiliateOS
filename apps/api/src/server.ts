@@ -29,6 +29,7 @@ import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-soci
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
 import { LocalProductMediaStorage } from "./domain/local-product-media-storage.js";
 import { authorizeProductMediaDelivery } from "./domain/product-media-delivery-authorization.js";
+import { createProductMediaDeliveryToken } from "./domain/product-media-delivery-token.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
 import { ProductIllustrativeImageGenerationService } from "./domain/product-illustrative-image-generation.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
@@ -67,6 +68,13 @@ const mediaStorage = createSupabaseStorageClientFromEnv({
   SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
 });
 const mediaBucket = environment.SUPABASE_MEDIA_BUCKET || "affiliate-media";
+const localProductMediaStorage = environment.PRODUCT_MEDIA_STORAGE_PATH && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && environment.PRODUCT_MEDIA_PUBLIC_BASE_URL
+  ? new LocalProductMediaStorage({
+      rootDirectory: environment.PRODUCT_MEDIA_STORAGE_PATH,
+      maxImageBytes: 10 * 1024 * 1024,
+      maxVideoBytes: 45 * 1024 * 1024
+    })
+  : undefined;
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
@@ -143,7 +151,22 @@ const services = createServices(
     clientId: environment.OPENVERSE_CLIENT_ID,
     clientSecret: environment.OPENVERSE_CLIENT_SECRET
   },
-  persistence.preMediaEligibility
+  persistence.preMediaEligibility,
+  localProductMediaStorage,
+  localProductMediaStorage && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && environment.PRODUCT_MEDIA_PUBLIC_BASE_URL
+    ? async (asset, context) => {
+        const token = createProductMediaDeliveryToken({
+          assetId: asset.id,
+          productId: asset.productId,
+          contentId: context.contentId,
+          reservationId: context.reservationId,
+          sha256: asset.sha256,
+          expiresAt: Math.floor(Date.now() / 1000) + 300
+        }, { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 });
+        const base = environment.PRODUCT_MEDIA_PUBLIC_BASE_URL!.replace(/\\/$/, "");
+        return `${base}/api/v1/product-media/delivery/${token}`;
+      }
+    : undefined
 );
 if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
@@ -161,15 +184,10 @@ if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KE
     { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
   );
 }
-if (environment.PRODUCT_MEDIA_STORAGE_PATH && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && persistence.repositories.productMediaAssets && persistence.repositories.publicationDispatchReservations) {
-  const localProductMediaStorage = new LocalProductMediaStorage({
-    rootDirectory: environment.PRODUCT_MEDIA_STORAGE_PATH,
-    maxImageBytes: 10 * 1024 * 1024,
-    maxVideoBytes: 45 * 1024 * 1024
-  });
+if (localProductMediaStorage && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && persistence.repositories.productMediaAssets && persistence.repositories.publicationDispatchReservations) {
   services.productMediaDelivery = (token) => authorizeProductMediaDelivery({
     token,
-    tokenConfig: { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 900 },
+    tokenConfig: { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 },
     assets: persistence.repositories.productMediaAssets!,
     reservations: persistence.repositories.publicationDispatchReservations!,
     readLocal: (key, maxBytes) => localProductMediaStorage.download(key, maxBytes),
