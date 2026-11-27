@@ -198,19 +198,18 @@ if (localProductMediaStorage && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY &
     maximumBytes: 45 * 1024 * 1024
   });
 }
-if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
+const aiProductMediaStorage = localProductMediaStorage ?? mediaStorage;
+if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && aiProductMediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
     persistence.repositories.products,
     persistence.repositories.productMediaAssets,
-    mediaStorage,
+    aiProductMediaStorage,
     { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
   );
-}
-if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productIllustrativeImageGeneration = new ProductIllustrativeImageGenerationService(
     persistence.repositories.products,
     persistence.repositories.productMediaAssets,
-    mediaStorage,
+    aiProductMediaStorage,
     { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
   );
 }
