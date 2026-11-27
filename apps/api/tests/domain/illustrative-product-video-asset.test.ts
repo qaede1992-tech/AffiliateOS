@@ -25,7 +25,7 @@ test("persists an illustrative video as unverified product media without grantin
   const preview = { async render(productId: string) { assert.equal(productId, PRODUCT_ID); return rendered; } };
   const storage = {
     bucketName: "affiliate-media",
-    async upload(input: any) { uploaded = input; return { backend: "local_volume", bucket: "local-volume", key: "generated-test.mp4" }; },
+    async upload(input: any) { uploaded = input; return { backend: "local_volume", bucket: "local-volume", key: input.key }; },
     async remove() {}
   };
   const assets = {
