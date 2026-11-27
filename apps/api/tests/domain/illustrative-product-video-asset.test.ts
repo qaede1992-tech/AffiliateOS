@@ -25,7 +25,7 @@ test("persists an illustrative video as unverified product media without grantin
   const preview = { async render(productId: string) { assert.equal(productId, PRODUCT_ID); return rendered; } };
   const storage = {
     bucketName: "affiliate-media",
-    async upload(input: any) { uploaded = input; return { bucket: "affiliate-media", key: input.key }; },
+    async upload(input: any) { uploaded = input; return { backend: "local_volume", bucket: "local-volume", key: "generated-test.mp4" }; },
     async remove() {}
   };
   const assets = {
@@ -39,7 +39,8 @@ test("persists an illustrative video as unverified product media without grantin
   assert.equal(result.generated, true);
   assert.equal(result.asset.productId, PRODUCT_ID);
   assert.equal(result.asset.kind, "video");
-  assert.equal(result.asset.bucket, "affiliate-media");
+  assert.equal(result.asset.bucket, "local-volume");
+  assert.equal(result.asset.storageBackend, "local_volume");
   assert.equal(result.asset.mimeType, "video/mp4");
   assert.equal(result.asset.rightsStatus, "unverified");
   assert.equal(result.asset.rightsBasis, null);
@@ -49,6 +50,7 @@ test("persists an illustrative video as unverified product media without grantin
   assert.match(result.asset.sourceTitle ?? "", /not a product photograph/i);
   assert.equal(uploaded.contentType, "video/mp4");
   assert.equal(saved.objectKey, uploaded.key);
+  assert.equal(saved.storageBackend, "local_volume");
 });
 
 test("reuses an existing illustrative video without rendering or uploading again", async () => {
@@ -80,7 +82,7 @@ test("removes the uploaded object if the database asset write fails", async () =
   const removed: string[] = [];
   const storage = {
     bucketName: "affiliate-media",
-    async upload(input: any) { return { bucket: "affiliate-media", key: input.key }; },
+    async upload(input: any) { return { backend: "local_volume", bucket: "local-volume", key: "generated-test.mp4" }; },
     async remove(key: string) { removed.push(key); }
   };
   const assets = {
