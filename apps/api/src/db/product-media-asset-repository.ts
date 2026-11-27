@@ -48,6 +48,12 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
 export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepository {
   constructor(private readonly db: DatabaseExecutor) {}
 
+  async findById(id: string): Promise<ProductMediaAsset | undefined> {
+    const rows = await this.db.select().from(productMediaAssets)
+      .where(eq(productMediaAssets.id, id)).limit(1);
+    return rows[0] ? toAsset(rows[0]) : undefined;
+  }
+
   async findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined> {
     const rows = await this.db.select().from(productMediaAssets).where(and(
       eq(productMediaAssets.productId, productId),
