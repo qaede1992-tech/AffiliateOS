@@ -46,6 +46,9 @@ test("persists an illustrative video as unverified product media without grantin
   assert.equal(result.asset.rightsBasis, null);
   assert.equal(result.asset.rightsVerifiedAt, null);
   assert.equal(result.asset.identityStatus, "not_required");
+  assert.equal(result.asset.identityReviewedBy, null);
+  assert.equal(result.asset.identityReviewedAt, null);
+  assert.equal(result.asset.identityReviewReason, null);
   assert.equal(result.asset.sourceProvider, "affiliateos-illustrative-renderer");
   assert.match(result.asset.sourceTitle ?? "", /not a product photograph/i);
   assert.equal(uploaded.contentType, "video/mp4");
