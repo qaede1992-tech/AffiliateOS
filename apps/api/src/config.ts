@@ -78,7 +78,8 @@ const environmentSchema = z.object({
   if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && !value.OPENAI_API_KEY) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["OPENAI_API_KEY"], message: "OPENAI_API_KEY is required when AI product image generation is enabled." });
   }
-  if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
+  const hasPersistentProductMediaStorage = Boolean(value.PRODUCT_MEDIA_STORAGE_PATH && value.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && value.PRODUCT_MEDIA_PUBLIC_BASE_URL);
+  if (value.AI_PRODUCT_IMAGE_GENERATION_ENABLED && !hasPersistentProductMediaStorage && (!value.SUPABASE_URL || !value.SUPABASE_STORAGE_SERVICE_KEY)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["SUPABASE_STORAGE_SERVICE_KEY"], message: "Supabase private Storage must be configured when AI product image generation is enabled." });
   }
   if (Boolean(value.OPENVERSE_CLIENT_ID) !== Boolean(value.OPENVERSE_CLIENT_SECRET)) {

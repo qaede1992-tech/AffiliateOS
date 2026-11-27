@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Product } from "@affiliateos/shared";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
-import type { SupabaseStorageClient } from "./supabase-storage.js";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 import { extractProductMediaTechnicalMetadata } from "./product-media-technical-metadata.js";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 
@@ -104,7 +104,7 @@ export class ProductIllustrativeImageGenerationService {
   constructor(
     private readonly products: { findById(id: string): Promise<Product | undefined> },
     private readonly assets: ProductMediaAssetRepository,
-    private readonly storage: SupabaseStorageClient,
+    private readonly storage: ProductMediaStorageClient,
     options: ProductIllustrativeImageGenerationOptions
   ) {
     this.apiKey = options.apiKey.trim();
@@ -198,7 +198,7 @@ export class ProductIllustrativeImageGenerationService {
     const stored = await this.storage.upload({ key: objectKey, bytes, contentType: "image/png", upsert: false });
     const metadata = extractProductMediaTechnicalMetadata("image/png", bytes);
     const asset: ProductMediaAsset = {
-      id, productId, kind: "image", bucket: stored.bucket, objectKey: stored.key,
+      id, productId, kind: "image", bucket: stored.bucket, storageBackend: stored.backend ?? "supabase", objectKey: stored.key,
       mimeType: "image/png", byteSize: bytes.byteLength, ...metadata, sha256,
       sourceUrl, sourcePublisher: "OpenAI", sourceProvider: "openai",
       sourceCandidateId: null, sourceLandingPageUrl: null,
@@ -207,7 +207,7 @@ export class ProductIllustrativeImageGenerationService {
       sourceLicense: null, sourceLicenseVersion: null, sourceLicenseUrl: null,
       rightsStatus: "unverified", rightsBasis: null, rightsEvidenceUrl: null, rightsVerifiedAt: null,
       identityStatus: "not_required", identityReviewedBy: null, identityReviewedAt: null,
-      identityReviewReason: "Abstract artwork intentionally does not depict the physical product.",
+      identityReviewReason: null,
       createdAt: new Date().toISOString()
     };
     try {

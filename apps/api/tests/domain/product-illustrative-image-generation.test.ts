@@ -17,8 +17,8 @@ const makeHarness = (product: any = { id: productId, name: "Example product", ca
     async save(asset: ProductMediaAsset) { saved.push(asset); return asset; }
   };
   const storage = {
-    bucketName: "affiliate-media",
-    async upload(input: any) { uploadCalls++; assert.equal(input.contentType, "image/png"); return { bucket: "affiliate-media", key: input.key }; },
+    bucketName: "local-volume",
+    async upload(input: any) { uploadCalls++; assert.equal(input.contentType, "image/png"); return { backend: "local_volume", bucket: "local-volume", key: input.key }; },
     async remove(key: string) { removed.push(key); }
   };
   const service = new ProductIllustrativeImageGenerationService(
@@ -58,6 +58,9 @@ test("creates a category-inspired AI artwork without depicting the actual produc
   assert.equal(result.asset.rightsStatus, "unverified");
   assert.equal(result.asset.rightsBasis, null);
   assert.equal(result.asset.identityStatus, "not_required");
+  assert.equal(result.asset.identityReviewReason, null);
+  assert.equal(result.asset.storageBackend, "local_volume");
+  assert.equal(result.asset.bucket, "local-volume");
   assert.equal(result.asset.sourceProvider, "openai");
   assert.equal(result.asset.sourceUrl, "generated:openai-abstract-illustration:v1:home%20and%20kitchen");
   assert.match(result.asset.sourceTitle ?? "", /not a depiction of the physical product/i);
