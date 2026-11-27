@@ -49,6 +49,7 @@ export const productMediaAssets = pgTable("product_media_assets", {
   productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
   kind: varchar("kind", { length: 10 }).notNull(),
   bucket: varchar("bucket", { length: 100 }).notNull(),
+  storageBackend: varchar("storage_backend", { length: 20 }).notNull().default("supabase"),
   objectKey: varchar("object_key", { length: 1024 }).notNull(),
   mimeType: varchar("mime_type", { length: 50 }).notNull(),
   byteSize: bigint("byte_size", { mode: "number" }).notNull(),

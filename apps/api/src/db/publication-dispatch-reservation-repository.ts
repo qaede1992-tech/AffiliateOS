@@ -27,6 +27,12 @@ const toRow = (value: PublicationDispatchReservation) => ({
 export class DrizzlePublicationDispatchReservationRepository implements PublicationDispatchReservationRepository {
   constructor(private readonly db: DatabaseExecutor) {}
 
+  async findById(id: string): Promise<PublicationDispatchReservation | undefined> {
+    const rows = await this.db.select().from(publicationDispatchReservations)
+      .where(eq(publicationDispatchReservations.id, id)).limit(1);
+    return rows[0] ? toDomain(rows[0]) : undefined;
+  }
+
   async findByJobProvider(jobId: string, provider: string): Promise<PublicationDispatchReservation | undefined> {
     const rows = await this.db.select().from(publicationDispatchReservations)
       .where(and(eq(publicationDispatchReservations.jobId, jobId), eq(publicationDispatchReservations.provider, provider))).limit(1);

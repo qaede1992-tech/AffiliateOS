@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
-import type { SupabaseStorageClient } from "./supabase-storage.js";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 import type { IllustrativeProductVideoPreviewService } from "./illustrative-product-video-preview.js";
 
 export interface IllustrativeProductVideoAssetResult {
@@ -17,7 +17,7 @@ export interface IllustrativeProductVideoAssetResult {
 export class IllustrativeProductVideoAssetService {
   constructor(
     private readonly preview: IllustrativeProductVideoPreviewService,
-    private readonly storage: SupabaseStorageClient,
+    private readonly storage: ProductMediaStorageClient,
     private readonly assets: ProductMediaAssetRepository
   ) {}
 

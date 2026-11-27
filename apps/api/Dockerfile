@@ -34,9 +34,9 @@ COPY apps/api/scripts/verify-migrations-preflight.mjs apps/api/scripts/verify-mi
 COPY apps/api/scripts/migration-ledger-preflight.mjs apps/api/scripts/migration-ledger-preflight.mjs
 COPY apps/api/scripts/public-schema-privilege-audit.mjs apps/api/scripts/public-schema-privilege-audit.mjs
 COPY apps/api/scripts/supabase-migration-ledger-audit.mjs apps/api/scripts/supabase-migration-ledger-audit.mjs
-RUN mkdir -p /var/lib/affiliateos/secrets && chown -R node:node /var/lib/affiliateos
+RUN mkdir -p /var/lib/affiliateos/secrets /var/lib/affiliateos/product-media && chown -R node:node /var/lib/affiliateos
 WORKDIR /app/apps/api
-VOLUME ["/var/lib/affiliateos/secrets"]
+VOLUME ["/var/lib/affiliateos/secrets", "/var/lib/affiliateos/product-media"]
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD node -e "fetch('http://127.0.0.1:3001/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"

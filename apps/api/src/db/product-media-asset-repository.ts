@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand, ProductMediaIdentityAudit, ProductMediaIdentityReviewCommand } from "../domain/product-media-ingestion.js";
 import { productMediaAssets, productMediaRightsAudits, productMediaIdentityAudits } from "./schema.js";
+import { validateProductMediaRightsEvidenceBinding } from "../domain/product-media-rights-evidence-binding.js";
 
 type DatabaseExecutor = any;
 
@@ -10,6 +11,7 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   productId: row.productId,
   kind: row.kind as ProductMediaAsset["kind"],
   bucket: row.bucket,
+  storageBackend: row.storageBackend as ProductMediaAsset["storageBackend"],
   objectKey: row.objectKey,
   mimeType: row.mimeType as ProductMediaAsset["mimeType"],
   byteSize: row.byteSize,
@@ -46,6 +48,12 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
 
 export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepository {
   constructor(private readonly db: DatabaseExecutor) {}
+
+  async findById(id: string): Promise<ProductMediaAsset | undefined> {
+    const rows = await this.db.select().from(productMediaAssets)
+      .where(eq(productMediaAssets.id, id)).limit(1);
+    return rows[0] ? toAsset(rows[0]) : undefined;
+  }
 
   async findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined> {
     const rows = await this.db.select().from(productMediaAssets).where(and(
@@ -122,6 +130,10 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       )).limit(1).for("update");
       const existing = existingRows[0];
       if (!existing) return undefined;
+
+      if (review.status === "verified") {
+        validateProductMediaRightsEvidenceBinding(toAsset(existing), review);
+      }
 
       const reviewedAt = new Date().toISOString();
       const rightsUpdate = review.status === "verified"
@@ -243,6 +255,7 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
   async save(asset: ProductMediaAsset): Promise<ProductMediaAsset> {
     const rows = await this.db.insert(productMediaAssets).values({
       ...asset,
+      storageBackend: asset.storageBackend ?? "supabase",
       createdAt: asset.createdAt
     }).onConflictDoNothing().returning();
     if (rows[0]) return toAsset(rows[0]);

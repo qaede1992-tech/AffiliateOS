@@ -26,7 +26,7 @@ describe("SupabaseStorageClient", () => {
       contentType: "image/jpeg"
     });
 
-    assert.deepEqual(result, { bucket: "affiliate-media", key: "content-1/photo.jpg" });
+    assert.deepEqual(result, { backend: "supabase", bucket: "affiliate-media", key: "content-1/photo.jpg" });
     assert.match(requestUrl, /storage\/v1\/object\/affiliate-media\/content-1\/photo\.jpg$/);
     assert.equal((requestInit?.headers as Record<string, string>).Authorization, "Bearer server-secret");
     assert.equal((requestInit?.headers as Record<string, string>)["x-upsert"], "false");
