@@ -57,8 +57,8 @@ test("local product media storage enforces kind, MIME, and byte limits", async (
   const root = await mkdtemp(join(tmpdir(), "affiliateos-product-media-"));
   try {
     const storage = new LocalProductMediaStorage({ rootDirectory: root, maxImageBytes: 3, maxVideoBytes: 8 });
-    await assert.rejects(() => storage.upload({ bytes: imageBytes, contentType: "image/jpeg", kind: "image" }), /exceed/);
-    await assert.rejects(() => storage.upload({ bytes: imageBytes, contentType: "video/mp4" }), /MIME/);
+    await assert.rejects(() => storage.upload({ bytes: imageBytes, contentType: "image/jpeg" }), /exceed/);
+    await assert.rejects(() => storage.upload({ bytes: imageBytes, contentType: "application/octet-stream" }), /MIME/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
