@@ -7,7 +7,7 @@ import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import { publisherSupportsContent, type PublicationCheckResult, type SocialPublisher } from "./distribution-engine.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { ContentProductRepository, SocialAccountRepository } from "./repository.js";
-import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
+import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
 import { assertProductMediaRightsForPublication, createPublicationMediaIntegritySnapshot } from "./product-media-publication-rights.js";
 import type { SocialCredentialResolver } from "./social-credentials.js";
 import type { SupabaseStorageClient } from "./supabase-storage.js";
@@ -34,7 +34,8 @@ export class PublisherExecutor {
     private readonly mediaStorage?: SupabaseStorageClient,
     private readonly contentProducts?: ContentProductRepository,
     private readonly productMediaAssets?: ProductMediaAssetRepository,
-    private readonly dispatchReservations?: PublicationDispatchReservationRepository
+    private readonly dispatchReservations?: PublicationDispatchReservationRepository,
+    private readonly productMediaDeliveryUrl?: (asset: ProductMediaAsset, context: { contentId: string; reservationId: string }) => Promise<string>
   ) {}
 
   async execute(contentId: string, now = new Date(), idempotencyKey = `content:${contentId}`, tiktokApproval?: TikTokPublicationApproval, jobId?: string): Promise<PublishExecutionResult> {
