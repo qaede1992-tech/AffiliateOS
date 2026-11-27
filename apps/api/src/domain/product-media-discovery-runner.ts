@@ -32,7 +32,7 @@ const safeErrorType = (error: unknown): string =>
     ? error.name
     : "UnknownError";
 
-const shouldSearchWikimediaVideoFallback = (
+export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
   identity: { model?: string | null; sku?: string | null }
 ): boolean =>
