@@ -76,7 +76,10 @@ export class IllustrativeProductVideoAssetService {
       identityStatus: "not_required",
       identityReviewedBy: null,
       identityReviewedAt: null,
-      identityReviewReason: "Text-led abstract illustration; does not depict the physical product.",
+      // The database requires all identity-review evidence fields to be NULL
+      // when identityStatus is not_required. The explanatory note belongs in
+      // the source metadata, not in an administrator review record.
+      identityReviewReason: null,
       createdAt: new Date().toISOString()
     };
 
