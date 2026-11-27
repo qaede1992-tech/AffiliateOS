@@ -613,6 +613,40 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     if (result.changed && (input.imageUrl || input.videoUrl)) void services.autonomousScheduler.trigger();
     return result.product;
   });
+  app.post("/api/v1/products/:productId/shopee-media-discovery", adminGuard, async (request, reply) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    const discovery = services.productMediaDiscovery;
+    if (!discovery) return reply.status(503).send({ error: "PRODUCT_MEDIA_DISCOVERY_UNAVAILABLE", message: "Product-scoped media discovery requires persistent media storage and recent eligibility evidence." });
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    try {
+      const result = await discovery.discoverShopeeProductMedia(productId);
+      auditSecurityEvent(request.log, request, "shopee_product_media_discovery_completed", {
+        productId,
+        actorId,
+        candidatesFound: String(result.candidatesFound ?? 0),
+        storedCount: String(result.stored.length),
+        hasVideo: result.hasVideo
+      });
+      return {
+        productId: result.productId,
+        pageFetched: result.pageFetched,
+        hasVideo: result.hasVideo,
+        candidatesFound: result.candidatesFound ?? 0,
+        stored: result.stored.map((asset) => ({ id: asset.id, kind: asset.kind, rightsStatus: asset.rightsStatus, identityStatus: asset.identityStatus })),
+        skippedReasons: result.skipped.map((item) => item.reason)
+      };
+    } catch (error) {
+      if (error && typeof error === "object" && "statusCode" in error && "code" in error) {
+        const typed = error as { statusCode: number; code: string; message: string };
+        if (typed.code.startsWith("PRODUCT_MEDIA_DISCOVERY_")) {
+          return reply.status(typed.statusCode).send({ error: typed.code, message: typed.message });
+        }
+      }
+      request.log.error({ errorName: error instanceof Error ? error.name : "UnknownError" }, "Shopee product media discovery failed");
+      return reply.status(502).send({ error: "PRODUCT_MEDIA_DISCOVERY_FAILED", message: "Product media discovery could not be completed." });
+    }
+  });
   app.get("/api/v1/products/:productId/media-candidates", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     const query = productMediaCandidateListQuerySchema.parse(request.query);
