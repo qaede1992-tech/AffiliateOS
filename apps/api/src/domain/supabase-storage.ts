@@ -12,6 +12,14 @@ export interface StoredObject {
   key: string;
 }
 
+/** Common private storage contract for ordinary product media. */
+export interface ProductMediaStorageClient {
+  readonly bucketName: string;
+  upload(input: { key: string; bytes: Uint8Array; contentType: string; upsert?: boolean }): Promise<StoredObject>;
+  download(key: string, maxBytes: number): Promise<Uint8Array>;
+  remove(key: string): Promise<void>;
+}
+
 const normalizeBaseUrl = (value: string): string => {
   const parsed = new URL(value);
   if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
@@ -43,7 +51,7 @@ const validateObjectKey = (key: string): string => {
  * Minimal server-side Supabase Storage REST adapter.
  * Keep the service-role key on the API server only; never return it or log request headers.
  */
-export class SupabaseStorageClient {
+export class SupabaseStorageClient implements ProductMediaStorageClient {
   private readonly baseUrl: string;
   private readonly bucket: string;
   private readonly serviceKey: string;
