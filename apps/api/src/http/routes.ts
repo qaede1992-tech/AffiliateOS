@@ -68,6 +68,23 @@ const isMissingProductMediaCandidatesTable = (error: unknown): boolean => {
   return false;
 };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
+  // Admin-issued short-lived preview URL for local product media; it does not grant publication rights.
+  app.get<{ Params: { token: string } }>("/api/v1/product-media/preview/:token", async (request, reply) => {
+    if (!services.productMediaPreviewDelivery || request.params.token.length > 2048) {
+      return reply.status(404).send({ error: "PRODUCT_MEDIA_NOT_FOUND", message: "Media is unavailable." });
+    }
+    try {
+      const delivered = await services.productMediaPreviewDelivery(request.params.token);
+      return reply
+        .header("Cache-Control", "private, no-store, max-age=0")
+        .header("Content-Length", String(delivered.bytes.byteLength))
+        .header("X-Content-Type-Options", "nosniff")
+        .type(delivered.asset.mimeType)
+        .send(Buffer.from(delivered.bytes));
+    } catch {
+      return reply.status(404).send({ error: "PRODUCT_MEDIA_NOT_FOUND", message: "Media is unavailable." });
+    }
+  });
   // Instagram fetches this short-lived bearer URL without AffiliateOS operator credentials.
   // The token is not sufficient by itself: the injected service re-checks the asset,
   // current rights, active dispatch reservation and on-disk SHA-256 before returning bytes.
