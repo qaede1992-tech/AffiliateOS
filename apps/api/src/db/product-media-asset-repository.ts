@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand, ProductMediaIdentityAudit, ProductMediaIdentityReviewCommand } from "../domain/product-media-ingestion.js";
 import { productMediaAssets, productMediaRightsAudits, productMediaIdentityAudits } from "./schema.js";
+import { validateProductMediaRightsEvidenceBinding } from "../domain/product-media-rights-evidence-binding.js";
 
 type DatabaseExecutor = any;
 
@@ -129,6 +130,10 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       )).limit(1).for("update");
       const existing = existingRows[0];
       if (!existing) return undefined;
+
+      if (review.status === "verified") {
+        validateProductMediaRightsEvidenceBinding(toAsset(existing), review);
+      }
 
       const reviewedAt = new Date().toISOString();
       const rightsUpdate = review.status === "verified"

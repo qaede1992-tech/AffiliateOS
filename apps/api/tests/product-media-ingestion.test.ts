@@ -243,15 +243,21 @@ test("rights verification atomically updates the asset and appends one provenanc
 });
 
 test("audit insert failure rolls back the product media rights update", async () => {
-  const original = reviewAsset();
+  const original = reviewAsset({
+    sourcePublisher: "Example Publisher",
+    sourceLandingPageUrl: "https://example.com/product",
+    sourceLicense: "CC BY 4.0",
+    sourceLicenseUrl: "https://example.com/license"
+  });
   const fixture = makeRightsReviewRepository(original, true);
   await assert.rejects(() => fixture.repository.reviewRights(original.id, productId, {
     status: "verified",
     rightsBasis: "license",
     rightsEvidenceUrl: "https://example.com/license",
+    sourcePublisher: "Example Publisher",
     actorId: "admin-42",
     actorRole: "admin",
-    reason: "License checked"
+    reason: "Inspected the exact source license terms"
   }), /injected audit insert failure/);
 
   const snapshot = fixture.snapshot();
