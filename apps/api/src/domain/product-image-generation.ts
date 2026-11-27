@@ -5,6 +5,7 @@ import { isStructurallyValidMedia } from "./media-file-validation.js";
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LOCAL_IMAGE_OBJECT_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(jpg|png|webp)$/i;
 const DEFAULT_MODEL = "gpt-image-2";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_INPUT_BYTES = 10 * 1024 * 1024;
@@ -168,10 +169,13 @@ export class ProductImageGenerationService {
     const productAssets = await this.assets.listByProduct(input.productId);
     const reference = productAssets.find((asset) => asset.id === input.referenceAssetId);
     if (!reference || reference.productId !== input.productId) throw new ProductImageGenerationError("Reference image does not belong to this product.", "REFERENCE_NOT_FOUND");
+    const referenceKeyIsValid = reference?.storageBackend === "local_volume"
+      ? LOCAL_IMAGE_OBJECT_KEY.test(reference.objectKey)
+      : Boolean(reference?.objectKey.startsWith(`products/${input.productId}/`));
     if (
       reference.kind !== "image" ||
       reference.bucket !== this.storage.bucketName ||
-      !reference.objectKey.startsWith(`products/${input.productId}/`) ||
+      !referenceKeyIsValid ||
       !hasCurrentVerifiedRights(reference) ||
       reference.rightsBasis !== "user_owned"
     ) {
