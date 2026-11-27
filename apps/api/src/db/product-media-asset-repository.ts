@@ -10,6 +10,7 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   productId: row.productId,
   kind: row.kind as ProductMediaAsset["kind"],
   bucket: row.bucket,
+  storageBackend: row.storageBackend as ProductMediaAsset["storageBackend"],
   objectKey: row.objectKey,
   mimeType: row.mimeType as ProductMediaAsset["mimeType"],
   byteSize: row.byteSize,
@@ -243,6 +244,7 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
   async save(asset: ProductMediaAsset): Promise<ProductMediaAsset> {
     const rows = await this.db.insert(productMediaAssets).values({
       ...asset,
+      storageBackend: asset.storageBackend ?? "supabase",
       createdAt: asset.createdAt
     }).onConflictDoNothing().returning();
     if (rows[0]) return toAsset(rows[0]);
