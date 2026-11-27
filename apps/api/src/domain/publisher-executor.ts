@@ -60,7 +60,13 @@ export class PublisherExecutor {
     try {
       // Apply the new product-media rights gate only to Instagram. Keep TikTok and
       // other existing publisher paths unchanged during this staged rollout.
-      const mediaAssets = await this.resolveMediaAssets(content, content.platform === "instagram" && publisher.provider === "instagram-graph");
+      const instagramDispatch = content.platform === "instagram" && publisher.provider === "instagram-graph";
+      // Instagram product-media rights and source records are validated before
+      // reserving, but provider-facing URLs are deliberately not minted until
+      // after the durable reservation has been claimed.
+      const sourceMediaAssets = instagramDispatch
+        ? await this.loadMediaAssets(content, true)
+        : undefined;
       const credential = await this.resolveCredential(account);
       let reservation: import("./publication-dispatch-reservation.js").PublicationDispatchReservation | undefined;
       if (content.platform === "instagram" && publisher.provider === "instagram-graph") {
@@ -74,7 +80,7 @@ export class PublisherExecutor {
         const snapshot = {
           content: { id: content.id, platform: content.platform, contentType: content.contentType, title: content.title ?? null, caption: content.caption ?? null, script: content.script ?? null, cta: content.cta ?? null, mediaAssetIds: content.mediaAssetIds ?? [], productId: content.productId ?? null, socialAccountId: content.socialAccountId ?? null },
           account: { id: account.id, platform: account.platform, accountReference: account.accountReference },
-          mediaAssetIds: mediaAssets.map((asset) => asset.id).sort(),
+          mediaAssetIds: (sourceMediaAssets ?? await this.resolveMediaAssets(content, false)).map((asset) => asset.id).sort(),
           ...(rawMediaAssets.length > 0 ? { mediaIntegrity } : {})
         };
         const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
@@ -94,6 +100,12 @@ export class PublisherExecutor {
         if (!dispatching) throw new Error("Instagram dispatch reservation could not be claimed; provider request was not sent.");
         reservation = dispatching;
       }
+      // Only now, after the Instagram reservation is in dispatching state,
+      // resolve provider-facing media URLs. This is the insertion point for
+      // reservation-bound local-volume delivery tokens.
+      const mediaAssets = instagramDispatch
+        ? await this.resolvePublisherAssets(content, sourceMediaAssets ?? [])
+        : await this.resolveMediaAssets(content, false);
       let result: Awaited<ReturnType<SocialPublisher["publish"]>>;
       try {
         result = await publisher.publish({ content, account, credential, mediaAssets, idempotencyKey, tiktokApproval });
@@ -173,7 +185,7 @@ export class PublisherExecutor {
     return this.credentialResolver.resolve(account.credentialReference);
   }
 
-  private async resolveMediaAssets(content: Content, requireProductMediaRights = false) {
+  private async loadMediaAssets(content: Content, requireProductMediaRights = false) {
     if (!this.mediaAssets || !content.mediaAssetIds?.length) return [];
     const assets = await Promise.all(content.mediaAssetIds.map((id) => this.mediaAssets?.findById(id)));
     if (assets.some((asset) => !asset)) throw new Error("One or more configured media assets do not exist.");
@@ -186,7 +198,18 @@ export class PublisherExecutor {
       // legacy URL/content-scoped publisher paths during this rollout.
       await assertProductMediaRightsForPublication(resolved, linkedProductIds, this.productMediaAssets);
     }
-    return resolvePublisherMediaAssets(content, resolved, this.mediaStorage, linkedProductIds);
+    return resolved;
+  }
+
+  private async resolvePublisherAssets(content: Content, sourceAssets: NonNullable<Awaited<ReturnType<PublisherExecutor["loadMediaAssets"]>>>): Promise<MediaAsset[]> {
+    const linkedProducts = this.contentProducts ? await this.contentProducts.listByContent(content.id) : [];
+    const linkedProductIds = [...new Set([...linkedProducts.map((item) => item.productId), ...(content.productId ? [content.productId] : [])])];
+    return resolvePublisherMediaAssets(content, sourceAssets, this.mediaStorage, linkedProductIds);
+  }
+
+  private async resolveMediaAssets(content: Content, requireProductMediaRights = false) {
+    const sourceAssets = await this.loadMediaAssets(content, requireProductMediaRights);
+    return this.resolvePublisherAssets(content, sourceAssets);
   }
 
   private async findAccount(content: Content): Promise<SocialAccount> {
