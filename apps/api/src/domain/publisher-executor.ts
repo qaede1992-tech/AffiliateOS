@@ -3,7 +3,7 @@ import type { Content, SocialAccount, TikTokPublicationApproval } from "@affilia
 import type { PublicationDispatchReservationRepository } from "./publication-dispatch-reservation.js";
 import type { AffiliatePublicationEligibilityValidator } from "./affiliate-publication-eligibility.js";
 import type { ContentService } from "./content.js";
-import type { MediaAssetRepository } from "./media-asset.js";
+import type { MediaAsset, MediaAssetRepository } from "./media-asset.js";
 import { publisherSupportsContent, type PublicationCheckResult, type SocialPublisher } from "./distribution-engine.js";
 import type { PublicationOperation } from "./publication-operation.js";
 import type { ContentProductRepository, SocialAccountRepository } from "./repository.js";
