@@ -48,6 +48,7 @@ export class IllustrativeProductVideoAssetService {
       productId,
       kind: "video",
       bucket: stored.bucket,
+      storageBackend: stored.backend ?? "supabase",
       objectKey: stored.key,
       mimeType: "video/mp4",
       byteSize: rendered.metadata.byteSize,
