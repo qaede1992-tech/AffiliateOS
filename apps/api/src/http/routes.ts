@@ -16,6 +16,7 @@ import { determineAutonomousHealthStatus } from "../domain/autonomous-health-sta
 import { TikTokProviderRequestError } from "../domain/tiktok-content-posting-client.js";
 import { ProductMediaUploadError } from "../domain/product-media-upload-service.js";
 import { ProductImageGenerationError } from "../domain/product-image-generation.js";
+import { ProductIllustrativeImageGenerationError } from "../domain/product-illustrative-image-generation.js";
 import { parseShopeeAffiliateCsv } from "../domain/shopee-affiliate-csv.js";
 import { Readable } from "node:stream";
 import { evaluateProductMediaAssetReadiness } from "../domain/media-readiness-evaluator.js";
@@ -67,6 +68,43 @@ const isMissingProductMediaCandidatesTable = (error: unknown): boolean => {
   return false;
 };
 export function registerResourceRoutes(app: FastifyInstance, services: Services, providerEvents?: ProviderEventStore): void {
+  // Admin-issued short-lived preview URL for local product media; it does not grant publication rights.
+  app.get<{ Params: { token: string } }>("/api/v1/product-media/preview/:token", async (request, reply) => {
+    if (!services.productMediaPreviewDelivery || request.params.token.length > 2048) {
+      return reply.status(404).send({ error: "PRODUCT_MEDIA_NOT_FOUND", message: "Media is unavailable." });
+    }
+    try {
+      const delivered = await services.productMediaPreviewDelivery(request.params.token);
+      return reply
+        .header("Cache-Control", "private, no-store, max-age=0")
+        .header("Content-Length", String(delivered.bytes.byteLength))
+        .header("X-Content-Type-Options", "nosniff")
+        .type(delivered.asset.mimeType)
+        .send(Buffer.from(delivered.bytes));
+    } catch {
+      return reply.status(404).send({ error: "PRODUCT_MEDIA_NOT_FOUND", message: "Media is unavailable." });
+    }
+  });
+  // Instagram fetches this short-lived bearer URL without AffiliateOS operator credentials.
+  // The token is not sufficient by itself: the injected service re-checks the asset,
+  // current rights, active dispatch reservation and on-disk SHA-256 before returning bytes.
+  app.get<{ Params: { token: string } }>("/api/v1/product-media/delivery/:token", async (request, reply) => {
+    if (!services.productMediaDelivery || request.params.token.length > 2048) {
+      return reply.status(404).send({ error: "PRODUCT_MEDIA_NOT_FOUND", message: "Media is unavailable." });
+    }
+    try {
+      const delivered = await services.productMediaDelivery(request.params.token);
+      return reply
+        .header("Cache-Control", "private, no-store, max-age=0")
+        .header("Content-Length", String(delivered.bytes.byteLength))
+        .header("X-Content-Type-Options", "nosniff")
+        .type(delivered.asset.mimeType)
+        .send(Buffer.from(delivered.bytes));
+    } catch {
+      // Do not distinguish invalid tokens, missing assets, revoked rights or stale reservations.
+      return reply.status(404).send({ error: "PRODUCT_MEDIA_NOT_FOUND", message: "Media is unavailable." });
+    }
+  });
   // Keep the upload parser encapsulated so the global JSON/body parser and 1 MiB limit remain unchanged.
   app.register(async (mediaApp) => {
     mediaApp.addContentTypeParser("application/octet-stream", (_request, payload, done) => {
@@ -212,6 +250,41 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         }
       }
     );
+    mediaApp.post("/api/v1/products/:productId/media-illustration-generate", { preHandler: requireOperator }, async (request, reply) => {
+      const { productId } = productMediaParamsSchema.parse(request.params);
+      const generator = services.productIllustrativeImageGeneration;
+      if (!generator) {
+        return reply.status(503).send({ error: "PRODUCT_ILLUSTRATION_GENERATION_UNAVAILABLE", message: "AI abstract illustration generation is not enabled or configured." });
+      }
+      try {
+        const result = await generator.generate(productId);
+        auditSecurityEvent(request.log, request, "product_ai_abstract_illustration_generated", {
+          productId,
+          generatedAssetId: result.asset.id,
+          rightsStatus: result.asset.rightsStatus,
+          identityStatus: result.asset.identityStatus ?? "pending",
+          publicationEligible: false
+        });
+        return reply.status(result.generated ? 201 : 200).send(result);
+      } catch (error) {
+        if (error instanceof ProductIllustrativeImageGenerationError) {
+          request.log.warn({ code: error.code }, "AI abstract product illustration rejected");
+          if (error.code === "PRODUCT_NOT_FOUND") {
+            return reply.status(404).send({ error: error.code, message: "The target product was not found." });
+          }
+          if (error.code === "PRODUCT_NOT_ACTIVE") {
+            return reply.status(409).send({ error: error.code, message: "Only active products can receive promotional illustrations." });
+          }
+          if (error.code === "AI_PROVIDER_UNAVAILABLE") {
+            return reply.status(503).send({ error: error.code, message: "The AI image provider is temporarily unavailable." });
+          }
+          return reply.status(error.code.startsWith("AI_PROVIDER") || error.code === "GENERATED_IMAGE_INVALID" ? 502 : 400)
+            .send({ error: error.code, message: "AI abstract illustration generation could not be completed." });
+        }
+        request.log.error({ errorName: error instanceof Error ? error.name : "UnknownError" }, "AI abstract product illustration failed");
+        return reply.status(502).send({ error: "PRODUCT_ILLUSTRATION_GENERATION_FAILED", message: "AI abstract illustration generation could not be completed." });
+      }
+    });
     mediaApp.post<{ Params: { productId: string }; Body: unknown }>("/api/v1/products/:productId/media-generate", { preHandler: requireOperator }, async (request, reply) => {
       if (!services.productImageGeneration) {
         return reply.status(503).send({ error: "PRODUCT_IMAGE_GENERATION_UNAVAILABLE", message: "AI product image generation is not enabled or configured." });
@@ -598,6 +671,41 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const requestedLimit = Number((request.query as { limit?: string }).limit ?? 50);
     const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(50, Math.trunc(requestedLimit))) : 50;
     return list(await repository.listReviewAudits(productId, candidateId, limit));
+  });
+  app.post("/api/v1/products/:productId/illustrative-video-generate", adminGuard, async (request, reply) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    const generator = services.illustrativeVideoAssetGeneration;
+    if (!generator) {
+      return reply.status(503).send({
+        error: "ILLUSTRATIVE_VIDEO_GENERATION_UNAVAILABLE",
+        message: "Penyimpanan video ilustratif atau bukti seleksi produk belum tersedia."
+      });
+    }
+    try {
+      const result = await generator.generate(productId);
+      auditSecurityEvent(request.log, request, "illustrative_product_video_asset_generated", {
+        productId,
+        assetId: result.asset.id,
+        byteSize: String(result.asset.byteSize),
+        sha256: result.asset.sha256,
+        rightsStatus: result.asset.rightsStatus,
+        publicationEligible: false
+      });
+      return reply.status(result.generated ? 201 : 200).send(result);
+    } catch (error) {
+      if (error instanceof IllustrativeProductVideoPreviewError) {
+        const statusCode = error.code === "PRODUCT_NOT_FOUND" ? 404 : 409;
+        return reply.status(statusCode).send({ error: error.code, message: error.message });
+      }
+      request.log.error({
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        productId
+      }, "Illustrative product video asset generation failed");
+      return reply.status(502).send({
+        error: "ILLUSTRATIVE_VIDEO_GENERATION_FAILED",
+        message: "Video ilustratif gagal dibuat atau disimpan."
+      });
+    }
   });
   app.post("/api/v1/products/:productId/illustrative-video-preview", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);

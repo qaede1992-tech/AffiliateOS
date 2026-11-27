@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { Product } from "@affiliateos/shared";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository } from "./product-media-ingestion.js";
-import type { SupabaseStorageClient } from "./supabase-storage.js";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 
 const execFile = promisify(execFileCallback);
@@ -84,7 +84,7 @@ export class ProductPromoVideoRenderer {
   private readonly runProcess: (binary: string, args: string[], timeoutMs: number) => Promise<void>;
 
   constructor(
-    private readonly storage: Pick<SupabaseStorageClient, "bucketName" | "download" | "upload" | "remove">,
+    private readonly storage: ProductMediaStorageClient,
     private readonly assets: ProductMediaAssetRepository,
     private readonly options: ProductPromoVideoRendererOptions = {}
   ) {

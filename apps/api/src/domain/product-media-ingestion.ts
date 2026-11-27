@@ -4,7 +4,7 @@ import { fetchPublicHttps } from "./public-https-fetch.js";
 import type { SafePublicHttpsFetchOptions } from "./public-https-fetch.js";
 import { isStructurallyValidMedia } from "./media-file-validation.js";
 import { extractProductMediaTechnicalMetadata, type ProductMediaTechnicalMetadata } from "./product-media-technical-metadata.js";
-import type { SupabaseStorageClient } from "./supabase-storage.js";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 import { hasWebmEbmlSignature, transcodeWebmToMp4 } from "./webm-to-mp4-transcoder.js";
 
 export interface ProductMediaAsset {
@@ -12,6 +12,7 @@ export interface ProductMediaAsset {
   productId: string;
   kind: "image" | "video";
   bucket: string;
+  storageBackend?: "supabase" | "local_volume";
   objectKey: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp" | "video/mp4";
   byteSize: number;
@@ -94,6 +95,7 @@ export interface ProductMediaIdentityAudit {
 }
 
 export interface ProductMediaAssetRepository {
+  findById(id: string): Promise<ProductMediaAsset | undefined>;
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
   findBySourceCandidateId?(candidateId: string): Promise<ProductMediaAsset | undefined>;
   findByProductAndSourceUrl?(productId: string, sourceUrl: string, kind: ProductMediaAsset["kind"]): Promise<ProductMediaAsset | undefined>;
@@ -167,7 +169,7 @@ const validateProductId = (productId: string): void => {
  */
 export class ProductMediaIngestionService {
   constructor(
-    private readonly storage: SupabaseStorageClient,
+    private readonly storage: ProductMediaStorageClient,
     private readonly assets: ProductMediaAssetRepository,
     private readonly policy: ProductMediaIngestionPolicy,
     private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps,
@@ -287,7 +289,7 @@ export class ProductMediaIngestionService {
         const savedObject = await this.storage.upload({ key: objectKey, bytes: mediaBytes, contentType: mimeType, upsert: true });
         const asset: ProductMediaAsset = {
           id, productId: input.productId, kind: candidate.kind, bucket: savedObject.bucket,
-          objectKey: savedObject.key, mimeType, byteSize: mediaBytes.byteLength,
+          storageBackend: savedObject.backend ?? "supabase", objectKey: savedObject.key, mimeType, byteSize: mediaBytes.byteLength,
           ...technicalMetadata, sha256, sourceUrl: candidate.url,
           sourceImportProvider: candidate.importProvenance?.provider ?? null,
           sourceImportReference: candidate.importProvenance?.sourceReference ?? null,

@@ -4,7 +4,7 @@ import { fetchPublicHttps } from "./public-https-fetch.js";
 import type { ProductMediaAsset, ProductMediaIngestionPolicy, ProductMediaIngestionResult } from "./product-media-ingestion.js";
 import { ProductMediaIngestionService } from "./product-media-ingestion.js";
 import type { ProductMediaAssetRepository } from "./product-media-ingestion.js";
-import type { SupabaseStorageClient } from "./supabase-storage.js";
+import type { ProductMediaStorageClient } from "./supabase-storage.js";
 import { ProductPromoVideoRenderer, type ProductPromoVideoRenderResult } from "./product-promo-video-renderer.js";
 import { hasCurrentVerifiedRights } from "./product-media-publication-rights.js";
 import { evaluateProductMediaAssetReadiness } from "./media-readiness-evaluator.js";
@@ -32,6 +32,33 @@ const safeErrorType = (error: unknown): string =>
     ? error.name
     : "UnknownError";
 
+export const shouldSearchWikimediaVideoFallback = (
+  candidates: ProductMediaCatalogCandidate[],
+  identity: { model?: string | null; sku?: string | null }
+): boolean =>
+  Boolean(identity.model?.trim() || identity.sku?.trim()) &&
+  !candidates.some((candidate) => candidate.mediaKind === "video");
+
+/** Merge provider results without duplicate landing pages; prefer video leads. */
+export const mergeWikimediaVideoFallbackCandidates = (
+  primary: ProductMediaCatalogCandidate[],
+  fallback: ProductMediaCatalogCandidate[],
+  maxResults = 10
+): ProductMediaCatalogCandidate[] => {
+  const byLandingPage = new Map<string, ProductMediaCatalogCandidate>();
+  for (const candidate of [...primary, ...fallback]) {
+    if (!byLandingPage.has(candidate.landingPageUrl)) {
+      byLandingPage.set(candidate.landingPageUrl, candidate);
+    }
+  }
+  return [...byLandingPage.values()]
+    .sort((left, right) =>
+      Number(right.mediaKind === "video") - Number(left.mediaKind === "video") ||
+      right.identityScore - left.identityScore
+    )
+    .slice(0, maxResults);
+};
+
 const isShopeeHost = (hostname: string): boolean => {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   return host === "shopee.co.id" || host.endsWith(".shopee.co.id") ||
@@ -44,15 +71,16 @@ const isShopeeOwnedMediaHost = (hostname: string): boolean => {
     host === "shopeeusercontent.com" || host.endsWith(".shopeeusercontent.com");
 };
 
-const hasValidExplicitMediaUrl = (product: Product): boolean =>
+const hasUsableExplicitMediaUrl = (product: Product): boolean =>
   [product.imageUrl, product.videoUrl].some((value) => {
     if (!value?.trim()) return false;
     try {
       const url = new URL(value);
-      // A valid but policy-blocked Shopee CDN URL still counts as an explicit
-      // source: do not waste catalog-provider requests searching for alternatives.
-      // The ingestion gate below independently refuses Shopee-owned hosts.
-      return url.protocol === "https:" && !url.username && !url.password;
+      // Shopee-owned CDN URLs are deliberately never fetched. They must therefore
+      // not suppress Path 2 catalog discovery, which is the supported alternative
+      // when an imported Shopee row contains only platform-hosted media URLs.
+      return url.protocol === "https:" && !url.username && !url.password &&
+        !isShopeeOwnedMediaHost(url.hostname);
     } catch {
       return false;
     }
@@ -70,7 +98,7 @@ export class ProductMediaDiscoveryRunner {
   private readonly promoVideoRenderer: ProductPromoVideoRenderer;
 
   constructor(
-    storage: SupabaseStorageClient,
+    storage: ProductMediaStorageClient,
     private readonly assets: ProductMediaAssetRepository,
     private readonly policy: ProductMediaDiscoveryPolicy,
     private readonly fetcher: typeof fetchPublicHttps = fetchPublicHttps,
@@ -275,7 +303,7 @@ export class ProductMediaDiscoveryRunner {
       // An explicitly supplied, non-Shopee HTTPS media URL is already a more
       // direct source than a catalog search. Avoid provider traffic and candidate
       // writes when ingestion can proceed from the supplied URL below.
-      if (this.catalogCandidates && !hasValidExplicitMediaUrl(product)) {
+      if (this.catalogCandidates && !hasUsableExplicitMediaUrl(product)) {
         const identity = {
           name: product.name,
           ...(product.category?.trim() ? { category: product.category } : {}),
@@ -358,17 +386,31 @@ export class ProductMediaDiscoveryRunner {
               // Keep generic discovery to one provider request. Only spend a second
               // catalog request when Openverse is empty and the CSV supplied a model
               // or SKU that can make the Wikimedia query product-specific.
-              if (discovered.length === 0 && (identity.model?.trim() || identity.sku?.trim())) {
-                discoveryProvider = "wikimedia_commons";
-                openverseFallbackReason = "empty_structured_identity";
+              if (shouldSearchWikimediaVideoFallback(discovered, identity)) {
+                const primaryCount = discovered.length;
+                openverseFallbackReason = primaryCount === 0 ? "empty_structured_identity" : undefined;
                 console.info(JSON.stringify({
                   event: "product_media_catalog_provider_fallback",
                   primaryProvider: "openverse",
                   fallbackProvider: "wikimedia_commons",
-                  fallbackReason: openverseFallbackReason,
-                  productId: product.id
+                  fallbackReason: primaryCount === 0 ? "empty_structured_identity" : "video_not_found",
+                  productId: product.id,
+                  primaryCandidateCount: primaryCount
                 }));
-                discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+                try {
+                  const fallbackCandidates = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+                  if (primaryCount === 0) discoveryProvider = "wikimedia_commons";
+                  discovered = mergeWikimediaVideoFallbackCandidates(discovered, fallbackCandidates, 10);
+                } catch (fallbackError) {
+                  // Keep useful Openverse images if the optional video lookup fails.
+                  if (primaryCount === 0) throw fallbackError;
+                  console.warn(JSON.stringify({
+                    event: "product_media_catalog_fallback_failed",
+                    provider: "wikimedia_commons",
+                    productId: product.id,
+                    errorType: safeErrorType(fallbackError)
+                  }));
+                }
               }
             } catch (error) {
               openverseFailure = safeErrorType(error);

@@ -27,7 +27,13 @@ import { createOfficialSocialPublishers, createOfficialTikTokContentPostingClien
 import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
+import { LocalProductMediaStorage } from "./domain/local-product-media-storage.js";
+import { authorizeProductMediaDelivery } from "./domain/product-media-delivery-authorization.js";
+import { createProductMediaDeliveryToken } from "./domain/product-media-delivery-token.js";
+import { createProductMediaPreviewToken } from "./domain/product-media-preview-token.js";
+import { authorizeProductMediaPreview } from "./domain/product-media-preview-authorization.js";
 import { ProductImageGenerationService } from "./domain/product-image-generation.js";
+import { ProductIllustrativeImageGenerationService } from "./domain/product-illustrative-image-generation.js";
 import { assertContentUnchangedSincePublicationOperation, assertProductMediaRightsForPublication, assertPublicationMediaIntegritySnapshot, createPublicationMediaIntegritySnapshot } from "./domain/product-media-publication-rights.js";
 const safeErrorType = (error: unknown): string =>
   error instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name)
@@ -64,6 +70,13 @@ const mediaStorage = createSupabaseStorageClientFromEnv({
   SUPABASE_MEDIA_BUCKET: environment.SUPABASE_MEDIA_BUCKET
 });
 const mediaBucket = environment.SUPABASE_MEDIA_BUCKET || "affiliate-media";
+const localProductMediaStorage = environment.PRODUCT_MEDIA_STORAGE_PATH && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && environment.PRODUCT_MEDIA_PUBLIC_BASE_URL
+  ? new LocalProductMediaStorage({
+      rootDirectory: environment.PRODUCT_MEDIA_STORAGE_PATH,
+      maxImageBytes: 10 * 1024 * 1024,
+      maxVideoBytes: 45 * 1024 * 1024
+    })
+  : undefined;
 const services = createServices(
   persistence.repositories,
   persistence.transactionManager,
@@ -140,8 +153,51 @@ const services = createServices(
     clientId: environment.OPENVERSE_CLIENT_ID,
     clientSecret: environment.OPENVERSE_CLIENT_SECRET
   },
-  persistence.preMediaEligibility
+  persistence.preMediaEligibility,
+  localProductMediaStorage,
+  localProductMediaStorage && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && environment.PRODUCT_MEDIA_PUBLIC_BASE_URL
+    ? async (asset, context) => {
+        const token = createProductMediaDeliveryToken({
+          assetId: asset.id,
+          productId: asset.productId,
+          contentId: context.contentId,
+          reservationId: context.reservationId,
+          sha256: asset.sha256,
+          expiresAt: Math.floor(Date.now() / 1000) + 300
+        }, { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 });
+        const base = environment.PRODUCT_MEDIA_PUBLIC_BASE_URL!.replace(/\/+$/, "");
+        return `${base}/api/v1/product-media/delivery/${token}`;
+      }
+    : undefined
 );
+// Local-volume preview URLs are issued only after the existing adminGuard has
+// authorized the preview request. The public token endpoint serves no-store
+// bytes and rechecks the current asset identity and on-disk SHA-256.
+if (localProductMediaStorage && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY &&
+    environment.PRODUCT_MEDIA_PUBLIC_BASE_URL && persistence.repositories.productMediaAssets) {
+  const existingPreviewUrl = services.productMediaPreviewUrl;
+  services.productMediaPreviewUrl = async (productId, assetId) => {
+    const asset = (await persistence.repositories.productMediaAssets!.listByProduct(productId))
+      .find((candidate) => candidate.id === assetId);
+    if (!asset) return undefined;
+    if (asset.storageBackend !== "local_volume") return existingPreviewUrl?.(productId, assetId);
+    const token = createProductMediaPreviewToken({
+      assetId: asset.id,
+      productId: asset.productId,
+      sha256: asset.sha256,
+      expiresAt: Math.floor(Date.now() / 1000) + 300
+    }, { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 });
+    const base = environment.PRODUCT_MEDIA_PUBLIC_BASE_URL!.replace(/\/+$/, "");
+    return `${base}/api/v1/product-media/preview/${token}`;
+  };
+  services.productMediaPreviewDelivery = (token) => authorizeProductMediaPreview({
+    token,
+    tokenConfig: { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 },
+    assets: persistence.repositories.productMediaAssets!,
+    readLocal: (key, maxBytes) => localProductMediaStorage.download(key, maxBytes),
+    maximumBytes: 45 * 1024 * 1024
+  });
+}
 if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
   services.productImageGeneration = new ProductImageGenerationService(
     persistence.repositories.products,
@@ -150,6 +206,25 @@ if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KE
     { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
   );
 }
+if (environment.AI_PRODUCT_IMAGE_GENERATION_ENABLED && environment.OPENAI_API_KEY && mediaStorage && persistence.repositories.productMediaAssets) {
+  services.productIllustrativeImageGeneration = new ProductIllustrativeImageGenerationService(
+    persistence.repositories.products,
+    persistence.repositories.productMediaAssets,
+    mediaStorage,
+    { apiKey: environment.OPENAI_API_KEY, model: environment.AI_PRODUCT_IMAGE_MODEL }
+  );
+}
+if (localProductMediaStorage && environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY && persistence.repositories.productMediaAssets && persistence.repositories.publicationDispatchReservations) {
+  services.productMediaDelivery = (token) => authorizeProductMediaDelivery({
+    token,
+    tokenConfig: { signingKey: environment.PRODUCT_MEDIA_DELIVERY_SIGNING_KEY!, maximumLifetimeSeconds: 300 },
+    assets: persistence.repositories.productMediaAssets!,
+    reservations: persistence.repositories.publicationDispatchReservations!,
+    readLocal: (key, maxBytes) => localProductMediaStorage.download(key, maxBytes),
+    maximumBytes: 45 * 1024 * 1024
+  });
+}
+
 const app = createApp(services, {
   providerEvents: persistence.providerEvents,
   readinessCheck: async () => {

@@ -67,6 +67,7 @@ export function ProductMediaRightsPanel() {
   const [loadedIdentityAuditIds, setLoadedIdentityAuditIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
+  const [generatingIllustration, setGeneratingIllustration] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const requestSequence = useRef(0);
@@ -122,6 +123,44 @@ export function ProductMediaRightsPanel() {
       if (requestId === requestSequence.current) setError(requestError instanceof Error ? requestError.message : "Gagal memuat aset media produk.");
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
+    }
+  };
+
+  const generateAIIllustration = async () => {
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    if (!selectedProductId) return;
+    setGeneratingIllustration(true); setError(null); setNotice(null);
+    try {
+      const result = await api.generateProductAbstractIllustration(selectedProductId);
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      setNotice(result.generated
+        ? "Ilustrasi AI abstrak berhasil dibuat dan disimpan. Ini bukan foto atau gambaran fisik produk; hak penggunaan masih UNVERIFIED."
+        : "Ilustrasi AI yang sudah ada digunakan kembali tanpa biaya generasi baru. Periksa status haknya.");
+      await loadAssets(selectedProductId);
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Ilustrasi AI gagal dibuat.");
+    } finally {
+      setGeneratingIllustration(false);
+    }
+  };
+
+  const generateTemplateVideo = async () => {
+    const selectedProductId = productId;
+    const selectionRequestId = productSelectionSequence.current;
+    if (!selectedProductId) return;
+    setGeneratingIllustration(true); setError(null); setNotice(null);
+    try {
+      const result = await api.generateIllustrativeProductVideo(selectedProductId);
+      if (selectionRequestId !== productSelectionSequence.current) return;
+      setNotice(result.generated
+        ? "Video ilustratif template berhasil dibuat dan disimpan. Video ini tidak menampilkan produk fisik; hak penggunaan masih UNVERIFIED."
+        : "Video ilustratif yang sudah ada digunakan kembali.");
+      await loadAssets(selectedProductId);
+    } catch (requestError) {
+      if (selectionRequestId === productSelectionSequence.current) setError(requestError instanceof Error ? requestError.message : "Video ilustratif gagal dibuat.");
+    } finally {
+      setGeneratingIllustration(false);
     }
   };
 
@@ -248,12 +287,21 @@ export function ProductMediaRightsPanel() {
       <p className="analytics-note">Periksa aset yang tersimpan di bucket privat sebelum memberi izin publikasi. Verifikasi memerlukan bukti hak yang benar-benar diperiksa; URL bukti saja tidak otomatis membuktikan kepemilikan atau lisensi.</p>
       <div className="affiliate-form">
         <label htmlFor="product-media-rights-product">Produk</label>
-        <select id="product-media-rights-product" value={productId} onChange={(event) => selectProduct(event.target.value)}>
+        <select id="product-media-rights-product" value={productId} disabled={generatingIllustration} onChange={(event) => selectProduct(event.target.value)}>
           <option value="">Pilih produk</option>
           {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
         </select>
         {productsHaveMore && <button type="button" className="secondary-button" onClick={() => void loadMoreProducts()}>Muat 25 produk berikutnya</button>}
-        <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading || Boolean(busyAssetId)}>Muat ulang aset</button>
+        <button type="button" onClick={() => void loadAssets(productId)} disabled={!productId || loading || Boolean(busyAssetId) || generatingIllustration}>Muat ulang aset</button>
+      </div>
+      <div className="affiliate-form">
+        <p className="analytics-note">Jalur 3: buat karya visual AI abstrak sebagai dekorasi promosi (bukan foto atau representasi produk), atau video teks template. Hasil baru tetap UNVERIFIED dan tidak dapat diterbitkan sebelum review hak.</p>
+        <button type="button" onClick={() => void generateAIIllustration()} disabled={!productId || loading || Boolean(busyAssetId) || generatingIllustration}>
+          {generatingIllustration ? "Membuat media…" : "Buat ilustrasi AI abstrak"}
+        </button>
+        <button type="button" className="secondary-button" onClick={() => void generateTemplateVideo()} disabled={!productId || loading || Boolean(busyAssetId) || generatingIllustration}>
+          Buat video ilustratif template
+        </button>
       </div>
       {loading && <p className="empty">Memuat media dan preview privat…</p>}
       {!loading && productId && assets.length === 0 && <p className="empty">Belum ada aset media tersimpan untuk produk ini.</p>}
