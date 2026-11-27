@@ -32,6 +32,33 @@ const safeErrorType = (error: unknown): string =>
     ? error.name
     : "UnknownError";
 
+const shouldSearchWikimediaVideoFallback = (
+  candidates: ProductMediaCatalogCandidate[],
+  identity: { model?: string | null; sku?: string | null }
+): boolean =>
+  Boolean(identity.model?.trim() || identity.sku?.trim()) &&
+  !candidates.some((candidate) => candidate.mediaKind === "video");
+
+/** Merge provider results without duplicate landing pages; prefer video leads. */
+export const mergeWikimediaVideoFallbackCandidates = (
+  primary: ProductMediaCatalogCandidate[],
+  fallback: ProductMediaCatalogCandidate[],
+  maxResults = 10
+): ProductMediaCatalogCandidate[] => {
+  const byLandingPage = new Map<string, ProductMediaCatalogCandidate>();
+  for (const candidate of [...primary, ...fallback]) {
+    if (!byLandingPage.has(candidate.landingPageUrl)) {
+      byLandingPage.set(candidate.landingPageUrl, candidate);
+    }
+  }
+  return [...byLandingPage.values()]
+    .sort((left, right) =>
+      Number(right.mediaKind === "video") - Number(left.mediaKind === "video") ||
+      right.identityScore - left.identityScore
+    )
+    .slice(0, maxResults);
+};
+
 const isShopeeHost = (hostname: string): boolean => {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   return host === "shopee.co.id" || host.endsWith(".shopee.co.id") ||
@@ -359,17 +386,31 @@ export class ProductMediaDiscoveryRunner {
               // Keep generic discovery to one provider request. Only spend a second
               // catalog request when Openverse is empty and the CSV supplied a model
               // or SKU that can make the Wikimedia query product-specific.
-              if (discovered.length === 0 && (identity.model?.trim() || identity.sku?.trim())) {
-                discoveryProvider = "wikimedia_commons";
-                openverseFallbackReason = "empty_structured_identity";
+              if (shouldSearchWikimediaVideoFallback(discovered, identity)) {
+                const primaryCount = discovered.length;
+                openverseFallbackReason = primaryCount === 0 ? "empty_structured_identity" : undefined;
                 console.info(JSON.stringify({
                   event: "product_media_catalog_provider_fallback",
                   primaryProvider: "openverse",
                   fallbackProvider: "wikimedia_commons",
-                  fallbackReason: openverseFallbackReason,
-                  productId: product.id
+                  fallbackReason: primaryCount === 0 ? "empty_structured_identity" : "video_not_found",
+                  productId: product.id,
+                  primaryCandidateCount: primaryCount
                 }));
-                discovered = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+                try {
+                  const fallbackCandidates = await searchWikimediaCommonsProductMedia(identity, { maxResults: 10 });
+                  if (primaryCount === 0) discoveryProvider = "wikimedia_commons";
+                  discovered = mergeWikimediaVideoFallbackCandidates(discovered, fallbackCandidates, 10);
+                } catch (fallbackError) {
+                  // Keep useful Openverse images if the optional video lookup fails.
+                  if (primaryCount === 0) throw fallbackError;
+                  console.warn(JSON.stringify({
+                    event: "product_media_catalog_fallback_failed",
+                    provider: "wikimedia_commons",
+                    productId: product.id,
+                    errorType: safeErrorType(fallbackError)
+                  }));
+                }
               }
             } catch (error) {
               openverseFailure = safeErrorType(error);
