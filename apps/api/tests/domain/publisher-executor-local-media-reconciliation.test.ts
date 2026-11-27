@@ -12,6 +12,7 @@ import type { ContentService } from "../../src/domain/content.js";
 const contentId = "33333333-3333-4333-8333-333333333333";
 const productId = "22222222-2222-4222-8222-222222222222";
 const mediaId = "11111111-1111-4111-8111-111111111111";
+const productMediaId = "88888888-8888-4888-8888-888888888888";
 const accountId = "55555555-5555-4555-8555-555555555555";
 const timestamp = "2026-11-27T00:00:00.000Z";
 
@@ -33,7 +34,7 @@ describe("PublisherExecutor local media reconciliation", () => {
       mimeType: "video/mp4", byteSize: 4, createdAt: timestamp, updatedAt: timestamp
     };
     const productMedia: ProductMediaAsset = {
-      id: mediaId, productId, kind: "video", bucket: "local-volume", storageBackend: "local_volume",
+      id: productMediaId, productId, kind: "video", bucket: "local-volume", storageBackend: "local_volume",
       objectKey: `products/${productId}/media.mp4`, mimeType: "video/mp4", byteSize: 4,
       sha256: "a".repeat(64), sourceUrl: "https://media.example/source.mp4",
       sourcePublisher: "Example publisher", rightsStatus: "verified", rightsBasis: "license",
