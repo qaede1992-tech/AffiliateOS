@@ -67,6 +67,7 @@ export async function assertProductMediaRightsForPublication(
 ): Promise<void> {
   const linkedIds = new Set(linkedProductIds);
   const productScoped: Array<{ bucket: string; objectKey: string; productId: string }> = [];
+  const localVolumeScoped: Array<{ bucket: string; objectKey: string }> = [];
   const externalUrls: string[] = [];
 
   for (const media of mediaAssets) {
@@ -85,6 +86,14 @@ export async function assertProductMediaRightsForPublication(
     // Product-linked promotional content must never fall back to untracked
     // content-scoped uploads: those objects have no persisted product-rights row.
     // Organic content without a linked product retains the legacy upload path.
+    // Local-volume product assets use opaque UUID object keys rather than the
+    // legacy products/<productId>/... namespace. Resolve those references
+    // against persisted product-media rows below; never treat them as generic
+    // content-scoped uploads.
+    if (bucket === "local-volume") {
+      if (linkedIds.size > 0) localVolumeScoped.push({ bucket, objectKey });
+      continue;
+    }
     if (segments[0] !== "products") {
       if (linkedIds.size > 0) {
         throw new Error("Product-linked content cannot publish unverified content-scoped media; attach a rights-verified product asset.");
@@ -125,9 +134,21 @@ export async function assertProductMediaRightsForPublication(
     }
   }
 
-  if (productScoped.length === 0) return;
+  if (productScoped.length === 0 && localVolumeScoped.length === 0) return;
   if (!repository) {
     throw new Error("Product media rights repository is unavailable; publication is blocked.");
+  }
+
+  for (const candidate of localVolumeScoped) {
+    const matches = persisted.filter((asset) =>
+      linkedIds.has(asset.productId) &&
+      asset.storageBackend === "local_volume" &&
+      asset.bucket === candidate.bucket &&
+      asset.objectKey === candidate.objectKey
+    );
+    if (matches.length !== 1 || !hasCurrentVerifiedRights(matches[0]!)) {
+      throw new Error("Product media rights are missing, ambiguous, unverified, or revoked; publication is blocked.");
+    }
   }
 
   for (const candidate of productScoped) {
