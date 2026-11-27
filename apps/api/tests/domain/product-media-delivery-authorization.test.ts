@@ -20,7 +20,9 @@ const asset = (): ProductMediaAsset => ({
   objectKey: key, mimeType: "image/jpeg", byteSize: bytes.byteLength, sha256,
   sourceUrl: "https://media.example/image.jpg", sourcePublisher: "Example publisher",
   rightsStatus: "verified", rightsBasis: "license", rightsEvidenceUrl: "https://media.example/license",
-  rightsVerifiedAt: new Date(Date.now() - 1000).toISOString(), identityStatus: "not_required",
+  rightsVerifiedAt: new Date(Date.now() - 1000).toISOString(), identityStatus: "verified",
+  identityReviewedBy: "admin-1", identityReviewedAt: new Date(Date.now() - 1000).toISOString(),
+  identityReviewReason: "Visual product model and distinguishing details match the selected Shopee listing.",
   createdAt: new Date().toISOString()
 });
 
@@ -61,6 +63,15 @@ describe("reservation-bound product media delivery authorization", () => {
       token: token(), tokenConfig: config, ...deps, maximumBytes: 1024,
       readLocal: async () => bytes
     }), /reservation is not active/);
+  });
+
+  it("rejects an asset whose product identity has not been independently reviewed", async () => {
+    const pending = { ...asset(), identityStatus: "pending" as const, identityReviewedBy: null, identityReviewedAt: null, identityReviewReason: null };
+    const deps = dependencies(pending);
+    await assert.rejects(() => authorizeProductMediaDelivery({
+      token: token(), tokenConfig: config, ...deps, maximumBytes: 1024,
+      readLocal: async () => bytes
+    }), /not authorized/);
   });
 
   it("rejects an asset whose rights were revoked after token issuance", async () => {
