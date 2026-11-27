@@ -101,6 +101,41 @@ test("blocks unregistered external media on product-linked promotional content",
   );
 });
 
+test("allows opaque local-volume media only when it maps to the linked product and has verified rights", async () => {
+  const localAsset: ProductMediaAsset = {
+    ...verified,
+    bucket: "local-volume",
+    storageBackend: "local_volume",
+    objectKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.mp4"
+  };
+  const localMedia = { ...media, reference: `local-volume/${localAsset.objectKey}` };
+  await assert.doesNotReject(
+    assertProductMediaRightsForPublication([localMedia], [productId], repository(localAsset))
+  );
+});
+
+test("blocks opaque local-volume media when the persisted asset is unverified or belongs to another product", async () => {
+  const localAsset: ProductMediaAsset = {
+    ...verified,
+    bucket: "local-volume",
+    storageBackend: "local_volume",
+    objectKey: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.mp4"
+  };
+  const localMedia = { ...media, reference: `local-volume/${localAsset.objectKey}` };
+  await assert.rejects(
+    assertProductMediaRightsForPublication([localMedia], [productId], repository({
+      ...localAsset, rightsStatus: "unverified"
+    })),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+  await assert.rejects(
+    assertProductMediaRightsForPublication([localMedia], [productId], repository({
+      ...localAsset, productId: "55555555-5555-4555-8555-555555555555"
+    })),
+    /rights are missing, ambiguous, unverified, or revoked/
+  );
+});
+
 test("blocks content-scoped uploads on product-linked promotional content", async () => {
   const contentOwned = { ...media, reference: "affiliate-media/content/11111111-1111-4111-8111-111111111111/video.mp4" };
   await assert.rejects(
