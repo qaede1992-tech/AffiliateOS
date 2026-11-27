@@ -15,7 +15,7 @@ export type ProductImageEditStyle = "studio" | "lifestyle" | "minimal";
 export interface ProductImageGenerationStorage {
   bucketName: string;
   download(key: string, maxBytes: number): Promise<Uint8Array>;
-  upload(input: { key: string; bytes: Uint8Array; contentType: string; upsert?: boolean }): Promise<{ bucket: string; key: string }>;
+  upload(input: { key: string; bytes: Uint8Array; contentType: string; upsert?: boolean }): Promise<{ backend?: "supabase" | "local_volume"; bucket: string; key: string }>;
   remove(key: string): Promise<void>;
 }
 
