@@ -57,12 +57,21 @@ describe("reservation-bound product media delivery authorization", () => {
     assert.deepEqual(result.bytes, bytes);
   });
 
-  it("rejects reservations that are no longer dispatching", async () => {
-    const deps = dependencies(asset(), reservation("accepted"));
+  it("rejects reservations that have moved beyond provider delivery", async () => {
+    const deps = dependencies(asset(), reservation("published"));
     await assert.rejects(() => authorizeProductMediaDelivery({
       token: token(), tokenConfig: config, ...deps, maximumBytes: 1024,
       readLocal: async () => bytes
     }), /reservation is not active/);
+  });
+
+  it("allows the provider to fetch media after accepting the container while the signed token remains valid", async () => {
+    const deps = dependencies(asset(), reservation("accepted"));
+    const result = await authorizeProductMediaDelivery({
+      token: token(), tokenConfig: config, ...deps, maximumBytes: 1024,
+      readLocal: async () => bytes
+    });
+    assert.deepEqual(result.bytes, bytes);
   });
 
   it("rejects an asset whose product identity has not been independently reviewed", async () => {
