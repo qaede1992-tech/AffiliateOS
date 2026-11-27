@@ -10,6 +10,13 @@ const VERIFIED_BASES = new Set([
   "platform_authorization"
 ]);
 
+/** Product identity is an independent human review, never implied by a media license. */
+export const hasVerifiedProductIdentity = (asset: ProductMediaAsset): boolean =>
+  asset.identityStatus === "verified" &&
+  Boolean(asset.identityReviewedBy?.trim()) &&
+  Boolean(asset.identityReviewedAt) &&
+  Boolean(asset.identityReviewReason?.trim());
+
 export const hasCurrentVerifiedRights = (asset: ProductMediaAsset): boolean => {
   if (
     asset.rightsStatus !== "verified" ||
