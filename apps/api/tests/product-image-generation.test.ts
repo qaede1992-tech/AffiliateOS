@@ -41,11 +41,11 @@ const makeHarness = (reference = makeReference()) => {
     async save(asset) { saved.push(asset); return asset; }
   };
   const storage = {
-    bucketName: "affiliate-media",
+    bucketName: "local-volume",
     async download() { return png; },
     async upload(input: { key: string; bytes: Uint8Array; contentType: string }) {
       assert.equal(input.contentType, "image/png");
-      return { bucket: "affiliate-media", key: input.key };
+      return { backend: "local_volume", bucket: "local-volume", key: input.key };
     },
     async remove() {}
   };
@@ -92,6 +92,8 @@ test("AI product image editing stores output as unverified and records reference
   assert.equal(result.asset?.rightsStatus, "unverified");
   assert.equal(result.asset?.rightsBasis, null);
   assert.equal(result.asset?.identityStatus, "pending");
+  assert.equal(result.asset?.storageBackend, "local_volume");
+  assert.equal(result.asset?.bucket, "local-volume");
   assert.equal(result.asset?.sourceProvider, "openai");
   assert.equal(result.asset?.sourceUrl, `generated:openai-image-edit:${referenceId}`);
   assert.match(result.asset?.sourceTitle ?? "", new RegExp(referenceId));
