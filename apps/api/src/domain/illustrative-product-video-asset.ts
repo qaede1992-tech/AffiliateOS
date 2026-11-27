@@ -76,7 +76,7 @@ export class IllustrativeProductVideoAssetService {
       identityStatus: "not_required",
       identityReviewedBy: null,
       identityReviewedAt: null,
-      identityReviewReason: "Text-led abstract illustration; does not depict the physical product.",
+      identityReviewReason: null,
       createdAt: new Date().toISOString()
     };
 
