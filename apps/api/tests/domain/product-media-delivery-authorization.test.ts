@@ -27,10 +27,17 @@ const asset = (): ProductMediaAsset => ({
   createdAt: new Date().toISOString()
 });
 
+const productMediaSnapshot = (row: ProductMediaAsset) => ({
+  id: row.id, productId: row.productId, bucket: row.bucket, objectKey: row.objectKey,
+  mimeType: row.mimeType, byteSize: row.byteSize, sha256: row.sha256, sourceUrl: row.sourceUrl,
+  sourcePublisher: row.sourcePublisher ?? null, sourceProvider: row.sourceProvider ?? null,
+  sourceCandidateId: row.sourceCandidateId ?? null
+});
+
 const reservation = (state: PublicationDispatchReservation["state"] = "dispatching"): PublicationDispatchReservation => ({
   id: reservationId, jobId: "55555555-5555-4555-8555-555555555555", contentId,
   provider: "instagram-graph", state, idempotencyKey: "test-idempotency",
-  snapshot: { mediaAssetIds: [contentMediaId], mediaIntegrity: { productMediaAssets: [{ id: assetId }] } }, snapshotHash: "a".repeat(64),
+  snapshot: { mediaAssetIds: [contentMediaId], mediaIntegrity: { productMediaAssets: [productMediaSnapshot(asset())] } }, snapshotHash: "a".repeat(64),
   createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
 });
 
@@ -99,6 +106,15 @@ describe("reservation-bound product media delivery authorization", () => {
       token: token(), tokenConfig: config, ...deps, maximumBytes: 1024,
       readLocal: async () => new Uint8Array([9, 9, 9])
     }), /integrity verification failed/);
+  });
+
+  it("rejects changed object identity even when the asset ID and token still match", async () => {
+    const changed = { ...asset(), objectKey: "products/other-product/replaced.jpg" };
+    const deps = dependencies(changed, reservation());
+    await assert.rejects(() => authorizeProductMediaDelivery({
+      token: token(), tokenConfig: config, ...deps, maximumBytes: 1024,
+      readLocal: async () => bytes
+    }), /reservation is not active/);
   });
 
   it("rejects assets not present in the immutable reservation snapshot", async () => {
