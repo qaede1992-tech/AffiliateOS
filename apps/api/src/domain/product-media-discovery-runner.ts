@@ -36,8 +36,11 @@ export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
   identity: { model?: string | null; sku?: string | null }
 ): boolean =>
-  Boolean(identity.model?.trim() || identity.sku?.trim()) &&
-  !candidates.some((candidate) => candidate.mediaKind === "video");
+  // An empty Openverse result should still trigger one category-scoped Commons
+  // search. Wikimedia's category-only leads remain review_required/unverified.
+  candidates.length === 0 ||
+  (Boolean(identity.model?.trim() || identity.sku?.trim()) &&
+    !candidates.some((candidate) => candidate.mediaKind === "video"));
 
 /** Merge provider results without duplicate landing pages; prefer video leads. */
 export const mergeWikimediaVideoFallbackCandidates = (
