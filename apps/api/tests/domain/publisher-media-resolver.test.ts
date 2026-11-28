@@ -215,3 +215,46 @@ test("keeps ordinary private media on the existing Supabase signed-URL path", as
   assert.equal(resolved?.source, "url");
   assert.equal(requested, 1);
 });
+
+
+test("routes approved local-volume illustrative media through its dedicated resolver", async () => {
+  const generated: MediaAsset = {
+    ...asset,
+    kind: "video",
+    mimeType: "video/mp4",
+    source: "object-storage",
+    reference: `affiliate-media/content/${contentId}/55555555-5555-4555-8555-555555555555-${"a".repeat(64)}.mp4`,
+    durationSeconds: 12,
+    widthPx: 720,
+    heightPx: 1280
+  };
+  let resolvedId = "";
+  let resolvedContentId = "";
+  let storageCalls = 0;
+  const [resolved] = await resolvePublisherMediaAssets(
+    { id: contentId },
+    [generated],
+    {
+      bucketName: "affiliate-media",
+      async createSignedUrl() {
+        storageCalls++;
+        return "https://project.supabase.co/storage/v1/object/sign/unexpected";
+      }
+    },
+    [],
+    {
+      generatedMediaAssetIds: new Set([generated.id]),
+      async resolveGeneratedMediaUrl(selected, selectedContentId) {
+        resolvedId = selected.id;
+        resolvedContentId = selectedContentId;
+        return "https://media.example.com/illustrative/authorized-token";
+      }
+    }
+  );
+  assert.equal(resolved.source, "url");
+  assert.equal(resolved.reference, "https://media.example.com/illustrative/authorized-token");
+  assert.equal(resolvedId, generated.id);
+  assert.equal(resolvedContentId, contentId);
+  assert.equal(storageCalls, 0);
+  assert.equal(generated.source, "object-storage");
+});
