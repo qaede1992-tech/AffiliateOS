@@ -34,11 +34,12 @@ const safeErrorType = (error: unknown): string =>
 
 export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
-  identity: { model?: string | null; sku?: string | null }
+  identity: { category?: string | null; model?: string | null; sku?: string | null }
 ): boolean =>
-  // An empty Openverse result should still trigger one category-scoped Commons
-  // search. Wikimedia's category-only leads remain review_required/unverified.
-  candidates.length === 0 ||
+  // Only category-bearing products may use a single Commons category fallback
+  // after an empty Openverse result. Generic products remain single-provider
+  // to protect shared-pool egress; category leads remain review_required/unverified.
+  (candidates.length === 0 && Boolean(identity.category?.trim())) ||
   (Boolean(identity.model?.trim() || identity.sku?.trim()) &&
     !candidates.some((candidate) => candidate.mediaKind === "video"));
 
