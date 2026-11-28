@@ -631,6 +631,13 @@
       "when": 1795219200000,
       "tag": "0093_product_media_storage_backend",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1795478400000,
+      "tag": "0094_product_media_deletion_lifecycle",
+      "breakpoints": true
     }
   ]
 }
