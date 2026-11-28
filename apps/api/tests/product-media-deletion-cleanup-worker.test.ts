@@ -28,7 +28,7 @@ const asset = (overrides: Partial<ProductMediaAsset> = {}): ProductMediaAsset =>
   ...overrides
 });
 
-const repository = (claimed: ProductMediaAsset[], overrides: Record<string, unknown> = {}) => {
+const repository = (claimed: ProductMediaAsset[]) => {
   const completed: unknown[] = [];
   const failed: unknown[] = [];
   return {
@@ -37,8 +37,7 @@ const repository = (claimed: ProductMediaAsset[], overrides: Record<string, unkn
     claimDeletionCleanupBatch: async () => claimed,
     completeDeletionCleanup: async (input: unknown) => { completed.push(input); return true; },
     failDeletionCleanup: async (input: unknown) => { failed.push(input); return true; },
-    nextDeletionCleanupAt: async () => undefined,
-    ...overrides
+    nextDeletionCleanupAt: async () => undefined
   };
 };
 
