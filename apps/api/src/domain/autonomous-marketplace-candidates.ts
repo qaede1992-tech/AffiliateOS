@@ -16,6 +16,20 @@ export class AutonomousMarketplaceCandidateProvider implements AutonomousCandida
     this.maxProductsPerConnection = Math.max(1, options.maxProductsPerConnection ?? 100);
   }
 
+  async getCandidateByProductId(productId: string): Promise<AutonomousExecutionCandidate | undefined> {
+    const product = await this.marketplace.findProductById(productId);
+    if (!product || product.status !== "active") return undefined;
+    const connection = (await this.marketplace.listConnections()).find((item) =>
+      item.id === product.marketplaceId && item.enabled && item.status === "active" &&
+      item.connectionMode === "affiliate_feed" && item.providerSlug === "shopee-affiliate-feed"
+    );
+    if (!connection) return undefined;
+    const account = await this.marketplace.getAffiliateAccount(connection.slug);
+    if (!account.affiliateId || account.status !== "active") return undefined;
+    const offers = await this.marketplace.listActiveAffiliateOffersForProducts(account.id, [product.id]);
+    return { product, offers: this.filterExecutableOffers(product.id, offers.filter((offer) => offer.affiliateAccountId === account.id)) };
+  }
+
   async listCandidates(options: { resolveAffiliateLinks?: boolean } = {}): Promise<AutonomousExecutionCandidate[]> {
     const resolveAffiliateLinks = options.resolveAffiliateLinks ?? true;
     const connections = await this.marketplace.listConnections();
