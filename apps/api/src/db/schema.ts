@@ -143,13 +143,9 @@ export const productMediaDeletionAudits = pgTable("product_media_deletion_audits
   storageBackend: varchar("storage_backend", { length: 20 }).notNull(),
   bucket: varchar("bucket", { length: 100 }).notNull(),
   objectKey: varchar("object_key", { length: 1024 }).notNull(),
-  cleanupStatus: varchar("cleanup_status", { length: 24 }).notNull().default("pending"),
-  cleanupErrorType: varchar("cleanup_error_type", { length: 64 }),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
-  cleanupCompletedAt: timestamp("cleanup_completed_at", { withTimezone: true, mode: "string" })
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
-  index("product_media_deletion_audits_asset_created_idx").on(table.assetId, table.createdAt.desc()),
-  index("product_media_deletion_audits_cleanup_status_created_idx").on(table.cleanupStatus, table.createdAt)
+  index("product_media_deletion_audits_asset_created_idx").on(table.assetId, table.createdAt.desc())
 ]);
 
 
