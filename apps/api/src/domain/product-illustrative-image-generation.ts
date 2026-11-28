@@ -29,7 +29,9 @@ export class ProductIllustrativeImageGenerationError extends Error {
       | "AI_PROVIDER_UNAVAILABLE"
       | "AI_PROVIDER_REJECTED"
       | "AI_PROVIDER_INVALID_RESPONSE"
-      | "GENERATED_IMAGE_INVALID"
+      | "GENERATED_IMAGE_INVALID",
+    readonly providerStatus?: number,
+    readonly providerCode?: string
   ) {
     super(message);
     this.name = "ProductIllustrativeImageGenerationError";
@@ -166,8 +168,25 @@ export class ProductIllustrativeImageGenerationService {
       throw new ProductIllustrativeImageGenerationError("The AI image provider could not be reached.", "AI_PROVIDER_UNAVAILABLE");
     }
     if (!response.ok) {
-      await response.body?.cancel();
-      throw new ProductIllustrativeImageGenerationError(`The AI image provider rejected the request (HTTP ${response.status}).`, "AI_PROVIDER_REJECTED");
+      let providerCode: string | undefined;
+      try {
+        const rawError = await readBounded(response, 16 * 1024);
+        const providerPayload = JSON.parse(new TextDecoder().decode(rawError)) as {
+          error?: { code?: unknown; type?: unknown };
+        };
+        const rawCode = providerPayload.error?.code ?? providerPayload.error?.type;
+        if (typeof rawCode === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(rawCode)) {
+          providerCode = rawCode;
+        }
+      } catch {
+        // Provider error bodies are optional and may not be valid JSON.
+      }
+      throw new ProductIllustrativeImageGenerationError(
+        `The AI image provider rejected the request (HTTP ${response.status}).`,
+        "AI_PROVIDER_REJECTED",
+        response.status,
+        providerCode
+      );
     }
 
     let payload: { data?: Array<{ b64_json?: string }> };

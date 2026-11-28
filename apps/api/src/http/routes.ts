@@ -268,7 +268,11 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
         return reply.status(result.generated ? 201 : 200).send(result);
       } catch (error) {
         if (error instanceof ProductIllustrativeImageGenerationError) {
-          request.log.warn({ code: error.code }, "AI abstract product illustration rejected");
+          request.log.warn({
+            code: error.code,
+            ...(error.providerStatus ? { providerStatus: error.providerStatus } : {}),
+            ...(error.providerCode ? { providerCode: error.providerCode } : {})
+          }, "AI abstract product illustration rejected");
           if (error.code === "PRODUCT_NOT_FOUND") {
             return reply.status(404).send({ error: error.code, message: "The target product was not found." });
           }
