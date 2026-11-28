@@ -34,7 +34,7 @@ const safeErrorType = (error: unknown): string =>
 
 const hasRecognizedProductCategoryInName = (name: string | null | undefined): boolean => {
   if (!name?.trim()) return false;
-  const tokens = new Set(name.normalize("NFKD").toLowerCase().replace(/[\\u0300-\\u036f]/g, "")
+  const tokens = new Set(name.normalize("NFKD").toLowerCase().replace(/[\u0300-\u036f]/g, "")
     .split(/[^a-z0-9]+/).filter(Boolean));
   // Deliberately small allow-list: only clear product-type nouns that can
   // narrow a Commons fallback. Do not treat arbitrary descriptive names as
