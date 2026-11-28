@@ -638,6 +638,13 @@
       "when": 1795478400000,
       "tag": "0094_product_media_deletion_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1795824000000,
+      "tag": "0095_product_media_deletion_reference_guards",
+      "breakpoints": true
     }
   ]
 }
