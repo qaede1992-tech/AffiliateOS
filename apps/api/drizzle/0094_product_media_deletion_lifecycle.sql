@@ -30,18 +30,11 @@ CREATE TABLE public.product_media_deletion_audits (
   storage_backend varchar(20) NOT NULL,
   bucket varchar(100) NOT NULL,
   object_key varchar(1024) NOT NULL,
-  cleanup_status varchar(24) NOT NULL DEFAULT 'pending'
-    CHECK (cleanup_status IN ('pending', 'completed', 'failed')),
-  cleanup_error_type varchar(64),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  cleanup_completed_at timestamptz
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX product_media_deletion_audits_asset_created_idx
   ON public.product_media_deletion_audits (asset_id, created_at DESC);
-CREATE INDEX product_media_deletion_audits_cleanup_status_created_idx
-  ON public.product_media_deletion_audits (cleanup_status, created_at);
-
 CREATE FUNCTION public.prevent_product_media_deletion_audit_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
