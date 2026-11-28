@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getProductMediaDiscoveryStrategyVersion,
+  isReviewableProductMediaCandidate,
   mergeWikimediaVideoFallbackCandidates,
   shouldSearchWikimediaVideoFallback
 } from "../src/domain/product-media-discovery-runner.js";
@@ -64,9 +65,16 @@ test("searches Wikimedia after empty Openverse results when a recognized product
 });
 
 test("versions only the recognized-name discovery strategy to invalidate its stale cooldown", () => {
-  assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Crisper Tray Cooper Carbon Steel Ceramic"), "wikimedia-name-category-v2");
+  assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Crisper Tray Cooper Carbon Steel Ceramic"), "wikimedia-name-category-v3");
   assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Premium Collection Cooper Edition"), null);
   assert.equal(getProductMediaDiscoveryStrategyVersion(null), null);
+});
+
+test("keeps low-score category-only leads out of the review queue", () => {
+  assert.equal(isReviewableProductMediaCandidate({ identityScore: 20, identityStatus: "review_required" }), false);
+  assert.equal(isReviewableProductMediaCandidate({ identityScore: 49, identityStatus: "review_required" }), false);
+  assert.equal(isReviewableProductMediaCandidate({ identityScore: 65, identityStatus: "review_required" }), true);
+  assert.equal(isReviewableProductMediaCandidate({ identityScore: 100, identityStatus: "rejected" }), false);
 });
 
 test("does not broaden Wikimedia fallback for an unclassified generic product name", () => {
