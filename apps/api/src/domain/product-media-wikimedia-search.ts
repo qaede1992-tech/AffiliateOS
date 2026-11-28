@@ -210,7 +210,8 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
   }
   if (matchedCategory) {
     const productSpecificQuery = titleTerms.join(" ") || matchedCategory.query;
-    const categoryFallbacks = matchedCategory.queries?.slice(1) ?? [matchedCategory.query];
+    const categoryFallbacks = (matchedCategory.queries ?? [matchedCategory.query])
+      .filter((fallback) => !productSpecificQuery.includes(fallback));
     return [...new Set([productSpecificQuery, ...categoryFallbacks])].slice(0, 3);
   }
   return [titleTerms.join(" ") || source.trim().slice(0, 100)];
