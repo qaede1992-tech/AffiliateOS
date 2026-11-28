@@ -50,8 +50,20 @@ test("does not search Wikimedia when a video candidate already exists", () => {
   assert.equal(shouldSearchWikimediaVideoFallback(candidates, { sku: "SKU-123" }), false);
 });
 
-test("does not broaden Wikimedia fallback for products without a model or SKU", () => {
+test("searches Wikimedia after empty Openverse results only when a category signal exists", () => {
+  assert.equal(shouldSearchWikimediaVideoFallback([], { category: "Peralatan Dapur", model: " ", sku: null }), true);
   assert.equal(shouldSearchWikimediaVideoFallback([], { model: " ", sku: null }), false);
+});
+
+test("does not broaden Wikimedia fallback when Openverse already found an image and no structured identifier exists", () => {
+  const images = [candidate({
+    provider: "openverse",
+    title: "Crisper tray category image",
+    mediaKind: "image",
+    landingPageUrl: "https://openverse.example/image/category"
+  })];
+
+  assert.equal(shouldSearchWikimediaVideoFallback(images, { model: null, sku: null }), false);
 });
 
 test("merges provider candidates, removes duplicate landing pages, and prioritizes video", () => {
