@@ -55,6 +55,20 @@ test("searches Wikimedia after empty Openverse results only when a category sign
   assert.equal(shouldSearchWikimediaVideoFallback([], { model: " ", sku: null }), false);
 });
 
+test("searches Wikimedia after empty Openverse results when a recognized product type is present in the name", () => {
+  assert.equal(
+    shouldSearchWikimediaVideoFallback([], { name: "GSM Crisper Tray Cooper Carbon Steel Ceramic" }),
+    true
+  );
+});
+
+test("does not broaden Wikimedia fallback for an unclassified generic product name", () => {
+  assert.equal(
+    shouldSearchWikimediaVideoFallback([], { name: "GSM Premium Collection Cooper Edition" }),
+    false
+  );
+});
+
 test("does not broaden Wikimedia fallback when Openverse already found an image and no structured identifier exists", () => {
   const images = [candidate({
     provider: "openverse",
