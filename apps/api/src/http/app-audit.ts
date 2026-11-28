@@ -20,7 +20,8 @@ export type AuditEvent =
   | "illustrative_product_video_preview_rendered"
   | "product_ai_abstract_illustration_generated"
   | "illustrative_product_video_asset_generated"
-  | "shopee_product_media_discovery_completed";
+  | "shopee_product_media_discovery_completed"
+  | "pre_media_eligibility_refreshed";
 
 export function auditSecurityEvent(
   log: FastifyBaseLogger,
