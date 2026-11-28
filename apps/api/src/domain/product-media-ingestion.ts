@@ -49,6 +49,10 @@ export interface ProductMediaAsset {
   deletedBy?: string | null;
   deletionReason?: string | null;
   storageCleanupCompletedAt?: string | null;
+  storageCleanupAttempts?: number;
+  storageCleanupNextAttemptAt?: string | null;
+  storageCleanupLeaseUntil?: string | null;
+  storageCleanupLastError?: string | null;
   createdAt: string;
 }
 
