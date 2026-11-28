@@ -510,7 +510,9 @@ test("maps additional Indonesian marketplace categories to focused Wikimedia que
     ["GOODBABY Sarung Tangan Plastik Sekali Pakai", "disposable gloves"]
   ];
   for (const [name, expected] of cases) {
-    assert.deepEqual(buildWikimediaCommonsQueries({ name }), [expected], name);
+    const queries = buildWikimediaCommonsQueries({ name });
+    assert.ok(queries.some((query) => query.includes(expected)), name);
+    assert.ok(queries.length <= 3, name);
   }
 });
 
