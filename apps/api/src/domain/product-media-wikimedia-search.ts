@@ -210,8 +210,9 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
   }
   if (matchedCategory) {
     const productSpecificQuery = titleTerms.join(" ") || matchedCategory.query;
-    const categoryFallbacks = (matchedCategory.queries ?? [matchedCategory.query])
-      .filter((fallback) => fallback !== productSpecificQuery);
+    const allCategoryFallbacks = matchedCategory.queries ?? [matchedCategory.query];
+    const distinctCategoryFallbacks = allCategoryFallbacks.filter((fallback) => !productSpecificQuery.includes(fallback));
+    const categoryFallbacks = distinctCategoryFallbacks.length > 0 ? distinctCategoryFallbacks : allCategoryFallbacks;
     return [...new Set([productSpecificQuery, ...categoryFallbacks])].slice(0, 3);
   }
   return [titleTerms.join(" ") || source.trim().slice(0, 100)];
