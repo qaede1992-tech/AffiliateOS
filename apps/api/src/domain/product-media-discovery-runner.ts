@@ -49,8 +49,18 @@ const hasRecognizedProductCategoryInName = (name: string | null | undefined): bo
   return ["crisper", "tray", "basket", "air", "fryer"].some((token) => tokens.has(token));
 };
 
-export const getProductMediaDiscoveryStrategyVersion = (name: string | null | undefined): string | null =>
-  hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v3" : null;
+const isTargetedRakLipstickProduct = (name: string | null | undefined): boolean => {
+  const tokens = new Set(name?.normalize("NFKD").toLowerCase().replace(/[\\u0300-\\u036f]/g, "")
+    .split(/[^a-z0-9]+/).filter(Boolean) ?? []);
+  return tokens.has("rak") && tokens.has("lipstick");
+};
+
+export const getProductMediaDiscoveryStrategyVersion = (name: string | null | undefined): string | null => {
+  // A one-product strategy revision intentionally invalidates only the Rak Lipstick
+  // cooldown. It allows a single fresh catalog lookup without clearing shared leases.
+  if (isTargetedRakLipstickProduct(name)) return "shopee-rak-lipstick-v1";
+  return hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v3" : null;
+};
 
 export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
