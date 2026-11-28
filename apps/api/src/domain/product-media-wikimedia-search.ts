@@ -207,7 +207,11 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
     }
     return [titleTerms.slice(0, 3).join(" ") || matchedCategory.query];
   }
-  if (matchedCategory) return matchedCategory.queries ?? [matchedCategory.query];
+  if (matchedCategory) {
+    const productSpecificQuery = titleTerms.join(" ") || matchedCategory.query;
+    const categoryFallbacks = matchedCategory.queries?.slice(1) ?? [matchedCategory.query];
+    return [...new Set([productSpecificQuery, ...categoryFallbacks])].slice(0, 3);
+  }
   return [titleTerms.join(" ") || source.trim().slice(0, 100)];
 };
 
@@ -228,9 +232,9 @@ const normalizedLicense = (licenseUrl: string | null, licenseName: string | null
 };
 
 /**
- * Returns identity matches plus conservative category-only leads for manual
- * review. Category-only leads never become strong matches or publishable assets;
- * rights remain unverified and no media is downloaded.
+ * Returns only candidates with sufficient title-level identity evidence for
+ * human review. Category-only matches are discarded because category relevance
+ * cannot establish product identity. Rights remain unverified; no media is downloaded.
  */
 export async function searchWikimediaCommonsProductMedia(
   identity: ProductMediaSearchIdentity,
@@ -319,9 +323,7 @@ export async function searchWikimediaCommonsProductMedia(
           .filter((value): value is string => Boolean(value))
           .join(" ");
         if (category && (!category.relevant.test(descriptiveText) || category.exclude?.test(descriptiveText))) continue;
-        const primaryIdentifier = identity.model?.trim() || identity.sku?.trim();
-        const categoryOnlyMatch = identityMatch.status === "rejected" && !primaryIdentifier && category !== undefined;
-        if (identityMatch.status === "rejected" && !categoryOnlyMatch) continue;
+        if (identityMatch.status === "rejected") continue;
         const creatorHref = metadata?.Artist?.value && typeof metadata.Artist.value === "string"
           ? metadata.Artist.value.match(/href=["']([^"']+)["']/i)?.[1]
           : null;
@@ -341,11 +343,9 @@ export async function searchWikimediaCommonsProductMedia(
           licenseVersion: licenseName?.match(/\d+(?:\.\d+)?/)?.[0] ?? null,
           licenseUrl: acceptedLicense.licenseUrl,
           sourcePublisher: "Wikimedia Commons",
-          identityScore: categoryOnlyMatch ? Math.max(20, Math.min(identityMatch.score, 49)) : identityMatch.score,
-          identityStatus: categoryOnlyMatch ? "review_required" : identityMatch.status,
-          identityReasons: categoryOnlyMatch
-            ? [...identityMatch.reasons, `Kecocokan hanya pada tingkat kategori "${query}"; identitas produk tidak terbukti dan wajib diperiksa manusia.`]
-            : [...identityMatch.reasons, "Kecocokan identitas produk memadai; hasil tetap wajib diperiksa manusia."],
+          identityScore: identityMatch.score,
+          identityStatus: identityMatch.status,
+          identityReasons: [...identityMatch.reasons, "Kandidat tetap wajib diperiksa manusia sebelum import."],
           rightsStatus: "unverified"
         };
         candidates.set(landingPageUrl, candidate);
