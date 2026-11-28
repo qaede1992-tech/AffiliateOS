@@ -163,7 +163,7 @@ const categoryQueries: Array<{ pattern: RegExp; query: string; queries?: string[
  */
 const WIKIMEDIA_LISTING_NOISE = new Set([
   "original", "official", "latest", "terbaru", "untuk", "dengan", "dan", "the", "with",
-  "for", "from", "anak", "wanita", "pria", "premium", "pcs", "piece", "pieces", "box",
+  "for", "from", "anak", "wanita", "pria", "item", "premium", "pcs", "piece", "pieces", "box",
   "set", "bundle", "bundling", "promo", "sale", "diskon", "gratis", "free", "triplepack",
   "pack", "paket", "ready", "stock", "stok", "murah", "termurah", "best", "seller",
   "inch", "inches", "cm", "mm", "meter", "liter", "ml", "gram", "grams", "kg", "watt"
@@ -175,6 +175,7 @@ const meaningfulWikimediaTitleTokens = (value: string): string[] => {
   return [...new Set(tokens.filter((token) =>
     !WIKIMEDIA_LISTING_NOISE.has(token) &&
     !/^\d+(?:in\d+)?$/i.test(token) &&
+    !/^\d+pcs$/i.test(token) &&
     !/^\d+(?:kg|g|mg|ml|l|cm|mm|inch|inches|w|v|mah)$/i.test(token)
   ))].slice(0, 5);
 };
