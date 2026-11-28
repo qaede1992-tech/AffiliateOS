@@ -147,25 +147,36 @@ test("rejects unsupported Commons video MIME types", async () => {
 });
 
 
-test("maps Indonesian marketplace listing titles to concise Commons category queries", () => {
-  assert.deepEqual(buildWikimediaCommonsQueries({
+test("puts product-specific Wikimedia queries before category fallbacks", () => {
+  const backpack = buildWikimediaCommonsQueries({
     name: "CELAH LANGIT GUMMY BACKPACK | Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
-  }), ["backpack"]);
-  assert.deepEqual(buildWikimediaCommonsQueries({
+  });
+  assert.ok(backpack[0]?.includes("celah langit gummy backpack"));
+  assert.ok(backpack.includes("backpack"));
+
+  const tumbler = buildWikimediaCommonsQueries({
     name: "MODOFO Tumbler Stainless 710ml Botol Minum Anak Perempuan"
-  }), ["water bottle"]);
-  assert.deepEqual(buildWikimediaCommonsQueries({
+  });
+  assert.ok(tumbler[0]?.includes("modofo tumbler stainless"));
+  assert.ok(tumbler.includes("water bottle"));
+
+  const sugar = buildWikimediaCommonsQueries({
     name: "Aromanis Brown Sugar 1kg - Gula merah tebu molasses"
-  }), ["brown sugar"]);
-  assert.deepEqual(buildWikimediaCommonsQueries({
+  });
+  assert.ok(sugar[0]?.includes("aromanis brown sugar"));
+  assert.ok(sugar.includes("brown sugar"));
+
+  const honey = buildWikimediaCommonsQueries({
     name: "MADU PUTIH MENTAH PREMIUM"
-  }), ["honey"]);
+  });
+  assert.ok(honey[0]?.includes("madu putih mentah"));
+  assert.ok(honey.includes("honey"));
 });
 
 test("maps lipstick holder marketplace titles to a precise organizer query", () => {
   assert.deepEqual(buildWikimediaCommonsQueries({
     name: "Rak Lipstick / Rak Tempat Lipstick / Rak Meja Lipstick / Rak Lipstick Slot Top006"
-  }), ["lipstick holder"]);
+  }), ["rak lipstick tempat meja slot", "lipstick holder"]);
 });
 
 test("keeps first meaningful product tokens and drops trailing listing codes", () => {
@@ -174,14 +185,14 @@ test("keeps first meaningful product tokens and drops trailing listing codes", (
   }), ["asthin force suplemen"]);
 });
 
-test("accepts a properly licensed lipstick organizer as a low-confidence review candidate", async () => {
+test("accepts a product-specific, properly licensed lipstick organizer as review-required", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     query: { pages: [{
-      title: "File:Plastic lipstick organizer tray.jpg",
+      title: "File:Rak Lipstick Tempat Meja Organizer Tray.jpg",
       imageinfo: [{
         thumburl: "https://upload.wikimedia.org/thumb-lipstick-organizer.jpg",
         url: "https://upload.wikimedia.org/lipstick-organizer.jpg",
-        descriptionurl: "https://commons.wikimedia.org/wiki/File:Plastic_lipstick_organizer_tray.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Rak_Lipstick_Tempat_Meja_Organizer_Tray.jpg",
         mime: "image/jpeg",
         extmetadata: {
           LicenseShortName: { value: "CC0" },
@@ -199,7 +210,7 @@ test("accepts a properly licensed lipstick organizer as a low-confidence review 
   assert.equal(results[0]?.license, "cc0");
 });
 
-test("keeps category-relevant results as low-confidence manual-review candidates", async () => {
+test("rejects category-relevant results that do not establish product identity", async () => {
   let requestedUrl = "";
   const fetchImpl: typeof fetch = async (input) => {
     requestedUrl = String(input);
@@ -226,11 +237,7 @@ test("keeps category-relevant results as low-confidence manual-review candidates
     name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
   }, { fetchImpl });
   assert.match(requestedUrl, /gsrsearch=backpack/);
-  assert.equal(results.length, 1);
-  assert.equal(results[0]?.identityStatus, "review_required");
-  assert.ok((results[0]?.identityScore ?? 100) < 50);
-  assert.equal(results[0]?.rightsStatus, "unverified");
-  assert.ok(results[0]?.identityReasons.some((reason) => reason.includes("tingkat kategori")));
+  assert.equal(results.length, 0);
 });
 
 test("hard-rejects category candidates when an explicit model or SKU does not match", async () => {
