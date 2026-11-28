@@ -81,6 +81,11 @@ test("generation persists a pending local-volume creative only for a freshly sel
   assert.equal(result.reviewStatus, "pending");
   assert.equal(result.storageBackend, "local_volume");
   assert.equal(h.persisted.length, 1);
+  const persisted = h.persisted[0] as { productSnapshot: Record<string, unknown> };
+  assert.deepEqual(persisted.productSnapshot, {
+    productId, name: product.name, priceCents: product.priceCents,
+    currency: product.currency, capturedAt: now.toISOString()
+  });
   assert.equal(h.renderCalls, 1);
   assert.deepEqual(h.removed, []);
 });
