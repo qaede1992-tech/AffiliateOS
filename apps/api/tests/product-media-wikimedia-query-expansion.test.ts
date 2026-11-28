@@ -12,6 +12,6 @@ test("uses a bounded set of category-specific Commons queries for crisper trays"
 test("does not broaden Commons queries for generic product names", () => {
   assert.deepEqual(
     buildWikimediaCommonsQueries({ name: "GSM Premium Collection Cooper Edition" }),
-    ["gsm premium collection cooper edition"]
+    ["gsm collection cooper edition"]
   );
 });
