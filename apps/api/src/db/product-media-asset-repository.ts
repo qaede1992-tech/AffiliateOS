@@ -43,6 +43,11 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   identityReviewedBy: row.identityReviewedBy,
   identityReviewedAt: row.identityReviewedAt,
   identityReviewReason: row.identityReviewReason,
+  deletionStatus: row.deletionStatus as ProductMediaAsset["deletionStatus"],
+  deletedAt: row.deletedAt,
+  deletedBy: row.deletedBy,
+  deletionReason: row.deletionReason,
+  storageCleanupCompletedAt: row.storageCleanupCompletedAt,
   createdAt: row.createdAt
 });
 
@@ -111,14 +116,14 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
   }
 
   async listByProduct(productId: string): Promise<ProductMediaAsset[]> {
-    return (await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.productId, productId)))
+    return (await this.db.select().from(productMediaAssets).where(and(eq(productMediaAssets.productId, productId), eq(productMediaAssets.deletionStatus, "active"))))
       .map(toAsset);
   }
 
   async listByProducts(productIds: string[]): Promise<ProductMediaAsset[]> {
     const uniqueProductIds = [...new Set(productIds)];
     if (uniqueProductIds.length === 0) return [];
-    return (await this.db.select().from(productMediaAssets).where(inArray(productMediaAssets.productId, uniqueProductIds)))
+    return (await this.db.select().from(productMediaAssets).where(and(inArray(productMediaAssets.productId, uniqueProductIds), eq(productMediaAssets.deletionStatus, "active"))))
       .map(toAsset);
   }
 
