@@ -13,6 +13,7 @@ export class MarketplaceService {
   async listProviders(): Promise<MarketplaceProviderInfo[]> { const configured = await this.connections.list(); return this.registry.list().map((provider) => ({ slug: provider.slug, displayName: provider.displayName, connectionMode: provider.connectionMode, configured: configured.some((connection) => connection.providerSlug === provider.slug), capabilities: [...provider.capabilities], supportsConnectionTest: Boolean(provider.testConnection) })); }
   async listConnections(): Promise<MarketplaceConnectionView[]> { return (await this.connections.list()).map(this.toView); }
   async listProducts(): Promise<Product[]> { return this.products.list(); }
+  async findProductById(productId: string): Promise<Product | undefined> { return this.products.findById(productId); }
   async listProductsPage(input: { limit: number; cursor?: string; query?: string }) {
     let afterId: string | undefined;
     if (input.cursor) {

@@ -17,6 +17,8 @@ export type AutonomousExecutionInput = {
   idempotencyNamespace?: string;
   /** Use lightweight latest feedback for discovery-only previews; authoritative selection keeps full history. */
   feedbackHistoryMode?: "latest" | "full";
+  /** Internal bounded evaluation mode: do not read or mutate adaptive exploration state. */
+  disableAdaptiveExploration?: boolean;
   requirePublishableMedia?: boolean;
   requirePublishableVideo?: boolean;
   /** Product IDs with validated, persisted video assets discovered before final selection. */
@@ -52,7 +54,7 @@ export class AutonomousExecutionService {
         }))
       : input.candidates;
     const performance = this.feedback ? await this.feedback.getSignals({ observationKey: namespace, historyMode: input.feedbackHistoryMode ?? "full" }) : new Map();
-    const adaptiveExplorationRates = this.adaptiveExploration
+    const adaptiveExplorationRates = this.adaptiveExploration && !input.disableAdaptiveExploration
       ? await this.adaptiveExploration.getRates(candidates, input.policy ?? {}, input.policiesByMarketplace ?? {}, performance)
       : new Map<string, number>();
     const selection = this.selector.select(

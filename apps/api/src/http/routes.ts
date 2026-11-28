@@ -617,6 +617,37 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     if (result.changed && (input.imageUrl || input.videoUrl)) void services.autonomousScheduler.trigger();
     return result.product;
   });
+  app.post("/api/v1/products/:productId/pre-media-eligibility/refresh", adminGuard, async (request, reply) => {
+    const { productId } = productMediaParamsSchema.parse(request.params);
+    const refresh = services.preMediaEligibilityRefresh;
+    if (!refresh) return reply.status(503).send({ error: "PRE_MEDIA_ELIGIBILITY_REFRESH_UNAVAILABLE", message: "Targeted eligibility refresh is not configured." });
+    const actorId = request.auth?.operatorId;
+    if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
+    try {
+      const result = await refresh.refresh(productId);
+      auditSecurityEvent(request.log, request, "pre_media_eligibility_refreshed", {
+        productId, actorId, reused: String(result.reused), eligible: String(result.evidence.eligible),
+        score: String(result.evidence.score), evidenceId: result.evidence.id
+      });
+      return {
+        productId,
+        reused: result.reused,
+        evidence: {
+          id: result.evidence.id, eligible: result.evidence.eligible, score: result.evidence.score,
+          marketplaceId: result.evidence.marketplaceId, offerId: result.evidence.offerId,
+          reasons: result.evidence.reasons, createdAt: result.evidence.createdAt
+        }
+      };
+    } catch (error) {
+      if (error && typeof error === "object" && "statusCode" in error && "code" in error) {
+        const typed = error as { statusCode: number; code: string; message: string };
+        if (typed.code.startsWith("PRE_MEDIA_REFRESH_")) return reply.status(typed.statusCode).send({ error: typed.code, message: typed.message });
+      }
+      request.log.error({ errorName: error instanceof Error ? error.name : "UnknownError" }, "Targeted pre-media eligibility refresh failed");
+      return reply.status(502).send({ error: "PRE_MEDIA_ELIGIBILITY_REFRESH_FAILED", message: "Eligibility could not be refreshed." });
+    }
+  });
+
   app.post("/api/v1/products/:productId/shopee-media-discovery", adminGuard, async (request, reply) => {
     const { productId } = productMediaParamsSchema.parse(request.params);
     const discovery = services.productMediaDiscovery;
