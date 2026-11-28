@@ -32,14 +32,26 @@ const safeErrorType = (error: unknown): string =>
     ? error.name
     : "UnknownError";
 
+const hasRecognizedProductCategoryInName = (name: string | null | undefined): boolean => {
+  if (!name?.trim()) return false;
+  const tokens = new Set(name.normalize("NFKD").toLowerCase().replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9]+/).filter(Boolean));
+  // Deliberately small allow-list: only clear product-type nouns that can
+  // narrow a Commons fallback. Do not treat arbitrary descriptive names as
+  // category evidence, which would broaden provider traffic for every SKU.
+  return ["crisper", "tray", "basket", "air", "fryer"].some((token) => tokens.has(token));
+};
+
 export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
-  identity: { category?: string | null; model?: string | null; sku?: string | null }
+  identity: { name?: string | null; category?: string | null; model?: string | null; sku?: string | null }
 ): boolean =>
-  // Only category-bearing products may use a single Commons category fallback
-  // after an empty Openverse result. Generic products remain single-provider
-  // to protect shared-pool egress; category leads remain review_required/unverified.
-  (candidates.length === 0 && Boolean(identity.category?.trim())) ||
+  // One Commons fallback is permitted after empty Openverse results when either
+  // structured category or a tightly recognized product-type term is present.
+  // Generic names remain single-provider to protect shared-pool egress.
+  (candidates.length === 0 && (
+    Boolean(identity.category?.trim()) || hasRecognizedProductCategoryInName(identity.name)
+  )) ||
   (Boolean(identity.model?.trim() || identity.sku?.trim()) &&
     !candidates.some((candidate) => candidate.mediaKind === "video"));
 
