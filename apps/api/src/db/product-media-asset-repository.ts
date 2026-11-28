@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand, ProductMediaIdentityAudit, ProductMediaIdentityReviewCommand, ProductMediaDeletionRequestCommand, ProductMediaDeletionBlockedError } from "../domain/product-media-ingestion.js";
+import { ProductMediaDeletionBlockedError } from "../domain/product-media-ingestion.js";
+import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand, ProductMediaIdentityAudit, ProductMediaIdentityReviewCommand, ProductMediaDeletionRequestCommand } from "../domain/product-media-ingestion.js";
 import { mediaAssets, productMediaAssets, productMediaRightsAudits, productMediaIdentityAudits, productMediaDeletionAudits, publicationDispatchReservations } from "./schema.js";
 import { validateProductMediaRightsEvidenceBinding } from "../domain/product-media-rights-evidence-binding.js";
 
@@ -419,7 +420,7 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     }).from(productMediaAssets).where(inArray(productMediaAssets.deletionStatus, ["pending_cleanup", "cleanup_failed"]));
     const value = rows[0]?.nextAt;
     if (!value) return undefined;
-    const parsed = new Date(value);
+    const parsed = value instanceof Date ? value : new Date(value);
     return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : undefined;
   }
 
