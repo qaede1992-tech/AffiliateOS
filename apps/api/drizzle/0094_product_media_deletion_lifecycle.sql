@@ -35,8 +35,22 @@ CREATE TABLE public.product_media_deletion_audits (
 
 CREATE INDEX product_media_deletion_audits_asset_created_idx
   ON public.product_media_deletion_audits (asset_id, created_at DESC);
+ALTER TABLE public.product_media_deletion_audits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY product_media_deletion_audits_runtime_policy
+  ON public.product_media_deletion_audits
+  FOR ALL TO affiliateos_runtime
+  USING (true)
+  WITH CHECK (true);
+
+REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER
+  ON public.product_media_deletion_audits FROM affiliateos_runtime;
+
 CREATE FUNCTION public.prevent_product_media_deletion_audit_mutation()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $
 BEGIN
   RAISE EXCEPTION 'product media deletion audits are append-only';
 END;
@@ -45,3 +59,5 @@ $$;
 CREATE TRIGGER product_media_deletion_audits_append_only
   BEFORE UPDATE OR DELETE ON public.product_media_deletion_audits
   FOR EACH ROW EXECUTE FUNCTION public.prevent_product_media_deletion_audit_mutation();
+
+REVOKE EXECUTE ON FUNCTION public.prevent_product_media_deletion_audit_mutation() FROM PUBLIC;
