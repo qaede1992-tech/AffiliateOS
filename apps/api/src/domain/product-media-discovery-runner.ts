@@ -43,7 +43,7 @@ const hasRecognizedProductCategoryInName = (name: string | null | undefined): bo
 };
 
 export const getProductMediaDiscoveryStrategyVersion = (name: string | null | undefined): string | null =>
-  hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v1" : null;
+  hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v2" : null;
 
 export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],

@@ -64,7 +64,7 @@ test("searches Wikimedia after empty Openverse results when a recognized product
 });
 
 test("versions only the recognized-name discovery strategy to invalidate its stale cooldown", () => {
-  assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Crisper Tray Cooper Carbon Steel Ceramic"), "wikimedia-name-category-v1");
+  assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Crisper Tray Cooper Carbon Steel Ceramic"), "wikimedia-name-category-v2");
   assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Premium Collection Cooper Edition"), null);
   assert.equal(getProductMediaDiscoveryStrategyVersion(null), null);
 });
