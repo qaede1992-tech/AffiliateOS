@@ -49,16 +49,17 @@ const hasRecognizedProductCategoryInName = (name: string | null | undefined): bo
   return ["crisper", "tray", "basket", "air", "fryer"].some((token) => tokens.has(token));
 };
 
-const isTargetedRakLipstickProduct = (name: string | null | undefined): boolean => {
-  const tokens = new Set(name?.normalize("NFKD").toLowerCase().replace(/[\\u0300-\\u036f]/g, "")
-    .split(/[^a-z0-9]+/).filter(Boolean) ?? []);
-  return tokens.has("rak") && tokens.has("lipstick");
-};
+const TARGET_RAK_LIPSTICK_PRODUCT_ID = "225b1671-ee54-4bcb-ac32-e2bc0198c123";
 
-export const getProductMediaDiscoveryStrategyVersion = (name: string | null | undefined): string | null => {
-  // A one-product strategy revision intentionally invalidates only the Rak Lipstick
-  // cooldown. It allows a single fresh catalog lookup without clearing shared leases.
-  if (isTargetedRakLipstickProduct(name)) return "shopee-rak-lipstick-v1";
+export const getProductMediaDiscoveryStrategyVersion = (
+  name: string | null | undefined,
+  productId?: string
+): string | null => {
+  // Invalidate the stale cooldown for the single verified staging test product only.
+  // Other products with similar names retain their existing fingerprint and lease.
+  if (productId === TARGET_RAK_LIPSTICK_PRODUCT_ID && /\brak\b/i.test(name ?? "") && /\blipstick\b/i.test(name ?? "")) {
+    return "shopee-rak-lipstick-v1";
+  }
   return hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v3" : null;
 };
 
