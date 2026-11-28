@@ -48,6 +48,10 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   deletedBy: row.deletedBy,
   deletionReason: row.deletionReason,
   storageCleanupCompletedAt: row.storageCleanupCompletedAt,
+  storageCleanupAttempts: row.storageCleanupAttempts,
+  storageCleanupNextAttemptAt: row.storageCleanupNextAttemptAt,
+  storageCleanupLeaseUntil: row.storageCleanupLeaseUntil,
+  storageCleanupLastError: row.storageCleanupLastError,
   createdAt: row.createdAt
 });
 
