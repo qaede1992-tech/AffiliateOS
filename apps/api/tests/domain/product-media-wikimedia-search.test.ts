@@ -521,9 +521,33 @@ test("uses the imported CSV category when the listing title is generic", () => {
   }), ["backpack"]);
 });
 
+test("does not return category-only Commons results as product media candidates", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: [{
+      title: "File:Oven Tray.jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/thumb-oven-tray.jpg",
+        url: "https://upload.wikimedia.org/oven-tray.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Oven_Tray.jpg",
+        mime: "image/jpeg",
+        extmetadata: {
+          LicenseShortName: { value: "CC0" },
+          LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+        }
+      }]
+    }] }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "GSM Crisper Tray Cooper Carbon Steel Ceramic"
+  }, { fetchImpl });
+
+  assert.equal(results.length, 0);
+});
+
 test("accepts canonical HTTP Creative Commons license metadata and normalizes it to HTTPS", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
-    query: { pages: [{ title: "File:Milk powder.jpg", imageinfo: [{
+    query: { pages: [{ title: "File:Zeelandia Vanilla Milk Powder.jpg", imageinfo: [{
       thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/milk-powder.jpg",
       descriptionurl: "https://commons.wikimedia.org/wiki/File:Milk_powder.jpg",
       mime: "image/jpeg",
@@ -639,11 +663,11 @@ test("rejects animal and pest imagery returned by generic food-container searche
         }]
       },
       {
-        title: "File:Food container.jpg",
+        title: "File:Hongzhuo Food Container.jpg",
         imageinfo: [{
           thumburl: "https://upload.wikimedia.org/thumb-container.jpg",
           url: "https://upload.wikimedia.org/container.jpg",
-          descriptionurl: "https://commons.wikimedia.org/wiki/File:Food_container.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Hongzhuo_Food_Container.jpg",
           mime: "image/jpeg",
           extmetadata: {
             LicenseShortName: { value: "CC0" },
@@ -655,11 +679,11 @@ test("rejects animal and pest imagery returned by generic food-container searche
   }), { status: 200, headers: { "content-type": "application/json" } });
 
   const results = await searchWikimediaCommonsProductMedia({
-    name: "Hongzhuo Food Kontainer Kotak Penyimpanan Makanan Buah Sayuran Saringan Serbaguna"
+    name: "Hongzhuo Food Container"
   }, { fetchImpl });
 
   assert.equal(results.length, 1);
-  assert.equal(results[0]?.title, "Food container.jpg");
+  assert.equal(results[0]?.title, "Hongzhuo Food Container.jpg");
   assert.equal(results[0]?.identityStatus, "review_required");
   assert.equal(results[0]?.rightsStatus, "unverified");
 });
