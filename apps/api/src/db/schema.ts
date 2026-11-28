@@ -86,6 +86,10 @@ export const productMediaAssets = pgTable("product_media_assets", {
   deletedBy: varchar("deleted_by", { length: 255 }),
   deletionReason: varchar("deletion_reason", { length: 1000 }),
   storageCleanupCompletedAt: timestamp("storage_cleanup_completed_at", { withTimezone: true, mode: "string" }),
+  storageCleanupAttempts: integer("storage_cleanup_attempts").notNull().default(0),
+  storageCleanupNextAttemptAt: timestamp("storage_cleanup_next_attempt_at", { withTimezone: true, mode: "string" }),
+  storageCleanupLeaseUntil: timestamp("storage_cleanup_lease_until", { withTimezone: true, mode: "string" }),
+  storageCleanupLastError: varchar("storage_cleanup_last_error", { length: 64 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
