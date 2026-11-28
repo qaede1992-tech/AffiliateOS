@@ -5,22 +5,42 @@ ALTER TABLE public.product_media_assets
   ADD COLUMN IF NOT EXISTS deletion_reason varchar(1000),
   ADD COLUMN IF NOT EXISTS storage_cleanup_completed_at timestamptz;
 
-ALTER TABLE public.product_media_assets
-  ADD CONSTRAINT product_media_assets_deletion_status_check
-  CHECK (deletion_status IN ('active', 'pending_cleanup', 'cleanup_failed', 'deleted'));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.product_media_assets'::regclass
+      AND conname = 'product_media_assets_deletion_status_check'
+  ) THEN
+    ALTER TABLE public.product_media_assets
+      ADD CONSTRAINT product_media_assets_deletion_status_check
+      CHECK (deletion_status IN ('active', 'pending_cleanup', 'cleanup_failed', 'deleted'));
+  END IF;
+END;
+$$;
 
-ALTER TABLE public.product_media_assets
-  ADD CONSTRAINT product_media_assets_deletion_metadata_check
-  CHECK (
-    (deletion_status = 'active' AND deleted_at IS NULL AND deleted_by IS NULL AND deletion_reason IS NULL)
-    OR
-    (deletion_status <> 'active' AND deleted_at IS NOT NULL AND deleted_by IS NOT NULL AND deletion_reason IS NOT NULL)
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.product_media_assets'::regclass
+      AND conname = 'product_media_assets_deletion_metadata_check'
+  ) THEN
+    ALTER TABLE public.product_media_assets
+      ADD CONSTRAINT product_media_assets_deletion_metadata_check
+      CHECK (
+        (deletion_status = 'active' AND deleted_at IS NULL AND deleted_by IS NULL AND deletion_reason IS NULL)
+        OR
+        (deletion_status <> 'active' AND deleted_at IS NOT NULL AND deleted_by IS NOT NULL AND deletion_reason IS NOT NULL)
+      );
+  END IF;
+END;
+$$;
 
 CREATE INDEX IF NOT EXISTS product_media_assets_deletion_status_created_idx
   ON public.product_media_assets (deletion_status, created_at);
 
-CREATE TABLE public.product_media_deletion_audits (
+CREATE TABLE IF NOT EXISTS public.product_media_deletion_audits (
   id uuid PRIMARY KEY,
   asset_id uuid NOT NULL REFERENCES public.product_media_assets(id) ON DELETE RESTRICT,
   product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
@@ -33,10 +53,13 @@ CREATE TABLE public.product_media_deletion_audits (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX product_media_deletion_audits_asset_created_idx
+CREATE INDEX IF NOT EXISTS product_media_deletion_audits_asset_created_idx
   ON public.product_media_deletion_audits (asset_id, created_at DESC);
+
 ALTER TABLE public.product_media_deletion_audits ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS product_media_deletion_audits_runtime_policy
+  ON public.product_media_deletion_audits;
 CREATE POLICY product_media_deletion_audits_runtime_policy
   ON public.product_media_deletion_audits
   FOR ALL TO affiliateos_runtime
@@ -46,7 +69,7 @@ CREATE POLICY product_media_deletion_audits_runtime_policy
 REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER
   ON public.product_media_deletion_audits FROM affiliateos_runtime;
 
-CREATE FUNCTION public.prevent_product_media_deletion_audit_mutation()
+CREATE OR REPLACE FUNCTION public.prevent_product_media_deletion_audit_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -56,6 +79,8 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS product_media_deletion_audits_append_only
+  ON public.product_media_deletion_audits;
 CREATE TRIGGER product_media_deletion_audits_append_only
   BEFORE UPDATE OR DELETE ON public.product_media_deletion_audits
   FOR EACH ROW EXECUTE FUNCTION public.prevent_product_media_deletion_audit_mutation();
