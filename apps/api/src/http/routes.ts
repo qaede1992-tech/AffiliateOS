@@ -678,7 +678,7 @@ export function registerResourceRoutes(app: FastifyInstance, services: Services,
     const actorId = request.auth?.operatorId;
     if (!actorId) return reply.status(403).send({ error: "FORBIDDEN", message: "An authenticated administrator is required." });
     const updated = await repository.review(candidateId, productId, { ...input, actorId, actorRole: "admin" });
-    if (!updated) return reply.status(409).send({ error: "PRODUCT_MEDIA_CANDIDATE_NOT_PENDING", message: "The candidate does not exist for this product or has already been reviewed." });
+    if (!updated) return reply.status(409).send({ error: "PRODUCT_MEDIA_CANDIDATE_NOT_PENDING", message: "The candidate is not pending, has already been reviewed, or is below the minimum product identity threshold." });
     auditSecurityEvent(request.log, request, "product_media_candidate_reviewed", { productId, candidateId, status: updated.reviewStatus });
     return updated;
   });
