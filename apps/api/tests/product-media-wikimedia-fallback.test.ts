@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getProductMediaDiscoveryStrategyVersion,
   mergeWikimediaVideoFallbackCandidates,
   shouldSearchWikimediaVideoFallback
 } from "../src/domain/product-media-discovery-runner.js";
@@ -60,6 +61,12 @@ test("searches Wikimedia after empty Openverse results when a recognized product
     shouldSearchWikimediaVideoFallback([], { name: "GSM Crisper Tray Cooper Carbon Steel Ceramic" }),
     true
   );
+});
+
+test("versions only the recognized-name discovery strategy to invalidate its stale cooldown", () => {
+  assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Crisper Tray Cooper Carbon Steel Ceramic"), "wikimedia-name-category-v1");
+  assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Premium Collection Cooper Edition"), null);
+  assert.equal(getProductMediaDiscoveryStrategyVersion(null), null);
 });
 
 test("does not broaden Wikimedia fallback for an unclassified generic product name", () => {
