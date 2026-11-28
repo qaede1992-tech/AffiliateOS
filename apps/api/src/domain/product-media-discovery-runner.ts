@@ -42,6 +42,9 @@ const hasRecognizedProductCategoryInName = (name: string | null | undefined): bo
   return ["crisper", "tray", "basket", "air", "fryer"].some((token) => tokens.has(token));
 };
 
+export const getProductMediaDiscoveryStrategyVersion = (name: string | null | undefined): string | null =>
+  hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v1" : null;
+
 export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
   identity: { name?: string | null; category?: string | null; model?: string | null; sku?: string | null }
@@ -329,13 +332,18 @@ export class ProductMediaDiscoveryRunner {
           ...(product.discoverySignals?.productIdentity?.variant ? { variant: product.discoverySignals.productIdentity.variant } : {})
         };
         const query = buildProductMediaSearchQuery(identity);
+        // Bump the fingerprint only for allow-listed product-type names when
+        // the Wikimedia name fallback strategy changes. This invalidates stale
+        // cooldowns for that narrow cohort without re-querying generic products.
+        const strategyVersion = getProductMediaDiscoveryStrategyVersion(product.name);
         const fingerprint = createHash("sha256").update(JSON.stringify({
           name: product.name.trim(),
           category: product.category?.trim() ?? "",
           productUrl: product.productUrl,
           imageUrl: product.imageUrl ?? "",
           videoUrl: product.videoUrl ?? "",
-          query
+          query,
+          ...(strategyVersion ? { strategyVersion } : {})
         })).digest("hex");
         // A pending candidate already represents completed discovery work. Re-querying
         // external catalogs while an operator review is outstanding adds provider
