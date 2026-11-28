@@ -28,6 +28,7 @@ import { JsonSocialCredentialResolver } from "./domain/social-credentials.js";
 import { EncryptedFileSocialCredentialStore } from "./domain/encrypted-file-social-credentials.js";
 import { createSupabaseStorageClientFromEnv } from "./domain/supabase-storage.js";
 import { LocalProductMediaStorage } from "./domain/local-product-media-storage.js";
+import { ProductMediaDeletionCleanupWorker } from "./domain/product-media-deletion-cleanup-worker.js";
 import { authorizeProductMediaDelivery } from "./domain/product-media-delivery-authorization.js";
 import { createProductMediaDeliveryToken } from "./domain/product-media-delivery-token.js";
 import { createProductMediaPreviewToken } from "./domain/product-media-preview-token.js";
@@ -170,6 +171,30 @@ const services = createServices(
       }
     : undefined
 );
+const deletionAssets = persistence.repositories.productMediaAssets;
+if (
+  deletionAssets?.claimDeletionCleanupBatch &&
+  deletionAssets.completeDeletionCleanup &&
+  deletionAssets.failDeletionCleanup &&
+  deletionAssets.nextDeletionCleanupAt &&
+  (mediaStorage || localProductMediaStorage)
+) {
+  const cleanupWorker = new ProductMediaDeletionCleanupWorker({
+    claimDeletionCleanupBatch: (input) => deletionAssets.claimDeletionCleanupBatch!(input),
+    completeDeletionCleanup: (input) => deletionAssets.completeDeletionCleanup!(input),
+    failDeletionCleanup: (input) => deletionAssets.failDeletionCleanup!(input),
+    nextDeletionCleanupAt: () => deletionAssets.nextDeletionCleanupAt!()
+  }, {
+    supabase: mediaStorage ?? undefined,
+    localVolume: localProductMediaStorage ?? undefined
+  }, {
+    onError: (error) => console.error("Product media cleanup worker failed:", safeErrorType(error))
+  });
+  services.productMediaDeletionCleanup = () => cleanupWorker.trigger();
+  // Recover queued cleanup after process restarts; the worker stops scheduling when idle.
+  cleanupWorker.trigger();
+}
+
 // Local-volume preview URLs are issued only after the existing adminGuard has
 // authorized the preview request. The public token endpoint serves no-store
 // bytes and rechecks the current asset identity and on-disk SHA-256.

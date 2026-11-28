@@ -140,6 +140,8 @@ export class SupabaseStorageClient implements ProductMediaStorageClient {
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ prefixes: [safeKey] })
     });
+    // Treat an already-absent object as success so a worker retry after a crash is idempotent.
+    if (response.status === 404) return;
     await this.assertSuccess(response, "delete");
   }
 

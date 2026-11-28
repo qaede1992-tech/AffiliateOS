@@ -81,12 +81,22 @@ export const productMediaAssets = pgTable("product_media_assets", {
   identityReviewedBy: varchar("identity_reviewed_by", { length: 255 }),
   identityReviewedAt: timestamp("identity_reviewed_at", { withTimezone: true, mode: "string" }),
   identityReviewReason: varchar("identity_review_reason", { length: 1000 }),
+  deletionStatus: varchar("deletion_status", { length: 24 }).notNull().default("active"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "string" }),
+  deletedBy: varchar("deleted_by", { length: 255 }),
+  deletionReason: varchar("deletion_reason", { length: 1000 }),
+  storageCleanupCompletedAt: timestamp("storage_cleanup_completed_at", { withTimezone: true, mode: "string" }),
+  storageCleanupAttempts: integer("storage_cleanup_attempts").notNull().default(0),
+  storageCleanupNextAttemptAt: timestamp("storage_cleanup_next_attempt_at", { withTimezone: true, mode: "string" }),
+  storageCleanupLeaseUntil: timestamp("storage_cleanup_lease_until", { withTimezone: true, mode: "string" }),
+  storageCleanupLastError: varchar("storage_cleanup_last_error", { length: 64 }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
 }, (table) => [
   uniqueIndex("product_media_assets_product_hash_unique").on(table.productId, table.sha256),
   uniqueIndex("product_media_assets_source_candidate_unique").on(table.sourceCandidateId).where(sql`${table.sourceCandidateId} IS NOT NULL`),
   uniqueIndex("product_media_assets_bucket_key_unique").on(table.bucket, table.objectKey),
-  index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc())
+  index("product_media_assets_product_kind_idx").on(table.productId, table.kind, table.createdAt.desc()),
+  index("product_media_assets_deletion_status_created_idx").on(table.deletionStatus, table.createdAt)
 ]);
 
 export const productMediaRightsAudits = pgTable("product_media_rights_audits", {
@@ -125,6 +135,23 @@ export const productMediaIdentityAudits = pgTable("product_media_identity_audits
   index("product_media_identity_audits_asset_created_idx").on(table.assetId, table.createdAt.desc()),
   index("product_media_identity_audits_product_created_idx").on(table.productId, table.createdAt.desc())
 ]);
+
+/** Append-only record of product-media deletion requests and storage cleanup outcomes. */
+export const productMediaDeletionAudits = pgTable("product_media_deletion_audits", {
+  id: uuid("id").primaryKey(),
+  assetId: uuid("asset_id").notNull().references(() => productMediaAssets.id, { onDelete: "restrict" }),
+  productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
+  actorId: varchar("actor_id", { length: 255 }).notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  reason: varchar("reason", { length: 1000 }).notNull(),
+  storageBackend: varchar("storage_backend", { length: 20 }).notNull(),
+  bucket: varchar("bucket", { length: 100 }).notNull(),
+  objectKey: varchar("object_key", { length: 1024 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow()
+}, (table) => [
+  index("product_media_deletion_audits_asset_created_idx").on(table.assetId, table.createdAt.desc())
+]);
+
 
 export const productMediaDiscoveryAttempts = pgTable("product_media_discovery_attempts", {
   productId: uuid("product_id").primaryKey().references(() => products.id, { onDelete: "cascade" }),

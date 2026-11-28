@@ -44,6 +44,15 @@ export interface ProductMediaAsset {
   identityReviewedBy?: string | null;
   identityReviewedAt?: string | null;
   identityReviewReason?: string | null;
+  deletionStatus?: "active" | "pending_cleanup" | "cleanup_failed" | "deleted";
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  deletionReason?: string | null;
+  storageCleanupCompletedAt?: string | null;
+  storageCleanupAttempts?: number;
+  storageCleanupNextAttemptAt?: string | null;
+  storageCleanupLeaseUntil?: string | null;
+  storageCleanupLastError?: string | null;
   createdAt: string;
 }
 
@@ -94,6 +103,21 @@ export interface ProductMediaIdentityAudit {
   createdAt: string;
 }
 
+export interface ProductMediaDeletionRequestCommand {
+  actorId: string;
+  actorRole: "admin";
+  reason: string;
+}
+
+export class ProductMediaDeletionBlockedError extends Error {
+  constructor(readonly code: "ASSET_ATTACHED_TO_CONTENT" | "ACTIVE_PUBLICATION_RESERVATION") {
+    super(code === "ASSET_ATTACHED_TO_CONTENT"
+      ? "Product media is still attached to content."
+      : "Product media is referenced by an active publication reservation.");
+    this.name = "ProductMediaDeletionBlockedError";
+  }
+}
+
 export interface ProductMediaAssetRepository {
   findById(id: string): Promise<ProductMediaAsset | undefined>;
   findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined>;
@@ -111,6 +135,11 @@ export interface ProductMediaAssetRepository {
   ): Promise<ProductMediaAsset | undefined>;
   listByProduct(productId: string): Promise<ProductMediaAsset[]>;
   listByProducts?(productIds: string[]): Promise<ProductMediaAsset[]>;
+  requestDeletion?(assetId: string, productId: string, command: ProductMediaDeletionRequestCommand): Promise<ProductMediaAsset | undefined>;
+  claimDeletionCleanupBatch?(input: { limit: number; now: string; leaseUntil: string }): Promise<ProductMediaAsset[]>;
+  completeDeletionCleanup?(input: { assetId: string; leaseUntil: string; completedAt: string }): Promise<boolean>;
+  failDeletionCleanup?(input: { assetId: string; leaseUntil: string; failedAt: string; nextAttemptAt: string; errorType: string }): Promise<boolean>;
+  nextDeletionCleanupAt?(): Promise<string | undefined>;
   save(asset: ProductMediaAsset): Promise<ProductMediaAsset>;
   /**
    * Implementations must atomically update the asset and append its immutable rights-audit row.

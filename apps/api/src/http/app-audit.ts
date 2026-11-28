@@ -16,6 +16,7 @@ export type AuditEvent =
   | "product_media_candidate_imported"
   | "product_media_uploaded"
   | "product_media_identity_reviewed"
+  | "product_media_deletion_requested"
   | "product_ai_image_generated"
   | "illustrative_product_video_preview_rendered"
   | "product_ai_abstract_illustration_generated"

@@ -16,6 +16,7 @@ export async function authorizeProductMediaPreview(input: {
   const claims = verifyProductMediaPreviewToken(input.token, input.tokenConfig, input.now);
   const asset = await input.assets.findById(claims.assetId);
   if (!asset ||
+      (asset.deletionStatus !== undefined && asset.deletionStatus !== "active") ||
       asset.productId !== claims.productId ||
       asset.storageBackend !== "local_volume" ||
       asset.bucket !== "local-volume" ||

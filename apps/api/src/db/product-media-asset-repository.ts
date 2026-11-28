@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand, ProductMediaIdentityAudit, ProductMediaIdentityReviewCommand } from "../domain/product-media-ingestion.js";
-import { productMediaAssets, productMediaRightsAudits, productMediaIdentityAudits } from "./schema.js";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { ProductMediaDeletionBlockedError } from "../domain/product-media-ingestion.js";
+import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaRightsAudit, ProductMediaRightsReviewCommand, ProductMediaIdentityAudit, ProductMediaIdentityReviewCommand, ProductMediaDeletionRequestCommand } from "../domain/product-media-ingestion.js";
+import { mediaAssets, productMediaAssets, productMediaRightsAudits, productMediaIdentityAudits, productMediaDeletionAudits, publicationDispatchReservations } from "./schema.js";
 import { validateProductMediaRightsEvidenceBinding } from "../domain/product-media-rights-evidence-binding.js";
 
 type DatabaseExecutor = any;
@@ -43,6 +44,15 @@ const toAsset = (row: typeof productMediaAssets.$inferSelect): ProductMediaAsset
   identityReviewedBy: row.identityReviewedBy,
   identityReviewedAt: row.identityReviewedAt,
   identityReviewReason: row.identityReviewReason,
+  deletionStatus: row.deletionStatus as ProductMediaAsset["deletionStatus"],
+  deletedAt: row.deletedAt,
+  deletedBy: row.deletedBy,
+  deletionReason: row.deletionReason,
+  storageCleanupCompletedAt: row.storageCleanupCompletedAt,
+  storageCleanupAttempts: row.storageCleanupAttempts,
+  storageCleanupNextAttemptAt: row.storageCleanupNextAttemptAt,
+  storageCleanupLeaseUntil: row.storageCleanupLeaseUntil,
+  storageCleanupLastError: row.storageCleanupLastError,
   createdAt: row.createdAt
 });
 
@@ -58,13 +68,14 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
   async findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined> {
     const rows = await this.db.select().from(productMediaAssets).where(and(
       eq(productMediaAssets.productId, productId),
-      eq(productMediaAssets.sha256, sha256)
+      eq(productMediaAssets.sha256, sha256),
+      eq(productMediaAssets.deletionStatus, "active")
     )).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
 
   async findBySourceCandidateId(candidateId: string): Promise<ProductMediaAsset | undefined> {
-    const rows = await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.sourceCandidateId, candidateId)).limit(1);
+    const rows = await this.db.select().from(productMediaAssets).where(and(eq(productMediaAssets.sourceCandidateId, candidateId), eq(productMediaAssets.deletionStatus, "active"))).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
 
@@ -76,7 +87,8 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     const rows = await this.db.select().from(productMediaAssets).where(and(
       eq(productMediaAssets.productId, productId),
       eq(productMediaAssets.sourceUrl, sourceUrl),
-      eq(productMediaAssets.kind, kind)
+      eq(productMediaAssets.kind, kind),
+      eq(productMediaAssets.deletionStatus, "active")
     )).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
@@ -104,6 +116,7 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       eq(productMediaAssets.productId, productId),
       eq(productMediaAssets.sha256, sha256),
       eq(productMediaAssets.rightsStatus, "unverified"),
+      eq(productMediaAssets.deletionStatus, "active"),
       isNull(productMediaAssets.sourceCandidateId)
     )).returning();
     if (rows[0]) return toAsset(rows[0]);
@@ -111,14 +124,14 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
   }
 
   async listByProduct(productId: string): Promise<ProductMediaAsset[]> {
-    return (await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.productId, productId)))
+    return (await this.db.select().from(productMediaAssets).where(and(eq(productMediaAssets.productId, productId), eq(productMediaAssets.deletionStatus, "active"))))
       .map(toAsset);
   }
 
   async listByProducts(productIds: string[]): Promise<ProductMediaAsset[]> {
     const uniqueProductIds = [...new Set(productIds)];
     if (uniqueProductIds.length === 0) return [];
-    return (await this.db.select().from(productMediaAssets).where(inArray(productMediaAssets.productId, uniqueProductIds)))
+    return (await this.db.select().from(productMediaAssets).where(and(inArray(productMediaAssets.productId, uniqueProductIds), eq(productMediaAssets.deletionStatus, "active"))))
       .map(toAsset);
   }
 
@@ -250,6 +263,168 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       newIdentityStatus: row.newIdentityStatus,
       createdAt: row.createdAt
     }));
+  }
+
+  async requestDeletion(assetId: string, productId: string, command: ProductMediaDeletionRequestCommand): Promise<ProductMediaAsset | undefined> {
+    const actorId = command.actorId.trim();
+    const reason = command.reason.trim();
+    if (!actorId || actorId.length > 255 || !reason || reason.length > 1000 || command.actorRole !== "admin") {
+      throw new Error("A valid administrator and deletion reason are required.");
+    }
+
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      const rows = await tx.select().from(productMediaAssets).where(and(
+        eq(productMediaAssets.id, assetId),
+        eq(productMediaAssets.productId, productId)
+      )).limit(1).for("update");
+      const existing = rows[0];
+      if (!existing) return undefined;
+      if ((existing.deletionStatus ?? "active") !== "active") return toAsset(existing);
+
+      const reference = `${existing.bucket}/${existing.objectKey}`;
+      const attached = await tx.select({ id: mediaAssets.id }).from(mediaAssets).where(and(
+        eq(mediaAssets.source, "object-storage"),
+        eq(mediaAssets.reference, reference)
+      )).limit(1);
+      if (attached.length > 0) throw new ProductMediaDeletionBlockedError("ASSET_ATTACHED_TO_CONTENT");
+
+      const activeReservations = await tx.select({ id: publicationDispatchReservations.id })
+        .from(publicationDispatchReservations)
+        .where(and(
+          inArray(publicationDispatchReservations.state, ["reserved", "dispatching", "accepted", "uncertain", "needs_reconciliation"]),
+          sql`(${publicationDispatchReservations.snapshot} #> '{mediaIntegrity,productMediaAssets}') @> ${JSON.stringify([{ id: assetId }])}::jsonb`
+        ))
+        .limit(1);
+      if (activeReservations.length > 0) {
+        throw new ProductMediaDeletionBlockedError("ACTIVE_PUBLICATION_RESERVATION");
+      }
+
+      const deletedAt = new Date().toISOString();
+      const updatedRows = await tx.update(productMediaAssets).set({
+        deletionStatus: "pending_cleanup",
+        deletedAt,
+        deletedBy: actorId,
+        deletionReason: reason,
+        storageCleanupAttempts: 0,
+        storageCleanupNextAttemptAt: deletedAt,
+        storageCleanupLeaseUntil: null,
+        storageCleanupLastError: null,
+        storageCleanupCompletedAt: null
+      }).where(and(
+        eq(productMediaAssets.id, assetId),
+        eq(productMediaAssets.productId, productId),
+        eq(productMediaAssets.deletionStatus, "active")
+      )).returning();
+      const updated = updatedRows[0];
+      if (!updated) return undefined;
+
+      await tx.insert(productMediaDeletionAudits).values({
+        id: randomUUID(),
+        assetId,
+        productId,
+        actorId,
+        actorRole: "admin",
+        reason,
+        storageBackend: updated.storageBackend ?? "supabase",
+        bucket: updated.bucket,
+        objectKey: updated.objectKey,
+        createdAt: deletedAt
+      });
+      return toAsset(updated);
+    });
+  }
+
+  async claimDeletionCleanupBatch(input: { limit: number; now: string; leaseUntil: string }): Promise<ProductMediaAsset[]> {
+    const limit = Math.max(1, Math.min(20, Math.floor(input.limit)));
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      const candidates = await tx.select().from(productMediaAssets).where(and(
+        inArray(productMediaAssets.deletionStatus, ["pending_cleanup", "cleanup_failed"]),
+        or(isNull(productMediaAssets.storageCleanupLeaseUntil), lte(productMediaAssets.storageCleanupLeaseUntil, input.now)),
+        or(isNull(productMediaAssets.storageCleanupNextAttemptAt), lte(productMediaAssets.storageCleanupNextAttemptAt, input.now))
+      )).orderBy(asc(productMediaAssets.deletedAt), asc(productMediaAssets.createdAt))
+        .limit(limit).for("update", { skipLocked: true });
+      if (candidates.length === 0) return [];
+      const updated = await tx.update(productMediaAssets).set({
+        storageCleanupLeaseUntil: input.leaseUntil,
+        storageCleanupAttempts: sql`${productMediaAssets.storageCleanupAttempts} + 1`
+      }).where(inArray(productMediaAssets.id, candidates.map((asset: typeof productMediaAssets.$inferSelect) => asset.id))).returning();
+      return updated.map(toAsset);
+    });
+  }
+
+  async completeDeletionCleanup(input: { assetId: string; leaseUntil: string; completedAt: string }): Promise<boolean> {
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      const rows = await tx.update(productMediaAssets).set({
+        deletionStatus: "deleted",
+        storageCleanupCompletedAt: input.completedAt,
+        storageCleanupLeaseUntil: null,
+        storageCleanupNextAttemptAt: null,
+        storageCleanupLastError: null
+      }).where(and(
+        eq(productMediaAssets.id, input.assetId),
+        eq(productMediaAssets.storageCleanupLeaseUntil, input.leaseUntil),
+        inArray(productMediaAssets.deletionStatus, ["pending_cleanup", "cleanup_failed"])
+      )).returning();
+      const asset = rows[0];
+      if (!asset) return false;
+      await tx.insert(productMediaDeletionAudits).values({
+        id: randomUUID(),
+        assetId: asset.id,
+        productId: asset.productId,
+        actorId: "affiliateos:media-cleanup-worker",
+        actorRole: "system",
+        reason: "storage_cleanup_completed",
+        storageBackend: asset.storageBackend ?? "supabase",
+        bucket: asset.bucket,
+        objectKey: asset.objectKey,
+        createdAt: input.completedAt
+      });
+      return true;
+    });
+  }
+
+  async failDeletionCleanup(input: { assetId: string; leaseUntil: string; failedAt: string; nextAttemptAt: string; errorType: string }): Promise<boolean> {
+    const errorType = /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(input.errorType) ? input.errorType : "UnknownError";
+    return this.db.transaction(async (tx: DatabaseExecutor) => {
+      const rows = await tx.update(productMediaAssets).set({
+        deletionStatus: "cleanup_failed",
+        storageCleanupLeaseUntil: null,
+        storageCleanupNextAttemptAt: input.nextAttemptAt,
+        storageCleanupLastError: errorType
+      }).where(and(
+        eq(productMediaAssets.id, input.assetId),
+        eq(productMediaAssets.storageCleanupLeaseUntil, input.leaseUntil),
+        inArray(productMediaAssets.deletionStatus, ["pending_cleanup", "cleanup_failed"])
+      )).returning();
+      const asset = rows[0];
+      if (!asset) return false;
+      await tx.insert(productMediaDeletionAudits).values({
+        id: randomUUID(),
+        assetId: asset.id,
+        productId: asset.productId,
+        actorId: "affiliateos:media-cleanup-worker",
+        actorRole: "system",
+        reason: `storage_cleanup_failed:${errorType}`,
+        storageBackend: asset.storageBackend ?? "supabase",
+        bucket: asset.bucket,
+        objectKey: asset.objectKey,
+        createdAt: input.failedAt
+      });
+      return true;
+    });
+  }
+
+  async nextDeletionCleanupAt(): Promise<string | undefined> {
+    const rows = await this.db.select({
+      nextAt: sql<Date | string | null>`min(GREATEST(
+        COALESCE(${productMediaAssets.storageCleanupNextAttemptAt}, now()),
+        COALESCE(${productMediaAssets.storageCleanupLeaseUntil}, now())
+      ))`
+    }).from(productMediaAssets).where(inArray(productMediaAssets.deletionStatus, ["pending_cleanup", "cleanup_failed"]));
+    const value = rows[0]?.nextAt;
+    if (!value) return undefined;
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : undefined;
   }
 
   async save(asset: ProductMediaAsset): Promise<ProductMediaAsset> {

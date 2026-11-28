@@ -50,7 +50,7 @@ try {
     "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') ORDER BY c.relname"
   ].join("\n"));
   assert.ok(tableResult.rows.length > 0, "Expected application tables in public schema.");
-  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "product_media_identity_audits", "pre_media_eligibility_evidence"]);
+  const appendOnlyTables = new Set(["product_media_rights_audits", "product_media_candidate_review_audits", "product_media_identity_audits", "product_media_deletion_audits", "pre_media_eligibility_evidence"]);
   assert.ok(
     tableResult.rows.some((table) => appendOnlyTables.has(table.relname)),
     "The append-only product media rights audit table must exist."
@@ -84,6 +84,51 @@ try {
     "AND NOT t.tgisinternal) AS present"
   );
   assert.equal(identityAuditTrigger.rows[0]?.present, true, "The identity audit table must have its append-only trigger.");
+
+  const deletionAuditTrigger = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid " +
+    "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' " +
+    "AND c.relname = 'product_media_deletion_audits' AND t.tgname = 'product_media_deletion_audits_append_only' " +
+    "AND NOT t.tgisinternal) AS present"
+  );
+  assert.equal(deletionAuditTrigger.rows[0]?.present, true, "The deletion audit table must have its append-only trigger.");
+
+  const deletionAuditFunctionSearchPath = await client.query(
+    "SELECT COALESCE(array_to_string(p.proconfig, ','), '') AS settings " +
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace " +
+    "WHERE n.nspname = 'public' AND p.proname = 'prevent_product_media_deletion_audit_mutation' AND p.pronargs = 0"
+  );
+  assert.equal(deletionAuditFunctionSearchPath.rowCount, 1, "The append-only deletion audit trigger function must exist.");
+  assert.ok(
+    deletionAuditFunctionSearchPath.rows[0]?.settings.split(",").includes("search_path=pg_catalog"),
+    "The append-only deletion audit trigger function must pin search_path to pg_catalog."
+  );
+
+  const mediaReferenceGuard = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid " +
+    "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' " +
+    "AND c.relname = 'media_assets' AND t.tgname = 'media_assets_require_active_product_media' " +
+    "AND NOT t.tgisinternal) AS present"
+  );
+  assert.equal(mediaReferenceGuard.rows[0]?.present, true, "Media assets must reject references to tombstoned product media.");
+
+  const dispatchSnapshotGuard = await client.query(
+    "SELECT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid " +
+    "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' " +
+    "AND c.relname = 'publication_dispatch_reservations' AND t.tgname = 'publication_reservations_require_active_product_media' " +
+    "AND NOT t.tgisinternal) AS present"
+  );
+  assert.equal(dispatchSnapshotGuard.rows[0]?.present, true, "Publication snapshots must reject tombstoned product media.");
+
+  const referenceGuardFunctions = await client.query(
+    "SELECT p.proname, COALESCE(array_to_string(p.proconfig, ','), '') AS settings " +
+    "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace " +
+    "WHERE n.nspname = 'public' AND p.proname IN ('prevent_product_media_asset_reference_when_deleted', 'prevent_dispatch_snapshot_for_deleted_product_media')"
+  );
+  assert.equal(referenceGuardFunctions.rowCount, 2, "Both product media reference guard functions must exist.");
+  for (const fn of referenceGuardFunctions.rows) {
+    assert.ok(fn.settings.split(",").includes("search_path=pg_catalog"), "Product media reference guard functions must pin search_path to pg_catalog.");
+  }
 
   const auditFunctionSearchPath = await client.query(
     "SELECT COALESCE(array_to_string(p.proconfig, ','), '') AS settings " +
