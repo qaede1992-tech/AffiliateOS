@@ -352,7 +352,7 @@ export class ProductMediaDiscoveryRunner {
         // Bump the fingerprint only for allow-listed product-type names when
         // the Wikimedia name fallback strategy changes. This invalidates stale
         // cooldowns for that narrow cohort without re-querying generic products.
-        const strategyVersion = getProductMediaDiscoveryStrategyVersion(product.name);
+        const strategyVersion = getProductMediaDiscoveryStrategyVersion(product.name, product.id);
         const fingerprint = createHash("sha256").update(JSON.stringify({
           name: product.name.trim(),
           category: product.category?.trim() ?? "",
