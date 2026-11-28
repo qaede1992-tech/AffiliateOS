@@ -79,8 +79,8 @@ export class IllustrativeProductCreativeGenerationService {
         templateVersion: "text-led-promo-v1",
         sha256: rendered.metadata.sha256,
         productSnapshot: {
-          id: product.id, name: product.name, priceCents: product.priceCents,
-          currency: product.currency, status: product.status
+          productId: product.id, name: product.name, priceCents: product.priceCents,
+          currency: product.currency, capturedAt: new Date(now).toISOString()
         },
         mimeType: "video/mp4", byteSize: rendered.metadata.byteSize,
         widthPx: rendered.metadata.width, heightPx: rendered.metadata.height,
