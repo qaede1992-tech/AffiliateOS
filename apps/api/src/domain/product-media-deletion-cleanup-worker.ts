@@ -27,6 +27,7 @@ export class ProductMediaDeletionCleanupWorker {
   private running = false;
   private rerunRequested = false;
   private timer?: ReturnType<typeof setTimeout>;
+  private activeRun?: Promise<void>;
 
   constructor(
     private readonly repository: ProductMediaDeletionCleanupRepository,
@@ -40,16 +41,21 @@ export class ProductMediaDeletionCleanupWorker {
     } = {}
   ) {}
 
-  trigger(): void {
+  trigger(): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
     if (this.running) {
       this.rerunRequested = true;
-      return;
+      return this.activeRun ?? Promise.resolve();
     }
-    void this.run();
+    const task = this.run();
+    this.activeRun = task;
+    void task.finally(() => {
+      if (this.activeRun === task) this.activeRun = undefined;
+    });
+    return task;
   }
 
   private schedule(delayMs: number): void {
