@@ -50,7 +50,7 @@ CREATE FUNCTION public.prevent_product_media_deletion_audit_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
-AS $
+AS $$
 BEGIN
   RAISE EXCEPTION 'product media deletion audits are append-only';
 END;
