@@ -5,7 +5,7 @@ import { buildWikimediaCommonsQueries } from "../src/domain/product-media-wikime
 test("uses a bounded set of category-specific Commons queries for crisper trays", () => {
   assert.deepEqual(
     buildWikimediaCommonsQueries({ name: "GSM Crisper Tray Cooper Carbon Steel Ceramic" }),
-    ["crisper tray", "air fryer basket", "oven baking tray"]
+    ["gsm crisper tray cooper carbon", "air fryer basket", "oven baking tray"]
   );
 });
 
