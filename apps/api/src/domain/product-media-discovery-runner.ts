@@ -49,8 +49,19 @@ const hasRecognizedProductCategoryInName = (name: string | null | undefined): bo
   return ["crisper", "tray", "basket", "air", "fryer"].some((token) => tokens.has(token));
 };
 
-export const getProductMediaDiscoveryStrategyVersion = (name: string | null | undefined): string | null =>
-  hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v3" : null;
+const TARGET_RAK_LIPSTICK_PRODUCT_ID = "225b1671-ee54-4bcb-ac32-e2bc0198c123";
+
+export const getProductMediaDiscoveryStrategyVersion = (
+  name: string | null | undefined,
+  productId?: string
+): string | null => {
+  // Invalidate the stale cooldown for the single verified staging test product only.
+  // Other products with similar names retain their existing fingerprint and lease.
+  if (productId === TARGET_RAK_LIPSTICK_PRODUCT_ID && /\brak\b/i.test(name ?? "") && /\blipstick\b/i.test(name ?? "")) {
+    return "shopee-rak-lipstick-v1";
+  }
+  return hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v3" : null;
+};
 
 export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
@@ -342,7 +353,7 @@ export class ProductMediaDiscoveryRunner {
         // Bump the fingerprint only for allow-listed product-type names when
         // the Wikimedia name fallback strategy changes. This invalidates stale
         // cooldowns for that narrow cohort without re-querying generic products.
-        const strategyVersion = getProductMediaDiscoveryStrategyVersion(product.name);
+        const strategyVersion = getProductMediaDiscoveryStrategyVersion(product.name, product.id);
         const fingerprint = createHash("sha256").update(JSON.stringify({
           name: product.name.trim(),
           category: product.category?.trim() ?? "",

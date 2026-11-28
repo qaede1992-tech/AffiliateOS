@@ -70,6 +70,14 @@ test("versions only the recognized-name discovery strategy to invalidate its sta
   assert.equal(getProductMediaDiscoveryStrategyVersion(null), null);
 });
 
+test("versions only the exact staging Rak Lipstick product to bypass its stale cooldown", () => {
+  const targetProductId = "225b1671-ee54-4bcb-ac32-e2bc0198c123";
+  assert.equal(getProductMediaDiscoveryStrategyVersion("Rak Lipstick", targetProductId), "shopee-rak-lipstick-v1");
+  assert.equal(getProductMediaDiscoveryStrategyVersion("Rak Lipstick"), null);
+  assert.equal(getProductMediaDiscoveryStrategyVersion("Rak Lipstick", "00000000-0000-4000-8000-000000000000"), null);
+  assert.equal(getProductMediaDiscoveryStrategyVersion("GSM Premium Collection Cooper Edition", targetProductId), null);
+});
+
 test("keeps low-score category-only leads out of the review queue", () => {
   assert.equal(isReviewableProductMediaCandidate({ identityScore: 20, identityStatus: "review_required" }), false);
   assert.equal(isReviewableProductMediaCandidate({ identityScore: 49, identityStatus: "review_required" }), false);
