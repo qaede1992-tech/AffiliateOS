@@ -44,6 +44,11 @@ export interface ProductMediaAsset {
   identityReviewedBy?: string | null;
   identityReviewedAt?: string | null;
   identityReviewReason?: string | null;
+  deletionStatus?: "active" | "pending_cleanup" | "cleanup_failed" | "deleted";
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  deletionReason?: string | null;
+  storageCleanupCompletedAt?: string | null;
   createdAt: string;
 }
 
