@@ -27,6 +27,7 @@ export async function authorizeProductMediaDelivery(input: {
   const asset = await input.assets.findById(claims.assetId);
   if (
     !asset ||
+    (asset.deletionStatus !== undefined && asset.deletionStatus !== "active") ||
     asset.id !== claims.assetId ||
     asset.productId !== claims.productId ||
     asset.storageBackend !== "local_volume" ||
