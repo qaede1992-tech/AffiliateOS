@@ -68,13 +68,14 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
   async findByProductAndHash(productId: string, sha256: string): Promise<ProductMediaAsset | undefined> {
     const rows = await this.db.select().from(productMediaAssets).where(and(
       eq(productMediaAssets.productId, productId),
-      eq(productMediaAssets.sha256, sha256)
+      eq(productMediaAssets.sha256, sha256),
+      eq(productMediaAssets.deletionStatus, "active")
     )).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
 
   async findBySourceCandidateId(candidateId: string): Promise<ProductMediaAsset | undefined> {
-    const rows = await this.db.select().from(productMediaAssets).where(eq(productMediaAssets.sourceCandidateId, candidateId)).limit(1);
+    const rows = await this.db.select().from(productMediaAssets).where(and(eq(productMediaAssets.sourceCandidateId, candidateId), eq(productMediaAssets.deletionStatus, "active"))).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
 
@@ -86,7 +87,8 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
     const rows = await this.db.select().from(productMediaAssets).where(and(
       eq(productMediaAssets.productId, productId),
       eq(productMediaAssets.sourceUrl, sourceUrl),
-      eq(productMediaAssets.kind, kind)
+      eq(productMediaAssets.kind, kind),
+      eq(productMediaAssets.deletionStatus, "active")
     )).limit(1);
     return rows[0] ? toAsset(rows[0]) : undefined;
   }
@@ -114,6 +116,7 @@ export class DrizzleProductMediaAssetRepository implements ProductMediaAssetRepo
       eq(productMediaAssets.productId, productId),
       eq(productMediaAssets.sha256, sha256),
       eq(productMediaAssets.rightsStatus, "unverified"),
+      eq(productMediaAssets.deletionStatus, "active"),
       isNull(productMediaAssets.sourceCandidateId)
     )).returning();
     if (rows[0]) return toAsset(rows[0]);
