@@ -24,6 +24,9 @@ CREATE INDEX IF NOT EXISTS product_media_assets_cleanup_due_idx
 CREATE INDEX IF NOT EXISTS media_assets_reference_source_idx
   ON public.media_assets (source, reference);
 
+CREATE INDEX IF NOT EXISTS publication_dispatch_reservations_media_assets_gin_idx
+  ON public.publication_dispatch_reservations USING gin ((snapshot #> '{mediaIntegrity,productMediaAssets}'));
+
 CREATE OR REPLACE FUNCTION public.prevent_product_media_asset_reference_when_deleted()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -81,6 +84,10 @@ DECLARE
   v_deletion_status varchar(24);
   v_assets jsonb;
 BEGIN
+  IF NEW.state NOT IN ('reserved', 'dispatching', 'accepted', 'uncertain', 'needs_reconciliation') THEN
+    RETURN NEW;
+  END IF;
+
   v_assets := COALESCE(NEW.snapshot #> '{mediaIntegrity,productMediaAssets}', '[]'::jsonb);
   IF jsonb_typeof(v_assets) <> 'array' THEN
     RAISE EXCEPTION 'publication media integrity productMediaAssets must be an array';
@@ -116,7 +123,7 @@ $$;
 DROP TRIGGER IF EXISTS publication_reservations_require_active_product_media
   ON public.publication_dispatch_reservations;
 CREATE TRIGGER publication_reservations_require_active_product_media
-  BEFORE INSERT OR UPDATE OF snapshot
+  BEFORE INSERT OR UPDATE OF snapshot, state
   ON public.publication_dispatch_reservations
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_dispatch_snapshot_for_deleted_product_media();
