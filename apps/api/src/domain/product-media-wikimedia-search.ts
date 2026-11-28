@@ -111,7 +111,7 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
     .slice(0, 1000) || null;
 };
 
-const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp; exclude?: RegExp }> = [
+const categoryQueries: Array<{ pattern: RegExp; query: string; queries?: string[]; relevant: RegExp; exclude?: RegExp }> = [
   { pattern: /\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b.{0,40}\b(lipstick|makeup|cosmetic)\b|\b(lipstick|makeup|cosmetic)\b.{0,40}\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b/i, query: "lipstick holder", relevant: /\b(lipstick holder|lipstick organizer|lipstick stand|makeup organizer|cosmetic organizer|makeup storage|lipstick storage)\b/i, exclude: /\b(lipstick tube|lipstick product|lipstick bottle|makeup brush)\b/i },
   { pattern: /\b(laundry basket|laundry hamper|keranjang laundry|keranjang pakaian kotor)\b/i, query: "laundry basket", relevant: /\b(laundry basket|laundry hamper|clothes hamper|laundry bin)\b/i },
   { pattern: /\b(colander|strainer|tirisan|saringan sayuran|vegetable strainer)\b/i, query: "colander", relevant: /\b(colander|strainer|draining basket|vegetable strainer|food strainer)\b/i },
@@ -154,7 +154,7 @@ const categoryQueries: Array<{ pattern: RegExp; query: string; relevant: RegExp;
   { pattern: /\b(hand soap|hand wash|sabun cuci tangan)\b/i, query: "hand soap", relevant: /\b(hand soap|hand wash|liquid soap|soap dispenser|handwashing)\b/i },
   { pattern: /\b(honey|madu)\b/i, query: "honey", relevant: /\b(honey|honeycomb|honey jar|bee honey)\b/i, exclude: /\b(honey buzzard|buzzard|wildlife|birds?)\b/i },
   { pattern: /\b(hair clip|hair clips|jepit rambut|perhiasan rambut)\b/i, query: "hair clips", relevant: /\b(hair clip|hair clips|hair clasp|barrette|hairpin)\b/i },
-  { pattern: /\b(crisper tray|air fryer|baking tray)\b/i, query: "crisper tray", relevant: /\b(crisper tray|air fryer|oven tray)\b/i, exclude: /\b(potato wedges|food served|ready for serving|serving tray)\b/i }
+  { pattern: /\b(crisper tray|air fryer|baking tray)\b/i, query: "crisper tray", queries: ["crisper tray", "air fryer basket", "oven baking tray"], relevant: /\b(crisper tray|air fryer|oven tray)\b/i, exclude: /\b(potato wedges|food served|ready for serving|serving tray)\b/i }
 ];
 
 /**
@@ -194,7 +194,8 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
   if (explicitIdentifiers.length > 0) {
     const terms = [...explicitIdentifiers, identity.variant?.trim(), matchedCategory?.query]
       .filter((part): part is string => typeof part === "string" && part.length > 0);
-    return [terms.join(" ").slice(0, 200)];
+    const primaryQuery = terms.join(" ").slice(0, 200);
+    return [...new Set([primaryQuery, ...(matchedCategory?.queries?.slice(1) ?? [])])];
   }
 
   const titleTerms = meaningfulWikimediaTitleTokens(source);
@@ -206,7 +207,7 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
     }
     return [titleTerms.slice(0, 3).join(" ") || matchedCategory.query];
   }
-  if (matchedCategory) return [matchedCategory.query];
+  if (matchedCategory) return matchedCategory.queries ?? [matchedCategory.query];
   return [titleTerms.join(" ") || source.trim().slice(0, 100)];
 };
 
@@ -244,6 +245,12 @@ export async function searchWikimediaCommonsProductMedia(
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
+  const identityText = [identity.brand, identity.name, identity.model, identity.sku, identity.variant]
+    .filter((part): part is string => typeof part === "string" && part.trim().length > 0).join(" ");
+  const categorySource = identity.category?.trim() ?? "";
+  const category = categoryQueries.find(({ pattern }) =>
+    pattern.test(identityText) || (categorySource.length > 0 && pattern.test(categorySource))
+  );
   assertWikimediaAvailable(fetchImpl);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
@@ -308,7 +315,6 @@ export async function searchWikimediaCommonsProductMedia(
         if (!acceptedLicense) continue;
 
         const identityMatch = evaluateProductMediaIdentity(identity, title);
-        const category = categoryQueries.find((item) => item.query === query);
         const descriptiveText = [title, metadataText(info.extmetadata, "Description"), metadataText(info.extmetadata, "ImageDescription")]
           .filter((value): value is string => Boolean(value))
           .join(" ");
