@@ -112,7 +112,7 @@ const metadataText = (metadata: Record<string, WikimediaMetadataValue> | undefin
 };
 
 const categoryQueries: Array<{ pattern: RegExp; query: string; queries?: string[]; relevant: RegExp; exclude?: RegExp }> = [
-  { pattern: /\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b.{0,40}\b(lipstick|makeup|cosmetic)\b|\b(lipstick|makeup|cosmetic)\b.{0,40}\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b/i, query: "lipstick holder", relevant: /\b(lipstick holder|lipstick organizer|lipstick stand|makeup organizer|cosmetic organizer|makeup storage|lipstick storage)\b/i, exclude: /\b(lipstick tube|lipstick product|lipstick bottle|makeup brush)\b/i },
+  { pattern: /\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b.{0,40}\b(lipstick|makeup|cosmetic)\b|\b(lipstick|makeup|cosmetic)\b.{0,40}\b(?:rak|holder|organizer|organiser|stand|storage|tray)\b/i, query: "lipstick holder", relevant: /\b(lipstick holder|lipstick organizer|lipstick stand|lipstick rack|rak lipstick|rak lipstik|makeup organizer|cosmetic organizer|makeup storage|lipstick storage)\b/i, exclude: /\b(lipstick tube|lipstick product|lipstick bottle|makeup brush)\b/i },
   { pattern: /\b(laundry basket|laundry hamper|keranjang laundry|keranjang pakaian kotor)\b/i, query: "laundry basket", relevant: /\b(laundry basket|laundry hamper|clothes hamper|laundry bin)\b/i },
   { pattern: /\b(colander|strainer|tirisan|saringan sayuran|vegetable strainer)\b/i, query: "colander", relevant: /\b(colander|strainer|draining basket|vegetable strainer|food strainer)\b/i },
   { pattern: /\b(food container|food storage|kontainer|kotak penyimpanan makanan|wadah makanan)\b/i, query: "food container", relevant: /\b(food container|food storage container|plastic food container|kitchen storage container)\b/i, exclude: /\b(rat|mouse|mice|rodent|wildlife|pest|animal|bird|nest|feeding)\b/i },
@@ -163,7 +163,7 @@ const categoryQueries: Array<{ pattern: RegExp; query: string; queries?: string[
  */
 const WIKIMEDIA_LISTING_NOISE = new Set([
   "original", "official", "latest", "terbaru", "untuk", "dengan", "dan", "the", "with",
-  "for", "from", "anak", "wanita", "pria", "premium", "pcs", "piece", "pieces", "box",
+  "for", "from", "anak", "wanita", "pria", "item", "premium", "pcs", "piece", "pieces", "box",
   "set", "bundle", "bundling", "promo", "sale", "diskon", "gratis", "free", "triplepack",
   "pack", "paket", "ready", "stock", "stok", "murah", "termurah", "best", "seller",
   "inch", "inches", "cm", "mm", "meter", "liter", "ml", "gram", "grams", "kg", "watt"
@@ -175,6 +175,7 @@ const meaningfulWikimediaTitleTokens = (value: string): string[] => {
   return [...new Set(tokens.filter((token) =>
     !WIKIMEDIA_LISTING_NOISE.has(token) &&
     !/^\d+(?:in\d+)?$/i.test(token) &&
+    !/^\d+pcs$/i.test(token) &&
     !/^\d+(?:kg|g|mg|ml|l|cm|mm|inch|inches|w|v|mah)$/i.test(token)
   ))].slice(0, 5);
 };
@@ -207,7 +208,13 @@ export const buildWikimediaCommonsQueries = (identity: ProductMediaSearchIdentit
     }
     return [titleTerms.slice(0, 3).join(" ") || matchedCategory.query];
   }
-  if (matchedCategory) return matchedCategory.queries ?? [matchedCategory.query];
+  if (matchedCategory) {
+    const productSpecificQuery = titleTerms.join(" ") || matchedCategory.query;
+    const allCategoryFallbacks = matchedCategory.queries ?? [matchedCategory.query];
+    const distinctCategoryFallbacks = allCategoryFallbacks.filter((fallback) => !productSpecificQuery.includes(fallback));
+    const categoryFallbacks = distinctCategoryFallbacks.length > 0 ? distinctCategoryFallbacks : allCategoryFallbacks;
+    return [...new Set([productSpecificQuery, ...categoryFallbacks])].slice(0, 3);
+  }
   return [titleTerms.join(" ") || source.trim().slice(0, 100)];
 };
 
@@ -228,9 +235,9 @@ const normalizedLicense = (licenseUrl: string | null, licenseName: string | null
 };
 
 /**
- * Returns identity matches plus conservative category-only leads for manual
- * review. Category-only leads never become strong matches or publishable assets;
- * rights remain unverified and no media is downloaded.
+ * Returns only candidates with sufficient title-level identity evidence for
+ * human review. Category-only matches are discarded because category relevance
+ * cannot establish product identity. Rights remain unverified; no media is downloaded.
  */
 export async function searchWikimediaCommonsProductMedia(
   identity: ProductMediaSearchIdentity,
@@ -319,9 +326,7 @@ export async function searchWikimediaCommonsProductMedia(
           .filter((value): value is string => Boolean(value))
           .join(" ");
         if (category && (!category.relevant.test(descriptiveText) || category.exclude?.test(descriptiveText))) continue;
-        const primaryIdentifier = identity.model?.trim() || identity.sku?.trim();
-        const categoryOnlyMatch = identityMatch.status === "rejected" && !primaryIdentifier && category !== undefined;
-        if (identityMatch.status === "rejected" && !categoryOnlyMatch) continue;
+        if (identityMatch.status === "rejected") continue;
         const creatorHref = metadata?.Artist?.value && typeof metadata.Artist.value === "string"
           ? metadata.Artist.value.match(/href=["']([^"']+)["']/i)?.[1]
           : null;
@@ -341,11 +346,9 @@ export async function searchWikimediaCommonsProductMedia(
           licenseVersion: licenseName?.match(/\d+(?:\.\d+)?/)?.[0] ?? null,
           licenseUrl: acceptedLicense.licenseUrl,
           sourcePublisher: "Wikimedia Commons",
-          identityScore: categoryOnlyMatch ? Math.max(20, Math.min(identityMatch.score, 49)) : identityMatch.score,
-          identityStatus: categoryOnlyMatch ? "review_required" : identityMatch.status,
-          identityReasons: categoryOnlyMatch
-            ? [...identityMatch.reasons, `Kecocokan hanya pada tingkat kategori "${query}"; identitas produk tidak terbukti dan wajib diperiksa manusia.`]
-            : [...identityMatch.reasons, "Kecocokan identitas produk memadai; hasil tetap wajib diperiksa manusia."],
+          identityScore: identityMatch.score,
+          identityStatus: identityMatch.status,
+          identityReasons: [...identityMatch.reasons, "Kandidat tetap wajib diperiksa manusia sebelum import."],
           rightsStatus: "unverified"
         };
         candidates.set(landingPageUrl, candidate);

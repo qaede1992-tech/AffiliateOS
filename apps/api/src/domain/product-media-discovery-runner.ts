@@ -12,7 +12,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { buildProductMediaSearchQuery, getOpenverseHttpFailureDetails, searchOpenverseProductMedia, type ProductMediaCatalogCandidate, type ProductMediaCatalogSearchOptions } from "./product-media-catalog-search.js";
 import { searchWikimediaCommonsProductMedia } from "./product-media-wikimedia-search.js";
 import { assertOpenverseAvailable, recordOpenverseFailure, recordOpenverseSuccess } from "./openverse-provider-circuit.js";
-import type { ProductMediaCandidateRepository } from "./product-media-candidate.js";
+import { MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE, type ProductMediaCandidateRepository } from "./product-media-candidate.js";
 import type { ProductMediaDiscoveryAttemptRepository, ProductMediaDiscoveryOutcome } from "./product-media-discovery-attempt.js";
 
 export interface ProductMediaDiscoveryPolicy extends ProductMediaIngestionPolicy {
@@ -32,6 +32,13 @@ const safeErrorType = (error: unknown): string =>
     ? error.name
     : "UnknownError";
 
+/** Category-level similarity is not enough to put an asset into the human review queue. */
+export const isReviewableProductMediaCandidate = (
+  candidate: Pick<ProductMediaCatalogCandidate, "identityScore" | "identityStatus">
+): boolean =>
+  candidate.identityStatus !== "rejected" &&
+  candidate.identityScore >= MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE;
+
 const hasRecognizedProductCategoryInName = (name: string | null | undefined): boolean => {
   if (!name?.trim()) return false;
   const tokens = new Set(name.normalize("NFKD").toLowerCase().replace(/[\u0300-\u036f]/g, "")
@@ -43,7 +50,7 @@ const hasRecognizedProductCategoryInName = (name: string | null | undefined): bo
 };
 
 export const getProductMediaDiscoveryStrategyVersion = (name: string | null | undefined): string | null =>
-  hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v2" : null;
+  hasRecognizedProductCategoryInName(name) ? "wikimedia-name-category-v3" : null;
 
 export const shouldSearchWikimediaVideoFallback = (
   candidates: ProductMediaCatalogCandidate[],
@@ -479,7 +486,7 @@ export class ProductMediaDiscoveryRunner {
             const now = new Date().toISOString();
             const accepted = discovered.filter((candidate): candidate is (typeof discovered)[number] & {
               identityStatus: "strong_match" | "review_required"
-            } => candidate.identityStatus !== "rejected");
+            } => isReviewableProductMediaCandidate(candidate));
             const records = accepted.map((candidate) => ({
               id: randomUUID(),
               productId: product.id,
@@ -532,6 +539,7 @@ export class ProductMediaDiscoveryRunner {
                 productId: product.id,
                 resultCount: discovered.length,
                 acceptedCount: accepted.length,
+                filteredIdentityCount: Math.max(0, discovered.length - accepted.length),
                 savedCount: insertedCount,
                 alreadyPresentCount
               }));

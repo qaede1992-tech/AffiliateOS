@@ -147,25 +147,36 @@ test("rejects unsupported Commons video MIME types", async () => {
 });
 
 
-test("maps Indonesian marketplace listing titles to concise Commons category queries", () => {
-  assert.deepEqual(buildWikimediaCommonsQueries({
+test("puts product-specific Wikimedia queries before category fallbacks", () => {
+  const backpack = buildWikimediaCommonsQueries({
     name: "CELAH LANGIT GUMMY BACKPACK | Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
-  }), ["backpack"]);
-  assert.deepEqual(buildWikimediaCommonsQueries({
+  });
+  assert.ok(backpack[0]?.includes("celah langit gummy backpack"));
+  assert.ok(backpack.includes("backpack"));
+
+  const tumbler = buildWikimediaCommonsQueries({
     name: "MODOFO Tumbler Stainless 710ml Botol Minum Anak Perempuan"
-  }), ["water bottle"]);
-  assert.deepEqual(buildWikimediaCommonsQueries({
+  });
+  assert.ok(tumbler[0]?.includes("modofo tumbler stainless"));
+  assert.ok(tumbler.includes("water bottle"));
+
+  const sugar = buildWikimediaCommonsQueries({
     name: "Aromanis Brown Sugar 1kg - Gula merah tebu molasses"
-  }), ["brown sugar"]);
-  assert.deepEqual(buildWikimediaCommonsQueries({
+  });
+  assert.ok(sugar[0]?.includes("aromanis brown sugar"));
+  assert.ok(sugar.includes("brown sugar"));
+
+  const honey = buildWikimediaCommonsQueries({
     name: "MADU PUTIH MENTAH PREMIUM"
-  }), ["honey"]);
+  });
+  assert.ok(honey[0]?.includes("madu putih mentah"));
+  assert.ok(honey.includes("honey"));
 });
 
 test("maps lipstick holder marketplace titles to a precise organizer query", () => {
   assert.deepEqual(buildWikimediaCommonsQueries({
     name: "Rak Lipstick / Rak Tempat Lipstick / Rak Meja Lipstick / Rak Lipstick Slot Top006"
-  }), ["lipstick holder"]);
+  }), ["rak lipstick tempat meja slot", "lipstick holder"]);
 });
 
 test("keeps first meaningful product tokens and drops trailing listing codes", () => {
@@ -174,14 +185,14 @@ test("keeps first meaningful product tokens and drops trailing listing codes", (
   }), ["asthin force suplemen"]);
 });
 
-test("accepts a properly licensed lipstick organizer as a low-confidence review candidate", async () => {
+test("accepts a product-specific, properly licensed lipstick organizer as review-required", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
     query: { pages: [{
-      title: "File:Plastic lipstick organizer tray.jpg",
+      title: "File:Rak Lipstick Tempat Meja Organizer Tray.jpg",
       imageinfo: [{
         thumburl: "https://upload.wikimedia.org/thumb-lipstick-organizer.jpg",
         url: "https://upload.wikimedia.org/lipstick-organizer.jpg",
-        descriptionurl: "https://commons.wikimedia.org/wiki/File:Plastic_lipstick_organizer_tray.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Rak_Lipstick_Tempat_Meja_Organizer_Tray.jpg",
         mime: "image/jpeg",
         extmetadata: {
           LicenseShortName: { value: "CC0" },
@@ -199,7 +210,7 @@ test("accepts a properly licensed lipstick organizer as a low-confidence review 
   assert.equal(results[0]?.license, "cc0");
 });
 
-test("keeps category-relevant results as low-confidence manual-review candidates", async () => {
+test("rejects category-relevant results that do not establish product identity", async () => {
   let requestedUrl = "";
   const fetchImpl: typeof fetch = async (input) => {
     requestedUrl = String(input);
@@ -226,11 +237,7 @@ test("keeps category-relevant results as low-confidence manual-review candidates
     name: "Tas Ransel Lucu Wanita Tas Sekolah Tas Kuliah"
   }, { fetchImpl });
   assert.match(requestedUrl, /gsrsearch=backpack/);
-  assert.equal(results.length, 1);
-  assert.equal(results[0]?.identityStatus, "review_required");
-  assert.ok((results[0]?.identityScore ?? 100) < 50);
-  assert.equal(results[0]?.rightsStatus, "unverified");
-  assert.ok(results[0]?.identityReasons.some((reason) => reason.includes("tingkat kategori")));
+  assert.equal(results.length, 0);
 });
 
 test("hard-rejects category candidates when an explicit model or SKU does not match", async () => {
@@ -510,7 +517,9 @@ test("maps additional Indonesian marketplace categories to focused Wikimedia que
     ["GOODBABY Sarung Tangan Plastik Sekali Pakai", "disposable gloves"]
   ];
   for (const [name, expected] of cases) {
-    assert.deepEqual(buildWikimediaCommonsQueries({ name }), [expected], name);
+    const queries = buildWikimediaCommonsQueries({ name });
+    assert.ok(queries.some((query) => query.includes(expected)), name);
+    assert.ok(queries.length <= 3, name);
   }
 });
 
@@ -521,9 +530,33 @@ test("uses the imported CSV category when the listing title is generic", () => {
   }), ["backpack"]);
 });
 
+test("does not return category-only Commons results as product media candidates", async () => {
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+    query: { pages: [{
+      title: "File:Oven Tray.jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/thumb-oven-tray.jpg",
+        url: "https://upload.wikimedia.org/oven-tray.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Oven_Tray.jpg",
+        mime: "image/jpeg",
+        extmetadata: {
+          LicenseShortName: { value: "CC0" },
+          LicenseUrl: { value: "https://creativecommons.org/publicdomain/zero/1.0/" }
+        }
+      }]
+    }] }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  const results = await searchWikimediaCommonsProductMedia({
+    name: "GSM Crisper Tray Cooper Carbon Steel Ceramic"
+  }, { fetchImpl });
+
+  assert.equal(results.length, 0);
+});
+
 test("accepts canonical HTTP Creative Commons license metadata and normalizes it to HTTPS", async () => {
   const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
-    query: { pages: [{ title: "File:Milk powder.jpg", imageinfo: [{
+    query: { pages: [{ title: "File:Zeelandia Vanilla Milk Powder.jpg", imageinfo: [{
       thumburl: "https://upload.wikimedia.org/wikipedia/commons/thumb/milk-powder.jpg",
       descriptionurl: "https://commons.wikimedia.org/wiki/File:Milk_powder.jpg",
       mime: "image/jpeg",
@@ -639,11 +672,11 @@ test("rejects animal and pest imagery returned by generic food-container searche
         }]
       },
       {
-        title: "File:Food container.jpg",
+        title: "File:Hongzhuo Food Container.jpg",
         imageinfo: [{
           thumburl: "https://upload.wikimedia.org/thumb-container.jpg",
           url: "https://upload.wikimedia.org/container.jpg",
-          descriptionurl: "https://commons.wikimedia.org/wiki/File:Food_container.jpg",
+          descriptionurl: "https://commons.wikimedia.org/wiki/File:Hongzhuo_Food_Container.jpg",
           mime: "image/jpeg",
           extmetadata: {
             LicenseShortName: { value: "CC0" },
@@ -655,11 +688,11 @@ test("rejects animal and pest imagery returned by generic food-container searche
   }), { status: 200, headers: { "content-type": "application/json" } });
 
   const results = await searchWikimediaCommonsProductMedia({
-    name: "Hongzhuo Food Kontainer Kotak Penyimpanan Makanan Buah Sayuran Saringan Serbaguna"
+    name: "Hongzhuo Food Container"
   }, { fetchImpl });
 
   assert.equal(results.length, 1);
-  assert.equal(results[0]?.title, "Food container.jpg");
+  assert.equal(results[0]?.title, "Hongzhuo Food Container.jpg");
   assert.equal(results[0]?.identityStatus, "review_required");
   assert.equal(results[0]?.rightsStatus, "unverified");
 });

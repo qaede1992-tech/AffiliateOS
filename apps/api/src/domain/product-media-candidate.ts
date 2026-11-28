@@ -1,3 +1,6 @@
+/** Candidates below this score are category-only leads, not reviewable product media. */
+export const MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE = 50;
+
 export interface ProductMediaCandidateRecord {
   id: string;
   productId: string;

@@ -1,7 +1,7 @@
 import type { AffiliateOffer, Product } from "@affiliateos/shared";
 import type { AutonomousDecisionAuditReader } from "./autonomous-decision-audit.js";
 import type { PreMediaEligibilityRepository } from "./pre-media-eligibility.js";
-import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository } from "./product-media-candidate.js";
+import { MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE, type ProductMediaCandidateRecord, type ProductMediaCandidateRepository } from "./product-media-candidate.js";
 import type { ProductMediaAsset, ProductMediaAssetRepository, ProductMediaIngestionService } from "./product-media-ingestion.js";
 
 export class ProductMediaCandidateImportError extends Error {
@@ -69,6 +69,9 @@ export class ProductMediaCandidateImportService {
     const candidate = await candidates.findById(candidateId);
     if (!candidate || candidate.productId !== productId) {
       throw new ProductMediaCandidateImportError("CANDIDATE_NOT_FOUND", "The media candidate was not found for this product.", 404);
+    }
+    if (candidate.identityScore < MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE) {
+      throw new ProductMediaCandidateImportError("CANDIDATE_NOT_APPROVED", "The candidate does not meet the minimum product identity threshold.", 409);
     }
     if (candidate.reviewStatus !== "approved") {
       throw new ProductMediaCandidateImportError("CANDIDATE_NOT_APPROVED", "Only an administrator-approved media candidate can be imported.", 409);

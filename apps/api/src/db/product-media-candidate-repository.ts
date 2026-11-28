@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
-import type { ProductMediaCandidateRecord, ProductMediaCandidateRepository, ProductMediaCandidateReviewAudit, ProductMediaCandidateReviewCommand } from "../domain/product-media-candidate.js";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE, type ProductMediaCandidateRecord, type ProductMediaCandidateRepository, type ProductMediaCandidateReviewAudit, type ProductMediaCandidateReviewCommand } from "../domain/product-media-candidate.js";
 import { productMediaCandidates, productMediaCandidateReviewAudits } from "./schema.js";
 
 type DatabaseExecutor = any;
@@ -62,6 +62,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       .where(and(
         eq(productMediaCandidates.productId, productId),
         eq(productMediaCandidates.reviewStatus, "pending"),
+        gte(productMediaCandidates.identityScore, MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE),
         eq(productMediaCandidates.query, query)
       )).limit(1);
     return rows.length > 0;
@@ -70,7 +71,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
   async listPendingByProduct(productId: string, limit = 20): Promise<ProductMediaCandidateRecord[]> {
     const boundedLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
     const rows = await this.db.select().from(productMediaCandidates)
-      .where(and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, "pending")))
+      .where(and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, "pending"), gte(productMediaCandidates.identityScore, MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE)))
       .orderBy(desc(productMediaCandidates.createdAt)).limit(boundedLimit);
     return rows.map(toCandidate);
   }
@@ -82,7 +83,9 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
   ): Promise<ProductMediaCandidateRecord[]> {
     const boundedLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
     const rows = await this.db.select().from(productMediaCandidates)
-      .where(and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, status)))
+      .where(status === "pending"
+        ? and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, status), gte(productMediaCandidates.identityScore, MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE))
+        : and(eq(productMediaCandidates.productId, productId), eq(productMediaCandidates.reviewStatus, status)))
       .orderBy(desc(productMediaCandidates.createdAt)).limit(boundedLimit);
     return rows.map(toCandidate);
   }
@@ -96,6 +99,7 @@ export class DrizzleProductMediaCandidateRepository implements ProductMediaCandi
       )).limit(1).for("update");
       const existing = rows[0];
       if (!existing) return undefined;
+      if (command.status === "approved" && existing.identityScore < MINIMUM_PRODUCT_MEDIA_IDENTITY_SCORE) return undefined;
       const reviewedAt = new Date().toISOString();
       const nextStatus = command.status;
       const updatedRows = await tx.update(productMediaCandidates).set({
