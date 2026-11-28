@@ -134,8 +134,8 @@ export class DrizzleIllustrativeCreativeRepository implements IllustrativeCreati
       const mediaAssetId = randomUUID();
       const now = new Date().toISOString();
       await tx.insert(mediaAssets).values({
-        id: mediaAssetId, contentId: input.contentId, kind: "video", source: "generated",
-        reference: `illustrative-creative:${input.id}`, mimeType: input.mimeType,
+        id: mediaAssetId, contentId: input.contentId, kind: "video", source: "object-storage",
+        reference: `affiliate-media/content/${input.contentId}/${input.storageKey}`, mimeType: input.mimeType,
         byteSize: input.byteSize, durationSeconds: Math.ceil(input.durationMs / 1000),
         widthPx: input.widthPx, heightPx: input.heightPx, createdAt: now, updatedAt: now
       });
